@@ -1,0 +1,19 @@
+[
+    { "id": "9kyu", "label": "9. Kyu (weiß)", "farben": ["#ffffff"] },
+    { "id": "8kyu", "label": "8. Kyu (weiß-gelb)", "farben": ["#ffffff", "#fdd835", "#ffffff"] },
+    { "id": "7kyu", "label": "7. Kyu (gelb)", "farben": ["#fdd835"] },
+    { "id": "6kyu", "label": "6. Kyu (gelb-orange)", "farben": ["#fdd835","#fb8c00","#fdd835"] },
+    { "id": "5kyu", "label": "5. Kyu (orange)", "farben": ["#fb8c00"] },
+    { "id": "4kyu", "label": "4. Kyu (orange-grün)", "farben": ["#fb8c00", "#43a047","#fb8c00"] },
+    { "id": "3kyu", "label": "3. Kyu (grün)", "farben": ["#43a047"] },
+    { "id": "2kyu", "label": "2. Kyu (blau)", "farben": ["#1e88e5"] },
+    { "id": "1kyu", "label": "1. Kyu (braun)", "farben": ["#6d4c41"] },
+    { "id": "1dan", "label": "1. Dan", "farben": ["#212121"] },
+    { "id": "2dan", "label": "2. Dan", "farben": ["#212121"] },
+    { "id": "3dan", "label": "3. Dan", "farben": ["#212121"] },
+    { "id": "4dan", "label": "4. Dan", "farben": ["#212121"] },
+    { "id": "5dan", "label": "5. Dan", "farben": ["#212121"] },
+    { "id": "6dan", "label": "6. Dan", "farben": ["#d32f2f", "#ffffff"] },
+    { "id": "7dan", "label": "7. Dan", "farben": ["#d32f2f", "#ffffff"] },
+    { "id": "8dan", "label": "8. Dan", "farben": ["#d32f2f", "#ffffff"] }
+]

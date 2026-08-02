@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hajime Pro - Anmeldung</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <style>
+        body {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            min-height: 100vh !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #111827 !important;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+        }
+        .login-card {
+            background: #1f2937;
+            border: 2px solid #374151;
+            border-radius: 8px;
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            color: #f3f4f6;
+            box-sizing: border-box;
+        }
+        .login-title {
+            font-size: 24px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #3b82f6;
+            margin: 0 0 8px 0;
+            text-align: center;
+        }
+        .login-subtitle {
+            font-size: 13px;
+            color: #9ca3af;
+            font-weight: 600;
+            margin: 0 0 24px 0;
+            text-align: center;
+        }
+        .tab-bar {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 24px;
+            background: #111827;
+            border-radius: 4px;
+            padding: 4px;
+        }
+        .tab-btn {
+            flex: 1;
+            padding: 10px;
+            background: transparent;
+            border: none;
+            border-radius: 4px;
+            color: #9ca3af;
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .tab-btn.active {
+            background: #3b82f6;
+            color: #ffffff;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            font-size: 12px;
+            font-weight: bold;
+            color: #9ca3af;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .form-group input {
+            padding: 12px 14px;
+            border: 1px solid #4b5563;
+            border-radius: 4px;
+            background: #111827;
+            color: #ffffff;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .form-group input:focus {
+            border-color: #3b82f6;
+        }
+        .btn-login {
+            background: #3b82f6;
+            color: #ffffff;
+            border: none;
+            padding: 14px;
+            font-size: 14px;
+            font-weight: 700;
+            border-radius: 4px;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            width: 100%;
+            transition: background 0.2s;
+            margin-top: 10px;
+        }
+        .btn-login:hover {
+            background: #2563eb;
+        }
+        .error-message {
+            margin-top: 16px;
+            color: #ef4444;
+            font-size: 13px;
+            font-weight: 700;
+            text-align: center;
+            display: none;
+        }
+        .auth-form {
+            display: none;
+        }
+        .auth-form.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+<div class="kanji-left" style="color: rgba(255,255,255,0.02)">柔</div>
+<div class="kanji-right" style="color: rgba(255,255,255,0.02)">道</div>
+
+<div class="login-card">
+    <div style="font-size: 48px; text-align: center; margin-bottom: 16px;">🥋</div>
+    <h1 class="login-title">Hajime Pro</h1>
+    <p class="login-subtitle">Lokale Anmeldung</p>
+
+    <div class="tab-bar">
+        <button type="button" class="tab-btn active" id="tabLogin">Anmelden</button>
+        <button type="button" class="tab-btn" id="tabRegister">Konto erstellen</button>
+    </div>
+
+    <form id="loginForm" class="auth-form active">
+        <div class="form-group">
+            <label for="loginEmail">E-Mail-Adresse</label>
+            <input type="email" id="loginEmail" required placeholder="name@beispiel.de">
+        </div>
+        <div class="form-group">
+            <label for="loginPassword">Passwort</label>
+            <input type="password" id="loginPassword" required placeholder="••••••••">
+        </div>
+        <button type="submit" class="btn-login">Einloggen</button>
+    </form>
+
+    <form id="registerForm" class="auth-form">
+        <div class="form-group">
+            <label for="registerVorname">Vorname</label>
+            <input type="text" id="registerVorname" required placeholder="Max">
+        </div>
+        <div class="form-group">
+            <label for="registerNachname">Nachname</label>
+            <input type="text" id="registerNachname" required placeholder="Mustermann">
+        </div>
+        <div class="form-group">
+            <label for="registerEmail">E-Mail-Adresse</label>
+            <input type="email" id="registerEmail" required placeholder="name@beispiel.de">
+        </div>
+        <div class="form-group">
+            <label for="registerPassword">Passwort</label>
+            <input type="password" id="registerPassword" required placeholder="••••••••" minlength="6">
+        </div>
+        <button type="submit" class="btn-login">Konto erstellen</button>
+    </form>
+
+    <div id="errorMessage" class="error-message"></div>
+</div>
+
+<script>
+    const tabLogin = document.getElementById('tabLogin');
+    const tabRegister = document.getElementById('tabRegister');
+    const loginForm = document.getElementById('loginForm');
+    const registerForm = document.getElementById('registerForm');
+    const errDiv = document.getElementById('errorMessage');
+
+    function showTab(tab) {
+        errDiv.style.display = 'none';
+        if (tab === 'login') {
+            tabLogin.classList.add('active');
+            tabRegister.classList.remove('active');
+            loginForm.classList.add('active');
+            registerForm.classList.remove('active');
+        } else {
+            tabRegister.classList.add('active');
+            tabLogin.classList.remove('active');
+            registerForm.classList.add('active');
+            loginForm.classList.remove('active');
+        }
+    }
+
+    tabLogin.addEventListener('click', () => showTab('login'));
+    tabRegister.addEventListener('click', () => showTab('register'));
+
+    function handleAuthSuccess(data) {
+        localStorage.setItem('dokume_token', data.token);
+        localStorage.setItem('dokume_user', JSON.stringify(data.user));
+
+        if (!data.user.verein_id) {
+            window.location.href = '/verein_auswahl.html';
+        } else {
+            window.location.href = '/turniere.html';
+        }
+    }
+
+    loginForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        errDiv.style.display = 'none';
+
+        const email = document.getElementById('loginEmail').value;
+        const password = document.getElementById('loginPassword').value;
+
+        try {
+            const response = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.error || 'Login fehlgeschlagen');
+            }
+
+            handleAuthSuccess(data);
+        } catch (err) {
+            errDiv.textContent = err.message;
+            errDiv.style.display = 'block';
+        }
+    });
+
+    registerForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        errDiv.style.display = 'none';
+
+        const vorname = document.getElementById('registerVorname').value;
+        const nachname = document.getElementById('registerNachname').value;
+        const email = document.getElementById('registerEmail').value;
+        const password = document.getElementById('registerPassword').value;
+
+        try {
+            const response = await fetch('/api/auth/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ vorname, nachname, email, password })
+            });
+
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.error || 'Registrierung fehlgeschlagen');
+            }
+
+            handleAuthSuccess(data);
+        } catch (err) {
+            errDiv.textContent = err.message;
+            errDiv.style.display = 'block';
+        }
+    });
+</script>
+</body>
+</html>

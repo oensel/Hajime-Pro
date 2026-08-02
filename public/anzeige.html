@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Judo Anzeigetafel</title>
+    <link rel="stylesheet" href="css/scoreboard.css">
+</head>
+<body class="body-anzeige">
+
+    <div class="wrapper">
+        <!-- Overlays -->
+        <div id="ovTime" class="overlay overlay-time">TIME</div>
+        <div id="ovHantei" class="overlay overlay-hantei">HANTEI</div>
+        <!-- Vorschau auf die nächsten Kämpfe (nach "Ergebnis senden"), damit sich die
+             Kämpfer schon vorbereiten können. Verschwindet über "Nächsten Kampf holen" oder
+             "Overlay schließen" (siehe closeOverlay()/naechstenKampfHolen() in scoreboard.js). -->
+        <div id="ovVorschau" class="overlay overlay-vorschau">
+            <div class="vorschau-section">
+                <div class="vorschau-titel">Als nächstes</div>
+                <div class="vorschau-kampf" id="vorschauKampf1"></div>
+            </div>
+            <div class="vorschau-section vorschau-section-danach">
+                <div class="vorschau-titel">Danach</div>
+                <div class="vorschau-kampf" id="vorschauKampf2"></div>
+            </div>
+            <div class="vorschau-section vorschau-section-danach">
+                <div class="vorschau-titel">Im Anschluss</div>
+                <div class="vorschau-kampf" id="vorschauKampf3"></div>
+            </div>
+        </div>
+
+        <!-- Meta-Balken ganz oben -->
+        <div class="top-meta-bar">
+            <div class="meta-display" id="outMeta">Senioren | M | -81kg</div>
+        </div>
+
+        <div class="grid">
+            <!-- Seite 2 (Dynamisch Blau oder Rot) - LINKS -->
+            <div class="blau" id="panelB">
+                <div class="name-section">
+                    <div class="name" id="outNameB">Kämpfer 2</div>
+                    <div class="club" id="outClubB">DJK Beispielort</div>
+                </div>
+                <div class="scores">
+                    <div class="box"><div class="label b">Ippon</div><div class="num" id="outIpponB">0</div></div>
+                    <div class="box"><div class="label b">Waza-Ari</div><div class="num" id="outWazaB">0</div></div>
+                    <div class="box"><div class="label b">Yuko</div><div class="num" id="outYukoB">0</div></div>
+                </div>
+                <div class="shido-container">
+                    <div class="shido-group">
+                        <div class="card yellow" id="shidoB_1"></div>
+                        <div class="card yellow" id="shidoB_2"></div>
+                        <div class="card red" id="shidoB_3"></div>
+                    </div>
+                    <div class="behandlung-group">
+                        <div class="behandlung-cross" id="behandlungB_1"></div>
+                        <div class="behandlung-cross" id="behandlungB_2"></div>
+                    </div>
+                </div>
+                <div class="osae-slot">
+                    <div class="side-banner" id="bannerB"></div>
+                    <div class="osae-display" id="outOsaeB">00</div>
+                </div>
+            </div>
+
+            <!-- Seite Weiß - RECHTS -->
+            <div class="weiss">
+                <div class="name-section">
+                    <div class="name" id="outNameW">Kämpfer Weiß</div>
+                    <div class="club" id="outClubW">JC Musterstadt</div>
+                </div>
+                <div class="scores">
+                    <div class="box"><div class="label b">Ippon</div><div class="num" id="outIpponW">0</div></div>
+                    <div class="box"><div class="label b">Waza-Ari</div><div class="num" id="outWazaW">0</div></div>
+                    <div class="box"><div class="label b">Yuko</div><div class="num" id="outYukoW">0</div></div>
+                </div>
+                <div class="shido-container">
+                    <div class="behandlung-group">
+                        <div class="behandlung-cross" id="behandlungW_1"></div>
+                        <div class="behandlung-cross" id="behandlungW_2"></div>
+                    </div>
+                    <div class="shido-group">
+                        <div class="card yellow" id="shidoW_1"></div>
+                        <div class="card yellow" id="shidoW_2"></div>
+                        <div class="card red" id="shidoW_3"></div>
+                    </div>
+                </div>
+                <div class="osae-slot">
+                    <div class="side-banner" id="bannerW"></div>
+                    <div class="osae-display" id="outOsaeW">00</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Zeitbalken am untersten Bildschirmrand -->
+        <div class="timer-bar">
+            <div class="timer-display" id="outTimer">04:00</div>
+            <div class="gs-indicator" id="outGsIndicator">Golden Score</div>
+        </div>
+    </div>
+
+    <script type="module" src="js/scoreboard.js"></script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# Secrets / lokale Konfiguration
+.env
+.env.*
+
+# Laufzeitdaten (SQLite-DB, enthält personenbezogene Turnier-/Judoka-Daten)
+data/
+
+# OS / Editor
+.DS_Store
+.idea/
+
+# Claude Code lokale Einstellungen
+.claude/settings.local.json

@@ -1,0 +1,773 @@
+/* ==========================================================================
+   Pool-Sektionen & Container
+   ========================================================================== */
+
+.pool-section {
+    margin-bottom: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+    vertical-align: top;
+}
+
+[data-theme="dark"] .pool-section {
+    background-color: rgba(255, 255, 255, 0.01);
+}
+
+.pool-title {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--primary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0 0 8px 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Breite Pool-Verwaltung: überschreibt die globale 680px-Kartenbreite nur auf pools.html */
+.pool-management-card {
+    width: min(1400px, 100%);
+    max-width: none;
+    padding: 24px 28px;
+    box-sizing: border-box;
+}
+
+/* Aktions-Leiste über den Pools, im gleichen Button-Stil wie die Toolbar auf teilnehmer.html */
+.pools-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+}
+
+/* Der Pool-Container nutzt die komplette Kartenbreite */
+#poolsContainer {
+    width: 100%;
+}
+
+/* Tabellenbereich: breit, aber bei kleineren Displays sauber horizontal scrollbar */
+#poolsContainer > div {
+    width: 100%;
+    overflow-x: auto;
+}
+
+/* ==========================================================================
+   Tabellen-Layout & Spaltensteuerung
+   ========================================================================== */
+
+#poolsContainer table {
+    width: 100%;
+    min-width: 960px;
+    table-layout: auto;
+    border-collapse: collapse;
+}
+
+/* Tabellenzellen kompakter */
+#poolsContainer th,
+#poolsContainer td {
+    white-space: nowrap;
+}
+
+/* Header kompakter */
+#poolsContainer .pools-table-header th {
+    font-size: 11px;
+    padding: 6px 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    font-weight: 700;
+    text-align: left;
+}
+
+#poolsContainer .pool-cell {
+    padding: 6px 8px;
+    border-top: 1px solid var(--border);
+    vertical-align: top;
+    font-weight: 700;
+    font-size: 12px;
+}
+
+/* Spaltenbreiten & Text-Umbruch */
+#poolsContainer td:nth-child(1),
+#poolsContainer th:nth-child(1),
+#poolsContainer .pool-name-cell {
+    width: 180px;
+    min-width: 180px;
+}
+
+#poolsContainer td:nth-child(2),
+#poolsContainer th:nth-child(2) {
+    width: 80px;
+    min-width: 80px;
+}
+
+#poolsContainer td:nth-child(6),
+#poolsContainer th:nth-child(6) {
+    min-width: 80px;
+}
+
+#poolsContainer td:nth-child(7) {
+    width: 95px;
+    min-width: 95px;
+}
+
+/* Golden-Score-Spalte: so breit, dass die längste Option ("Max. 10 Minuten") ohne
+   Abschneiden hineinpasst. */
+#poolsContainer td:nth-child(8),
+#poolsContainer th:nth-child(8) {
+    width: 150px;
+    min-width: 150px;
+}
+
+/* Athleten-Spalte darf als einzige großzügiger umbrechen */
+#poolsContainer td:nth-child(9),
+#poolsContainer th:nth-child(9),
+#poolsContainer .pool-athletes-cell {
+    white-space: normal;
+    width: 320px;
+    min-width: 320px;
+}
+
+#poolsContainer .pool-number-cell {
+    text-align: left;
+    white-space: nowrap;
+}
+
+#poolsContainer .pool-action-cell {
+    text-align: right;
+    width: 36px;
+}
+
+/* ==========================================================================
+   Formular-Elemente & Boxen (Karten-Stil)
+   ========================================================================== */
+
+/* Poolname als editierbare Box */
+.pool-name-input {
+    width: 180px;
+    height: 18px;
+    padding: 0px 4px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background-color: var(--bg-card);
+    color: var(--text-main);
+    box-shadow: none;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    box-sizing: border-box;
+    line-height: 1.1;
+}
+
+.pool-name-input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(30, 58, 138, 0.12);
+}
+
+.pool-id-label {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 3px;
+    font-weight: 600;
+}
+
+/* System & Athleten Kartenbox */
+.pool-system-box {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background-color: var(--bg-card);
+    color: var(--text-main);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    font-size: 12px;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+/* Kampfzeit als Minuten-Auswahl */
+.pool-time-box {
+    display: inline-flex;
+    align-items: flex-start;
+    min-height: 28px;
+    padding: 0;
+    margin-top: 0;
+}
+
+.pool-time-select {
+    width: 76px;
+    padding: 5px 6px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background-color: var(--bg-card);
+    color: var(--text-main);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.pool-time-select:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(30, 58, 138, 0.12);
+}
+
+/* Löschbutton */
+.btn-delete-pool {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 4px;
+    border-radius: 3px;
+    transition: all 0.2s;
+}
+
+.btn-delete-pool:hover {
+    color: #b83232;
+    background-color: rgba(184, 50, 50, 0.06);
+}
+
+/* ==========================================================================
+   Dark Theme Overrides
+   ========================================================================== */
+
+[data-theme="dark"] .pool-name-input,
+[data-theme="dark"] .pool-system-box,
+[data-theme="dark"] .pool-time-select {
+    box-shadow: 0 1px 2px rgba(0,0,0,0.35);
+}
+
+[data-theme="dark"] .pool-name-input:focus,
+[data-theme="dark"] .pool-time-select:focus {
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.16);
+}
+
+/* ==========================================================================
+   Responsive / Media Queries
+   ========================================================================== */
+
+@media (min-width: 1800px) {
+    .pool-management-card {
+        width: min(1600px, 100%);
+    }
+}
+
+@media (max-width: 900px) {
+    .pool-management-card {
+        width: 100%;
+        padding: 16px 12px;
+    }
+
+    #poolsContainer table {
+        min-width: 860px;
+    }
+}
+
+/* System-Text */
+.pool-system-text {
+    display: inline-block;
+    padding-top: 5px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+/* Globale Hilfsklassen für die Tabellenzellen */
+.pool-align-top {
+    vertical-align: top;
+}
+
+.pool-stat-cell {
+    padding-top: 12px;
+}
+
+/* Drag & Drop Zone */
+.drop-zone {
+    background: rgba(0, 0, 0, 0.02);
+    border: 2px dashed transparent;
+    border-radius: 3px;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    transition: all 0.2s;
+}
+
+/* Einzelne Kämpfer-Zeile */
+.draggable-athlete {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 6px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    cursor: grab;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    user-select: none;
+}
+
+.athlete-info-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.athlete-drag-icon {
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+.athlete-name {
+    font-weight: 700;
+    font-size: 12px;
+}
+
+.athlete-pass-id {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-family: monospace;
+}
+
+.athlete-weight {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--primary);
+    white-space: nowrap;
+}
+
+/* Löschbereich-Zelle */
+.pool-action-cell.pool-align-top {
+    padding-top: 10px;
+}
+
+/* ==========================================================================
+   Print / Druck-Layout
+   ========================================================================== */
+@page {
+    size: auto;
+    margin: 0; /* Entfernt Browser-Header (URL, Seitenzahl) und Footer (Datum, Uhrzeit) */
+}
+
+@media print {
+    html, body {
+        padding-top: 0 !important;
+    }
+    body {
+        margin: 1cm 1.5cm 1.5cm 1.5cm !important; /* Genau 1cm Abstand nach oben */
+    }
+    .print-empty {
+        color: transparent !important;
+    }
+
+    /* Alle Elemente auf Body verstecken, außer das geöffnete Modal */
+    body > :not(#fightplanModal) {
+        display: none !important;
+    }
+    
+    /* Modal als normales statisches Element darstellen */
+    #fightplanModal {
+        display: block !important;
+        position: static !important;
+        width: 100% !important;
+        height: auto !important;
+        background: transparent !important;
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+    
+    /* Karte zurücksetzen */
+    #fightplanModal .mdc-card {
+        display: block !important;
+        border: none !important;
+        box-shadow: none !important;
+        background: transparent !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        width: 100% !important;
+        max-width: none !important;
+        max-height: none !important;
+    }
+    
+    /* Header und Footer des Modals (Schließen- & Drucken-Buttons) verstecken */
+    #fightplanModal .mdc-card > div:first-child,
+    #fightplanModal .mdc-card > div:last-child {
+        display: none !important;
+    }
+
+    #printArea {
+        display: block !important;
+        overflow: visible !important;
+        max-height: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+        color: #000000 !important;
+        background: #ffffff !important;
+        font-family: Arial, sans-serif !important;
+    }
+    /* Pool-Bezeichnung (h1) anzeigen, andere Unter-Überschriften und Matrix-Titel beim Druck ausblenden */
+    #printArea .print-only-header {
+        display: block !important;
+    }
+    #printArea .print-only-header div {
+        display: none !important;
+    }
+    #printArea .matrix-title {
+        display: none !important;
+    }
+
+    #printArea table {
+        border-collapse: collapse !important;
+        width: 100% !important;
+    }
+    
+    #printArea th, #printArea td {
+        border: 1px solid #000000 !important;
+        padding: 6px !important;
+        color: #000000 !important;
+        font-size: 11px !important;
+    }
+    
+    #printArea th {
+        background-color: #f2f2f2 !important;
+        font-weight: bold !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+}
+
+/* ==========================================================================
+   Turnierbaum / Bracket Treeview (NEU)
+   ========================================================================== */
+.bracket-wrapper {
+    width: 100%;
+    margin-bottom: 24px;
+    overflow-x: auto;
+    font-family: Arial, sans-serif;
+}
+.bracket-section-title {
+    font-size: 14px;
+    font-weight: bold;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    border-bottom: 2px solid var(--border);
+    padding-bottom: 6px;
+    color: var(--text-main);
+}
+.bracket-loser-section {
+    margin-top: 48px; /* Extra spacing above Trostrunde to avoid overlaps */
+}
+.bracket-loser-section .bracket-rounds {
+    margin-top: 16px; /* Space between Trostrunde title and brackets */
+}
+.bracket-rounds {
+    display: flex;
+    align-items: flex-start; /* Jede Runden-Spalte behält ihre eigene, berechnete Höhe (siehe pools.js) */
+    gap: 32px;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 0;
+}
+.bracket-round {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 220px;
+    max-width: 280px;
+}
+.bracket-round-title {
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 6px;
+    margin-bottom: 12px;
+    text-align: center;
+    letter-spacing: 0.5px;
+}
+.bracket-round-title.font-highlight {
+    color: #ff9800;
+}
+.bracket-match-list {
+    position: relative; /* Höhe wird pro Runde exakt berechnet und inline gesetzt (pools.js) */
+}
+.bracket-match-slot {
+    position: absolute;
+    left: 0;
+    right: 0;
+    /* "top" wird pro Kampf exakt berechnet und inline gesetzt (pools.js, buildAlignedRoundHtml)
+       — zentriert jeden Kampf mittig zwischen seinen zwei speisenden Kämpfen der Vorrunde.
+       Bewusst absolute statt Flexbox-gap: übersteht Seitenumbrüche beim Drucken zuverlässig. */
+}
+
+/* Match Card */
+.bracket-match-card {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background-color: var(--bg-card);
+    padding: 8px;
+    margin: 0; /* Vertikaler Abstand kommt ausschließlich vom gap auf .bracket-match-list */
+    box-sizing: border-box;
+    height: 96px; /* Muss exakt zu BRACKET_CARD_HEIGHT in pools.js passen */
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+.bracket-match-card.laufend-card {
+    border-color: var(--primary);
+    box-shadow: 0 0 8px rgba(0, 123, 255, 0.2);
+}
+.bracket-match-card.beendet-card {
+    border-color: #2e7d32;
+}
+.bracket-match-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+.bracket-match-badge {
+    font-size: 9px;
+    font-weight: bold;
+    color: var(--text-muted);
+    background-color: var(--bg-body);
+    padding: 2px 6px;
+    border-radius: 4px;
+    text-transform: uppercase;
+}
+.bracket-match-badge.laufend {
+    background-color: rgba(0, 123, 255, 0.15);
+    color: #007bff;
+}
+.bracket-match-badge.beendet {
+    background-color: rgba(46, 125, 50, 0.15);
+    color: #2e7d32;
+}
+
+/* Fighter Row */
+.bracket-fighters {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.bracket-fighter-row {
+    display: flex;
+    align-items: center;
+    font-size: 12px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    background-color: var(--bg-body);
+}
+.bracket-fighter-row.winner {
+    font-weight: bold;
+    background-color: rgba(46, 125, 50, 0.1) !important;
+}
+.bracket-fighter-row.placeholder {
+    font-style: italic;
+    color: var(--text-muted);
+    background-color: transparent;
+    border: 1px dashed var(--border);
+}
+.fighter-color-indicator {
+    width: 4px;
+    height: 18px;
+    border-radius: 2px;
+    margin-right: 8px;
+    flex-shrink: 0;
+}
+.fighter-color-indicator.blue-indicator {
+    background-color: #007bff;
+}
+.fighter-color-indicator.white-indicator {
+    background-color: #f8f9fa;
+    border: 1px solid #ccc;
+}
+.fighter-name {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: 500;
+}
+.fighter-verein {
+    font-size: 9px;
+    color: var(--text-muted);
+    margin-left: 8px;
+    white-space: nowrap;
+}
+.fighter-score {
+    font-weight: bold;
+    margin-left: 8px;
+    font-size: 11px;
+    width: 14px;
+    text-align: right;
+}
+
+/* Print overrides for Brackets */
+@media print {
+    .bracket-wrapper {
+        overflow: visible !important;
+    }
+    .bracket-rounds {
+        gap: 16px !important;
+        padding: 0 !important;
+    }
+    .bracket-round {
+        min-width: 180px !important;
+        max-width: none !important;
+    }
+    .bracket-match-card {
+        padding: 8px !important;
+        box-shadow: none !important;
+        background: #ffffff !important;
+        border: 1px solid #000000 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    .bracket-fighter-row {
+        background-color: #ffffff !important;
+        border: 1px solid #000000 !important;
+    }
+    .bracket-fighter-row.winner {
+        background-color: #e2f0d9 !important;
+        border: 1px solid #2e7d32 !important;
+    }
+    .bracket-fighter-row.placeholder {
+        border: 1px dashed #aaaaaa !important;
+    }
+    .fighter-score {
+        width: 32px !important;
+        min-width: 32px !important;
+        border-left: 1px solid #000000 !important;
+        text-align: center !important;
+        margin-left: 8px !important;
+        font-size: 12px !important;
+    }
+    .bracket-section-title {
+        border-bottom: 2px solid #000000 !important;
+        color: #000000 !important;
+    }
+    .bracket-round-title {
+        border-bottom: 1px solid #000000 !important;
+        color: #000000 !important;
+    }
+    .bracket-fighter-row .fighter-verein {
+        display: none !important;
+    }
+    .bracket-loser-section {
+        page-break-before: always !important;
+        break-before: page !important;
+    }
+    .ueberkreuz-final-section {
+        page-break-before: avoid !important;
+        break-before: avoid !important;
+        margin-top: 16px !important;
+    }
+    .print-only-header {
+        margin-top: 0 !important;
+        padding-top: 0 !important;
+        margin-bottom: 10px !important;
+    }
+    .print-only-header h1 {
+        margin-top: 0 !important;
+        padding-top: 0 !important;
+    }
+    #printArea .pools-table {
+        display: none !important;
+    }
+    .print-row-block {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        gap: 16px !important;
+        width: 100% !important;
+    }
+    .mini-matrix-box {
+        flex: 1 !important;
+        min-width: 0 !important;
+        box-shadow: none !important;
+        border: 1px solid #000000 !important;
+        background: #ffffff !important;
+    }
+    .single-pool-print-container {
+        page-break-after: always !important;
+        break-after: page !important;
+        margin-top: 0 !important;
+        padding-top: 0 !important;
+    }
+    .single-pool-print-container:last-child {
+        page-break-after: avoid !important;
+        break-after: avoid !important;
+    }
+    #fightplanModal.print-all-active {
+        display: block !important;
+        visibility: visible !important;
+        position: static !important;
+    }
+}
+
+/* Screen-only override for Print All Pools */
+@media screen {
+    #fightplanModal.print-all-active {
+        display: none !important;
+    }
+}
+
+.pool-status-badge {
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    padding: 4px 8px;
+    border-radius: 4px;
+    display: inline-block;
+    letter-spacing: 0.5px;
+}
+.pool-status-badge.vorbereitung {
+    background-color: var(--border);
+    color: var(--text-muted);
+}
+.pool-status-badge.bereit {
+    background-color: rgba(0, 123, 255, 0.1);
+    color: #007bff;
+}
+.pool-status-badge.laufend {
+    background-color: rgba(245, 124, 0, 0.15);
+    color: #f57c00;
+}
+.pool-status-badge.beendet {
+    background-color: rgba(46, 125, 50, 0.15);
+    color: #2e7d32;
+}
+.pool-status-badge.kampflos {
+    background-color: rgba(184, 50, 50, 0.15);
+    color: #b83232;
+}
+
+@media print {
+    .kampflos-info-box {
+        display: none !important;
+    }
+}
+
+.draggable-athlete.locked {
+    opacity: 0.75;
+    cursor: not-allowed !important;
+}
+.draggable-athlete.locked .athlete-drag-icon {
+    color: var(--text-muted) !important;
+    cursor: not-allowed !important;
+}
+

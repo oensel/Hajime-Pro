@@ -1,0 +1,146 @@
+/* Etwas breiter als die Standard-Karte, damit Platzierungs- und Vereinswertungstabelle
+   nicht zu eng werden */
+.siegerliste-card {
+    max-width: 1100px;
+    padding: 20px 24px;
+}
+
+.siegerliste-section {
+    margin-top: 8px;
+    margin-bottom: 32px;
+}
+
+.siegerliste-section:last-child {
+    margin-bottom: 0;
+}
+
+.siegerliste-subtitle {
+    margin: 0 0 4px 0;
+    font-size: 15px;
+    font-weight: 800;
+    color: var(--primary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.siegerliste-hinweis {
+    margin: 0 0 12px 0;
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.table-responsive {
+    width: 100%;
+    overflow-x: auto;
+    margin-top: 8px;
+    border-radius: 4px;
+}
+
+.siegerliste-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+    text-align: left;
+}
+
+.siegerliste-table th {
+    background-color: rgba(30, 58, 138, 0.04);
+    color: var(--primary);
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.75px;
+    padding: 8px 12px;
+    border-bottom: 2px solid var(--border);
+}
+
+[data-theme="dark"] .siegerliste-table th {
+    background-color: rgba(59, 130, 246, 0.06);
+}
+
+.siegerliste-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-main);
+    vertical-align: middle;
+}
+
+.siegerliste-table tr:hover {
+    background-color: rgba(30, 58, 138, 0.01);
+}
+
+[data-theme="dark"] .siegerliste-table tr:hover {
+    background-color: rgba(255, 255, 255, 0.01);
+}
+
+.no-data {
+    text-align: center;
+    padding: 20px;
+    color: var(--text-muted);
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 0.5px;
+}
+
+.siegerliste-platz1 { font-weight: 700; color: #2e7d32; }
+.siegerliste-platz2 { font-weight: 600; color: var(--text-main); }
+.siegerliste-platz3 { color: var(--text-muted); }
+
+.siegerliste-rang {
+    text-align: center;
+    font-weight: 800;
+    color: var(--text-muted);
+}
+
+.siegerliste-rang.rang-1 { color: #b8860b; }
+.siegerliste-rang.rang-2 { color: #757575; }
+.siegerliste-rang.rang-3 { color: #a1662f; }
+
+/* Pool-Status-Badge, identisch zu pools.css, damit derselbe Status überall gleich aussieht */
+.pool-status-badge {
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    padding: 4px 8px;
+    border-radius: 4px;
+    display: inline-block;
+    letter-spacing: 0.5px;
+}
+.pool-status-badge.vorbereitung {
+    background-color: var(--border);
+    color: var(--text-muted);
+}
+.pool-status-badge.bereit {
+    background-color: rgba(0, 123, 255, 0.1);
+    color: #007bff;
+}
+.pool-status-badge.laufend {
+    background-color: rgba(245, 124, 0, 0.15);
+    color: #f57c00;
+}
+.pool-status-badge.beendet {
+    background-color: rgba(46, 125, 50, 0.15);
+    color: #2e7d32;
+}
+.pool-status-badge.kampflos {
+    background-color: rgba(184, 50, 50, 0.15);
+    color: #b83232;
+}
+
+/* --- DRUCKANSICHT: nur die Karte, keine Navigation/Chrome --- */
+@media print {
+    .app-sidebar, .top-header-bar, .kanji-left, .kanji-right, .title-action-group {
+        display: none !important;
+    }
+    body {
+        padding: 0 !important;
+        background: #ffffff !important;
+    }
+    .mdc-card {
+        box-shadow: none !important;
+        border: none !important;
+        max-width: none !important;
+        width: 100% !important;
+    }
+}

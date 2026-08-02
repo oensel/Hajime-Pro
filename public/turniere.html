@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hajime Pro - Turnierauswahl</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <style>
+        .mdc-card {
+            max-width: 1100px;
+            padding: 36px;
+        }
+        .header-section {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 16px;
+        }
+        .header-title-area {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .header-title-area h1 {
+            font-size: 24px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--primary);
+            margin: 0;
+        }
+        .header-title-area .material-icons {
+            font-size: 28px;
+            color: var(--primary);
+        }
+        .tournaments-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 20px;
+            margin-top: 16px;
+        }
+        .tournament-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            box-shadow: var(--shadow);
+            transition: all 0.2s ease-in-out;
+            position: relative;
+        }
+        .tournament-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.1);
+        }
+        .tournament-card.expired {
+            opacity: 0.65;
+            filter: grayscale(0.5);
+            background: rgba(0, 0, 0, 0.02);
+            border-color: #d1d5db;
+        }
+        [data-theme="dark"] .tournament-card.expired {
+            background: rgba(255, 255, 255, 0.01);
+            border-color: #374151;
+        }
+        .tournament-card.expired:hover {
+            transform: none;
+            box-shadow: var(--shadow);
+        }
+        .tournament-name {
+            font-size: 18px;
+            font-weight: bold;
+            color: var(--text-main);
+            margin: 0 0 12px 0;
+            line-height: 1.3;
+        }
+        .tournament-details {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 20px;
+        }
+        .detail-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .detail-item .material-icons {
+            font-size: 16px;
+            color: var(--primary);
+            opacity: 0.8;
+        }
+        .deadline-badge {
+            font-weight: bold;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            display: inline-block;
+        }
+        .deadline-badge.active {
+            background: rgba(46, 125, 50, 0.1);
+            color: #2e7d32;
+            border: 1px solid rgba(46, 125, 50, 0.3);
+        }
+        .deadline-badge.expired {
+            background: rgba(198, 40, 40, 0.1);
+            color: #c62828;
+            border: 1px solid rgba(198, 40, 40, 0.3);
+        }
+        .status-badge {
+            font-weight: bold;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            display: inline-block;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+        .status-badge.status-entwurf {
+            background: rgba(97, 97, 97, 0.1);
+            color: #616161;
+            border: 1px solid rgba(97, 97, 97, 0.3);
+        }
+        .status-badge.status-veroeffentlicht {
+            background: rgba(46, 125, 50, 0.1);
+            color: #2e7d32;
+            border: 1px solid rgba(46, 125, 50, 0.3);
+        }
+        .status-badge.status-anmeldung_geschlossen {
+            background: rgba(239, 108, 0, 0.1);
+            color: #ef6c00;
+            border: 1px solid rgba(239, 108, 0, 0.3);
+        }
+        .status-badge.status-in_durchfuehrung {
+            background: rgba(21, 101, 192, 0.1);
+            color: #1565c0;
+            border: 1px solid rgba(21, 101, 192, 0.3);
+        }
+        .status-badge.status-abgeschlossen {
+            background: rgba(66, 66, 66, 0.1);
+            color: #424242;
+            border: 1px solid rgba(66, 66, 66, 0.3);
+        }
+        .status-badge.status-abgesagt {
+            background: rgba(198, 40, 40, 0.1);
+            color: #c62828;
+            border: 1px solid rgba(198, 40, 40, 0.3);
+        }
+        .ak-chip-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-top: 4px;
+        }
+        .ak-chip {
+            font-weight: bold;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            display: inline-block;
+            background: rgba(30, 58, 138, 0.08);
+            color: var(--primary);
+            border: 1px solid rgba(30, 58, 138, 0.25);
+            cursor: default;
+            user-select: none;
+        }
+        .ak-chip-empty {
+            background: transparent;
+            border: 1px dashed var(--border);
+            color: var(--text-muted);
+        }
+        .card-actions {
+            display: flex;
+            gap: 10px;
+            border-top: 1px solid var(--border);
+            padding-top: 14px;
+        }
+        .card-actions .btn {
+            flex: 1;
+            padding: 8px 12px;
+            font-size: 12px;
+            height: 34px;
+            margin: 0;
+        }
+        .no-data-msg {
+            text-align: center;
+            padding: 48px;
+            color: var(--text-muted);
+            font-weight: bold;
+            grid-column: 1 / -1;
+        }
+        .section-title {
+            font-size: 18px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--primary);
+            margin: 32px 0 16px 0;
+            padding-left: 10px;
+            border-left: 4px solid var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .status-banner {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 18px;
+            border-radius: 6px;
+            margin-bottom: 24px;
+            font-size: 13px;
+            font-weight: 700;
+        }
+        .status-banner.pending {
+            background: rgba(245, 158, 11, 0.12);
+            border: 1px solid rgba(245, 158, 11, 0.4);
+            color: #b45309;
+        }
+        .status-banner .material-icons {
+            font-size: 22px;
+        }
+        .pending-requests-card {
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 16px 20px;
+            margin-bottom: 24px;
+            background: var(--bg-card);
+        }
+        .pending-requests-card h3 {
+            margin: 0 0 12px 0;
+            font-size: 14px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--primary);
+        }
+        .pending-request-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .pending-request-row:last-child {
+            border-bottom: none;
+        }
+        .pending-request-row .req-name {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+        .pending-request-row .req-email {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        .pending-request-actions {
+            display: flex;
+            gap: 8px;
+        }
+        .pending-request-actions .btn {
+            padding: 6px 14px;
+            font-size: 12px;
+            height: auto;
+            margin: 0;
+        }
+    </style>
+    <script src="/js/menu.js"></script>
+</head>
+<body>
+
+<div class="kanji-left">柔</div>
+<div class="kanji-right">道</div>
+
+<div class="mdc-card">
+    <div class="header-section">
+        <div class="header-title-area">
+            <span class="material-icons">calendar_month</span>
+            <h1>anstehende Turniere</h1>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <button type="button" class="btn btn-outlined" id="importTurnierBtn" style="display: none; align-items: center; gap: 8px;">
+                <span class="material-icons">upload_file</span>
+                Turnier importieren
+            </button>
+            <input type="file" id="importTurnierFileInput" accept=".json" style="display: none;">
+            <button type="button" class="btn btn-raised" id="createBtn" style="display: flex; align-items: center; gap: 8px;" onclick="window.location.href='/turnier.html'">
+                <span class="material-icons">add_circle</span>
+                Turnier ausrichten
+            </button>
+        </div>
+    </div>
+
+    <div id="importTurnierStatus" style="display: none; margin: 0 0 16px 0; font-size: 13px; font-weight: bold; color: var(--text-muted);"></div>
+
+    <div id="statusBanner"></div>
+    <div id="pendingRequestsContainer"></div>
+
+    <div id="tournamentsContainer">
+        <div class="no-data-msg">Turniere werden geladen...</div>
+    </div>
+</div>
+
+<script>
+    async function ladeBenutzerStatus() {
+        const meResp = await fetch('/api/auth/me');
+        if (!meResp.ok) {
+            throw new Error('Benutzerstatus konnte nicht geladen werden.');
+        }
+        const meData = await meResp.json();
+        const user = meData.user;
+
+        // Lokalen Cache aktuell halten, damit andere Seiten frische Vereinsdaten sehen
+        localStorage.setItem('dokume_user', JSON.stringify(user));
+
+        if (!user.verein_id) {
+            window.location.href = '/verein_auswahl.html';
+            return null;
+        }
+
+        return user;
+    }
+
+    function renderStatusBanner(user) {
+        const banner = document.getElementById('statusBanner');
+        const createBtn = document.getElementById('createBtn');
+
+        if (!user.verein_freigegeben) {
+            if (createBtn) createBtn.style.display = 'none';
+            banner.innerHTML = `
+                <div class="status-banner pending">
+                    <span class="material-icons">hourglass_top</span>
+                    <span>Ihr Beitritt zum Verein "${user.verein_name || ''}" wartet noch auf Freigabe durch ein bestehendes Mitglied. Bis zur Freigabe können Sie nur die Turnierliste ansehen, aber keine Turniere anlegen, bearbeiten oder auswählen.</span>
+                </div>
+            `;
+            return false;
+        }
+
+        if (createBtn) createBtn.style.display = 'flex';
+        banner.innerHTML = '';
+        return true;
+    }
+
+    async function ladeUndRenderePendingRequests() {
+        const pendingContainer = document.getElementById('pendingRequestsContainer');
+        try {
+            const resp = await fetch('/api/vereine/pending');
+            if (!resp.ok) return;
+            const pending = await resp.json();
+            if (!Array.isArray(pending) || pending.length === 0) {
+                pendingContainer.innerHTML = '';
+                return;
+            }
+
+            pendingContainer.innerHTML = `
+                <div class="pending-requests-card">
+                    <h3>Ausstehende Beitrittsanfragen</h3>
+                    ${pending.map(p => `
+                        <div class="pending-request-row" data-user-id="${p.id}">
+                            <div>
+                                <div class="req-name">${p.vorname} ${p.nachname}</div>
+                                <div class="req-email">${p.email}</div>
+                            </div>
+                            <div class="pending-request-actions">
+                                <button type="button" class="btn btn-raised" data-action="approve" data-user-id="${p.id}">Freigeben</button>
+                                <button type="button" class="btn btn-outlined" data-action="reject" data-user-id="${p.id}">Ablehnen</button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+
+            pendingContainer.querySelectorAll('button[data-action]').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const userId = btn.getAttribute('data-user-id');
+                    const action = btn.getAttribute('data-action');
+                    try {
+                        const resp = await fetch(`/api/vereine/${action}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ userId })
+                        });
+                        const data = await resp.json();
+                        if (!resp.ok) throw new Error(data.error || 'Aktion fehlgeschlagen');
+                        if (window.zeigeNotification) {
+                            window.zeigeNotification(action === 'approve' ? 'Mitglied freigegeben.' : 'Anfrage abgelehnt.');
+                        }
+                        ladeUndRenderePendingRequests();
+                    } catch (err) {
+                        if (window.zeigeNotification) window.zeigeNotification(err.message, 'error');
+                        else alert(err.message);
+                    }
+                });
+            });
+        } catch (err) {
+            console.error('Fehler beim Laden der Beitrittsanfragen:', err);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        const container = document.getElementById('tournamentsContainer');
+
+        let currentUser;
+        try {
+            currentUser = await ladeBenutzerStatus();
+            if (!currentUser) return; // Redirect zur Vereinsauswahl bereits ausgelöst
+        } catch (err) {
+            container.innerHTML = `<div class="no-data-msg" style="color: #b83232;">Fehler: ${err.message}</div>`;
+            return;
+        }
+
+        // Turnier-Import (aus einer zuvor exportierten JSON-Datei) gibt es nur offline —
+        // online werden Turniere über die Vereinszugehörigkeit verwaltet, nicht per Datei.
+        try {
+            const configResp = await fetch('/api/config');
+            const istOffline = configResp.ok && !!(await configResp.json()).isOffline;
+
+            const importTurnierBtn = document.getElementById('importTurnierBtn');
+            if (importTurnierBtn) importTurnierBtn.style.display = istOffline ? 'inline-flex' : 'none';
+        } catch (err) {
+            console.error('Fehler beim Prüfen des Offline-Modus:', err);
+        }
+
+        const istFreigegeben = renderStatusBanner(currentUser);
+        if (istFreigegeben) {
+            ladeUndRenderePendingRequests();
+        }
+
+        try {
+            const response = await fetch('/api/turniere?zukuenftig=true');
+            if (!response.ok) {
+                throw new Error('Fehler beim Laden der Turniere.');
+            }
+
+            const turniere = await response.json();
+            if (turniere.length === 0) {
+                container.innerHTML = `<div class="no-data-msg">Keine anstehenden Turniere vorhanden.</div>`;
+                return;
+            }
+
+            // "Eigene" Turniere = Turniere des eigenen Vereins (einzige Zugriffsregel)
+            const gehoertZuEigenemVerein = (t) => !!(currentUser.verein_id && t.verein_id === currentUser.verein_id);
+
+            const eigeneTurniere = turniere.filter(gehoertZuEigenemVerein);
+            const andereTurniere = turniere.filter(t => !gehoertZuEigenemVerein(t));
+
+            const jetzt = new Date();
+
+            const GESCHLECHT_KUERZEL = { 'männlich': 'm', 'weiblich': 'w', 'mixed': 'x' };
+
+            function getAltersklassenLabels(ak) {
+                let keys = [];
+                if (Array.isArray(ak)) {
+                    keys = ak;
+                } else if (ak && typeof ak === 'object') {
+                    keys = Object.keys(ak);
+                }
+                if (keys.length === 0) return [];
+
+                const labels = keys.map(k => {
+                    const idx = k.indexOf('_');
+                    if (idx === -1) return k;
+
+                    const geschlecht = k.slice(0, idx);
+                    const id = k.slice(idx + 1);
+                    // Eigenständige Klassenbezeichnungen (z.B. "Männer"/"Frauen") brauchen kein
+                    // Kürzel, da sie das Geschlecht bereits im Namen tragen. Alles andere —
+                    // Standard-"U.."-Klassen genauso wie frei benannte Klassen wie "Ü 30" — braucht
+                    // ein Kürzel, sonst würden z.B. männlich_Ü 30 und weiblich_Ü 30 im selben Chip
+                    // "Ü 30" zusammenfallen und eine der beiden Klassen wäre in der Anzeige unsichtbar.
+                    const brauchtKuerzel = !['Männer', 'Frauen', 'Mixed'].includes(id);
+                    return brauchtKuerzel ? `${id}${GESCHLECHT_KUERZEL[geschlecht] || ''}` : id;
+                });
+
+                return [...new Set(labels)];
+            }
+
+            const STATUS_LABELS = {
+                entwurf: 'Entwurf',
+                veroeffentlicht: 'Anmeldung läuft',
+                anmeldung_geschlossen: 'Anmeldung geschlossen',
+                in_durchfuehrung: 'In Durchführung',
+                abgeschlossen: 'Abgeschlossen',
+                abgesagt: 'Abgesagt'
+            };
+
+            function renderCard(t, isEditable) {
+                let deadlineExpired = false;
+                let deadlineStr = 'Keine Frist';
+                const statusLabel = STATUS_LABELS[t.status_effektiv] || t.status_effektiv || '';
+
+                if (t.anmeldeschluss) {
+                    // Anmeldeschluss gilt bis einschließlich 24:00 Uhr Ortszeit dieses Tages
+                    // (identische Logik zu turnier.js/turnierController.js) — reines Datum ohne
+                    // Uhrzeit würde sonst schon zu Beginn des Tages als "abgelaufen" gelten.
+                    const deadlineDate = new Date(t.anmeldeschluss);
+                    if (/^\d{4}-\d{2}-\d{2}$/.test(String(t.anmeldeschluss).trim())) {
+                        deadlineDate.setHours(23, 59, 59, 999);
+                    }
+                    deadlineExpired = jetzt > deadlineDate;
+
+                    if (deadlineExpired) {
+                        deadlineStr = 'abgelaufen';
+                    } else {
+                        const day = String(deadlineDate.getDate()).padStart(2, '0');
+                        const month = String(deadlineDate.getMonth() + 1).padStart(2, '0');
+                        const year = deadlineDate.getFullYear();
+                        const hours = String(deadlineDate.getHours()).padStart(2, '0');
+                        const minutes = String(deadlineDate.getMinutes()).padStart(2, '0');
+                        deadlineStr = `${day}.${month}.${year} ${hours}:${minutes} Uhr`;
+                    }
+                }
+
+                let dateStr = '';
+                if (t.datum) {
+                    const dateObj = new Date(t.datum);
+                    const day = String(dateObj.getDate()).padStart(2, '0');
+                    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+                    const year = dateObj.getFullYear();
+                    dateStr = `${day}.${month}.${year}`;
+                }
+
+                return `
+                    <div class="tournament-card ${deadlineExpired ? 'expired' : ''}">
+                        <div>
+                            <h2 class="tournament-name">${t.bezeichnung}<span class="status-badge status-${t.status_effektiv}">${statusLabel}</span></h2>
+                            <div class="tournament-details">
+                                <div class="detail-item">
+                                    <span class="material-icons">calendar_today</span>
+                                    <span>Datum: ${dateStr}</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="material-icons">place</span>
+                                    <span>Ort: ${t.ort}</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="material-icons">business</span>
+                                    <span>Ausrichter: ${t.ausrichter}</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="material-icons">layers</span>
+                                    <span>Matten: ${t.anzahl_kampfflaechen}</span>
+                                </div>
+                                <div class="detail-item" style="align-items: flex-start;">
+                                    <span class="material-icons">military_tech</span>
+                                    <div>
+                                        <span>Altersklassen:</span>
+                                        <div class="ak-chip-row">
+                                            ${(() => {
+                                                const labels = getAltersklassenLabels(t.altersklassen);
+                                                return labels.length > 0
+                                                    ? labels.map(l => `<span class="ak-chip">${l}</span>`).join('')
+                                                    : '<span class="ak-chip ak-chip-empty">–</span>';
+                                            })()}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="material-icons">groups</span>
+                                    <span>Gemeldete Teilnehmer: ${t.teilnehmer_anzahl || 0}</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="material-icons">timer</span>
+                                    <span>Anmeldefrist:
+                                        <span class="deadline-badge ${deadlineExpired ? 'expired' : 'active'}">${deadlineStr}</span>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-actions">
+                            ${istFreigegeben ? `<button type="button" class="btn btn-raised" onclick="window.location.href='/teilnehmer.html?turnierId=${t.id}'">Auswählen</button>` : ''}
+                            ${isEditable && istFreigegeben ? `<button type="button" class="btn btn-outlined" onclick="window.location.href='/turnier.html?id=${t.id}'">Bearbeiten</button>` : ''}
+                        </div>
+                    </div>
+                `;
+            }
+
+            let htmlContent = '';
+
+            // Section 1: Eigene Turniere (Only if exists)
+            if (eigeneTurniere.length > 0) {
+                htmlContent += `
+                    <h2 class="section-title"><span class="material-icons" style="font-size:20px;">star</span> Eigene Turniere</h2>
+                    <div class="tournaments-grid">
+                        ${eigeneTurniere.map(t => renderCard(t, true)).join('')}
+                    </div>
+                `;
+            }
+
+            // Section 2: Andere Turniere
+            if (andereTurniere.length > 0) {
+                const sectionTitle = eigeneTurniere.length > 0 ? 'Ausschreibungen & andere Turniere' : 'Alle Turniere';
+                htmlContent += `
+                    <h2 class="section-title"><span class="material-icons" style="font-size:20px;">explore</span> ${sectionTitle}</h2>
+                    <div class="tournaments-grid">
+                        ${andereTurniere.map(t => renderCard(t, false)).join('')}
+                    </div>
+                `;
+            }
+
+            container.innerHTML = htmlContent;
+        } catch (err) {
+            container.innerHTML = `<div class="no-data-msg" style="color: #b83232;">Fehler: ${err.message}</div>`;
+        }
+    });
+
+    // --- TURNIER-IMPORT (nur Offline-Modus, Button-Sichtbarkeit siehe oben) ---
+    function liesDateiAlsBase64(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result.split(',')[1]);
+            reader.onerror = () => reject(new Error('Datei konnte nicht gelesen werden.'));
+            reader.readAsDataURL(file);
+        });
+    }
+
+    const importTurnierBtn = document.getElementById('importTurnierBtn');
+    const importTurnierFileInput = document.getElementById('importTurnierFileInput');
+    const importTurnierStatus = document.getElementById('importTurnierStatus');
+
+    if (importTurnierBtn && importTurnierFileInput) {
+        importTurnierBtn.addEventListener('click', () => importTurnierFileInput.click());
+
+        importTurnierFileInput.addEventListener('change', async () => {
+            const file = importTurnierFileInput.files[0];
+            importTurnierFileInput.value = '';
+            if (!file) return;
+
+            const bestaetigt = window.zeigeZentraleBestaetigung
+                ? await window.zeigeZentraleBestaetigung(
+                    'Der Import löscht alle bestehenden Turniere auf diesem Gerät (inkl. Pools, Kämpfe und Teilnehmer) und ersetzt sie durch das importierte Turnier. Fortfahren?',
+                    'Turnier importieren',
+                    'warning'
+                )
+                : confirm('Der Import löscht alle bestehenden Turniere auf diesem Gerät. Fortfahren?');
+            if (!bestaetigt) return;
+
+            importTurnierStatus.style.display = 'block';
+            importTurnierStatus.textContent = `Importiere "${file.name}" ...`;
+
+            try {
+                const contentBase64 = await liesDateiAlsBase64(file);
+                const response = await fetch('/api/turniere/import', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contentBase64 })
+                });
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Import fehlgeschlagen.');
+                }
+
+                const meldung = `Turnier importiert: ${data.imported.teilnehmer} Teilnehmer, ${data.imported.pools} Pools, ${data.imported.kampfflaechen} Matten.`;
+                importTurnierStatus.textContent = meldung;
+                if (window.zeigeNotification) window.zeigeNotification(meldung, 'success');
+
+                window.location.href = `/teilnehmer.html?turnierId=${data.turnierId}`;
+            } catch (err) {
+                importTurnierStatus.textContent = '';
+                if (window.zeigeNotification) window.zeigeNotification('Import-Fehler: ' + err.message, 'error');
+                else alert('Import-Fehler: ' + err.message);
+            }
+        });
+    }
+</script>
+</body>
+</html>

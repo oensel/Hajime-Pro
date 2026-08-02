@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hajime Pro - Turniermanager</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <link rel="stylesheet" href="/css/teilnehmer.css">
+    <script src="/js/menu.js"></script>
+</head>
+<body>
+
+<div class="kanji-left">柔</div>
+<div class="kanji-right">道</div>
+
+<div class="mdc-card">
+    <div class="form-title-area">
+        <span class="material-icons">badge</span>
+        <h1 id="formTitle">Teilnehmer</h1>
+        <div class="title-action-group">
+            <button type="button" class="title-icon-btn title-icon-btn-primary" id="startgeldBezahlenBtn" style="display: none;" title="Startgeld bezahlen">
+                <span class="material-icons">qr_code_2</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Sperr-Hinweis, sobald für dieses Turnier bereits ein echter Kampf stattgefunden hat -->
+    <div id="teilnehmerGesperrtBanner" style="display: none; margin: 0 0 16px 8px; padding: 12px 16px; border-radius: 4px; background: rgba(198, 40, 40, 0.08); border: 1px solid rgba(198, 40, 40, 0.3); color: #c62828; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 10px;">
+        <span class="material-icons" style="font-size: 20px;">lock</span>
+        <span>Die Teilnehmerliste ist gesperrt, da für dieses Turnier bereits Kämpfe stattgefunden haben. Weitere Informationen unter <a href="#" id="teilnehmerGesperrtPoolsLink" style="color: inherit; font-weight: 800; text-decoration: underline;">Pools</a>.</span>
+    </div>
+
+    <!-- Such- und Aktions-Leiste über der Tabelle -->
+    <div class="teilnehmer-toolbar">
+        <div class="teilnehmer-search">
+            <span class="material-icons">search</span>
+            <input type="text" id="teilnehmerSearchInput" placeholder="Suchen...">
+        </div>
+        <div class="teilnehmer-toolbar-buttons">
+            <button type="button" class="toolbar-btn" id="bulkMarkWeighedBtn" title="Ausgewählte als gewogen markieren" disabled>
+                <span class="material-icons">scale</span>
+                <span>Gewogen</span>
+            </button>
+            <button type="button" class="toolbar-btn" id="bulkMarkPaidBtn" title="Ausgewählte als bezahlt markieren" disabled>
+                <span class="material-icons">payments</span>
+                <span>Bezahlt</span>
+            </button>
+            <button type="button" class="toolbar-btn toolbar-btn-danger" id="bulkDeleteBtn" title="Ausgewählte löschen" disabled>
+                <span class="material-icons">delete</span>
+                <span>Löschen</span>
+            </button>
+            <button type="button" class="toolbar-btn" id="importBtn" title="Teilnehmer importieren (CSV/XLSX)">
+                <span class="material-icons">upload_file</span>
+                <span>Importieren</span>
+            </button>
+            <button type="button" class="toolbar-btn toolbar-btn-primary" id="addBtn" title="Neuen Teilnehmer hinzufügen">
+                <span class="material-icons">person_add</span>
+                <span>Hinzufügen</span>
+            </button>
+        </div>
+    </div>
+
+    <input type="file" id="importFileInput" accept=".csv,.xlsx,.xls" style="display: none;">
+    <span id="importStatus" style="display: block; margin: 0 0 8px 8px; font-size: 12px; color: var(--text-muted); font-weight: bold;"></span>
+    <div id="importSkippedList" style="display: none; margin: 0 0 8px 8px; font-size: 12px; color: #b83232;"></div>
+
+    <div class="table-responsive">
+        <table class="judo-table">
+            <thead>
+            <tr>
+                <th style="width: 40px; text-align: center; vertical-align: middle;"><input type="checkbox" id="selectAllCheckbox" style="transform: scale(1.2); cursor: pointer;"></th>
+                <th class="sortable active-sort" data-sort="nachname" data-dir="asc">Name <span class="sort-icon material-icons">arrow_upward</span></th>
+                <th style="text-align: center;">Status</th>
+                <th style="text-align: center;">Grad</th>
+                <th class="sortable" data-sort="verein">Verein <span class="sort-icon material-icons"></span></th>
+                <th class="sortable" data-sort="klasse">Klasse <span class="sort-icon material-icons"></span></th>
+                <th class="sortable" data-sort="gewicht">Gewicht <span class="sort-icon material-icons"></span></th>
+                <th style="text-align: center;">Gewogen</th>
+                <th style="text-align: center;">Startgeld</th>
+                <th style="text-align: center;">Aktionen</th>
+            </tr>
+            </thead>
+            <tbody id="teilnehmerTableBody">
+            <tr>
+                <td colspan="10" class="no-data">Lade Teilnehmerdaten...</td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Startgeld-Zahlungs-Modal -->
+<div id="startgeldModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(2px); z-index: 9999; align-items: center; justify-content: center;">
+    <div class="mdc-card" style="max-width: 640px; width: 90%; padding: 24px; border-radius: 4px; border: 2px solid var(--border); box-shadow: var(--shadow); background-color: var(--bg-card);">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span class="material-icons" style="font-size: 28px; color: var(--primary);">qr_code_2</span>
+                <h2 style="margin: 0; font-size: 18px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Startgeld bezahlen</h2>
+            </div>
+            <span class="material-icons" id="startgeldModalClose" style="cursor: pointer; color: var(--text-muted);">close</span>
+        </div>
+        <div style="display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start;">
+            <div style="flex: 0 0 200px; display: flex; flex-direction: column; align-items: center; gap: 8px;">
+                <div id="startgeldQrContainer"></div>
+                <span id="startgeldBetragAnzeige" style="font-size: 13px; font-weight: 700; color: var(--text-main);"></span>
+            </div>
+            <div style="flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 14px;">
+                <div class="form-group" style="margin: 0;">
+                    <label for="startgeldIbanFeld">IBAN</label>
+                    <input type="text" id="startgeldIbanFeld" readonly>
+                </div>
+                <div class="form-group" style="margin: 0;">
+                    <label for="startgeldKontoinhaberFeld">Kontoinhaber</label>
+                    <input type="text" id="startgeldKontoinhaberFeld" readonly>
+                </div>
+                <div class="form-group" style="margin: 0;">
+                    <label for="startgeldVerwendungszweckFeld">Verwendungszweck</label>
+                    <input type="text" id="startgeldVerwendungszweckFeld" readonly>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="/js/qrgen/qrcode.js"></script>
+<script src="/js/qrgen/qrcode_UTF8.js"></script>
+<script src="/js/teilnehmer.js"></script>
+</body>
+</html>

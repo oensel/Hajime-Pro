@@ -1,0 +1,640 @@
+@import url('/css/material/dist/material-components-web.css');
+
+@font-face {
+    font-family: 'Material Icons';
+    font-style: normal;
+    font-weight: 400;
+    /* Korrektur: Die woff2-Datei liegt direkt im Hauptordner des Icon-Pakets */
+    src: url('/icons/material/material-icons.woff2') format('woff2');
+}
+
+/* Optische Kennzeichnung für gesperrte Menüpunkte */
+.menu-item.disabled {
+    opacity: 0.35;               /* Verblasst den Knopf deutlich */
+    cursor: not-allowed;         /* Zeigt das rote "Verboten"-Mauszeigersymbol */
+    color: var(--text-muted) !important;
+    background: transparent !important;
+}
+
+
+.material-icons {
+    font-family: 'Material Icons';
+    font-weight: normal;
+    font-style: normal;
+    font-size: 24px;
+    display: inline-block;
+    line-height: 1;
+    text-transform: none;
+    letter-spacing: normal;
+    word-wrap: normal;
+    white-space: nowrap;
+    direction: ltr;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* --- ELEGANTE BLAU-FARBWELTEN (MATTE DOJO-TONE) --- */
+:root {
+    /* Light Mode: Edles Preußischblau & warmes Reispapier-Weiß */
+    --bg-main: #fcf9f2;
+    --bg-card: #ffffff;
+    --primary: #1e3a8a;          /* Tiefes Dojo-Blau */
+    --primary-hover: #172554;
+    --text-main: #1e293b;
+    --text-muted: #64748b;
+    --border: #d9d4c7;
+    --kanji-color: rgba(30, 58, 138, 0.07); /* Blaues Wasserzeichen */
+    --shadow: 0 10px 30px rgba(30, 58, 138, 0.04);
+
+    /* Offline-Stoffmuster des Judoanzugs (Kornwebung / Sashiko) */
+    --gi-texture:
+            repeating-linear-gradient(45deg, rgba(217, 212, 199, 0.15) 0px, rgba(217, 212, 199, 0.15) 2px, transparent 2px, transparent 10px),
+            repeating-linear-gradient(-45deg, rgba(217, 212, 199, 0.15) 0px, rgba(217, 212, 199, 0.15) 2px, transparent 2px, transparent 10px),
+            linear-gradient(90deg, #fcf9f2, #fbf7ed);
+}
+
+[data-theme="dark"] {
+    /* Dark Mode: Mystisches Nachtblau & elektrisierendes Kobaltblau */
+    --bg-main: #0b0f19;
+    --bg-card: #111827;
+    --primary: #3b82f6;          /* Klares Kobaltblau */
+    --primary-hover: #2563eb;
+    --text-main: #f3f4f6;
+    --text-muted: #9ca3af;
+    --border: #1f2937;
+    --kanji-color: rgba(59, 130, 246, 0.04);
+    --shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+    .sidebar-brand img {
+        filter: invert(1) brightness(2);
+    }
+    --gi-texture:
+            repeating-linear-gradient(45deg, rgba(31, 41, 55, 0.4) 0px, rgba(31, 41, 55, 0.4) 2px, transparent 2px, transparent 10px),
+            repeating-linear-gradient(-45deg, rgba(31, 41, 55, 0.4) 0px, rgba(31, 41, 55, 0.4) 2px, transparent 2px, transparent 10px),
+            linear-gradient(90deg, #0b0f19, #090c14);
+}
+
+/* --- BASICS & BACKGROUND CONTROLS --- */
+body {
+    font-family: Roboto, 'Segoe UI', sans-serif;
+    background: var(--gi-texture);
+    color: var(--text-main);
+    margin: 0;
+    /* 260px fixe Sidebar + 24px Abstand links, 88px oben (64px Kopfleiste + 24px Abstand).
+       Die Notification ist ohnehin fixed/floating positioniert (siehe #materialSnackbar in
+       menu.js) und benötigt daher keinen eigenen reservierten Freiraum. */
+    padding-top: 88px;
+    padding-right: 24px;
+    padding-bottom: 24px;
+    padding-left: calc(260px + 24px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    min-height: calc(100vh - 184px);
+    transition: background 0.3s, color 0.3s, padding-left 0.3s;
+    position: relative;
+    overflow-x: hidden;
+}
+
+/* --- FIXIERTE LINKE NAVIGATIONSLEISTE (SIDEBAR) --- */
+.app-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 260px;
+    background-color: var(--bg-card);
+    border-right: 2px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    z-index: 100;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.02);
+    transition: background-color 0.3s, border-color 0.3s, width 0.3s;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.sidebar-brand {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 18px 20px;
+    flex-shrink: 0;
+}
+
+.sidebar-brand img {
+    display: block;
+    flex-shrink: 0;
+    filter: invert(0);
+}
+
+.sidebar-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 16px 12px;
+    flex: 1;
+    border-top: 2px solid var(--border);
+}
+
+/* Umschalter ganz unten in der Sidebar, klappt die Navigation ein/aus */
+.sidebar-footer {
+    padding: 12px;
+    border-top: 2px solid var(--border);
+    flex-shrink: 0;
+}
+
+.sidebar-collapse-btn {
+    background: none;
+    border: none;
+    font-family: inherit;
+    text-align: left;
+}
+
+/* --- SCHMALE FIXIERTE KOPFLEISTE RECHTS NEBEN DER SIDEBAR (Profil/Theme/Logout) --- */
+.top-header-bar {
+    position: fixed;
+    top: 0;
+    left: 260px;
+    right: 0;
+    height: 40px;
+    background-color: var(--bg-card);
+    border-bottom: 2px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 0 24px;
+    box-sizing: border-box;
+    z-index: 99;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.02);
+    transition: background-color 0.3s, border-color 0.3s, left 0.3s;
+}
+
+/* Name des aktuell ausgewählten Turniers, links in der Kopfleiste */
+.top-header-title {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: color 0.3s;
+}
+
+.top-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.theme-toggle {
+    background: transparent;
+    border: 2px solid var(--border);
+    color: var(--text-main);
+    border-radius: 4px;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.theme-toggle:hover { background-color: var(--border); }
+
+/* --- REITER-STYLING (MENU ITEMS, vertikal in der Sidebar) --- */
+.menu-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 14px;
+    border-radius: 4px;
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    box-sizing: border-box;
+    transition: all 0.2s;
+}
+
+.menu-item .material-icons {
+    font-size: 20px;
+    vertical-align: middle;
+    flex-shrink: 0;
+}
+
+.menu-item:hover {
+    color: var(--text-main);
+    background-color: rgba(0, 0, 0, 0.03);
+}
+
+[data-theme="dark"] .menu-item:hover {
+    background-color: rgba(255, 255, 255, 0.03);
+}
+
+.menu-item.active {
+    color: var(--primary);
+    background-color: rgba(30, 58, 138, 0.06);
+}
+
+[data-theme="dark"] .menu-item.active {
+    background-color: rgba(59, 130, 246, 0.1);
+}
+
+/* --- STABILE KANJI WASSERZEICHEN --- */
+.kanji-left, .kanji-right {
+    position: fixed;
+    font-weight: 900;
+    color: var(--kanji-color);
+    z-index: 0;
+    pointer-events: none;
+    user-select: none;
+    transition: color 0.3s;
+    font-size: 40vh;
+}
+
+.kanji-left { left: -2%; top: 20%; }
+.kanji-right { right: -2%; bottom: 5%; }
+
+/* --- EINHEITLICHER CONTAINER FÜR ALLE CARD-MASKEN --- */
+.mdc-card {
+    width: 100%;
+    max-width: 680px;         /* Absolut deckungsgleiche Breite für jede Maske */
+    padding: 36px;            /* Identischer Innenabstand */
+    background-color: var(--bg-card);
+    border-radius: 4px;       /* Traditionell gerade Dojo-Kanten */
+    box-shadow: var(--shadow);
+    border: 2px solid var(--border);
+    z-index: 1;
+    transition: background-color 0.3s, border-color 0.3s, box-shadow 0.3s;
+    box-sizing: border-box;
+}
+
+/* --- STRUKTURIERTE TITELZEILE DER KARTEN --- */
+.form-title-area {
+    display: flex;
+    align-items: center;
+    justify-content: space-between; /* Treibt die beiden Pokale bündig an die Außenränder */
+    width: 100%;
+    margin-bottom: 32px;
+    border-bottom: 2px solid var(--border);
+    padding-bottom: 16px;
+    box-sizing: border-box;
+}
+
+.form-title-area h1 {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    text-align: center;
+    flex-grow: 1;            /* Drückt den Text unbeweglich in die geometrische Mitte */
+}
+
+.form-title-area .material-icons {
+    font-size: 32px;
+    color: var(--primary);
+    transition: color 0.3s;
+    flex-shrink: 0;
+}
+
+/* --- KOMPAKTE AKTIONS-ICONS IN DER TITELZEILE (z.B. matten.html, pools.html) --- */
+.title-action-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.title-icon-btn {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    border: 2px solid transparent;
+    border-radius: 50%;
+    background: none;
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s, opacity 0.2s;
+}
+
+/* Zähl-Badge für Icon-Buttons mit dynamischer Anzahl (z.B. Anzahl markierter Zeilen).
+   Bewusst kein "currentColor" für den Hintergrund — der würde die eigene (weiße)
+   Textfarbe des Badges statt der Button-Farbe aufgreifen, daher explizit pro Variante. */
+.title-icon-btn-badge {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 999px;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 16px;
+    text-align: center;
+    box-shadow: 0 0 0 2px var(--bg-card);
+}
+
+.title-icon-btn-danger .title-icon-btn-badge {
+    background-color: #c62828;
+}
+
+.title-icon-btn-primary .title-icon-btn-badge {
+    background-color: var(--primary);
+}
+
+.title-icon-btn-success .title-icon-btn-badge {
+    background-color: #28a745;
+}
+
+.title-icon-btn .material-icons {
+    font-size: 20px;
+    color: inherit;
+}
+
+.title-icon-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.title-icon-btn-danger {
+    color: #c62828;
+    border-color: rgba(198, 40, 40, 0.3);
+}
+
+.title-icon-btn-danger:hover:not(:disabled) {
+    background-color: rgba(198, 40, 40, 0.08);
+}
+
+.title-icon-btn-primary {
+    color: var(--primary);
+    border-color: rgba(30, 58, 138, 0.3);
+}
+
+.title-icon-btn-primary:hover:not(:disabled) {
+    background-color: rgba(30, 58, 138, 0.08);
+}
+
+.title-icon-btn-success {
+    color: #28a745;
+    border-color: rgba(40, 167, 69, 0.3);
+}
+
+.title-icon-btn-success:hover:not(:disabled) {
+    background-color: rgba(40, 167, 69, 0.08);
+}
+
+/* --- BESCHRIFTETE TOOLBAR-BUTTONS (Icon + Text, z.B. Aktionsleiste über Tabellen) --- */
+.toolbar-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 14px;
+    border-radius: 4px;
+    border: 2px solid var(--border);
+    background: transparent;
+    color: var(--text-main);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.toolbar-btn .material-icons {
+    font-size: 18px;
+}
+
+.toolbar-btn:hover:not(:disabled) {
+    border-color: var(--primary);
+    color: var(--primary);
+    background-color: rgba(30, 58, 138, 0.05);
+}
+
+[data-theme="dark"] .toolbar-btn:hover:not(:disabled) {
+    background-color: rgba(59, 130, 246, 0.1);
+}
+
+.toolbar-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.toolbar-btn-primary {
+    background-color: var(--primary);
+    border-color: var(--primary);
+    color: #ffffff;
+}
+
+.toolbar-btn-primary:hover:not(:disabled) {
+    background-color: var(--primary-hover);
+    border-color: var(--primary-hover);
+    color: #ffffff;
+}
+
+.toolbar-btn-danger {
+    border-color: rgba(198, 40, 40, 0.4);
+    color: #c62828;
+}
+
+.toolbar-btn-danger:hover:not(:disabled) {
+    background-color: rgba(198, 40, 40, 0.08);
+    border-color: #c62828;
+    color: #c62828;
+}
+
+/* Auf schmalen Bildschirmen rutscht eine größere Aktions-Icon-Gruppe unter den Titel, statt
+   die Titelzeile horizontal zum Scrollen zu zwingen. */
+@media (max-width: 480px) {
+    .form-title-area {
+        flex-wrap: wrap;
+        row-gap: 8px;
+    }
+
+    .form-title-area h1 {
+        flex-basis: 100%;
+        order: 1;
+    }
+
+    .form-title-area .title-action-group {
+        order: 2;
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+[data-theme="dark"] .title-icon-btn-primary:hover:not(:disabled) {
+    background-color: rgba(59, 130, 246, 0.1);
+}
+
+/* --- DESIGN FÜR FORMULARFELDER, WÄHLBOXEN & TEXT --- */
+.form-group {
+    width: 100%;
+}
+
+label {
+    display: block;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.75px;
+}
+
+input[type="text"], input[type="date"], input[type="number"], select {
+    width: 100%;
+    padding: 12px 14px;
+    border: 2px solid var(--border);
+    border-radius: 4px;
+    font-size: 16px;
+    background-color: var(--bg-card);
+    color: var(--text-main);
+    box-sizing: border-box;
+    transition: all 0.2s;
+}
+
+input:focus, select:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+/* --- VERTIVAL AUSGERICHTETER CHECKBOX-CONTAINER --- */
+.checkbox-container {
+    display: flex;
+    align-items: center;      /* Sichert die exakte mathematische Linie zwischen Haken und Text */
+    justify-content: flex-start;
+    height: 100%;
+    cursor: pointer;
+    user-select: none;
+}
+
+.checkbox-container input {
+    width: 20px;
+    height: 20px;
+    margin: 0 12px 0 0;
+    cursor: pointer;
+    accent-color: var(--primary);
+    flex-shrink: 0;
+}
+
+.checkbox-container label {
+    display: inline-block;
+    margin: 0;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.75px;
+    cursor: pointer;
+}
+
+/* --- ABSCHLUSS-AKTIONEN & SCHALTKNÖPFE --- */
+.actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 14px;
+    padding-top: 24px;
+    border-top: 2px solid var(--border);
+}
+
+.btn {
+    padding: 12px 32px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 700;
+    text-transform: uppercase;
+    cursor: pointer;
+    letter-spacing: 1.5px;
+    transition: all 0.2s;
+}
+.btn-outlined { background: transparent; color: var(--text-main); border: 2px solid var(--border); }
+.btn-outlined:hover { background: var(--border); }
+.btn-raised { background-color: var(--primary); color: #ffffff; border: none; }
+.btn-raised:hover { background-color: var(--primary-hover); }
+
+@keyframes modalPulse {
+    0% { transform: scale(0.96); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes snackbarFadeIn {
+    0% { bottom: 0px; opacity: 0; }
+    100% { bottom: 24px; opacity: 1; }
+}
+
+/* --- FLÜSSIGE RESPONSIVE ANPASSUNGEN --- */
+/* Auf schmalen Bildschirmen kollabiert die Sidebar zu einer reinen Icon-Leiste, statt
+   horizontal Platz zu verlieren. */
+@media (max-width: 850px) {
+    .app-sidebar { width: 72px; }
+    .sidebar-brand { justify-content: center; padding: 18px 8px; }
+    .sidebar-brand .brand-text { display: none; }
+    .sidebar-nav { padding: 16px 8px; }
+    .menu-text { display: none; }
+    .menu-item { justify-content: center; padding: 10px 8px; gap: 0; }
+    .top-header-bar { left: 72px; }
+    body { padding-left: calc(72px + 24px); }
+}
+
+/* Manueller Ein-/Ausklapp-Zustand über den Umschalter unten in der Sidebar (unabhängig von der
+   Bildschirmbreite oben — wirkt auch auf breiten Bildschirmen). */
+body.sidebar-collapsed {
+    padding-left: calc(72px + 24px);
+}
+
+body.sidebar-collapsed .app-sidebar {
+    width: 72px;
+}
+
+body.sidebar-collapsed .sidebar-brand {
+    justify-content: center;
+    padding: 18px 8px;
+}
+
+body.sidebar-collapsed .sidebar-nav {
+    padding: 16px 8px;
+}
+
+body.sidebar-collapsed .menu-text {
+    display: none;
+}
+
+body.sidebar-collapsed .menu-item {
+    justify-content: center;
+    padding: 10px 8px;
+    gap: 0;
+}
+
+body.sidebar-collapsed .top-header-bar {
+    left: 72px;
+}
+
+@media (max-width: 600px) {
+    .kanji-left, .kanji-right { font-size: 25vh; }
+    .top-header-bar { padding: 0 12px; }
+}
+
+@keyframes snackbarFadeInTop {
+    0% { top: 60px; opacity: 0; }
+    100% { top: 90px; opacity: 1; }
+}
