@@ -1,0 +1,271 @@
+/* Breiterer Container, damit die Tabelle auf großen Monitoren optimalen Platz hat */
+.mdc-card {
+    max-width: 1300px;
+    padding: 20px 24px;
+}
+
+/* Kompakterer Titelbereich, damit auf dieser Liste mehr Platz für Tabellenzeilen bleibt */
+.form-title-area {
+    margin-bottom: 14px;
+    padding-bottom: 8px;
+}
+
+/* Such- und Aktions-Leiste über der Tabelle */
+.teilnehmer-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+}
+
+.teilnehmer-search {
+    position: relative;
+    flex: 1 1 260px;
+    max-width: 360px;
+}
+
+.teilnehmer-search .material-icons {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 20px;
+    color: var(--text-muted);
+    pointer-events: none;
+}
+
+.teilnehmer-search input {
+    width: 100%;
+    padding: 10px 14px 10px 40px;
+    border: 2px solid var(--border);
+    border-radius: 4px;
+    font-size: 14px;
+    background-color: var(--bg-card);
+    color: var(--text-main);
+    box-sizing: border-box;
+    transition: all 0.2s;
+}
+
+.teilnehmer-search input:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+.teilnehmer-toolbar-buttons {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* Macht die Tabelle auf Mobilgeräten und Tablets horizontal scrollbar, falls der Platz eng wird */
+.table-responsive {
+    width: 100%;
+    overflow-x: auto;
+    margin-top: 8px;
+    border-radius: 4px;
+}
+
+/* Das eigentliche Tabellen-Gerüst */
+.judo-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+    text-align: left;
+}
+
+/* Tabellen-Kopfzeile (Nutzt Kensho-Blue Akzente aus der common.css) */
+.judo-table th {
+    background-color: rgba(30, 58, 138, 0.04);
+    color: var(--primary);
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.75px;
+    padding: 8px 12px;
+    border-bottom: 2px solid var(--border);
+}
+
+/* Sortierbare Spaltenköpfe */
+.judo-table th.sortable {
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.15s;
+    white-space: nowrap;
+}
+
+.judo-table th.sortable:hover {
+    background-color: rgba(30, 58, 138, 0.08);
+}
+
+.judo-table th.sortable.active-sort {
+    color: var(--primary);
+    background-color: rgba(30, 58, 138, 0.07);
+}
+
+.sort-icon {
+    font-size: 14px;
+    vertical-align: middle;
+    margin-left: 2px;
+    opacity: 0.7;
+}
+
+/* Anpassung des Tabellen-Kopfs für den Darkmode */
+[data-theme="dark"] .judo-table th {
+    background-color: rgba(59, 130, 246, 0.06);
+    color: var(--primary);
+}
+
+/* Tabellen-Datenzellen (Kämpferdaten) */
+.judo-table td {
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-main);
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+/* Sanfter Hover-Effekt beim Überfahren einer Kämpferzeile mit der Maus */
+.judo-table tr:hover {
+    background-color: rgba(30, 58, 138, 0.01);
+}
+
+[data-theme="dark"] .judo-table tr:hover {
+    background-color: rgba(255, 255, 255, 0.01);
+}
+
+/* Styling für den Platzhalter-Text, falls noch keine Daten geladen sind */
+.no-data {
+    text-align: center;
+    padding: 20px;
+    color: var(--text-muted);
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 0.5px;
+}
+
+.action-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+}
+
+.action-icon {
+    cursor: pointer;
+    font-size: 20px;
+    padding: 6px;
+    border-radius: 4px;
+    transition: all 0.2s;
+    user-select: none;
+}
+
+/* Stift-Icon bekommt ein dezentes Blau beim Drüberfahren */
+.icon-edit {
+    color: var(--text-muted);
+}
+.icon-edit:hover {
+    color: var(--primary);
+    background-color: rgba(30, 58, 138, 0.05);
+}
+
+/* Gewogen-/Bezahlt-Schnellumschalter: Rot = noch offen, Grün = bereits erledigt */
+.icon-toggle {
+    color: #c62828;
+}
+.icon-toggle.active {
+    color: #2e7d32;
+}
+.icon-toggle:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+/* Mülleimer-Icon warnt mit dem Tatami-Rot */
+.icon-delete {
+    color: var(--text-muted);
+}
+.icon-delete:hover {
+    color: #b83232;
+    background-color: rgba(184, 50, 50, 0.05);
+}
+
+/* Klassen-Badge: einheitliche Breite für alle Einträge */
+.klasse-badge {
+    display: inline-block;
+    min-width: 64px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border: 1px solid var(--border);
+    white-space: nowrap;
+}
+
+/* Altersklasse wird bei diesem Turnier ausgetragen */
+.klasse-badge.valid {
+    background-color: rgba(46, 125, 50, 0.1);
+    color: #2e7d32;
+    border: 1px solid rgba(46, 125, 50, 0.3);
+}
+
+/* Teilnehmer-Status (Lebenszyklus) als eigene Spalte (ersetzt den früheren rot/grün-Punkt) */
+.status-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+}
+
+.status-badge.status-blau {
+    background-color: rgba(21, 101, 192, 0.1);
+    color: #1565c0;
+    border: 1px solid rgba(21, 101, 192, 0.3);
+}
+
+.status-badge.status-grau {
+    background-color: rgba(100, 116, 139, 0.1);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+}
+
+.status-badge.status-gruen {
+    background-color: rgba(46, 125, 50, 0.1);
+    color: #2e7d32;
+    border: 1px solid rgba(46, 125, 50, 0.3);
+}
+
+.status-badge.status-rot {
+    background-color: rgba(198, 40, 40, 0.1);
+    color: #c62828;
+    border: 1px solid rgba(198, 40, 40, 0.3);
+}
+
+/* Altersklasse, die beim Turnier nicht ausgetragen wird */
+.klasse-badge.invalid {
+    background-color: rgba(198, 40, 40, 0.1);
+    color: #c62828;
+    border: 1px solid rgba(198, 40, 40, 0.3);
+}
+
+/* Graduierung (Gürtelfarbe): einfarbig oder bei Zwischengurten links/rechts geteilt */
+.graduierung-kreis {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    vertical-align: middle;
+}
+
+.graduierung-kreis.graduierung-leer {
+    background: repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.08) 3px, transparent 3px, transparent 6px);
+}

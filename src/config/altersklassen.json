@@ -1,0 +1,21 @@
+{
+  "weiblich": [
+    { "id": "U11", "bezeichnung": "U 11", "jahrgaenge": "16-18", "kampfzeit": "120" },
+    { "id": "U13", "bezeichnung": "U 13", "jahrgaenge": "14-16", "kampfzeit": "180", "gewichtsklassen": ["-27", "-30", "-33", "-36", "-40", "-44", "-48", "-52", "-57", "+57"] },
+    { "id": "U15", "bezeichnung": "U 15", "jahrgaenge": "12-14", "kampfzeit": "180", "gewichtsklassen": ["-33", "-36", "-40", "-44", "-48", "-52", "-57", "-63", "+63"] },
+    { "id": "U18", "bezeichnung": "U 18", "jahrgaenge": "09-11", "kampfzeit": "240", "gewichtsklassen": ["-40", "-44", "-48", "-52", "-57", "-63", "-70", "-78", "+78"] },
+    { "id": "U21", "bezeichnung": "U 21", "jahrgaenge": "06-09", "kampfzeit": "240", "gewichtsklassen": ["-48", "-52", "-57", "-63", "-70", "-78", "+78"] },
+    { "id": "Frauen", "bezeichnung": "Frauen", "jahrgaenge": "bis 09", "kampfzeit": "240", "gewichtsklassen": ["-48", "-52", "-57", "-63", "-70", "-78", "+78"] }
+  ],
+  "männlich": [
+    { "id": "U11", "bezeichnung": "U 11", "jahrgaenge": "16-18", "kampfzeit": "120" },
+    { "id": "U13", "bezeichnung": "U 13", "jahrgaenge": "14-16", "kampfzeit": "180", "gewichtsklassen": ["-28", "-31", "-34", "-37", "-40", "-43", "-46", "-50", "-55", "+55"] },
+    { "id": "U15", "bezeichnung": "U 15", "jahrgaenge": "12-14", "kampfzeit": "180", "gewichtsklassen": ["-34", "-37", "-40", "-43", "-46", "-50", "-55", "-60", "-66", "+66"] },
+    { "id": "U18", "bezeichnung": "U 18", "jahrgaenge": "09-11", "kampfzeit": "240", "gewichtsklassen": ["-46", "-50", "-55", "-60", "-66", "-73", "-81", "-90", "+90"] },
+    { "id": "U21", "bezeichnung": "U 21", "jahrgaenge": "06-09", "kampfzeit": "240", "gewichtsklassen": ["-60", "-66", "-73", "-81", "-90", "-100", "+100"] },
+    { "id": "Männer", "bezeichnung": "Männer", "jahrgaenge": "bis 09", "kampfzeit": "240", "gewichtsklassen": ["-60", "-66", "-73", "-81", "-90", "-100", "+100"] }
+  ],
+  "mixed": [
+    { "id": "U11", "bezeichnung": "U 11", "jahrgaenge": "16-18", "kampfzeit": "120" }
+  ]
+}

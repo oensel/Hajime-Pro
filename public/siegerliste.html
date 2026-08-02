@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hajime Pro - Siegerliste</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <link rel="stylesheet" href="/css/siegerliste.css">
+    <script src="/js/menu.js"></script>
+</head>
+<body>
+
+<div class="kanji-left">柔</div>
+<div class="kanji-right">道</div>
+
+<div class="mdc-card siegerliste-card">
+    <div class="form-title-area">
+        <span class="material-icons">military_tech</span>
+        <h1 id="formTitle">Siegerliste</h1>
+        <div class="title-action-group">
+            <button type="button" class="title-icon-btn title-icon-btn-primary" id="printBtn" title="Siegerliste drucken">
+                <span class="material-icons">print</span>
+            </button>
+        </div>
+    </div>
+
+    <section class="siegerliste-section">
+        <h2 class="siegerliste-subtitle">Platzierungen je Gewichtsklasse</h2>
+        <div class="table-responsive">
+            <table class="siegerliste-table">
+                <thead>
+                <tr>
+                    <th>Gewichtsklasse / Pool</th>
+                    <th style="text-align: center;">Status</th>
+                    <th>🥇 1. Platz</th>
+                    <th>🥈 2. Platz</th>
+                    <th>🥉 3. Platz</th>
+                </tr>
+                </thead>
+                <tbody id="platzierungenTableBody">
+                <tr>
+                    <td colspan="5" class="no-data">Lade Platzierungen...</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="siegerliste-section">
+        <h2 class="siegerliste-subtitle">Vereinswertung</h2>
+        <p class="siegerliste-hinweis">1. Platz = 5 Punkte &nbsp;·&nbsp; 2. Platz = 3 Punkte &nbsp;·&nbsp; 3. Platz = 1 Punkt</p>
+        <div class="table-responsive">
+            <table class="siegerliste-table">
+                <thead>
+                <tr>
+                    <th style="width: 60px; text-align: center;">Rang</th>
+                    <th>Verein</th>
+                    <th style="text-align: center;">Punkte</th>
+                </tr>
+                </thead>
+                <tbody id="vereinswertungTableBody">
+                <tr>
+                    <td colspan="3" class="no-data">Lade Vereinswertung...</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+
+<script src="/js/siegerliste.js"></script>
+</body>
+</html>

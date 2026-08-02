@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hajime Pro - Matten</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <link rel="stylesheet" href="/css/matten.css">
+    <script src="/js/menu.js"></script>
+</head>
+<body>
+
+<div class="kanji-left">柔</div>
+<div class="kanji-right">道</div>
+
+<div class="mdc-card matten-management-card">
+    <div class="form-title-area">
+        <span class="material-icons">layers</span>
+        <h1>Kampfflächen</h1>
+        <span class="material-icons">layers</span>
+    </div>
+
+    <div style="display: flex; justify-content: flex-end; gap: 10px; margin-bottom: 16px; flex-wrap: wrap;">
+        <button type="button" class="btn btn-outlined" id="aufteilenBtn" style="display: inline-flex; align-items: center; gap: 8px; height: 38px; font-size: 13px; font-weight: bold; margin: 0; padding: 0 16px;">
+            <span class="material-icons" style="font-size: 18px;">auto_awesome</span>
+            Pools aufteilen
+        </button>
+        <button type="button" class="btn btn-outlined" id="alleZuordnungenLoeschenBtn" style="display: inline-flex; align-items: center; gap: 8px; height: 38px; font-size: 13px; font-weight: bold; margin: 0; padding: 0 16px; color: #c62828; border-color: #c62828;">
+            <span class="material-icons" style="font-size: 18px;">delete_sweep</span>
+            Alle Zuordnungen löschen
+        </button>
+    </div>
+
+    <div id="mattenContainer">
+        Kampfflächen werden geladen...
+    </div>
+</div>
+
+<script src="/js/matten.js"></script>
+</body>
+</html>

@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hajime Pro - Vereinsauswahl</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <style>
+        body {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            min-height: 100vh !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #111827 !important;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+        }
+        .login-card {
+            background: #1f2937;
+            border: 2px solid #374151;
+            border-radius: 8px;
+            padding: 40px;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            color: #f3f4f6;
+            box-sizing: border-box;
+        }
+        .login-title {
+            font-size: 22px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #3b82f6;
+            margin: 0 0 8px 0;
+            text-align: center;
+        }
+        .login-subtitle {
+            font-size: 13px;
+            color: #9ca3af;
+            font-weight: 600;
+            margin: 0 0 28px 0;
+            text-align: center;
+            line-height: 1.5;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            font-size: 12px;
+            font-weight: bold;
+            color: #9ca3af;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .form-group select,
+        .form-group input {
+            padding: 12px 14px;
+            border: 1px solid #4b5563;
+            border-radius: 4px;
+            background: #111827;
+            color: #ffffff;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .form-group select:focus,
+        .form-group input:focus {
+            border-color: #3b82f6;
+        }
+        .divider {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 20px 0;
+            color: #6b7280;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .divider::before,
+        .divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: #374151;
+        }
+        .btn-login {
+            background: #3b82f6;
+            color: #ffffff;
+            border: none;
+            padding: 14px;
+            font-size: 14px;
+            font-weight: 700;
+            border-radius: 4px;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            width: 100%;
+            transition: background 0.2s;
+            margin-top: 10px;
+        }
+        .btn-login:hover {
+            background: #2563eb;
+        }
+        .error-message {
+            margin-top: 16px;
+            color: #ef4444;
+            font-size: 13px;
+            font-weight: 700;
+            text-align: center;
+            display: none;
+        }
+        .verein-suggestions {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            z-index: 20;
+            max-height: 220px;
+            overflow-y: auto;
+            background: #111827;
+            border: 1px solid #4b5563;
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+            display: none;
+        }
+        .verein-suggestion-item {
+            padding: 10px 14px;
+            font-size: 14px;
+            color: #f3f4f6;
+            cursor: pointer;
+        }
+        .verein-suggestion-item:hover,
+        .verein-suggestion-item.active {
+            background: #1f2937;
+        }
+        .verein-suggestion-empty {
+            padding: 10px 14px;
+            font-size: 13px;
+            color: #6b7280;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+
+<div class="kanji-left" style="color: rgba(255,255,255,0.02)">柔</div>
+<div class="kanji-right" style="color: rgba(255,255,255,0.02)">道</div>
+
+<div class="login-card">
+    <div style="font-size: 48px; text-align: center; margin-bottom: 16px;">🏯</div>
+    <h1 class="login-title">Verein wählen</h1>
+    <p class="login-subtitle">Bitte wählen Sie Ihren Verein aus oder legen Sie einen neuen an.<br>Beitritte zu bestehenden Vereinen müssen von einem bereits freigegebenen Mitglied bestätigt werden.</p>
+
+    <form id="joinForm">
+        <div class="form-group" style="position: relative;">
+            <label for="vereinSearchInput">Bestehenden Verein wählen</label>
+            <input type="text" id="vereinSearchInput" placeholder="Vereinsname suchen..." autocomplete="off">
+            <input type="hidden" id="vereinSelectedId" value="">
+            <div id="vereinSuggestions" class="verein-suggestions"></div>
+        </div>
+
+        <div class="divider">oder</div>
+
+        <div class="form-group">
+            <label for="newVereinName">Neuen Verein anlegen</label>
+            <input type="text" id="newVereinName" placeholder="z.B. Judo Club Musterstadt">
+        </div>
+
+        <button type="submit" class="btn-login">Weiter</button>
+    </form>
+    <div id="errorMessage" class="error-message"></div>
+</div>
+
+<script>
+    const token = localStorage.getItem('dokume_token');
+    if (!token) {
+        window.location.href = '/login.html';
+    }
+
+    function authHeaders(extra) {
+        return Object.assign({ 'Authorization': `Bearer ${token}` }, extra || {});
+    }
+
+    const vereinSearchInput = document.getElementById('vereinSearchInput');
+    const vereinSelectedId = document.getElementById('vereinSelectedId');
+    const vereinSuggestions = document.getElementById('vereinSuggestions');
+    const newVereinName = document.getElementById('newVereinName');
+    const errDiv = document.getElementById('errorMessage');
+
+    let alleVereine = [];
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function renderVereinsVorschlaege(filterText) {
+        const query = filterText.trim().toLowerCase();
+        if (!query) {
+            vereinSuggestions.style.display = 'none';
+            vereinSuggestions.innerHTML = '';
+            return;
+        }
+
+        const treffer = alleVereine.filter(v => v.name.toLowerCase().includes(query)).slice(0, 8);
+        vereinSuggestions.innerHTML = treffer.length === 0
+            ? '<div class="verein-suggestion-empty">Kein Verein gefunden</div>'
+            : treffer.map(v => `<div class="verein-suggestion-item" data-id="${v.id}">${escapeHtml(v.name)}</div>`).join('');
+        vereinSuggestions.style.display = 'block';
+    }
+
+    vereinSearchInput.addEventListener('input', () => {
+        vereinSelectedId.value = ''; // Auswahl verwerfen, sobald erneut getippt wird
+        renderVereinsVorschlaege(vereinSearchInput.value);
+    });
+
+    vereinSearchInput.addEventListener('focus', () => {
+        if (vereinSearchInput.value.trim()) renderVereinsVorschlaege(vereinSearchInput.value);
+    });
+
+    document.addEventListener('click', (e) => {
+        if (e.target !== vereinSearchInput && !vereinSuggestions.contains(e.target)) {
+            vereinSuggestions.style.display = 'none';
+        }
+    });
+
+    vereinSuggestions.addEventListener('click', (e) => {
+        const item = e.target.closest('.verein-suggestion-item');
+        if (!item || !item.dataset.id) return;
+        vereinSelectedId.value = item.dataset.id;
+        vereinSearchInput.value = item.textContent;
+        vereinSuggestions.style.display = 'none';
+    });
+
+    async function init() {
+        try {
+            const meResp = await fetch('/api/auth/me', { headers: authHeaders() });
+            if (meResp.ok) {
+                const meData = await meResp.json();
+                if (meData.user && meData.user.verein_id) {
+                    window.location.href = '/turniere.html';
+                    return;
+                }
+            } else if (meResp.status === 401) {
+                localStorage.removeItem('dokume_token');
+                localStorage.removeItem('dokume_user');
+                window.location.href = '/login.html';
+                return;
+            }
+
+            const listResp = await fetch('/api/vereine', { headers: authHeaders() });
+            alleVereine = await listResp.json();
+        } catch (err) {
+            errDiv.textContent = 'Fehler beim Laden der Vereine: ' + err.message;
+            errDiv.style.display = 'block';
+        }
+    }
+
+    document.getElementById('joinForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        errDiv.style.display = 'none';
+
+        const selectedId = vereinSelectedId.value;
+        const newName = newVereinName.value.trim();
+
+        if (!selectedId && !newName && vereinSearchInput.value.trim()) {
+            errDiv.textContent = 'Bitte wählen Sie einen Verein aus den Vorschlägen aus.';
+            errDiv.style.display = 'block';
+            return;
+        }
+
+        if (!selectedId && !newName) {
+            errDiv.textContent = 'Bitte wählen Sie einen Verein oder geben Sie einen neuen Namen ein.';
+            errDiv.style.display = 'block';
+            return;
+        }
+
+        try {
+            const body = newName ? { newVereinName: newName } : { vereinId: selectedId };
+
+            const response = await fetch('/api/vereine/join', {
+                method: 'POST',
+                headers: authHeaders({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify(body)
+            });
+
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.error || 'Beitritt fehlgeschlagen');
+            }
+
+            const userStr = localStorage.getItem('dokume_user');
+            if (userStr) {
+                const user = JSON.parse(userStr);
+                user.verein_id = data.verein_id;
+                user.verein_freigegeben = data.verein_freigegeben;
+                localStorage.setItem('dokume_user', JSON.stringify(user));
+            }
+
+            window.location.href = '/turniere.html';
+        } catch (err) {
+            errDiv.textContent = err.message;
+            errDiv.style.display = 'block';
+        }
+    });
+
+    init();
+</script>
+</body>
+</html>

@@ -1,0 +1,36 @@
+/* public/css/turnier.css */
+
+/* Breiterer Container als der Standard-680px-Rahmen, damit die Zahlungs- und
+   Altersklassen-Raster mehr Spalten nebeneinander zeigen und man weniger scrollen muss. */
+.mdc-card {
+    max-width: 1040px;
+    padding: 36px;
+}
+
+.form-group { margin-bottom: 24px; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+.actions { margin-top: 4px; }
+
+/* Text-, Zahlen- und Datumsfelder exakt gleich hoch (das native Kalender-Icon lässt
+   Datumsfelder sonst ein paar Pixel höher rendern als Text-/Zahlenfelder). */
+#turnierForm input[type="text"],
+#turnierForm input[type="date"],
+#turnierForm input[type="number"] {
+    height: 46px;
+}
+
+/* Zahlungsblock: Startgeld bewusst schmal (nur 3-stellig), die übrigen Felder teilen sich den Rest. */
+.grid-zahlung {
+    display: grid;
+    grid-template-columns: 110px 1fr 1fr 1fr;
+    gap: 16px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.01);
+}
+
+@media (max-width: 700px) {
+    .grid-3 { grid-template-columns: 1fr; gap: 0; }
+    .grid-zahlung { grid-template-columns: 1fr; gap: 12px; }
+}

@@ -1,0 +1,242 @@
+/* public/css/kampf.css */
+
+.current-fight-card {
+    background: var(--bg-card);
+    border-radius: 4px;
+    padding: 14px 20px;
+    margin-bottom: 24px;
+    position: relative;
+    overflow: hidden;
+}
+
+.current-fight-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+}
+
+.current-pool-title {
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--text-main);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.current-fight-fighters {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    margin-bottom: 14px;
+}
+
+@media (max-width: 600px) {
+    .current-fight-fighters {
+        flex-direction: column;
+        gap: 10px;
+    }
+    .vs-divider {
+        margin: 3px 0;
+    }
+}
+
+.fighter-panel {
+    flex: 1;
+    text-align: center;
+    padding: 10px 16px;
+    border-radius: 4px;
+    border: 2px solid var(--border);
+    transition: all 0.2s;
+    background: rgba(0, 0, 0, 0.01);
+}
+
+.fighter-panel.red {
+    border-color: rgba(211, 47, 47, 0.4);
+    box-shadow: 0 0 10px rgba(211, 47, 47, 0.05);
+}
+
+.fighter-panel.white {
+    border-color: rgba(63, 81, 181, 0.4);
+    box-shadow: 0 0 10px rgba(63, 81, 181, 0.05);
+}
+
+.fighter-name {
+    font-size: 16px;
+    font-weight: 800;
+    color: var(--text-main);
+    margin-bottom: 2px;
+}
+
+.fighter-club {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.vs-divider {
+    font-size: 14px;
+    font-weight: 900;
+    color: var(--primary);
+    padding: 5px;
+    background: var(--border);
+    border-radius: 50%;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+}
+
+.current-fight-actions {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+}
+
+/* Fights Queue / List */
+.fights-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.fight-row {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    background: rgba(0,0,0,0.01);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.fight-row:hover {
+    background: rgba(0,0,0,0.02);
+    border-color: var(--primary);
+}
+
+.fight-row-order {
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--primary);
+    width: 40px;
+}
+
+.fight-row-pool {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fight-row-fighters {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.fight-row-vs {
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--text-muted);
+    background: var(--border);
+    padding: 2px 6px;
+    border-radius: 10px;
+}
+
+.fight-row-status {
+    width: 100px;
+    text-align: right;
+}
+
+.fight-row-actions {
+    width: 150px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+/* Badges for status */
+.badge {
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    padding: 4px 8px;
+    border-radius: 4px;
+    letter-spacing: 0.5px;
+    display: inline-block;
+}
+
+.badge.wartet {
+    background-color: var(--border);
+    color: var(--text-muted);
+}
+
+.badge.laufend {
+    background-color: #f57c00;
+    color: #ffffff;
+    animation: pulseGlow 1.5s infinite alternate;
+}
+
+.badge.beendet {
+    background-color: #2e7d32;
+    color: #ffffff;
+}
+
+@keyframes pulseGlow {
+    0% {
+        box-shadow: 0 0 4px rgba(245, 124, 0, 0.4);
+    }
+    100% {
+        box-shadow: 0 0 12px rgba(245, 124, 0, 0.8);
+    }
+}
+
+/* Wider cards for the fight control view and strict single-line constraints */
+.mdc-card {
+    max-width: 960px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+}
+
+.fight-row {
+    flex-wrap: nowrap !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+}
+
+.fight-row-fighters {
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+
+.fight-row-fighters > span {
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+
+.fight-row-pool {
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+
+#kampfplanContainer {
+    width: 100%;
+}
+
