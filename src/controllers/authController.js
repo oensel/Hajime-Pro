@@ -4,7 +4,7 @@ import { hashPassword, verifyPassword } from '../utils/password.js';
 import dotenv from 'dotenv';
 dotenv.config();
 
-const JWT_SECRET = process.env.JWT_SECRET || 'hajime_os_secret_key_123456!';
+const JWT_SECRET = process.env.JWT_SECRET || 'hajime_pro_secret_key_123456!';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
 
 export async function register(knex, req, res) {

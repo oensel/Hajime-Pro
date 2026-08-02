@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 import { hatVereinsZugriffAufTurnier } from '../utils/vereinHelper.js';
 dotenv.config();
 
-const JWT_SECRET = process.env.JWT_SECRET || 'hajime_os_secret_key_123456!';
+const JWT_SECRET = process.env.JWT_SECRET || 'hajime_pro_secret_key_123456!';
 
 export async function requireAuth(req, res, next) {
     if (process.env.IS_OFFLINE === 'true') {
