@@ -8,7 +8,7 @@ import { readFileSync } from 'fs'; // Zwingend erforderlich für das JSON-Einles
 
 // Postgres liefert DATE-Spalten sonst als JS-Date-Objekte aus, die bei der JSON-Serialisierung
 // auf UTC normalisiert werden. In Zeitzonen vor UTC (z.B. Europe/Berlin) verschiebt das Datum
-// beim Rücklesen um einen Tag (z.B. Geburtsdatum, Lizenzablauf). Rohe Datumsstrings vermeiden das.
+// beim Rücklesen um einen Tag (z.B. Lizenzablauf, Anmeldeschluss). Rohe Datumsstrings vermeiden das.
 pg.types.setTypeParser(1082, (val) => val);
 
 // Route imports
@@ -20,6 +20,8 @@ import { getPoolRoutes } from './routes/poolRoutes.js';
 import { getKampfflaecheRoutes } from './routes/kampfflaecheRoutes.js';
 import { getKampfRoutes } from './routes/kampfRoutes.js';
 import { setupOfflineRoutes } from './routes/offlineRoutes.js';
+import { getMannschaftRoutes, getMannschaftskampfRoutes } from './routes/mannschaftRoutes.js';
+import { ensureSuperAdmin } from './utils/superAdmin.js';
 
 dotenv.config();
 
@@ -30,6 +32,12 @@ const knexConfig = require('../knexfile.cjs');
 
 const environment = process.env.IS_OFFLINE === 'true' ? 'offline' : 'online';
 const knex = knexLib(knexConfig[environment]);
+
+// Der Super-Admin-Bootstrap betrifft nur den Online-Mehrbenutzerbetrieb (Vereins-Erstfreigabe) —
+// der Offline-Modus arbeitet mit seinem eigenen isolierten Mock-User, siehe requireAuth.
+if (environment === 'online') {
+    ensureSuperAdmin(knex);
+}
 
 const app = express();
 app.set('knex', knex);
@@ -51,6 +59,8 @@ app.use('/api/teilnehmer', requireWriteAuth, getTeilnehmerRoutes(knex));
 app.use('/api/pools', requireWriteAuth, getPoolRoutes(knex));
 app.use('/api/kampfflaechen', requireWriteAuth, getKampfflaecheRoutes(knex));
 app.use('/api/kaempfe', requireWriteAuth, getKampfRoutes(knex));
+app.use('/api/mannschaften', requireWriteAuth, getMannschaftRoutes(knex));
+app.use('/api/mannschaftskaempfe', requireWriteAuth, getMannschaftskampfRoutes(knex));
 app.use('/api/offline', requireWriteAuth, setupOfflineRoutes(knex));
 
 app.use('/js/qr', express.static(path.join(__dirname, '../node_modules/jsqr/dist')));

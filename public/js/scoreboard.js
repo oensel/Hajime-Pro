@@ -108,6 +108,17 @@ function showGlobalLoginModal() {
    ========================================================================== */
 const channel = new BroadcastChannel('judo_scoreboard');
 
+// Live-Uhrzeit oben rechts im Vorschau-Overlay (#vorschauUhrzeit in anzeige.html). Läuft
+// unabhängig vom BroadcastChannel-State lokal in jedem Dokument, das scoreboard.js lädt (auch
+// im eingebetteten iframe der Steuerung) — die Uhrzeit ist überall gleich, ein Broadcast wäre
+// unnötig. Sichtbar wird sie ohnehin nur, während das Overlay selbst angezeigt wird.
+function aktualisiereVorschauUhrzeit() {
+    const el = document.getElementById('vorschauUhrzeit');
+    if (el) el.textContent = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+}
+aktualisiereVorschauUhrzeit();
+setInterval(aktualisiereVorschauUhrzeit, 1000);
+
 /* ==========================================================================
    LOGIK FÜR DAS STEUERFENSTER (KAMPFRICHTERTISCH)
    ========================================================================== */
@@ -175,7 +186,8 @@ let state = {
     overlayMode: "none", // Erlaubt: "none", "time", "hansokumake", "ippon", "goldenscoresieg", "hantei", "hanteisieg", "kiken", "nichtangetreten", "vorschau"
     poolName: "Senioren | M | -81kg",
     timeRunning: false,
-    vorschauKaempfe: [] // Für overlayMode "vorschau": bis zu 2 Einträge {nameW,clubW,nameB,clubB}
+    vorschauKaempfe: [], // Für overlayMode "vorschau": bis zu 3 Einträge {nameW,clubW,nameB,clubB,pool}
+    vorschauMatte: ""
 };
 
 let currentSeconds = 240;
@@ -889,13 +901,28 @@ if (document.getElementById('matchDuration')) {
         resetTimer();
         await ladeMatten();
         await pruefeUndZeigePausenwarnung();
+        await ladeMattenUebersicht();
+
+        const steuerungKorrekturAbbrechenBtn = document.getElementById('steuerungKorrekturAbbrechenBtn');
+        if (steuerungKorrekturAbbrechenBtn) {
+            steuerungKorrekturAbbrechenBtn.addEventListener('click', () => {
+                document.getElementById('steuerungResultModal').style.display = 'none';
+            });
+        }
+        const steuerungKorrekturSpeichernBtn = document.getElementById('steuerungKorrekturSpeichernBtn');
+        if (steuerungKorrekturSpeichernBtn) {
+            steuerungKorrekturSpeichernBtn.addEventListener('click', speichereSteuerungKorrektur);
+        }
 
         // Die Pause verstreicht mit der echten Uhrzeit, nicht mit App-Ereignissen — daher
         // zusätzlich zu den ereignisgetriebenen Aufrufen (Kampf geladen, Ergebnis gesendet,
         // getauscht) auch regelmäßig neu prüfen, damit eine anfangs zu knappe Pause automatisch
         // als behoben erkannt wird, sobald genug Zeit vergangen ist.
         if (pausenWarnungIntervall) clearInterval(pausenWarnungIntervall);
-        pausenWarnungIntervall = setInterval(pruefeUndZeigePausenwarnung, 20000);
+        pausenWarnungIntervall = setInterval(() => {
+            pruefeUndZeigePausenwarnung();
+            ladeMattenUebersicht();
+        }, 20000);
 
         const offlineImportInput = document.getElementById('offlineImportInput');
         if (offlineImportInput) {
@@ -919,6 +946,7 @@ if (document.getElementById('matchDuration')) {
                         updateConnectionModeUI();
                         populateOfflineMats();
                         pruefeUndZeigePausenwarnung();
+                        ladeMattenUebersicht();
 
                         zeigeNotification(`Offline-Daten für ${data.kampfflaecheBezeichnung} geladen!`, 'success');
                     } catch (err) {
@@ -1177,14 +1205,31 @@ if (!document.getElementById('matchDuration')) {
         if (ovVorschau) {
             ovVorschau.style.display = (data.overlayMode === 'vorschau') ? 'flex' : 'none';
             const kaempfe = data.vorschauKaempfe || [];
-            const formatiereKampf = (k) => `${k.nameW}${k.clubW ? ' (' + k.clubW + ')' : ''}  vs  ${k.nameB}${k.clubB ? ' (' + k.clubB + ')' : ''}`;
+
+            const matteEl = document.getElementById('vorschauMatte');
+            if (matteEl) matteEl.textContent = data.vorschauMatte || '';
+
+            // Der Farbbalken für Kämpfer 2 folgt der aktuellen Farbeinstellung der Steuerung
+            // (blau oder rot, siehe changeFighterColorSlider) statt fest "blau" zu sein.
+            const stripB1 = document.getElementById('vorschauStripB1');
+            if (stripB1) stripB1.className = 'vorschau-strip ' + (data.fighter2Color || 'blau');
+
+            const setText = (id, val) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = val || '';
+            };
+
             [1, 2, 3].forEach(i => {
-                const el = document.getElementById('vorschauKampf' + i);
-                if (!el) return;
+                const card = document.getElementById('vorschauCard' + i);
+                if (!card) return;
                 const kampf = kaempfe[i - 1];
-                el.textContent = kampf ? formatiereKampf(kampf) : '';
-                const section = el.closest('.vorschau-section');
-                if (section) section.style.display = (i === 1 || kampf) ? 'flex' : 'none';
+                card.style.display = (i === 1 || kampf) ? 'block' : 'none';
+
+                setText('vorschauPool' + i, kampf ? kampf.pool : '');
+                setText('vorschauNameW' + i, kampf ? kampf.nameW : '');
+                setText('vorschauClubW' + i, kampf ? kampf.clubW : '');
+                setText('vorschauNameB' + i, kampf ? kampf.nameB : '');
+                setText('vorschauClubB' + i, kampf ? kampf.clubB : '');
             });
         }
     };
@@ -1546,9 +1591,11 @@ async function naechstenKampfHolen() {
         wendeGoldenScoreEinstellungenAn(naechster.pool_golden_score_aktiv, naechster.pool_golden_score_max_sekunden);
 
         const nameWVal = `${naechster.kaempfer1_nachname || ''}, ${naechster.kaempfer1_vorname || ''}`;
-        const clubWVal = naechster.kaempfer1_verein || '';
+        // Mannschaftskampf: Team-Name statt persönlichem Verein des Judoka anzeigen — die
+        // Begegnung wird zwischen zwei Mannschaften ausgetragen, nicht zwischen zwei Vereinen.
+        const clubWVal = naechster.mannschaftskampf_id ? (naechster.mannschaft1_bezeichnung || '') : (naechster.kaempfer1_verein || '');
         const nameBVal = `${naechster.kaempfer2_nachname || ''}, ${naechster.kaempfer2_vorname || ''}`;
-        const clubBVal = naechster.kaempfer2_verein || '';
+        const clubBVal = naechster.mannschaftskampf_id ? (naechster.mannschaft2_bezeichnung || '') : (naechster.kaempfer2_verein || '');
         const poolNameVal = naechster.pool_bezeichnung || '';
         
         const inputNW = document.getElementById('nameW');
@@ -1623,6 +1670,7 @@ async function naechstenKampfHolen() {
 
         zeigeNotification(`Kampf geladen und gestartet: ${nameWVal} vs ${nameBVal}`, 'success');
         await pruefeUndZeigePausenwarnung();
+        await ladeMattenUebersicht();
     } catch (err) {
         zeigeNotification("Fehler beim Laden des nächsten Kampfes: " + err.message, 'error');
     }
@@ -1727,9 +1775,9 @@ async function ergebnisSenden() {
 
     const payload = {
         status: 'beendet',
-        sieger_id: winnerColor === 'W' ? kaempfer2_id : kaempfer1_id,
-        unterbewertung_kaempfer1: scoreB, // kaempfer1 is Blau/Rot
-        unterbewertung_kaempfer2: scoreW, // kaempfer2 is Weiss
+        sieger_id: winnerColor === 'W' ? kaempfer1_id : kaempfer2_id,
+        unterbewertung_kaempfer1: scoreW, // kaempfer1 is Weiss
+        unterbewertung_kaempfer2: scoreB, // kaempfer2 is Blau/Rot
         kampfzeit_in_sekunden: elapsed
     };
 
@@ -1766,6 +1814,7 @@ async function ergebnisSenden() {
         resetTimer();
         await zeigeNaechsteKaempferVorschau();
         await pruefeUndZeigePausenwarnung();
+        await ladeMattenUebersicht();
     } catch (err) {
         zeigeNotification("Fehler beim Senden des Ergebnisses: " + err.message, "error");
     }
@@ -1788,15 +1837,20 @@ async function zeigeNaechsteKaempferVorschau() {
         }
 
         const anstehende = kaempfe.filter(k => k.status === 'bereit' || k.status === 'angelegt');
+        // Mannschaftskampf: Team-Name statt persönlichem Verein des Judoka (siehe naechstenKampfHolen).
+        // pool fließt in die Kartenansicht des Vorschau-Overlays ein (siehe channel.onmessage).
         const naechste = anstehende.slice(0, 3).map(k => ({
             nameW: `${k.kaempfer1_nachname || ''}, ${k.kaempfer1_vorname || ''}`,
-            clubW: k.kaempfer1_verein || '',
+            clubW: k.mannschaftskampf_id ? (k.mannschaft1_bezeichnung || '') : (k.kaempfer1_verein || ''),
             nameB: `${k.kaempfer2_nachname || ''}, ${k.kaempfer2_vorname || ''}`,
-            clubB: k.kaempfer2_verein || ''
+            clubB: k.mannschaftskampf_id ? (k.mannschaft2_bezeichnung || '') : (k.kaempfer2_verein || ''),
+            pool: k.pool_bezeichnung || ''
         }));
 
         if (naechste.length === 0) return;
 
+        const matSelect = document.getElementById('matSelect');
+        state.vorschauMatte = matSelect && matSelect.selectedOptions[0] ? matSelect.selectedOptions[0].textContent : '';
         state.vorschauKaempfe = naechste;
         state.overlayMode = 'vorschau';
         update();
@@ -1916,8 +1970,198 @@ async function tauscheMitNaechstemKampf() {
         }
         zeigeNotification('Reihenfolge getauscht.', 'success');
         await pruefeUndZeigePausenwarnung();
+        await ladeMattenUebersicht();
     } catch (err) {
         zeigeNotification('Fehler beim Tauschen: ' + err.message, 'error');
+    }
+}
+
+function formatFighterNameSteuerung(nachname, vorname) {
+    if (!nachname && !vorname) return '';
+    return `${nachname || ''}${nachname && vorname ? ', ' : ''}${vorname || ''}`.trim();
+}
+
+// Lädt und rendert die "Kämpfe dieser Matte"-Übersicht (#steuerungUpcomingList /
+// #steuerungFinishedList in steuerung.html): kommende Kämpfe rein zur Information, beendete
+// Kämpfe zusätzlich mit einer "Korrigieren"-Aktion (analog zu kampf.html). Wird an denselben
+// Stellen aufgerufen wie pruefeUndZeigePausenwarnung(), da dieselben Ereignisse (Kampf geladen,
+// Ergebnis gesendet, Matte gewechselt, periodisch) die Matten-Warteschlange verändern.
+async function ladeMattenUebersicht() {
+    const upcomingList = document.getElementById('steuerungUpcomingList');
+    const finishedList = document.getElementById('steuerungFinishedList');
+    if (!upcomingList || !finishedList) return;
+    if (!selectedMatId) {
+        upcomingList.innerHTML = '';
+        finishedList.innerHTML = '';
+        return;
+    }
+
+    try {
+        let kaempfe;
+        if (isOfflineMode && offlineState) {
+            kaempfe = offlineState.kaempfe;
+        } else {
+            const response = await fetch(`/api/kaempfe?kampfflaecheId=${selectedMatId}`);
+            if (!response.ok) return;
+            kaempfe = await response.json();
+        }
+
+        const kommende = kaempfe.filter(k => k.status === 'bereit' || k.status === 'angelegt');
+        const beendete = kaempfe.filter(k => k.status === 'beendet' || k.status === 'freilos').reverse();
+
+        upcomingList.innerHTML = '';
+        if (kommende.length === 0) {
+            upcomingList.textContent = 'Keine kommenden Kämpfe auf dieser Matte.';
+        } else {
+            kommende.forEach((k, idx) => {
+                const name1 = formatFighterNameSteuerung(k.kaempfer1_nachname, k.kaempfer1_vorname) || 'noch offen';
+                const name2 = formatFighterNameSteuerung(k.kaempfer2_nachname, k.kaempfer2_vorname) || 'noch offen';
+
+                const row = document.createElement('div');
+                row.style.cssText = 'display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 13px;';
+
+                const orderSpan = document.createElement('span');
+                orderSpan.style.cssText = 'opacity: 0.6; min-width: 24px;';
+                orderSpan.textContent = `#${idx + 1}`;
+
+                const poolSpan = document.createElement('span');
+                poolSpan.style.cssText = 'font-weight: 700; min-width: 160px;';
+                poolSpan.textContent = k.pool_bezeichnung || '';
+
+                const fightersSpan = document.createElement('span');
+                fightersSpan.textContent = `${name1} vs ${name2}`;
+
+                row.append(orderSpan, poolSpan, fightersSpan);
+                upcomingList.appendChild(row);
+            });
+        }
+
+        finishedList.innerHTML = '';
+        if (beendete.length === 0) {
+            finishedList.textContent = 'Noch keine Kämpfe auf dieser Matte beendet.';
+        } else {
+            beendete.forEach(k => {
+                const name1 = formatFighterNameSteuerung(k.kaempfer1_nachname, k.kaempfer1_vorname) || 'Unbekannt';
+                const name2 = formatFighterNameSteuerung(k.kaempfer2_nachname, k.kaempfer2_vorname) || 'Unbekannt';
+
+                const row = document.createElement('div');
+                row.style.cssText = 'display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 13px; opacity: 0.85;';
+
+                const poolSpan = document.createElement('span');
+                poolSpan.style.cssText = 'font-weight: 700; min-width: 160px;';
+                poolSpan.textContent = k.pool_bezeichnung || '';
+
+                const fightersSpan = document.createElement('span');
+                fightersSpan.style.flex = '1';
+                if (k.status === 'freilos') {
+                    fightersSpan.textContent = `${name1} vs ${name2} (Freilos)`;
+                } else {
+                    const sieger1 = k.sieger_id === k.kaempfer1_id;
+                    const sieger2 = k.sieger_id === k.kaempfer2_id;
+                    fightersSpan.textContent =
+                        `${name1}${sieger1 ? ' (Sieger)' : ''} vs ${name2}${sieger2 ? ' (Sieger)' : ''} `
+                        + `(${k.unterbewertung_kaempfer1}:${k.unterbewertung_kaempfer2})`;
+                }
+
+                row.appendChild(poolSpan);
+                row.appendChild(fightersSpan);
+
+                if (k.status !== 'freilos') {
+                    const korrigierenBtn = document.createElement('button');
+                    korrigierenBtn.type = 'button';
+                    korrigierenBtn.className = 'btn-main';
+                    korrigierenBtn.style.cssText = 'background-color: #5a6268; font-size: 11px; padding: 4px 10px; margin: 0;';
+                    korrigierenBtn.textContent = 'Korrigieren';
+                    korrigierenBtn.addEventListener('click', () => oeffneSteuerungKorrekturModal(k));
+                    row.appendChild(korrigierenBtn);
+                }
+
+                finishedList.appendChild(row);
+            });
+        }
+    } catch (err) {
+        console.error('Fehler beim Laden der Matten-Übersicht:', err);
+    }
+}
+
+// Öffnet das Korrektur-Modal für einen bereits beendeten Kampf (analog zu openResultModal in
+// kampf.js) — erlaubt, Sieger/Score/Kampfzeit eines bereits gewerteten Kampfes nachträglich zu
+// berichtigen, ohne die komplette Scoreboard-Zustandsmaschine erneut durchspielen zu müssen.
+function oeffneSteuerungKorrekturModal(kampf) {
+    const modal = document.getElementById('steuerungResultModal');
+    const modalKampfId = document.getElementById('steuerungModalKampfId');
+    const siegerSelect = document.getElementById('steuerungSiegerSelect');
+    const score1 = document.getElementById('steuerungScore1');
+    const score2 = document.getElementById('steuerungScore2');
+    const scoreLabel1 = document.getElementById('steuerungScoreLabel1');
+    const scoreLabel2 = document.getElementById('steuerungScoreLabel2');
+    const kampfzeitInput = document.getElementById('steuerungKampfzeitInput');
+    if (!modal || !modalKampfId || !siegerSelect) return;
+
+    modalKampfId.value = kampf.id;
+
+    siegerSelect.innerHTML = '';
+    const opt1 = document.createElement('option');
+    opt1.value = kampf.kaempfer1_id;
+    opt1.textContent = formatFighterNameSteuerung(kampf.kaempfer1_nachname, kampf.kaempfer1_vorname) || 'Kämpfer 1';
+    siegerSelect.appendChild(opt1);
+    const opt2 = document.createElement('option');
+    opt2.value = kampf.kaempfer2_id;
+    opt2.textContent = formatFighterNameSteuerung(kampf.kaempfer2_nachname, kampf.kaempfer2_vorname) || 'Kämpfer 2';
+    siegerSelect.appendChild(opt2);
+    siegerSelect.value = kampf.sieger_id;
+
+    scoreLabel1.textContent = `Score ${formatFighterNameSteuerung(kampf.kaempfer1_nachname, kampf.kaempfer1_vorname) || 'Kämpfer 1'}`;
+    scoreLabel2.textContent = `Score ${formatFighterNameSteuerung(kampf.kaempfer2_nachname, kampf.kaempfer2_vorname) || 'Kämpfer 2'}`;
+    score1.value = kampf.unterbewertung_kaempfer1;
+    score2.value = kampf.unterbewertung_kaempfer2;
+    kampfzeitInput.value = kampf.kampfzeit_in_sekunden;
+
+    modal.style.display = 'flex';
+}
+
+async function speichereSteuerungKorrektur() {
+    const modal = document.getElementById('steuerungResultModal');
+    const modalKampfId = document.getElementById('steuerungModalKampfId');
+    const siegerSelect = document.getElementById('steuerungSiegerSelect');
+    const score1 = document.getElementById('steuerungScore1');
+    const score2 = document.getElementById('steuerungScore2');
+    const kampfzeitInput = document.getElementById('steuerungKampfzeitInput');
+
+    const kampfId = parseInt(modalKampfId.value, 10);
+    const payload = {
+        status: 'beendet',
+        sieger_id: parseInt(siegerSelect.value, 10),
+        unterbewertung_kaempfer1: parseInt(score1.value, 10),
+        unterbewertung_kaempfer2: parseInt(score2.value, 10),
+        kampfzeit_in_sekunden: parseInt(kampfzeitInput.value, 10) || 0
+    };
+
+    try {
+        if (isOfflineMode && offlineState) {
+            const fight = offlineState.kaempfe.find(k => k.id === kampfId);
+            if (fight) {
+                Object.assign(fight, payload);
+                localStorage.setItem('offlineState', JSON.stringify(offlineState));
+            }
+        } else {
+            const response = await fetch(`/api/kaempfe/${kampfId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!response.ok) {
+                const data = await response.json().catch(() => ({}));
+                throw new Error(data.error || 'Korrektur fehlgeschlagen.');
+            }
+        }
+
+        zeigeNotification('Kampfergebnis korrigiert.', 'success');
+        modal.style.display = 'none';
+        await ladeMattenUebersicht();
+        await pruefeUndZeigePausenwarnung();
+    } catch (err) {
+        zeigeNotification('Fehler beim Korrigieren: ' + err.message, 'error');
     }
 }
 

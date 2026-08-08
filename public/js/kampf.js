@@ -30,10 +30,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     const currentFighter2Name = document.getElementById('currentFighter2Name');
     const currentFighter2Club = document.getElementById('currentFighter2Club');
     const currentFightActions = document.getElementById('currentFightActions');
-    
+    const currentFighter1Substitute = document.getElementById('currentFighter1Substitute');
+    const currentFighter2Substitute = document.getElementById('currentFighter2Substitute');
+
     const upcomingFightsList = document.getElementById('upcomingFightsList');
     const finishedFightsList = document.getElementById('finishedFightsList');
-    
+    const currentTeamBanner = document.getElementById('currentTeamBanner');
+    const pausenWarnungBanner = document.getElementById('pausenWarnungBanner');
+    const pausenWarnungText = document.getElementById('pausenWarnungText');
+    const pausenWarnungPausierenBtn = document.getElementById('pausenWarnungPausierenBtn');
+
     // Modal-Elemente
     const resultModal = document.getElementById('resultModal');
     const resultForm = document.getElementById('resultForm');
@@ -45,6 +51,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     const scoreLabel2 = document.getElementById('scoreLabel2');
     const kampfzeit = document.getElementById('kampfzeit');
     const cancelResultBtn = document.getElementById('cancelResultBtn');
+
+    // Auswechseln-Modal-Elemente (Mannschaftskampf: Ersatzkämpfer nachnominieren)
+    const auswechselModal = document.getElementById('auswechselModal');
+    const auswechselHinweis = document.getElementById('auswechselHinweis');
+    const auswechselSelect = document.getElementById('auswechselSelect');
+    const auswechselAbbrechenBtn = document.getElementById('auswechselAbbrechenBtn');
+    const auswechselBestaetigenBtn = document.getElementById('auswechselBestaetigenBtn');
+    let auswechselKontext = null; // { kampfId, seite }
 
     let allFights = [];
 
@@ -115,17 +129,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         // 1. Finde den aktuellen Kampf: Der erste, der "gestartet" ist.
         // Falls keiner gestartet ist, der erste "bereit" (beide Kämpfer feststehen).
         // Andernfalls der erste, der überhaupt noch "angelegt" (Platzhalter) ist.
-        let currentFight = allFights.find(k => k.status === 'gestartet');
+        // Mannschaftskampf-Einzelkämpfe, die noch auf den Abschluss der Einzelwettkampf-Pools
+        // dieser Matte warten (wartet_auf_einzelpools, siehe kampfController.getKaempfe), dürfen
+        // nicht als "aktueller Kampf" ausgewählt werden — sonst könnte der Tisch einen
+        // Mannschaftskampf starten, obwohl ein Einzelpool der Matte noch nicht fertig ist.
+        const fuerAktuellenKampfWaehlbar = allFights.filter(k => !k.wartet_auf_einzelpools);
+        let currentFight = fuerAktuellenKampfWaehlbar.find(k => k.status === 'gestartet');
         if (!currentFight) {
-            currentFight = allFights.find(k => k.status === 'bereit');
+            currentFight = fuerAktuellenKampfWaehlbar.find(k => k.status === 'bereit');
         }
         if (!currentFight) {
-            currentFight = allFights.find(k => k.status === 'angelegt');
+            currentFight = fuerAktuellenKampfWaehlbar.find(k => k.status === 'angelegt');
         }
 
         // 2. Teile restliche Kämpfe in Warteliste und Verlauf
         const upcoming = allFights.filter(k => (k.status === 'bereit' || k.status === 'angelegt') && k.id !== currentFight?.id);
         upcoming.sort((a, b) => {
+            // Noch gesperrte Mannschaftskämpfe kommen immer ans Ende der Warteliste (siehe
+            // Kommentar oben) — unabhängig davon, ob ihre Kämpfer bereits feststehen.
+            if (a.wartet_auf_einzelpools && !b.wartet_auf_einzelpools) return 1;
+            if (!a.wartet_auf_einzelpools && b.wartet_auf_einzelpools) return -1;
             const aOpen = !a.kaempfer1_id || !a.kaempfer2_id;
             const bOpen = !b.kaempfer1_id || !b.kaempfer2_id;
             if (aOpen && !bOpen) return 1;
@@ -137,7 +160,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         // --- AKTUELLEN KAMPF ANZEIGEN ---
         if (currentFight) {
             currentPoolTitle.textContent = currentFight.pool_bezeichnung;
-            
+
+            // Mannschaftskampf-Kontext: dieser Einzelkampf ist eine Gewichtsklassen-Position
+            // innerhalb einer Team-Begegnung — Begegnung und Zwischenstand anzeigen.
+            if (currentFight.mannschaftskampf_id && currentTeamBanner) {
+                const team1 = currentFight.mannschaft1_bezeichnung || 'Mannschaft 1';
+                const team2 = currentFight.mannschaft2_bezeichnung || 'Mannschaft 2';
+                const stand1 = currentFight.siegpunkte_mannschaft1 ?? 0;
+                const stand2 = currentFight.siegpunkte_mannschaft2 ?? 0;
+                currentTeamBanner.textContent =
+                    `Begegnung: ${team1} vs. ${team2} — Stand ${stand1}:${stand2} (Gewichtsklasse ${currentFight.mannschaft_gewichtsklasse || '?'})`;
+                currentTeamBanner.style.display = 'block';
+            } else if (currentTeamBanner) {
+                currentTeamBanner.style.display = 'none';
+            }
+
             // Name 1
             const name1 = formatFighterName(currentFight.kaempfer1_nachname, currentFight.kaempfer1_vorname);
             currentFighter1Name.textContent = name1 || 'noch offen';
@@ -147,7 +184,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             const name2 = formatFighterName(currentFight.kaempfer2_nachname, currentFight.kaempfer2_vorname);
             currentFighter2Name.textContent = name2 || 'noch offen';
             currentFighter2Club.textContent = currentFight.kaempfer2_verein || '';
-            
+
+            // Auswechseln (nur bei Mannschaftskampf-Einzelkämpfen, solange noch nicht gestartet)
+            zeigeAuswechselButton(currentFighter1Substitute, currentFight, 'kaempfer1');
+            zeigeAuswechselButton(currentFighter2Substitute, currentFight, 'kaempfer2');
+
             // Buttons steuern
             currentFightActions.innerHTML = '';
             if (currentFight.status === 'bereit') {
@@ -175,13 +216,19 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         } else {
             // Keine Kämpfe vorhanden oder alle beendet
+            if (currentTeamBanner) currentTeamBanner.style.display = 'none';
             currentPoolTitle.textContent = 'Keine anstehenden Kämpfe';
             currentFighter1Name.textContent = '-';
             currentFighter1Club.textContent = '';
             currentFighter2Name.textContent = '-';
             currentFighter2Club.textContent = '';
             currentFightActions.innerHTML = '<span class="badge beendet">Alle Kämpfe abgeschlossen</span>';
+            currentFighter1Substitute.innerHTML = '';
+            currentFighter2Substitute.innerHTML = '';
         }
+
+        // --- PAUSENWARNUNG FÜR DEN AKTUELLEN KAMPF ---
+        zeigePausenWarnung(currentFight);
 
         // --- WARTELISTE RENDERN ---
         upcomingFightsList.innerHTML = '';
@@ -254,6 +301,62 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    // --- PAUSENWARNUNG-BANNER ---
+    // kampf.pausenwarnung wird serverseitig nur für 'bereit'e Kämpfe anhand ECHTER Zeitstempel
+    // berechnet (siehe pruefeKampfPause in pausenRegel.js / getKaempfe in kampfController.js) —
+    // andere Status liefern immer null. Zeigt an, welche(r) Kämpfer(in) noch nicht genug Pause
+    // seit dem letzten echten Kampf hatte(n), und bietet als Ausweg (falls sich die Reihenfolge
+    // nicht mehr sinnvoll tauschen lässt) einen direkten Kurzschluss zum manuellen Pausieren der
+    // Matte (identische Aktion wie der Pause-Button auf matten.html).
+    function zeigePausenWarnung(kampf) {
+        if (!pausenWarnungBanner) return;
+
+        if (!kampf || kampf.status !== 'bereit' || !kampf.pausenwarnung) {
+            pausenWarnungBanner.style.display = 'none';
+            return;
+        }
+
+        const betroffeneNamen = kampf.pausenwarnung.kaempfer.map(betroffener => {
+            const name = betroffener.id === kampf.kaempfer1_id
+                ? formatFighterName(kampf.kaempfer1_nachname, kampf.kaempfer1_vorname)
+                : formatFighterName(kampf.kaempfer2_nachname, kampf.kaempfer2_vorname);
+            const fehlendeMinuten = Math.ceil(betroffener.fehlendeSekunden / 60);
+            return `${name || 'Kämpfer/in'} (noch ${fehlendeMinuten} Min. Pause nötig)`;
+        }).join(', ');
+
+        pausenWarnungText.textContent =
+            `Pausenwarnung: ${betroffeneNamen} — laut Mindestpausenregel noch nicht genug Erholzeit seit dem letzten Kampf. ` +
+            `Wenn möglich die Reihenfolge tauschen, sonst die Matte pausieren.`;
+        pausenWarnungBanner.style.display = 'flex';
+    }
+
+    if (pausenWarnungPausierenBtn) {
+        pausenWarnungPausierenBtn.addEventListener('click', async () => {
+            const matId = mattenSelect.value;
+            if (!matId) return;
+
+            const bestaetigt = window.zeigeZentraleBestaetigung
+                ? await window.zeigeZentraleBestaetigung(
+                    'Diese Matte jetzt pausieren, damit die Kämpfer/innen ausreichend Pause bekommen? Der Tisch kann sie später über "Matten" wieder fortsetzen.',
+                    'Matte pausieren',
+                    'pause_circle'
+                )
+                : confirm('Matte pausieren?');
+            if (!bestaetigt) return;
+
+            try {
+                const response = await fetch(`/api/kampfflaechen/${matId}/pausieren`, { method: 'POST' });
+                const result = await response.json();
+                if (!response.ok || !result.success) {
+                    throw new Error(result.error || 'Matte konnte nicht pausiert werden.');
+                }
+                zeigeNotification(result.message || 'Matte pausiert.', 'success');
+            } catch (err) {
+                zeigeNotification(err.message, 'error');
+            }
+        });
+    }
+
     // --- FORFEIT-AKTIONEN (NICHT ANGETRETEN / DISQUALIFIZIERT) ---
     function baueForfeitAktionen(kampf) {
         const wrapper = document.createElement('div');
@@ -269,7 +372,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             btn.className = 'btn btn-outlined';
             btn.style.cssText = 'padding: 4px 10px; font-size: 11px; color: #c62828; border-color: #c62828;';
             btn.innerHTML = `<span class="material-icons" style="font-size: 14px; vertical-align: middle; margin-right: 4px;">${icon}</span>${label}`;
-            btn.addEventListener('click', () => fuehreForfeitAktionAus(teilnehmerId, kampf.id, aktion, fighterLabel(teilnehmerId)));
+            btn.addEventListener('click', () => fuehreForfeitAktionAus(teilnehmerId, kampf.id, aktion, fighterLabel(teilnehmerId), kampf));
             return btn;
         };
 
@@ -281,10 +384,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         return wrapper;
     }
 
-    async function fuehreForfeitAktionAus(teilnehmerId, kampfId, aktion, name) {
-        const nachricht = aktion === 'disqualifizieren'
+    async function fuehreForfeitAktionAus(teilnehmerId, kampfId, aktion, name, kampf) {
+        let nachricht = aktion === 'disqualifizieren'
             ? `${name} disqualifizieren? Der Gegner erhält einen regulären Sieg (10 Punkte).`
             : `${name} als nicht angetreten markieren? Der Gegner erhält einen regulären Sieg (10 Punkte).`;
+        // Abschenken-Verbot (DJB-WKO Art. 3.12.13.3): gehört der Kampf zu einer
+        // Mannschaftsbegegnung, verliert nicht nur dieser Einzelkampf, sondern die GESAMTE
+        // Mannschaft die Begegnung sofort mit 0 Siegen — der Tisch muss das vorher wissen.
+        if (kampf && kampf.mannschaftskampf_id) {
+            nachricht += ' ACHTUNG: Dieser Kampf gehört zu einer Mannschaftsbegegnung — die gesamte Mannschaft verliert dadurch sofort die Begegnung mit 0 Siegen ("zu Null"), unabhängig vom bisherigen Zwischenstand!';
+        }
         const bestaetigt = window.zeigeZentraleBestaetigung
             ? await window.zeigeZentraleBestaetigung(nachricht, 'Forfeit werten', 'warning')
             : confirm(nachricht);
@@ -351,17 +460,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         const opt1 = document.createElement('option');
         opt1.value = kampf.kaempfer1_id;
-        opt1.textContent = `Rot: ${formatFighterName(kampf.kaempfer1_nachname, kampf.kaempfer1_vorname)}`;
+        opt1.textContent = `Weiß: ${formatFighterName(kampf.kaempfer1_nachname, kampf.kaempfer1_vorname)}`;
         siegerSelect.appendChild(opt1);
-        
+
         const opt2 = document.createElement('option');
         opt2.value = kampf.kaempfer2_id;
-        opt2.textContent = `Weiß: ${formatFighterName(kampf.kaempfer2_nachname, kampf.kaempfer2_vorname)}`;
+        opt2.textContent = `Rot: ${formatFighterName(kampf.kaempfer2_nachname, kampf.kaempfer2_vorname)}`;
         siegerSelect.appendChild(opt2);
 
         // Labels für die Scores anpassen
-        scoreLabel1.textContent = `Score Rot (${kampf.kaempfer1_nachname || 'Kämpfer 1'})`;
-        scoreLabel2.textContent = `Score Weiß (${kampf.kaempfer2_nachname || 'Kämpfer 2'})`;
+        scoreLabel1.textContent = `Score Weiß (${kampf.kaempfer1_nachname || 'Kämpfer 1'})`;
+        scoreLabel2.textContent = `Score Rot (${kampf.kaempfer2_nachname || 'Kämpfer 2'})`;
 
         // Default Werte zurücksetzen
         score1.value = 10;
@@ -437,6 +546,80 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- MODAL SCHLIESSEN ---
     cancelResultBtn.addEventListener('click', () => {
         resultModal.style.display = 'none';
+    });
+
+    // --- AUSWECHSELN: Button je Kämpfer-Panel rendern ---
+    // Nur bei Mannschaftskampf-Einzelkämpfen, die noch nicht gestartet sind — sonst bleibt der
+    // Container leer (kein Button für normale Einzelwettkampf-Kämpfe oder laufende/beendete).
+    function zeigeAuswechselButton(container, kampf, seite) {
+        container.innerHTML = '';
+        if (!kampf.mannschaftskampf_id || kampf.status !== 'bereit') return;
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-outlined';
+        btn.style.cssText = 'padding: 4px 10px; font-size: 11px;';
+        btn.innerHTML = '<span class="material-icons" style="font-size: 14px; vertical-align: middle; margin-right: 4px;">swap_horiz</span>Auswechseln';
+        btn.addEventListener('click', () => oeffneAuswechselModal(kampf, seite));
+        container.appendChild(btn);
+    }
+
+    // --- AUSWECHSELN: Modal öffnen und mit gewichtsklassenkonformen Team-Kandidaten befüllen ---
+    async function oeffneAuswechselModal(kampf, seite) {
+        try {
+            const response = await fetch(`/api/kaempfe/${kampf.id}/ersatz-optionen`);
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'Ersatzkämpfer konnten nicht geladen werden.');
+            }
+
+            const optionen = seite === 'kaempfer1' ? data.kaempfer1Optionen : data.kaempfer2Optionen;
+            const aktuellerId = seite === 'kaempfer1' ? kampf.kaempfer1_id : kampf.kaempfer2_id;
+
+            auswechselSelect.innerHTML = '';
+            optionen.forEach(o => {
+                const opt = document.createElement('option');
+                opt.value = o.turnier_teilnehmer_id;
+                opt.textContent = `${formatFighterName(o.nachname, o.vorname)} (${o.gewichtsklasse}, ${o.gewicht} kg)`;
+                if (o.turnier_teilnehmer_id === aktuellerId) opt.selected = true;
+                auswechselSelect.appendChild(opt);
+            });
+
+            auswechselHinweis.textContent = `Nur Mitglieder derselben Mannschaft mit Gewichtsklasse "${kampf.mannschaft_gewichtsklasse}" oder leichter sind wählbar.`;
+            auswechselKontext = { kampfId: kampf.id, seite };
+            auswechselModal.style.display = 'flex';
+        } catch (err) {
+            zeigeNotification(err.message, 'error');
+        }
+    }
+
+    auswechselAbbrechenBtn.addEventListener('click', () => {
+        auswechselModal.style.display = 'none';
+        auswechselKontext = null;
+    });
+
+    auswechselBestaetigenBtn.addEventListener('click', async () => {
+        if (!auswechselKontext) return;
+        const teilnehmerId = parseInt(auswechselSelect.value, 10);
+
+        try {
+            const response = await fetch(`/api/kaempfe/${auswechselKontext.kampfId}/auswechseln`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ seite: auswechselKontext.seite, teilnehmerId })
+            });
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'Auswechseln fehlgeschlagen.');
+            }
+
+            zeigeNotification('Kämpfer erfolgreich ausgewechselt.', 'success');
+            auswechselModal.style.display = 'none';
+            auswechselKontext = null;
+            ladeKämpfe(mattenSelect.value);
+        } catch (err) {
+            zeigeNotification(err.message, 'error');
+        }
     });
 
     // --- FORMATTERS & ESCAPING ---

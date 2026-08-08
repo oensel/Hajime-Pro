@@ -1538,7 +1538,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (k.status === 'beendet') {
                         const min = Math.floor(k.kampfzeit_in_sekunden / 60);
                         const sec = String(k.kampfzeit_in_sekunden % 60).padStart(2, '0');
-                        ergebnis = `Sieger: ${k.sieger_id === k.kaempfer1_id ? 'Rot' : 'Weiß'} (${k.unterbewertung_kaempfer1}:${k.unterbewertung_kaempfer2} | ${min}:${sec})`;
+                        ergebnis = `Sieger: ${k.sieger_id === k.kaempfer1_id ? 'Weiß' : 'Rot'} (${k.unterbewertung_kaempfer1}:${k.unterbewertung_kaempfer2} | ${min}:${sec})`;
                     } else if (k.status === 'freilos') {
                         ergebnis = k.sieger_id ? 'Freilos (automatischer Sieg)' : 'Freilos';
                     } else if (k.status === 'gestartet') {

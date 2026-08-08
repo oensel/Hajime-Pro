@@ -1,0 +1,254 @@
+/* Breiterer Container als der Standard-680px-Rahmen (analog zu turnier.css) — die Mannschafts-
+   Pools/Roster-Gruppen brauchen mehr Platz nebeneinander, sonst wird ständig gescrollt. */
+.mdc-card {
+    max-width: 1040px;
+    padding: 36px;
+}
+
+.no-data {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 24px;
+    font-weight: 600;
+}
+
+.modal-wrapper {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(2px);
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+}
+.modal-wrapper[style*="flex"] { display: flex; }
+
+.mannschaften-modal-card {
+    max-width: 480px;
+    width: 90%;
+    padding: 24px;
+    border-radius: 4px;
+    border: 2px solid var(--border);
+    box-shadow: var(--shadow);
+    background-color: var(--bg-card);
+}
+.mannschaften-modal-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+.mannschaften-modal-header h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    flex: 1;
+}
+.mannschaften-modal-close {
+    cursor: pointer;
+    color: var(--text-muted);
+}
+.mannschaften-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 20px;
+}
+.mannschaften-form-row {
+    display: flex;
+    gap: 16px;
+}
+.mannschaften-form-row .form-group { flex: 1; }
+.mannschaften-hint {
+    display: block;
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+.mannschafts-pool-card {
+    border: 2px solid var(--border);
+    border-radius: 4px;
+    margin-bottom: 20px;
+    overflow: hidden;
+}
+.mannschafts-pool-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    background: var(--bg-main);
+    border-bottom: 2px solid var(--border);
+    flex-wrap: wrap;
+}
+.mannschafts-pool-header h3 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+.mannschafts-pool-meta {
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 700;
+}
+.mannschafts-pool-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+}
+.gewichtsklassen-chips {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding: 10px 18px 0;
+}
+.gk-chip {
+    background: var(--border);
+    color: var(--text-main);
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.mannschaften-body { padding: 14px 18px 18px; }
+
+.mannschaft-card {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    margin-top: 12px;
+    padding: 12px 16px;
+}
+.mannschaft-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.mannschaft-card-header strong { font-size: 14px; }
+.mannschaft-verein { color: var(--text-muted); font-size: 12px; font-weight: 600; }
+.mannschaft-card-actions { margin-left: auto; display: flex; gap: 6px; }
+
+.roster-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+    font-size: 13px;
+}
+.roster-table th {
+    text-align: left;
+    padding: 6px 8px;
+    border-bottom: 2px solid var(--border);
+    color: var(--text-muted);
+    font-size: 11px;
+    text-transform: uppercase;
+}
+.roster-table td {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border);
+}
+.roster-empty { color: var(--text-muted); font-size: 12px; padding: 8px 0; }
+
+.begegnungen-list { margin-top: 14px; border-top: 2px dashed var(--border); padding-top: 12px; }
+.begegnungen-list h4 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; color: var(--text-muted); }
+.begegnung-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    margin-bottom: 6px;
+    font-size: 13px;
+    flex-wrap: wrap;
+}
+.begegnung-teams { font-weight: 700; }
+.begegnung-score { color: var(--text-muted); font-weight: 700; }
+.begegnung-status-badge {
+    padding: 2px 10px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    background: var(--border);
+}
+.begegnung-status-badge.beendet { background: #2e7d32; color: #fff; }
+.begegnung-status-badge.gestartet { background: #1565c0; color: #fff; }
+.begegnung-sieger { color: #2e7d32; font-weight: 800; }
+.begegnung-stichkampf { color: #b83232; font-size: 11px; font-weight: 700; }
+
+.icon-btn-small {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    padding: 2px;
+    display: inline-flex;
+    align-items: center;
+}
+.icon-btn-small:hover { color: #b83232; }
+.icon-btn-small .material-icons { font-size: 18px; }
+
+/* Roster als Drag&Drop-Gewichtsklassen-Gruppen (siehe renderTeamCard) — jede Gruppe ist eine
+   Ablagezone für genau eine Gewichtsklassen-Position des Pools. Grid statt Flexbox, damit jede
+   Spalte exakt dieselbe Breite hat: bei Flexbox mit flex-wrap streckt sich ein einzelnes Element
+   in der letzten, unvollständigen Zeile über die komplette verbleibende Breite (z.B. "+46 kg"
+   allein in der letzten Zeile so breit wie mehrere Gruppen der Zeile darüber zusammen) — beim
+   Grid teilen sich alle Zeilen dieselben Spalten-Tracks, eine unvollständige letzte Zeile lässt
+   die überzähligen Spalten einfach leer statt ein Element zu strecken.
+*/
+.roster-dnd {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+}
+.roster-dnd-group {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+}
+.roster-dnd-group-sonstige,
+.roster-dnd-group-empty { border-color: #b83232; }
+.roster-dnd-header {
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    padding: 6px 8px;
+    background: var(--bg-main);
+    border-bottom: 1px solid var(--border);
+    color: var(--text-muted);
+}
+.roster-dnd-group-empty .roster-dnd-header { color: #b83232; }
+.roster-dnd-body {
+    min-height: 44px;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    transition: background 0.15s;
+}
+.roster-dnd-body.drag-over-valid { background: rgba(46, 125, 50, 0.15); }
+.roster-dnd-body.drag-over-invalid { background: rgba(184, 50, 50, 0.15); }
+.roster-dnd-empty { color: #b83232; font-size: 11px; font-weight: 700; padding: 4px 2px; }
+.roster-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 12px;
+    background: var(--bg-card);
+    cursor: grab;
+}
+.roster-chip:active { cursor: grabbing; }
+.roster-chip-gewicht { color: var(--text-muted); font-weight: 700; margin-left: auto; white-space: nowrap; }

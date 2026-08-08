@@ -16,114 +16,186 @@
 <div class="kanji-left">柔</div>
 <div class="kanji-right">道</div>
 
-<!-- Hauptkarte der Anwendung im Google Material Design Style -->
-<div class="mdc-card">
-    <div class="form-title-area">
-        <span class="material-icons">calendar_month</span>
-        <h1 id="formTitle">Turnier</h1>
-        <span class="material-icons">calendar_month</span>
-    </div>
-
-    <div style="display: flex; justify-content: flex-end; gap: 10px; margin-bottom: 16px; flex-wrap: wrap;">
-        <button type="button" class="btn btn-outlined" id="veroeffentlichenBtn" style="display: none; align-items: center; gap: 8px; height: 38px; font-size: 13px; font-weight: bold; margin: 0; padding: 0 16px;">
-            <span class="material-icons" style="font-size: 18px;">publish</span>
-            Veröffentlichen
-        </button>
-        <button type="button" class="btn btn-outlined" id="durchfuehrungBeendenBtn" style="display: none; align-items: center; gap: 8px; height: 38px; font-size: 13px; font-weight: bold; margin: 0; padding: 0 16px;">
-            <span class="material-icons" style="font-size: 18px;">flag</span>
-            Durchführung beenden
-        </button>
-        <button type="button" class="btn btn-outlined" id="importTurnierBtn" style="display: none; align-items: center; gap: 8px; height: 38px; font-size: 13px; font-weight: bold; margin: 0; padding: 0 16px;">
-            <span class="material-icons" style="font-size: 18px;">upload_file</span>
-            Abgeschlossenes Turnier hochladen
-        </button>
-        <input type="file" id="importTurnierFileInput" accept=".json" style="display: none;">
-        <button type="button" class="btn btn-outlined" id="exportTurnierBtn" style="display: none; align-items: center; gap: 8px; height: 38px; font-size: 13px; font-weight: bold; margin: 0; padding: 0 16px;">
-            <span class="material-icons" style="font-size: 18px;">download</span>
-            Gesamtes Turnier exportieren
-        </button>
-        <button type="button" class="btn btn-outlined" id="absagenBtn" style="display: none; align-items: center; gap: 8px; height: 38px; font-size: 13px; font-weight: bold; margin: 0; padding: 0 16px; color: #c62828; border-color: #c62828;">
-            <span class="material-icons" style="font-size: 18px;">cancel</span>
-            Absagen
-        </button>
-        <button type="button" class="btn btn-outlined" id="loeschenBtn" style="display: none; align-items: center; gap: 8px; height: 38px; font-size: 13px; font-weight: bold; margin: 0; padding: 0 16px; color: #c62828; border-color: #c62828;">
-            <span class="material-icons" style="font-size: 18px;">delete</span>
-            Löschen
-        </button>
+<div class="turnier-page">
+    <!-- Kopfzeile: Titel links, Lebenszyklus-Aktionen rechts (nur im Edit-Modus je nach Status sichtbar) -->
+    <div class="turnier-page-header">
+        <div class="turnier-page-header-title">
+            <span class="material-icons">calendar_month</span>
+            <h1 id="formTitle">Turnier</h1>
+        </div>
+        <div class="turnier-page-header-actions">
+            <button type="button" class="btn btn-outlined turnier-header-btn" id="veroeffentlichenBtn" style="display: none;">
+                <span class="material-icons">publish</span>
+                Veröffentlichen
+            </button>
+            <button type="button" class="btn btn-outlined turnier-header-btn" id="durchfuehrungBeendenBtn" style="display: none;">
+                <span class="material-icons">flag</span>
+                Durchführung beenden
+            </button>
+            <button type="button" class="btn btn-outlined turnier-header-btn" id="importTurnierBtn" style="display: none;">
+                <span class="material-icons">upload_file</span>
+                Ergebnisse hochladen
+            </button>
+            <input type="file" id="importTurnierFileInput" accept=".json" style="display: none;">
+            <button type="button" class="btn btn-outlined turnier-header-btn turnier-header-btn-danger" id="absagenBtn" style="display: none;">
+                <span class="material-icons">cancel</span>
+                Absagen
+            </button>
+            <button type="button" class="btn btn-outlined turnier-header-btn turnier-header-btn-danger" id="loeschenBtn" style="display: none;">
+                <span class="material-icons">delete</span>
+                Löschen
+            </button>
+        </div>
     </div>
     <div id="importTurnierStatus" style="display: none; margin: 0 0 16px 0; font-size: 13px; font-weight: bold; color: var(--text-muted);"></div>
 
     <form id="turnierForm">
-        <!-- ZEILE 1: Veranstaltungs-Name, Wettkampftag, Ort -->
-        <div class="grid-3">
-            <div class="form-group">
-                <label for="bezeichnung">Veranstaltungs-Name</label>
-                <input type="text" id="bezeichnung" required placeholder="z.B. Sommerturnier 2026">
+        <div class="turnier-layout">
+            <!-- LINKE SPALTE: Stammdaten + Zahlungsinformationen -->
+            <div class="turnier-col-left">
+                <div class="mdc-card turnier-section-card">
+                    <div class="turnier-card-header">
+                        <span class="material-icons">badge</span>
+                        <h2>Grunddaten</h2>
+                    </div>
+                    <div class="turnier-card-body">
+                        <div class="form-group">
+                            <label for="bezeichnung">Veranstaltungs-Name</label>
+                            <input type="text" id="bezeichnung" required placeholder="z.B. Sommerturnier 2026">
+                        </div>
+                        <div class="form-group">
+                            <label for="datum">Wettkampftag</label>
+                            <input type="date" id="datum" required>
+                        </div>
+                        <div class="form-group" style="display: grid; grid-template-columns: 90px 1fr; gap: 12px;">
+                            <div>
+                                <label for="plz">PLZ</label>
+                                <input type="text" id="plz" inputmode="numeric" maxlength="5" pattern="[0-9]{5}" placeholder="z.B. 48308">
+                            </div>
+                            <div>
+                                <label for="ort">Kampfstätte (Ort)</label>
+                                <input type="text" id="ort" required placeholder="z.B. Senden">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="bundesland">Bundesland</label>
+                            <select id="bundesland">
+                                <option value="">Bitte wählen...</option>
+                                <option value="Baden-Württemberg">Baden-Württemberg</option>
+                                <option value="Bayern">Bayern</option>
+                                <option value="Berlin">Berlin</option>
+                                <option value="Brandenburg">Brandenburg</option>
+                                <option value="Bremen">Bremen</option>
+                                <option value="Hamburg">Hamburg</option>
+                                <option value="Hessen">Hessen</option>
+                                <option value="Mecklenburg-Vorpommern">Mecklenburg-Vorpommern</option>
+                                <option value="Niedersachsen">Niedersachsen</option>
+                                <option value="Nordrhein-Westfalen">Nordrhein-Westfalen</option>
+                                <option value="Rheinland-Pfalz">Rheinland-Pfalz</option>
+                                <option value="Saarland">Saarland</option>
+                                <option value="Sachsen">Sachsen</option>
+                                <option value="Sachsen-Anhalt">Sachsen-Anhalt</option>
+                                <option value="Schleswig-Holstein">Schleswig-Holstein</option>
+                                <option value="Thüringen">Thüringen</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="ausrichter">Ausrichter (Verein)</label>
+                            <input type="text" id="ausrichter" required placeholder="z.B. Judo Club Senden">
+                        </div>
+                        <div class="form-group">
+                            <label for="anzahl_kampfflaechen">Bereitgestellte Matten (Flächen)</label>
+                            <input type="number" id="anzahl_kampfflaechen" min="1" value="1" required>
+                        </div>
+                        <div class="form-group" id="anmeldeschlussGroup" style="display: none;">
+                            <label for="anmeldeschluss">Anmeldeschluss (Frist)</label>
+                            <input type="date" id="anmeldeschluss">
+                        </div>
+                        <div class="form-group">
+                            <label for="ausschreibungInput">Ausschreibung (PDF)</label>
+                            <input type="file" id="ausschreibungInput" accept="application/pdf" style="display: none;">
+                            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                                <button type="button" class="btn btn-outlined" id="ausschreibungAuswaehlenBtn">
+                                    Datei auswählen
+                                </button>
+                                <span id="ausschreibungDateiname" style="font-size: 12px; color: var(--text-muted); font-weight: 700;"></span>
+                                <span class="material-icons" id="ausschreibungAnsehenBtn" title="Ausschreibung ansehen" style="display: none; cursor: pointer; color: var(--primary); font-size: 20px;">visibility</span>
+                                <span class="material-icons" id="ausschreibungEntfernenBtn" title="Ausschreibung entfernen" style="display: none; cursor: pointer; color: #c62828; font-size: 20px;">delete</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mdc-card turnier-section-card">
+                    <div class="turnier-card-header">
+                        <span class="material-icons">payments</span>
+                        <h2>Zahlungsinformationen</h2>
+                    </div>
+                    <div class="turnier-card-body">
+                        <div class="form-group">
+                            <label for="startgeld">Startgeld</label>
+                            <input type="number" id="startgeld" min="0" max="999" step="1" placeholder="z.B. 8">
+                        </div>
+                        <div class="form-group">
+                            <label for="kontoinhaber">Kontoinhaber</label>
+                            <input type="text" id="kontoinhaber" placeholder="z.B. Judo Club Senden e.V.">
+                        </div>
+                        <div class="form-group">
+                            <label for="iban">IBAN</label>
+                            <input type="text" id="iban" maxlength="34" placeholder="z.B. DE12345678901234567890">
+                        </div>
+                        <div class="form-group">
+                            <label for="verwendungszweck">Verwendungszweck</label>
+                            <input type="text" id="verwendungszweck" placeholder="z.B. Startgeld + Vereinsname">
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="form-group">
-                <label for="datum">Wettkampftag</label>
-                <input type="date" id="datum" required>
-            </div>
-            <div class="form-group">
-                <label for="ort">Kampfstätte (Ort)</label>
-                <input type="text" id="ort" required placeholder="z.B. Senden">
+
+            <!-- RECHTE SPALTE: Austragungs-Altersklassen je Wettkampfform -->
+            <div class="turnier-col-right">
+                <div class="mdc-card turnier-section-card">
+                    <div class="turnier-card-header">
+                        <span class="material-icons">person</span>
+                        <h2>Einzel</h2>
+                    </div>
+                    <div class="turnier-card-body">
+                        <label class="turnier-ak-label">Austragungs-Altersklassen</label>
+                        <div id="altersklassenContainer">
+                            <!-- Je Geschlecht dynamisch befüllt (siehe turnier.js) -->
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mdc-card turnier-section-card">
+                    <div class="turnier-card-header">
+                        <span class="material-icons">groups_2</span>
+                        <h2>Mannschaft</h2>
+                    </div>
+                    <div class="turnier-card-body">
+                        <label class="turnier-ak-label">Austragungs-Altersklassen</label>
+                        <div id="mannschaftAltersklassenContainer">
+                            <!-- Je Geschlecht dynamisch befüllt (siehe turnier.js) -->
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <!-- ZEILE 2: Ausrichter, Matten, Anmeldeschluss (ohne Uhrzeit, nur im Online-Modus sichtbar) -->
-        <div class="grid-3">
-            <div class="form-group">
-                <label for="ausrichter">Ausrichter (Verein)</label>
-                <input type="text" id="ausrichter" required placeholder="z.B. Judo Club Senden">
-            </div>
-            <div class="form-group">
-                <label for="anzahl_kampfflaechen">Bereitgestellte Matten (Flächen)</label>
-                <input type="number" id="anzahl_kampfflaechen" min="1" value="1" required>
-            </div>
-            <div class="form-group" id="anmeldeschlussGroup" style="display: none;">
-                <label for="anmeldeschluss">Anmeldeschluss (Frist)</label>
-                <input type="date" id="anmeldeschluss">
-            </div>
-        </div>
-
-        <!-- ZEILE 3: Altersklassen Checkboxes -->
-        <div class="form-group" style="margin-top: 24px;">
-            <label style="margin-bottom: 8px; display: block; font-weight: 600;">Austragungs-Altersklassen</label>
-            <div id="altersklassenContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 4px; background: rgba(0,0,0,0.01);">
-                <!-- Checkboxes dynamically added -->
-            </div>
-        </div>
-
-        <!-- ZEILE 4: Zahlungsblock -->
-        <div class="form-group" style="margin-top: 24px;">
-            <label style="margin-bottom: 8px; display: block; font-weight: 600;">Zahlungsinformationen</label>
-            <div class="grid-zahlung">
-                <div class="form-group" style="margin: 0;">
-                    <label for="startgeld">Startgeld</label>
-                    <input type="number" id="startgeld" min="0" max="999" step="1" placeholder="z.B. 8">
-                </div>
-                <div class="form-group" style="margin: 0;">
-                    <label for="kontoinhaber">Kontoinhaber</label>
-                    <input type="text" id="kontoinhaber" placeholder="z.B. Judo Club Senden e.V.">
-                </div>
-                <div class="form-group" style="margin: 0;">
-                    <label for="iban">IBAN</label>
-                    <input type="text" id="iban" maxlength="34" placeholder="z.B. DE12345678901234567890">
-                </div>
-                <div class="form-group" style="margin: 0;">
-                    <label for="verwendungszweck">Verwendungszweck</label>
-                    <input type="text" id="verwendungszweck" placeholder="z.B. Startgeld + Vereinsname">
-                </div>
-            </div>
-        </div>
-
-        <div class="actions">
-            <button type="submit" class="btn btn-raised" id="submitBtn">Eintrag Speichern</button>
+        <!-- Fixierte Aktionsleiste am unteren Bildschirmrand -->
+        <div class="turnier-footer-bar">
+            <button type="button" class="btn btn-outlined turnier-footer-btn" id="exportTurnierBtn" style="display: none;">
+                <span class="material-icons">download</span>
+                Turnier exportieren
+            </button>
+            <button type="button" class="btn btn-outlined turnier-footer-btn" id="abbrechenBtn">Abbrechen</button>
+            <button type="submit" class="btn btn-raised turnier-footer-btn" id="submitBtn">Eintrag Speichern</button>
         </div>
     </form>
 </div>
 
 <!-- Externe JavaScript-Datei für die Logik einbinden -->
+<script src="/js/ausschreibung-viewer.js"></script>
 <script src="/js/turnier.js"></script>
 </body>
 </html>

@@ -371,6 +371,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             : null;
 
         try {
+            if (window.zeigeLadeModal) window.zeigeLadeModal('Pool wird zugeordnet…');
+
             // 1. Pool der Matte zuordnen
             const zuordnenRes = await fetch('/api/pools/kampfflaeche-zuordnen', {
                 method: 'PUT',
@@ -424,6 +426,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.error('[Matten] Fehler bei Zuordnung:', error);
             zeigeNotification('Fehler: ' + error.message, 'error');
             await ladeDaten();
+        } finally {
+            if (window.versteckeLadeModal) window.versteckeLadeModal();
         }
     }
 
@@ -484,6 +488,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             try {
                 aufteilenBtn.setAttribute('disabled', 'true');
                 aufteilenBtn.innerHTML = `<span class="material-icons icon-spin">sync</span>`;
+                if (window.zeigeLadeModal) window.zeigeLadeModal('Pools werden aufgeteilt…');
 
                 const response = await fetch('/api/pools/aufteilen', {
                     method: 'POST',
@@ -495,6 +500,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (result.success) {
                     zeigeNotification(result.message || 'Pools erfolgreich auf Kampfflächen verteilt.', 'success');
                     await ladeDaten();
+
+                    // Kampf-Menüpunkt live neu bewerten: durch die automatische Verteilung
+                    // könnten Matten gerade ihre ersten Pools erhalten haben.
+                    if (window.hajimeAktualisiereMenueSperren) {
+                        window.hajimeAktualisiereMenueSperren(['kampf']);
+                    }
                 } else {
                     zeigeNotification(result.error || 'Fehler beim Aufteilen.', 'error');
                 }
@@ -503,6 +514,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             } finally {
                 aufteilenBtn.removeAttribute('disabled');
                 aufteilenBtn.innerHTML = `<span class="material-icons" style="font-size: 18px;">auto_awesome</span>Pools aufteilen`;
+                if (window.versteckeLadeModal) window.versteckeLadeModal();
             }
         });
     }

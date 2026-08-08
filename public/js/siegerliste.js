@@ -10,6 +10,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const platzierungenBody = document.getElementById('platzierungenTableBody');
     const vereinswertungBody = document.getElementById('vereinswertungTableBody');
+    const mannschaftsErgebnisseSection = document.getElementById('mannschaftsErgebnisseSection');
+    const mannschaftsErgebnisseBody = document.getElementById('mannschaftsErgebnisseTableBody');
 
     // --- PLATZIERUNGEN JE POOL BERECHNEN (portiert aus dem früheren getStandings in pools.js,
     // liefert hier aber die Teilnehmer-Objekte statt fertig formatierter Strings, damit die
@@ -223,10 +225,53 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    // --- MANNSCHAFTSERGEBNISSE (eigene Tabellen, siehe pools/details-Ausblendung von
+    // typ='mannschaft' in poolController.js::getPoolsMitDetails) ---
+    async function ladeMannschaftsErgebnisse() {
+        if (!mannschaftsErgebnisseSection || !mannschaftsErgebnisseBody) return;
+        try {
+            const poolsRes = await fetch(`/api/mannschaften/pools?turnierId=${turnierId}`);
+            const pools = await poolsRes.json();
+            if (!Array.isArray(pools) || pools.length === 0) return;
+
+            const zeilen = [];
+            for (const pool of pools) {
+                const begegnungenRes = await fetch(`/api/mannschaftskaempfe?poolId=${pool.id}`);
+                const begegnungen = await begegnungenRes.json();
+                if (!Array.isArray(begegnungen)) continue;
+
+                for (const b of begegnungen) {
+                    if (!b.mannschaft1_id || !b.mannschaft2_id) continue; // noch offene Bracket-Platzhalter
+                    const team1 = b.mannschaft1_bezeichnung ? `${b.mannschaft1_bezeichnung} (${b.mannschaft1_verein})` : '–';
+                    const team2 = b.mannschaft2_bezeichnung ? `${b.mannschaft2_bezeichnung} (${b.mannschaft2_verein})` : '–';
+                    const siegerName = b.sieger_mannschaft_id
+                        ? (b.sieger_mannschaft_id === b.mannschaft1_id ? b.mannschaft1_bezeichnung : b.mannschaft2_bezeichnung)
+                        : (b.status === 'beendet' ? 'Unentschieden' : '–');
+                    zeilen.push(`
+                        <tr>
+                            <td style="font-weight: 700;">${pool.bezeichnung}</td>
+                            <td>${team1} vs. ${team2}</td>
+                            <td style="text-align: center;">${b.siegpunkte_mannschaft1}:${b.siegpunkte_mannschaft2}</td>
+                            <td>${siegerName}</td>
+                        </tr>
+                    `);
+                }
+            }
+
+            if (zeilen.length > 0) {
+                mannschaftsErgebnisseBody.innerHTML = zeilen.join('');
+                mannschaftsErgebnisseSection.style.display = 'block';
+            }
+        } catch (error) {
+            console.error('Fehler beim Laden der Mannschaftsergebnisse:', error);
+        }
+    }
+
     const printBtn = document.getElementById('printBtn');
     if (printBtn) {
         printBtn.addEventListener('click', () => window.print());
     }
 
     await ladeSiegerliste();
+    await ladeMannschaftsErgebnisse();
 });

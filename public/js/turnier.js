@@ -5,10 +5,124 @@ document.addEventListener('DOMContentLoaded', () => {
     const turnierForm = document.getElementById('turnierForm');
     const submitBtn = document.getElementById('submitBtn');
 
+    // --- ABBRECHEN: verwirft die Eingaben und kehrt zur Turnierliste zurück ---
+    const abbrechenBtn = document.getElementById('abbrechenBtn');
+    if (abbrechenBtn) {
+        abbrechenBtn.addEventListener('click', () => {
+            window.location.href = '/turniere.html';
+        });
+    }
+
+    // --- AUSSCHREIBUNG (PDF) ---
+    // ausschreibungPdfBase64: undefined = beim Speichern unverändert lassen, String = neue Datei
+    // hochladen, null = ausdrücklich entfernen (siehe baueAusschreibungFragment in
+    // turnierController.js — das Backend unterscheidet exakt diese drei Fälle).
+    let ausschreibungPdfBase64;
+    let ausschreibungNeueDatei = null; // File-Objekt der gerade ausgewählten, noch ungespeicherten Datei (für die lokale Vorschau)
+    let bestehendeAusschreibungVorhanden = false; // von ladeTurnierDaten anhand turnier.hat_ausschreibung gesetzt
+
+    const ausschreibungInput = document.getElementById('ausschreibungInput');
+    const ausschreibungAuswaehlenBtn = document.getElementById('ausschreibungAuswaehlenBtn');
+    const ausschreibungDateinameEl = document.getElementById('ausschreibungDateiname');
+    const ausschreibungAnsehenBtn = document.getElementById('ausschreibungAnsehenBtn');
+    const ausschreibungEntfernenBtn = document.getElementById('ausschreibungEntfernenBtn');
+
+    function liesDateiAlsBase64(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result.split(',')[1]);
+            reader.onerror = () => reject(new Error('Datei konnte nicht gelesen werden.'));
+            reader.readAsDataURL(file);
+        });
+    }
+
+    function aktualisiereAusschreibungAnzeige() {
+        if (!ausschreibungDateinameEl) return;
+
+        if (ausschreibungNeueDatei) {
+            ausschreibungDateinameEl.textContent = ausschreibungNeueDatei.name;
+            ausschreibungAnsehenBtn.style.display = 'inline-block';
+            ausschreibungEntfernenBtn.style.display = 'inline-block';
+        } else if (bestehendeAusschreibungVorhanden) {
+            ausschreibungDateinameEl.textContent = 'Aktuell hinterlegt';
+            ausschreibungAnsehenBtn.style.display = 'inline-block';
+            ausschreibungEntfernenBtn.style.display = 'inline-block';
+        } else {
+            ausschreibungDateinameEl.textContent = 'Keine Ausschreibung hinterlegt';
+            ausschreibungAnsehenBtn.style.display = 'none';
+            ausschreibungEntfernenBtn.style.display = 'none';
+        }
+    }
+    aktualisiereAusschreibungAnzeige();
+
+    if (ausschreibungAuswaehlenBtn && ausschreibungInput) {
+        ausschreibungAuswaehlenBtn.addEventListener('click', () => ausschreibungInput.click());
+
+        ausschreibungInput.addEventListener('change', async () => {
+            const file = ausschreibungInput.files[0];
+            ausschreibungInput.value = '';
+            if (!file) return;
+
+            if (file.type !== 'application/pdf') {
+                const meldung = 'Bitte eine PDF-Datei auswählen.';
+                if (window.zeigeNotification) window.zeigeNotification(meldung, 'error');
+                else alert(meldung);
+                return;
+            }
+
+            // Selbe Grenze wie AUSSCHREIBUNG_MAX_MB in turnierController.js — vermeidet, dass
+            // erst nach dem vollständigen Base64-Encodieren/Hochladen ein Server-Fehler kommt.
+            const AUSSCHREIBUNG_MAX_MB = 10;
+            if (file.size > AUSSCHREIBUNG_MAX_MB * 1024 * 1024) {
+                const meldung = `Die Datei ist zu groß (max. ${AUSSCHREIBUNG_MAX_MB} MB).`;
+                if (window.zeigeNotification) window.zeigeNotification(meldung, 'error');
+                else alert(meldung);
+                return;
+            }
+
+            try {
+                ausschreibungPdfBase64 = await liesDateiAlsBase64(file);
+                ausschreibungNeueDatei = file;
+                aktualisiereAusschreibungAnzeige();
+            } catch (err) {
+                if (window.zeigeNotification) window.zeigeNotification(err.message, 'error');
+                else alert(err.message);
+            }
+        });
+    }
+
+    if (ausschreibungAnsehenBtn) {
+        ausschreibungAnsehenBtn.addEventListener('click', () => {
+            const titel = document.getElementById('bezeichnung').value || 'Ausschreibung';
+            if (ausschreibungNeueDatei) {
+                window.zeigeAusschreibungDatei(ausschreibungNeueDatei, titel);
+            } else if (turnierId) {
+                window.zeigeAusschreibung(turnierId, titel);
+            }
+        });
+    }
+
+    if (ausschreibungEntfernenBtn) {
+        ausschreibungEntfernenBtn.addEventListener('click', async () => {
+            const bestaetigt = window.zeigeZentraleBestaetigung
+                ? await window.zeigeZentraleBestaetigung('Soll die hinterlegte Ausschreibung entfernt werden?', 'Ausschreibung entfernen', 'delete_sweep')
+                : confirm('Soll die hinterlegte Ausschreibung entfernt werden?');
+            if (!bestaetigt) return;
+
+            ausschreibungPdfBase64 = null; // beim Speichern ausdrücklich entfernen
+            ausschreibungNeueDatei = null;
+            bestehendeAusschreibungVorhanden = false;
+            aktualisiereAusschreibungAnzeige();
+        });
+    }
+
     // Merkt sich das Grid-Element je Geschlecht, damit sowohl der "+"-Button als auch das
     // Nachtragen bereits gespeicherter freier Klassen (siehe ladeTurnierDaten) Zeilen an der
     // richtigen Stelle einfügen können.
     const altersklasseGridByGender = {};
+
+    // Analog für die Mannschafts-Altersklassen-Auswahl (siehe mannschaftAltersklassenContainer).
+    const mannschaftAltersklasseGridByGender = {};
 
     // Baut eine einzelne Checkbox-Zeile (inkl. DJB/Gewichtsnah-Auswahl) — genutzt sowohl für
     // die aus der Konfigurationsdatei geladenen Standardklassen als auch für frei benannte
@@ -16,16 +130,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // (istFrei=true) bekommen zusätzlich einen Lösch-Button, Standardklassen nicht.
     function erzeugeAltersklasseZeile(uniqueId, bezeichnungText, grid, istFrei = false) {
         const row = document.createElement('div');
-        row.style.cssText = "display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 8px; border-radius: 4px; transition: background 0.2s;";
+        row.className = 'turnier-ak-row';
 
         const lbl = document.createElement('label');
-        lbl.style.cssText = "display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; flex: 1;";
 
         const cb = document.createElement('input');
         cb.type = 'checkbox';
         cb.name = 'altersklasse_cb';
         cb.value = uniqueId;
-        cb.style.cssText = "accent-color: var(--primary); width: 18px; height: 18px;";
 
         const span = document.createElement('span');
         span.innerText = bezeichnungText;
@@ -38,43 +150,36 @@ document.addEventListener('DOMContentLoaded', () => {
             const deleteBtn = document.createElement('button');
             deleteBtn.type = 'button';
             deleteBtn.title = 'Klasse entfernen';
-            deleteBtn.className = 'material-icons';
-            deleteBtn.style.cssText = "background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 18px; padding: 2px; line-height: 1; border-radius: 4px;";
+            deleteBtn.className = 'material-icons turnier-ak-delete-btn';
             deleteBtn.innerText = 'close';
-            deleteBtn.addEventListener('mouseenter', () => { deleteBtn.style.color = '#c62828'; });
-            deleteBtn.addEventListener('mouseleave', () => { deleteBtn.style.color = 'var(--text-muted)'; });
             deleteBtn.addEventListener('click', () => row.remove());
             row.appendChild(deleteBtn);
         }
 
         const modeSelect = document.createElement('div');
         modeSelect.id = `modus_group_${uniqueId}`;
-        modeSelect.style.cssText = "display: none; align-items: center; gap: 8px;";
+        modeSelect.className = 'turnier-ak-mode-group';
 
         // Frei benannte Klassen haben keine vordefinierte DJB-Gewichtsklassen-Liste, gegen die
         // sich Teilnehmer einordnen ließen — dafür kommt nur "Gewichtsnah" infrage.
         if (!istFrei) {
             const radioDjbLbl = document.createElement('label');
-            radioDjbLbl.style.cssText = "font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 4px;";
             const radioDjb = document.createElement('input');
             radioDjb.type = 'radio';
             radioDjb.name = `modus_${uniqueId}`;
             radioDjb.value = 'djb';
             radioDjb.checked = true;
-            radioDjb.style.cssText = "accent-color: var(--primary);";
             radioDjbLbl.appendChild(radioDjb);
             radioDjbLbl.appendChild(document.createTextNode('DJB'));
             modeSelect.appendChild(radioDjbLbl);
         }
 
         const radioGwLbl = document.createElement('label');
-        radioGwLbl.style.cssText = "font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 4px;";
         const radioGw = document.createElement('input');
         radioGw.type = 'radio';
         radioGw.name = `modus_${uniqueId}`;
         radioGw.value = 'gewichtsnahe';
         radioGw.checked = istFrei;
-        radioGw.style.cssText = "accent-color: var(--primary);";
         radioGwLbl.appendChild(radioGw);
         radioGwLbl.appendChild(document.createTextNode('Gewichtsnah'));
         modeSelect.appendChild(radioGwLbl);
@@ -84,10 +189,10 @@ document.addEventListener('DOMContentLoaded', () => {
         cb.addEventListener('change', () => {
             if (cb.checked) {
                 modeSelect.style.display = 'flex';
-                row.style.background = 'rgba(0,0,0,0.03)';
+                row.classList.add('turnier-ak-row-active');
             } else {
                 modeSelect.style.display = 'none';
-                row.style.background = 'transparent';
+                row.classList.remove('turnier-ak-row-active');
             }
         });
 
@@ -120,6 +225,65 @@ document.addEventListener('DOMContentLoaded', () => {
             cb.checked = true;
             cb.dispatchEvent(new Event('change'));
         }
+    }
+
+    // Baut eine Checkbox-Zeile für die Mannschafts-Altersklassen-Auswahl. Anders als bei den
+    // Einzelwettkampf-Klassen gibt es hier keine DJB/Gewichtsnah-Umschaltung — die Auswahl legt
+    // nur fest, ob diese Altersklasse bei diesem Turnier für Mannschaftskämpfe zur Verfügung
+    // steht (filtert die Altersklassen-Auswahl beim Anlegen von Mannschafts-Pools, siehe
+    // mannschaften.js).
+    function erzeugeMannschaftAltersklasseZeile(uniqueId, bezeichnungText, grid, istFrei = false) {
+        const row = document.createElement('div');
+        row.className = 'turnier-ak-row';
+
+        const lbl = document.createElement('label');
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.name = 'mannschaft_altersklasse_cb';
+        cb.value = uniqueId;
+
+        const span = document.createElement('span');
+        span.innerText = bezeichnungText;
+
+        lbl.appendChild(cb);
+        lbl.appendChild(span);
+        row.appendChild(lbl);
+
+        if (istFrei) {
+            const deleteBtn = document.createElement('button');
+            deleteBtn.type = 'button';
+            deleteBtn.title = 'Klasse entfernen';
+            deleteBtn.className = 'material-icons turnier-ak-delete-btn';
+            deleteBtn.innerText = 'close';
+            deleteBtn.addEventListener('click', () => row.remove());
+            row.appendChild(deleteBtn);
+        }
+
+        grid.appendChild(row);
+        return { row, cb };
+    }
+
+    // Fügt (auf Klick des "+"-Buttons) eine frei benannte Mannschafts-Altersklasse hinzu.
+    async function fuegeFreieMannschaftAltersklasseHinzu(gender) {
+        const grid = mannschaftAltersklasseGridByGender[gender];
+        if (!grid) return;
+
+        const eingabe = window.zeigeTextEingabe
+            ? await window.zeigeTextEingabe('Name der neuen Klasse', `Klasse hinzufügen (${gender})`, 'z.B. "U10" oder "Veteranen(Ü30)"')
+            : prompt('Name der neuen Klasse (z.B. "U10" oder "Veteranen(Ü30)"):');
+        if (!eingabe || !eingabe.trim()) return;
+
+        const name = eingabe.trim();
+        const uniqueId = `${gender}_${name}`;
+        let cb = document.querySelector(`input[name="mannschaft_altersklasse_cb"][value="${CSS.escape(uniqueId)}"]`);
+
+        if (!cb) {
+            const zeile = erzeugeMannschaftAltersklasseZeile(uniqueId, name, grid, true);
+            cb = zeile.cb;
+        }
+
+        cb.checked = true;
     }
 
     // --- NEUANLAGE: Verein des Users als austragenden Verein vorbelegen ---
@@ -171,13 +335,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Eingabefelder mit bestehenden Werten befüllen
             document.getElementById('bezeichnung').value = turnier.bezeichnung || '';
+            document.getElementById('plz').value = turnier.plz || '';
             document.getElementById('ort').value = turnier.ort || '';
+            document.getElementById('bundesland').value = turnier.bundesland || '';
             document.getElementById('ausrichter').value = turnier.ausrichter || '';
             document.getElementById('anzahl_kampfflaechen').value = turnier.anzahl_kampfflaechen || 1;
             document.getElementById('startgeld').value = turnier.startgeld !== null && turnier.startgeld !== undefined ? turnier.startgeld : '';
             document.getElementById('iban').value = turnier.iban || '';
             document.getElementById('kontoinhaber').value = turnier.kontoinhaber || '';
             document.getElementById('verwendungszweck').value = turnier.verwendungszweck || '';
+
+            bestehendeAusschreibungVorhanden = !!turnier.hat_ausschreibung;
+            aktualisiereAusschreibungAnzeige();
 
             // Datum für den HTML5-Datepicker formatieren (YYYY-MM-DD)
             if (turnier.datum) {
@@ -252,7 +421,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
+            // Checkboxes für ausgetragene Mannschafts-Altersklassen anhaken (einfache Liste von
+            // Schlüsseln, keine DJB/Gewichtsnah-Umschaltung wie bei den Einzelwettkampf-Klassen).
+            if (turnier.mannschafts_altersklassen && Array.isArray(turnier.mannschafts_altersklassen)) {
+                turnier.mannschafts_altersklassen.forEach(val => {
+                    let cb = document.querySelector(`input[name="mannschaft_altersklasse_cb"][value="${CSS.escape(val)}"]`);
 
+                    if (!cb) {
+                        // Frei benannte Klasse, die als Checkbox noch nicht existiert -> Zeile
+                        // im passenden Geschlecht nachbauen (analog zu den Einzelwettkampf-Klassen).
+                        const idx = val.indexOf('_');
+                        if (idx === -1) return;
+                        const gender = val.slice(0, idx);
+                        const name = val.slice(idx + 1);
+                        const grid = mannschaftAltersklasseGridByGender[gender];
+                        if (!grid) return;
+
+                        const zeile = erzeugeMannschaftAltersklasseZeile(val, name, grid, true);
+                        cb = zeile.cb;
+                    }
+
+                    cb.checked = true;
+                });
+            }
 
         } catch (err) {
             if (window.zeigeNotification) {
@@ -273,20 +464,19 @@ document.addEventListener('DOMContentLoaded', () => {
             const container = document.getElementById('altersklassenContainer');
             if (container) {
                 container.innerHTML = '';
-                container.style.display = 'block';
-                container.style.background = 'transparent';
-                container.style.border = 'none';
-                container.style.padding = '0';
 
                 const genders = ['männlich', 'weiblich', 'mixed'];
                 genders.forEach(gender => {
+                    const block = document.createElement('div');
+                    block.className = 'turnier-ak-gender-block';
+
                     const secHeader = document.createElement('div');
-                    secHeader.style.cssText = "font-weight: bold; margin-top: 16px; margin-bottom: 8px; color: var(--primary); text-transform: capitalize; border-bottom: 1px solid var(--border); padding-bottom: 4px;";
+                    secHeader.className = 'turnier-ak-gender-title';
                     secHeader.innerText = gender;
-                    container.appendChild(secHeader);
+                    block.appendChild(secHeader);
 
                     const grid = document.createElement('div');
-                    grid.style.cssText = "display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 4px; background: rgba(0,0,0,0.01);";
+                    grid.className = 'turnier-ak-grid';
                     altersklasseGridByGender[gender] = grid;
 
                     if (data[gender] && data[gender].length > 0) {
@@ -295,17 +485,59 @@ document.addEventListener('DOMContentLoaded', () => {
                         });
                     }
 
-                    container.appendChild(grid);
+                    block.appendChild(grid);
 
                     // Frei benannte Klasse hinzufügen (z.B. "U10" oder "Veteranen(Ü30)") — nur
                     // für dieses Geschlecht, analog zu den fest vorgegebenen DJB-Klassen.
                     const addBtn = document.createElement('button');
                     addBtn.type = 'button';
-                    addBtn.className = 'btn btn-outlined';
-                    addBtn.style.cssText = "margin: 0 0 16px 0; height: 32px; padding: 0 12px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px;";
-                    addBtn.innerHTML = '<span class="material-icons" style="font-size: 16px;">add</span>Klasse hinzufügen';
+                    addBtn.className = 'btn btn-outlined turnier-ak-add-btn';
+                    addBtn.innerHTML = '<span class="material-icons">add</span>Klasse hinzufügen';
                     addBtn.addEventListener('click', () => fuegeFreieAltersklasseHinzu(gender));
-                    container.appendChild(addBtn);
+                    block.appendChild(addBtn);
+
+                    container.appendChild(block);
+                });
+            }
+
+            // Mannschafts-Altersklassen-Container analog aufbauen — nutzt dieselben Klassen wie
+            // die Einzelwettkampf-Auswahl (siehe mannschaften.js: dort dient die
+            // Einzelwettkampf-Altersklassenliste ebenfalls als Grundlage für Mannschafts-Pools),
+            // aber ohne DJB/Gewichtsnah-Umschaltung.
+            const mannschaftContainer = document.getElementById('mannschaftAltersklassenContainer');
+            if (mannschaftContainer) {
+                mannschaftContainer.innerHTML = '';
+
+                const mannschaftGenders = ['männlich', 'weiblich'];
+                mannschaftGenders.forEach(gender => {
+                    const block = document.createElement('div');
+                    block.className = 'turnier-ak-gender-block';
+
+                    const secHeader = document.createElement('div');
+                    secHeader.className = 'turnier-ak-gender-title';
+                    secHeader.innerText = gender;
+                    block.appendChild(secHeader);
+
+                    const grid = document.createElement('div');
+                    grid.className = 'turnier-ak-grid';
+                    mannschaftAltersklasseGridByGender[gender] = grid;
+
+                    if (data[gender] && data[gender].length > 0) {
+                        data[gender].forEach(klasse => {
+                            erzeugeMannschaftAltersklasseZeile(`${gender}_${klasse.id}`, klasse.bezeichnung, grid);
+                        });
+                    }
+
+                    block.appendChild(grid);
+
+                    const addBtn = document.createElement('button');
+                    addBtn.type = 'button';
+                    addBtn.className = 'btn btn-outlined turnier-ak-add-btn';
+                    addBtn.innerHTML = '<span class="material-icons">add</span>Klasse hinzufügen';
+                    addBtn.addEventListener('click', () => fuegeFreieMannschaftAltersklasseHinzu(gender));
+                    block.appendChild(addBtn);
+
+                    mannschaftContainer.appendChild(block);
                 });
             }
 
@@ -348,6 +580,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 selectedAK[val] = modeRadio ? modeRadio.value : 'djb';
             });
 
+            const selectedMannschaftAK = [];
+            const mannschaftCbs = document.querySelectorAll('input[name="mannschaft_altersklasse_cb"]:checked');
+            mannschaftCbs.forEach(cb => selectedMannschaftAK.push(cb.value));
+
             let anmeldeschlussValue = null;
             const anmeldeschlussFeld = document.getElementById('anmeldeschluss');
             const groupEl = document.getElementById('anmeldeschlussGroup');
@@ -359,18 +595,31 @@ document.addEventListener('DOMContentLoaded', () => {
             // Payload zusammenbauen
             const payload = {
                 bezeichnung: document.getElementById('bezeichnung').value.trim(),
+                plz: document.getElementById('plz').value.trim(),
                 ort: document.getElementById('ort').value.trim(),
+                bundesland: document.getElementById('bundesland').value,
                 datum: document.getElementById('datum').value,
                 ausrichter: document.getElementById('ausrichter').value.trim(),
                 anzahl_kampfflaechen: parseInt(document.getElementById('anzahl_kampfflaechen').value, 10),
                 nutze_gewichtsklassen: 0,
                 altersklassen: selectedAK,
+                mannschafts_altersklassen: selectedMannschaftAK,
                 anmeldeschluss: anmeldeschlussValue,
                 startgeld: document.getElementById('startgeld').value,
                 iban: document.getElementById('iban').value.trim(),
                 kontoinhaber: document.getElementById('kontoinhaber').value.trim(),
                 verwendungszweck: document.getElementById('verwendungszweck').value.trim()
             };
+
+            // Ausschreibung nur mitschicken, wenn sich tatsächlich etwas geändert hat (neue Datei
+            // oder ausdrückliches Entfernen) — undefined lässt das Backend die bestehende PDF
+            // unangetastet (siehe baueAusschreibungFragment in turnierController.js).
+            if (ausschreibungPdfBase64 !== undefined) {
+                payload.ausschreibung_pdf_base64 = ausschreibungPdfBase64;
+                if (ausschreibungNeueDatei) {
+                    payload.ausschreibung_dateiname = ausschreibungNeueDatei.name;
+                }
+            }
 
             const startgeldWert = parseInt(payload.startgeld, 10) || 0;
             if (startgeldWert > 0 && (!payload.iban || !payload.kontoinhaber || !payload.verwendungszweck)) {
@@ -407,6 +656,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         setTimeout(() => {
                             window.location.href = `/turnier.html?id=${result.turnierId}`;
                         }, 1000);
+                    } else if (turnierId && ausschreibungPdfBase64 !== undefined) {
+                        // Update ohne Reload: lokalen Ausschreibungs-Status auf den gerade
+                        // gespeicherten Stand bringen (verhindert doppeltes Mitschicken beim
+                        // nächsten Speichern und aktualisiert "ansehen"/"entfernen"-Sichtbarkeit).
+                        bestehendeAusschreibungVorhanden = !!ausschreibungPdfBase64;
+                        ausschreibungNeueDatei = null;
+                        ausschreibungPdfBase64 = undefined;
+                        aktualisiereAusschreibungAnzeige();
                     }
                 } else {
                     if (window.zeigeNotification) {

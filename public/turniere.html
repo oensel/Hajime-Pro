@@ -183,9 +183,6 @@
         }
         .card-actions .btn {
             flex: 1;
-            padding: 8px 12px;
-            font-size: 12px;
-            height: 34px;
             margin: 0;
         }
         .no-data-msg {
@@ -265,9 +262,6 @@
             gap: 8px;
         }
         .pending-request-actions .btn {
-            padding: 6px 14px;
-            font-size: 12px;
-            height: auto;
             margin: 0;
         }
     </style>
@@ -307,6 +301,7 @@
     </div>
 </div>
 
+<script src="/js/ausschreibung-viewer.js"></script>
 <script>
     async function ladeBenutzerStatus() {
         const meResp = await fetch('/api/auth/me');
@@ -333,10 +328,13 @@
 
         if (!user.verein_freigegeben) {
             if (createBtn) createBtn.style.display = 'none';
+            const wartetText = user.verein_wartet_auf_super_admin
+                ? 'wartet noch auf Prüfung durch den Super-Admin (Erstregistrierung dieses Vereins)'
+                : 'wartet noch auf Freigabe durch ein bestehendes Mitglied';
             banner.innerHTML = `
                 <div class="status-banner pending">
                     <span class="material-icons">hourglass_top</span>
-                    <span>Ihr Beitritt zum Verein "${user.verein_name || ''}" wartet noch auf Freigabe durch ein bestehendes Mitglied. Bis zur Freigabe können Sie nur die Turnierliste ansehen, aber keine Turniere anlegen, bearbeiten oder auswählen.</span>
+                    <span>Ihr Beitritt zum Verein "${user.verein_name || ''}" ${wartetText}. Bis zur Freigabe können Sie nur die Turnierliste ansehen, aber keine Turniere anlegen, bearbeiten oder auswählen.</span>
                 </div>
             `;
             return false;
@@ -362,14 +360,14 @@
                 <div class="pending-requests-card">
                     <h3>Ausstehende Beitrittsanfragen</h3>
                     ${pending.map(p => `
-                        <div class="pending-request-row" data-user-id="${p.id}">
+                        <div class="pending-request-row" data-user-id="${p.id}" data-verein-id="${p.verein_id}">
                             <div>
                                 <div class="req-name">${p.vorname} ${p.nachname}</div>
-                                <div class="req-email">${p.email}</div>
+                                <div class="req-email">${p.email} &middot; ${p.verein_name}</div>
                             </div>
                             <div class="pending-request-actions">
-                                <button type="button" class="btn btn-raised" data-action="approve" data-user-id="${p.id}">Freigeben</button>
-                                <button type="button" class="btn btn-outlined" data-action="reject" data-user-id="${p.id}">Ablehnen</button>
+                                <button type="button" class="btn btn-raised" data-action="approve" data-user-id="${p.id}" data-verein-id="${p.verein_id}">Freigeben</button>
+                                <button type="button" class="btn btn-outlined" data-action="reject" data-user-id="${p.id}" data-verein-id="${p.verein_id}">Ablehnen</button>
                             </div>
                         </div>
                     `).join('')}
@@ -379,12 +377,13 @@
             pendingContainer.querySelectorAll('button[data-action]').forEach(btn => {
                 btn.addEventListener('click', async () => {
                     const userId = btn.getAttribute('data-user-id');
+                    const vereinId = btn.getAttribute('data-verein-id');
                     const action = btn.getAttribute('data-action');
                     try {
                         const resp = await fetch(`/api/vereine/${action}`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ userId })
+                            body: JSON.stringify({ userId, vereinId })
                         });
                         const data = await resp.json();
                         if (!resp.ok) throw new Error(data.error || 'Aktion fehlgeschlagen');
@@ -392,6 +391,7 @@
                             window.zeigeNotification(action === 'approve' ? 'Mitglied freigegeben.' : 'Anfrage abgelehnt.');
                         }
                         ladeUndRenderePendingRequests();
+                        if (window.hajimeAktualisiereGenehmigungsHinweis) window.hajimeAktualisiereGenehmigungsHinweis();
                     } catch (err) {
                         if (window.zeigeNotification) window.zeigeNotification(err.message, 'error');
                         else alert(err.message);
@@ -403,8 +403,34 @@
         }
     }
 
+    // Fragt den aktuellen Standort per Browser-Geolocation ab (für die "Entfernung"-Anzeige je
+    // Turnierkarte, siehe renderCard). Liefert null bei Ablehnung, Timeout oder wenn der Browser
+    // die API nicht unterstützt — die Seite funktioniert in allen Fällen weiterhin normal, nur
+    // ohne Entfernungsangabe.
+    function ermittleStandort() {
+        return new Promise((resolve) => {
+            if (!navigator.geolocation) {
+                resolve(null);
+                return;
+            }
+            navigator.geolocation.getCurrentPosition(
+                (position) => resolve({ lat: position.coords.latitude, lon: position.coords.longitude }),
+                () => resolve(null),
+                { timeout: 5000, maximumAge: 10 * 60 * 1000 }
+            );
+        });
+    }
+
     document.addEventListener('DOMContentLoaded', async () => {
         const container = document.getElementById('tournamentsContainer');
+
+        // Per Event-Delegation (statt inline onclick), damit der Turniername nicht in ein
+        // HTML-Attribut escaped werden muss — greift für alle Karten, auch nach jedem Neu-Rendern.
+        container.addEventListener('click', (e) => {
+            const link = e.target.closest('.ausschreibung-link');
+            if (!link) return;
+            window.zeigeAusschreibung(link.dataset.ausschreibungId, link.dataset.ausschreibungTitel);
+        });
 
         let currentUser;
         try {
@@ -433,7 +459,15 @@
         }
 
         try {
-            const response = await fetch('/api/turniere?zukuenftig=true');
+            // Aktuellen Standort per Browser-Geolocation ermitteln (freiwillig, mit kurzem
+            // Timeout) — bei Ablehnung/Timeout/fehlender Unterstützung bleibt "Entfernung"
+            // einfach aus, ohne den Rest der Seite zu blockieren.
+            const standort = await ermittleStandort();
+            const zukuenftigUrl = standort
+                ? `/api/turniere?zukuenftig=true&lat=${standort.lat}&lon=${standort.lon}`
+                : '/api/turniere?zukuenftig=true';
+
+            const response = await fetch(zukuenftigUrl);
             if (!response.ok) {
                 throw new Error('Fehler beim Laden der Turniere.');
             }
@@ -537,8 +571,18 @@
                                 </div>
                                 <div class="detail-item">
                                     <span class="material-icons">place</span>
-                                    <span>Ort: ${t.ort}</span>
+                                    <span>Ort: ${t.plz ? `${t.plz} ` : ''}${t.ort}${t.bundesland ? ` (${t.bundesland})` : ''}</span>
                                 </div>
+                                ${t.entfernung_km !== null && t.entfernung_km !== undefined ? `
+                                <div class="detail-item">
+                                    <span class="material-icons">near_me</span>
+                                    <span>Entfernung: ca. ${t.entfernung_km.toLocaleString('de-DE')} km (Luftlinie)</span>
+                                </div>` : ''}
+                                ${t.hat_ausschreibung ? `
+                                <div class="detail-item ausschreibung-link" style="cursor: pointer; color: var(--primary); font-weight: 700;" data-ausschreibung-id="${t.id}" data-ausschreibung-titel="${t.bezeichnung}">
+                                    <span class="material-icons">picture_as_pdf</span>
+                                    <span>Ausschreibung ansehen</span>
+                                </div>` : ''}
                                 <div class="detail-item">
                                     <span class="material-icons">business</span>
                                     <span>Ausrichter: ${t.ausrichter}</span>
@@ -561,6 +605,20 @@
                                         </div>
                                     </div>
                                 </div>
+                                ${(() => {
+                                    const mannschaftLabels = getAltersklassenLabels(t.mannschafts_altersklassen);
+                                    if (mannschaftLabels.length === 0) return '';
+                                    return `
+                                <div class="detail-item" style="align-items: flex-start;">
+                                    <span class="material-icons">groups_2</span>
+                                    <div>
+                                        <span>Mannschaften:</span>
+                                        <div class="ak-chip-row">
+                                            ${mannschaftLabels.map(l => `<span class="ak-chip">${l}</span>`).join('')}
+                                        </div>
+                                    </div>
+                                </div>`;
+                                })()}
                                 <div class="detail-item">
                                     <span class="material-icons">groups</span>
                                     <span>Gemeldete Teilnehmer: ${t.teilnehmer_anzahl || 0}</span>
@@ -574,7 +632,11 @@
                             </div>
                         </div>
                         <div class="card-actions">
-                            ${istFreigegeben ? `<button type="button" class="btn btn-raised" onclick="window.location.href='/teilnehmer.html?turnierId=${t.id}'">Auswählen</button>` : ''}
+                            <!-- "Auswählen" bleibt für fremde Turniere auch vor der eigenen Freigabe erreichbar
+                                 (Gastverein meldet nur eigene Athlet:innen an, serverseitig ohnehin auf den
+                                 eigenen Verein beschränkt, siehe teilnehmerController.js) — nur das Verwalten
+                                 des EIGENEN Turniers braucht die Freigabe. -->
+                            ${(istFreigegeben || !isEditable) ? `<button type="button" class="btn btn-raised" onclick="window.location.href='/teilnehmer.html?turnierId=${t.id}'">Auswählen</button>` : ''}
                             ${isEditable && istFreigegeben ? `<button type="button" class="btn btn-outlined" onclick="window.location.href='/turnier.html?id=${t.id}'">Bearbeiten</button>` : ''}
                         </div>
                     </div>

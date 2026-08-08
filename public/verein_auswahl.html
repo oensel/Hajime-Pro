@@ -155,7 +155,7 @@
 <div class="login-card">
     <div style="font-size: 48px; text-align: center; margin-bottom: 16px;">🏯</div>
     <h1 class="login-title">Verein wählen</h1>
-    <p class="login-subtitle">Bitte wählen Sie Ihren Verein aus oder legen Sie einen neuen an.<br>Beitritte zu bestehenden Vereinen müssen von einem bereits freigegebenen Mitglied bestätigt werden.</p>
+    <p class="login-subtitle">Bitte wählen Sie Ihren Verein aus oder legen Sie einen neuen an.<br>Jede Anfrage muss erst geprüft werden: von einem bereits freigegebenen Vereinsmitglied, oder — bei der allerersten Person eines Vereins — vom Super-Admin.</p>
 
     <form id="joinForm">
         <div class="form-group" style="position: relative;">
@@ -241,18 +241,23 @@
 
     async function init() {
         try {
+            // Diese Seite ist nicht nur der Erstbeitritt nach der Registrierung — ein Benutzer
+            // kann sie jederzeit erneut aufrufen, um einem WEITEREN Verein beizutreten (n:m-
+            // Mitgliedschaft, siehe hatVereinsZugriffAufTurnier). Kein Auto-Redirect mehr bei
+            // bereits vorhandenem Verein.
             const meResp = await fetch('/api/auth/me', { headers: authHeaders() });
-            if (meResp.ok) {
-                const meData = await meResp.json();
-                if (meData.user && meData.user.verein_id) {
-                    window.location.href = '/turniere.html';
-                    return;
-                }
-            } else if (meResp.status === 401) {
+            if (meResp.status === 401) {
                 localStorage.removeItem('dokume_token');
                 localStorage.removeItem('dokume_user');
                 window.location.href = '/login.html';
                 return;
+            }
+            if (meResp.ok) {
+                const meData = await meResp.json();
+                if (meData.user && Array.isArray(meData.user.vereine) && meData.user.vereine.length > 0) {
+                    document.querySelector('.login-subtitle').textContent =
+                        'Treten Sie einem weiteren Verein bei. Jede Anfrage muss erst geprüft werden: von einem bereits freigegebenen Vereinsmitglied, oder — bei der allerersten Person eines Vereins — vom Super-Admin.';
+                }
             }
 
             const listResp = await fetch('/api/vereine', { headers: authHeaders() });

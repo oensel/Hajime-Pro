@@ -1,46 +1,15 @@
-import {initialisiereScanner} from './qr-scanner.js';
+// Popup zum Anlegen/Bearbeiten eines Teilnehmers (inkl. QR-Scan), eingebettet in teilnehmer.html.
+// Ehemals eigene Seite waage.html — Formularlogik und Feld-/Klassenermittlung unverändert
+// übernommen, nur der Navigations-/Ladezyklus wurde auf ein Modal umgestellt.
+import { initialisiereScanner } from './qr-scanner.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     const urlParams = new URLSearchParams(window.location.search);
     const turnierId = urlParams.get('turnierId') || urlParams.get('id');
+    if (!turnierId) return;
 
-    if (!turnierId) {
-        alert('Fehler: Kein aktives Turnier ausgewählt! Bitte wählen oder erstellen Sie zuerst ein Turnier.');
-        window.location.href = '/waage.html';
-        return;
-    }
-
-    // --- CUSTOM CONFIRM DIALOG ---
-    const zeigeZentraleBestaetigung = (nachricht, titel = "Aktion bestätigen", icon = "help_outline") => {
-        return new Promise((resolve) => {
-            const modal = document.getElementById('customConfirmModal');
-            const txtMsg = document.getElementById('modalMessage');
-            const txtTitle = document.getElementById('modalTitle');
-            const icoEl = document.getElementById('modalIcon');
-            const btnConfirm = document.getElementById('modalConfirmBtn');
-            const btnCancel = document.getElementById('modalCancelBtn');
-
-            if (!modal || !txtMsg) {
-                resolve(confirm(nachricht));
-                return;
-            }
-
-            txtMsg.innerText = nachricht;
-            txtTitle.innerText = titel;
-            icoEl.innerText = icon;
-            modal.style.display = 'flex';
-
-            const schliessen = (ergebnis) => {
-                modal.style.display = 'none';
-                btnConfirm.replaceWith(btnConfirm.cloneNode(true));
-                btnCancel.replaceWith(btnCancel.cloneNode(true));
-                resolve(ergebnis);
-            };
-
-            document.getElementById('modalConfirmBtn').addEventListener('click', () => schliessen(true));
-            document.getElementById('modalCancelBtn').addEventListener('click', () => schliessen(false));
-        });
-    };
+    const modal = document.getElementById('waageModal');
+    if (!modal) return;
 
     // --- STRIKTE FORMULAR- UND LIZENZVALIDIERUNG ---
     const aktualisiereSpeicherButtonStatus = () => {
@@ -49,7 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const felder = [
             'vorname', 'nachname', 'judopass_id',
-            'geburtsdatum', 'lizenz_ablauf', 'geschlecht',
+            'geburtsjahr', 'lizenz_ablauf', 'geschlecht',
             'gewicht', 'altersklasse', 'gewichtsklasse'
         ];
 
@@ -61,19 +30,19 @@ document.addEventListener('DOMContentLoaded', () => {
         const lizenzIstGueltig = lizenzFeld && lizenzFeld.classList.contains('lizenz-valid');
 
         if (submitBtn) {
+            // Statt nur ausgegraut zu erscheinen, bleibt der Button komplett verborgen, bis das
+            // Formular tatsächlich speicherbar wäre.
             if (alleFelderGefuellt && lizenzIstGueltig) {
                 submitBtn.removeAttribute('disabled');
-                submitBtn.style.pointerEvents = 'auto';
-                submitBtn.style.opacity = '1';
+                submitBtn.style.display = '';
             } else {
                 submitBtn.setAttribute('disabled', 'true');
-                submitBtn.style.pointerEvents = 'none';
-                submitBtn.style.opacity = '0.35';
+                submitBtn.style.display = 'none';
             }
         }
     };
 
-    const felderIDs = ['vorname', 'nachname', 'judopass_id', 'verein', 'geburtsdatum', 'geschlecht', 'gewicht', 'altersklasse', 'gewichtsklasse'];
+    const felderIDs = ['vorname', 'nachname', 'judopass_id', 'verein', 'geburtsjahr', 'geschlecht', 'gewicht', 'altersklasse', 'gewichtsklasse'];
     felderIDs.forEach(id => {
         const inputEl = document.getElementById(id);
         if (inputEl) {
@@ -91,12 +60,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 aktualisiereSpeicherButtonStatus();
                 return;
             }
-            
+
             const ablaufDatum = new Date(wert);
             ablaufDatum.setHours(0, 0, 0, 0);
             const heute = new Date();
             heute.setHours(0, 0, 0, 0);
-            
+
             lizenzFeldGlobal.classList.remove('lizenz-valid', 'lizenz-expired');
             if (ablaufDatum >= heute) {
                 lizenzFeldGlobal.classList.add('lizenz-valid');
@@ -114,6 +83,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let djbKlassenZentrale = null;
     let turnierAltersklassen = null; // Schlüssel wie "männlich_U11" — vom Turnier aktivierte Klassen
     let wettkampfJahr = new Date().getFullYear();
+    // Steuert die Sichtbarkeit des Team-Name-Felds (siehe teamNameRow in teilnehmer.html) — nur
+    // bei Turnieren mit Mannschafts-Altersklassen ist eine Team-Zuordnung überhaupt möglich.
+    let turnierHatMannschaftKlassen = false;
     const altersklasseSelect = document.getElementById('altersklasse');
     const gewichtsklasseSelect = document.getElementById('gewichtsklasse');
     const geschlechtsSelect = document.getElementById('geschlecht');
@@ -230,13 +202,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // Klassen des Turniers geprüft: "U<Zahl>" (Alter < Zahl, kleinste Zahl gewinnt) und
     // "Ü<Zahl>"/"Veteranen" (Alter >= Zahl, ohne Zahl gilt "Veteranen" als Ü30; größte Zahl gewinnt).
     const bestimmeUndWaehleAltersklasse = () => {
-        const geburtsdatumFeld = document.getElementById('geburtsdatum');
+        const geburtsjahrFeld = document.getElementById('geburtsjahr');
 
-        if (!geburtsdatumFeld || !geburtsdatumFeld.value || !geschlechtsSelect || !geschlechtsSelect.value) {
+        if (!geburtsjahrFeld || !geburtsjahrFeld.value || !geschlechtsSelect || !geschlechtsSelect.value) {
             return;
         }
 
-        const geburtsJahr = parseInt(geburtsdatumFeld.value.split('-')[0]);
+        const geburtsJahr = parseInt(geburtsjahrFeld.value, 10);
         const alter = wettkampfJahr - geburtsJahr;
         const geschlecht = geschlechtsSelect.value;
 
@@ -305,25 +277,34 @@ document.addEventListener('DOMContentLoaded', () => {
                 djbKlassenZentrale = await resp.json();
             }
 
-            if (turnierId) {
-                try {
-                    const turnierResp = await fetch(`/api/turniere/${turnierId}`);
-                    if (turnierResp.ok) {
-                        const turnier = await turnierResp.json();
-                        if (turnier.datum) {
-                            wettkampfJahr = new Date(turnier.datum).getFullYear();
-                        }
-                        if (turnier.altersklassen) {
-                            if (Array.isArray(turnier.altersklassen)) {
-                                turnierAltersklassen = turnier.altersklassen;
-                            } else if (typeof turnier.altersklassen === 'object') {
-                                turnierAltersklassen = Object.keys(turnier.altersklassen);
-                            }
-                        }
+            try {
+                const turnierResp = await fetch(`/api/turniere/${turnierId}`);
+                if (turnierResp.ok) {
+                    const turnier = await turnierResp.json();
+                    if (turnier.datum) {
+                        wettkampfJahr = new Date(turnier.datum).getFullYear();
                     }
-                } catch (e) {
-                    console.error("Fehler beim Laden des Turniers für Altersklassen-Filter:", e);
+                    if (turnier.altersklassen) {
+                        let keys = [];
+                        if (Array.isArray(turnier.altersklassen)) {
+                            keys = turnier.altersklassen;
+                        } else if (typeof turnier.altersklassen === 'object') {
+                            keys = Object.keys(turnier.altersklassen);
+                        }
+                        // Leere Liste (Turnier trägt nur Mannschafts-, keine Einzel-Altersklassen
+                        // aus) bedeutet "keine Einschränkung bekannt", nicht "keine Klasse erlaubt"
+                        // — sonst bliebe das Altersklasse-Dropdown für solche Turniere komplett
+                        // leer (siehe turnierAltersklassenKeys-Herleitung in teilnehmer.js für
+                        // dieselbe Unterscheidung).
+                        if (keys.length > 0) turnierAltersklassen = keys;
+                    }
+
+                    turnierHatMannschaftKlassen = Array.isArray(turnier.mannschafts_altersklassen) && turnier.mannschafts_altersklassen.length > 0;
+                    const teamNameRow = document.getElementById('teamNameRow');
+                    if (teamNameRow) teamNameRow.style.display = turnierHatMannschaftKlassen ? '' : 'none';
                 }
+            } catch (e) {
+                console.error("Fehler beim Laden des Turniers für Altersklassen-Filter:", e);
             }
 
             geschlechtsSelect.addEventListener('change', () => {
@@ -331,7 +312,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 bestimmeUndWaehleAltersklasse();
             });
 
-            const geburtsFeld = document.getElementById('geburtsdatum');
+            const geburtsFeld = document.getElementById('geburtsjahr');
             geburtsFeld.addEventListener('change', bestimmeUndWaehleAltersklasse);
             geburtsFeld.addEventListener('input', bestimmeUndWaehleAltersklasse);
 
@@ -414,7 +395,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('nachname').value = athlet.nachname || '';
         document.getElementById('judopass_id').value = athlet.judopass_id || athlet.judopassId || '';
         document.getElementById('verein').value = athlet.verein || '';
-        document.getElementById('geburtsdatum').value = athlet.geburtsdatum || '';
+        document.getElementById('geburtsjahr').value = athlet.geburtsjahr || '';
         document.getElementById('graduierung').value = athlet.graduierung || '';
 
         if (athlet.gewicht) {
@@ -428,9 +409,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (athlet.altersklasse) {
             document.getElementById('altersklasse').value = athlet.altersklasse;
             befehleGewichtsklassenDropdown();
-        } else if (athlet.geschlecht && athlet.geburtsdatum) {
+        } else if (athlet.geschlecht && athlet.geburtsjahr) {
             // Noch keine Altersklasse gesetzt (z.B. importierter Teilnehmer):
-            // anhand von Geburtsdatum + Geschlecht automatisch vorauswählen.
+            // anhand von Geburtsjahr + Geschlecht automatisch vorauswählen.
             bestimmeUndWaehleAltersklasse();
         }
         if (athlet.gewichtsklasse) {
@@ -446,6 +427,30 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    // Befüllt das Team-Name-Feld mit der aktuellen Mannschafts-Zuordnung eines bestehenden
+    // Teilnehmers (leer, falls (noch) keiner Mannschaft zugeordnet). Nutzt bewusst dieselbe
+    // /api/mannschaften-Quelle wie teamInfoByTeilnehmerId in teilnehmer.js, statt sich auf das
+    // reine Import-Merkmal fuer_mannschaft zu verlassen — das wäre nur eine Absichtserklärung
+    // ohne echte Team-Zuordnung.
+    const befuelleTeamNameFeld = async (teilnehmerId) => {
+        const feld = document.getElementById('mannschaft_name');
+        if (!feld) return;
+        feld.value = '';
+        if (!turnierHatMannschaftKlassen || !teilnehmerId) return;
+
+        try {
+            const resp = await fetch(`/api/mannschaften?turnierId=${turnierId}`);
+            if (!resp.ok) return;
+            const teams = await resp.json();
+            const eigenesTeam = (Array.isArray(teams) ? teams : []).find(t =>
+                (t.mitglieder || []).some(m => m.turnier_teilnehmer_id === parseInt(teilnehmerId))
+            );
+            if (eigenesTeam) feld.value = eigenesTeam.bezeichnung;
+        } catch (err) {
+            console.error('Fehler beim Laden der Mannschafts-Zuordnung:', err);
+        }
+    };
+
     // Setzt "Lizenz gültig bis" aus einem gescannten QR-Wert (inkl. Warnhinweis bei Ablauf).
     const setzeLizenzAusScan = (wert, anzeigeName = '') => {
         const lizenzFeld = document.getElementById('lizenz_ablauf');
@@ -457,19 +462,29 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // ID des per QR-Scan gefundenen Bestandsteilnehmers (für PUT statt POST beim Speichern).
+    // ID des im Editier-Modus bearbeiteten Teilnehmers bzw. des per QR-Scan gefundenen
+    // Bestandsteilnehmers (für PUT statt POST beim Speichern).
+    let editId = null;
     let scanMatchedId = null;
+
+    // Extrahiert das Geburtsjahr aus einem gescannten Wert — akzeptiert ein volles Datum (z.B.
+    // "2012-05-01" aus einem DokuMe-Judopass-QR) ebenso wie eine bereits reine Jahreszahl.
+    const ermittleJahrAusWert = (wert) => {
+        const str = String(wert || '').trim();
+        const jahresMatch = str.match(/^\d{4}/);
+        return jahresMatch ? jahresMatch[0] : '';
+    };
 
     // --- QR-DATA-MAPPING & WEBCAM INTERFACE ---
     const verarbeiteGescannteDaten = async (parsedData, istDokuMe) => {
         // Gescannte Daten in ein einheitliches Format überführen
-        let scanVorname = '', scanNachname = '', scanJudopassId = '', scanGeburtsdatum = '', scanLizenzAblauf = '', scanVerein = '';
+        let scanVorname = '', scanNachname = '', scanJudopassId = '', scanGeburtsjahr = '', scanLizenzAblauf = '', scanVerein = '';
 
         if (istDokuMe) {
             scanVorname = parsedData.FN || '';
             scanNachname = parsedData.LN || '';
             scanJudopassId = parsedData.NO || '';
-            scanGeburtsdatum = parsedData.DOB || '';
+            scanGeburtsjahr = ermittleJahrAusWert(parsedData.DOB);
             scanVerein = parsedData.TM || '';
             if (parsedData.exp) {
                 scanLizenzAblauf = new Date(parsedData.exp * 1000).toISOString().split('T')[0];
@@ -478,7 +493,7 @@ document.addEventListener('DOMContentLoaded', () => {
             scanVorname = parsedData.vorname || '';
             scanNachname = parsedData.nachname || '';
             scanJudopassId = parsedData.judopass_id || parsedData.judopassId || '';
-            scanGeburtsdatum = parsedData.geburtsdatum || '';
+            scanGeburtsjahr = ermittleJahrAusWert(parsedData.geburtsjahr || parsedData.geburtsdatum);
             scanVerein = parsedData.verein || '';
             scanLizenzAblauf = parsedData.lizenz_ablauf || '';
         }
@@ -497,12 +512,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     );
                 }
 
-                // 2. Kein Treffer über die Judopass-Nr -> über Vorname, Name und Geburtsdatum suchen
-                if (!treffer && scanVorname && scanNachname && scanGeburtsdatum) {
+                // 2. Kein Treffer über die Judopass-Nr -> über Vorname, Name und Geburtsjahr suchen
+                if (!treffer && scanVorname && scanNachname && scanGeburtsjahr) {
                     treffer = bestehendeTeilnehmer.find(t =>
                         (t.vorname || '').trim().toLowerCase() === scanVorname.trim().toLowerCase() &&
                         (t.nachname || '').trim().toLowerCase() === scanNachname.trim().toLowerCase() &&
-                        (t.geburtsdatum || '').toString().slice(0, 10) === scanGeburtsdatum.toString().slice(0, 10)
+                        String(t.geburtsjahr || '') === scanGeburtsjahr
                     );
                 }
             }
@@ -514,6 +529,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Bestehenden Teilnehmer laden und mit den QR-Daten aktualisieren
             fuelleFormularFelder(treffer);
             scanMatchedId = treffer.id;
+            await befuelleTeamNameFeld(treffer.id);
 
             if (scanJudopassId) document.getElementById('judopass_id').value = scanJudopassId;
             setzeLizenzAusScan(scanLizenzAblauf, `${treffer.vorname} ${treffer.nachname}`);
@@ -524,7 +540,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (scanVorname) document.getElementById('vorname').value = scanVorname;
             if (scanNachname) document.getElementById('nachname').value = scanNachname;
             if (scanJudopassId) document.getElementById('judopass_id').value = scanJudopassId;
-            if (scanGeburtsdatum) document.getElementById('geburtsdatum').value = scanGeburtsdatum;
+            if (scanGeburtsjahr) document.getElementById('geburtsjahr').value = scanGeburtsjahr;
             if (scanVerein) document.getElementById('verein').value = scanVerein;
             setzeLizenzAusScan(scanLizenzAblauf, `${scanVorname} ${scanNachname}`.trim());
         }
@@ -546,34 +562,79 @@ document.addEventListener('DOMContentLoaded', () => {
 
     initialisiereScanner(verarbeiteGescannteDaten);
 
-    // --- EXKLUSIVER EDITIER-MODUS LADE-TRIGGER ---
-    const editId = urlParams.get('editId');
+    // --- MODAL ÖFFNEN/SCHLIESSEN ---
+    const teilnehmerForm = document.getElementById('teilnehmerForm');
+    const kampfbereitBtn = document.getElementById('kampfbereitBtn');
+    const waageModalTitle = document.getElementById('waageModalTitle');
 
-    const ladeBestehendeTeilnehmerDaten = async () => {
-        if (!editId) return;
+    const setzeFormularZurueck = () => {
+        teilnehmerForm.reset();
+        document.getElementById('lizenz_ablauf').classList.remove('lizenz-valid', 'lizenz-expired');
+        const startgeldCheckbox = document.getElementById('startgeld_bezahlt');
+        if (startgeldCheckbox) startgeldCheckbox.checked = false;
+        gewichtsklasseSelect.innerHTML = '<option value="" disabled selected hidden>Bitte Altersklasse wählen...</option>';
+        if (kampfbereitBtn) {
+            kampfbereitBtn.style.display = 'none';
+            delete kampfbereitBtn.dataset.teilnehmerId;
+        }
+        scanMatchedId = null;
+        aktualisiereSpeicherButtonStatus();
+    };
 
+    const ladeBestehendeTeilnehmerDaten = async (id) => {
         try {
-            const response = await fetch(`/api/teilnehmer/${editId}`);
+            const response = await fetch(`/api/teilnehmer/${id}`);
             if (!response.ok) throw new Error('Daten konnten nicht geladen werden.');
             const athlet = await response.json();
-
-            const formTitle = document.getElementById('formTitle');
-            if (formTitle) formTitle.innerText = "Teilnehmer bearbeiten";
-
             fuelleFormularFelder(athlet);
+            await befuelleTeamNameFeld(id);
             aktualisiereSpeicherButtonStatus();
-
         } catch (err) {
             window.zeigeNotification('Fehler beim Laden des Profils: ' + err.message, 'error');
         }
     };
 
+    // Schließt den Scanner mit, falls er beim Schließen des Modals noch aktiv ist (gibt die
+    // Webcam frei) — nutzt bewusst den bestehenden Klick-Handler aus qr-scanner.js statt die
+    // Stream-Logik hier zu duplizieren.
+    const schliesseScannerFallsAktiv = () => {
+        const scannerContainer = document.getElementById('scannerContainer');
+        if (scannerContainer && scannerContainer.style.display !== 'none') {
+            document.getElementById('stopScanBtn')?.click();
+        }
+    };
+
+    const schliesseModal = () => {
+        modal.style.display = 'none';
+        schliesseScannerFallsAktiv();
+        editId = null;
+    };
+
+    // Öffnet das Popup: ohne id für einen neuen Teilnehmer, mit id zum Bearbeiten eines
+    // bestehenden. Global exponiert, da teilnehmer.js (kein Modul) den "Hinzufügen"-Button und
+    // das Bearbeiten-Icon je Tabellenzeile darauf verdrahtet.
+    window.oeffneWaageModal = (id = null, { mitScan = false } = {}) => {
+        editId = id || null;
+        setzeFormularZurueck();
+        waageModalTitle.innerText = editId ? 'Teilnehmer bearbeiten' : 'Teilnehmer hinzufügen';
+        modal.style.display = 'flex';
+        if (editId) {
+            ladeBestehendeTeilnehmerDaten(editId);
+        } else if (mitScan) {
+            // Über den "Scan"-Button in der Toolbar geöffnet: Kamera direkt aktivieren, statt
+            // erst das leere Formular zu zeigen und den Scan-Button erneut anklicken zu lassen.
+            document.getElementById('startScanBtn')?.click();
+        }
+    };
+
+    document.getElementById('waageModalClose')?.addEventListener('click', schliesseModal);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) schliesseModal();
+    });
+
     const initPage = async () => {
         await ladeDjbKlassenKonfiguration();
         await ladeGraduierungenKonfiguration();
-        if (editId) {
-            await ladeBestehendeTeilnehmerDaten();
-        }
     };
     initPage();
 
@@ -600,9 +661,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- FORMULAR HANDLING & RESET LOGIK ---
-    const teilnehmerForm = document.getElementById('teilnehmerForm');
     const resetBtn = document.getElementById('resetBtn');
-    const kampfbereitBtn = document.getElementById('kampfbereitBtn');
 
     if (kampfbereitBtn) {
         kampfbereitBtn.addEventListener('click', async () => {
@@ -616,6 +675,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     window.zeigeNotification('Kampfbereitschaft bestätigt.', 'success');
                     kampfbereitBtn.style.display = 'none';
                     delete kampfbereitBtn.dataset.teilnehmerId;
+                    if (window.ladeTeilnehmerListe) window.ladeTeilnehmerListe();
                 } else {
                     window.zeigeNotification(result.error || 'Fehler bei der Bestätigung.', 'error');
                 }
@@ -628,25 +688,74 @@ document.addEventListener('DOMContentLoaded', () => {
     if (resetBtn && teilnehmerForm) {
         resetBtn.addEventListener('click', async () => {
             const bestaetigt = await window.zeigeZentraleBestaetigung(
-                'Möchten Sie die Eingaben für diesen Kämpfer wirklich löschen?',
-                'Eingabe zurücksetzen',
+                editId ? 'Möchten Sie die Bearbeitung abbrechen? Ungespeicherte Änderungen gehen verloren.' : 'Möchten Sie die Eingaben für diesen Kämpfer wirklich löschen?',
+                editId ? 'Bearbeitung abbrechen' : 'Eingabe zurücksetzen',
                 'delete_sweep'
             );
 
             if (bestaetigt) {
-                document.getElementById('lizenz_ablauf').classList.remove('lizenz-valid', 'lizenz-expired');
-                const startgeldCheckbox = document.getElementById('startgeld_bezahlt');
-                if (startgeldCheckbox) startgeldCheckbox.checked = false;
-                teilnehmerForm.reset();
                 if (editId) {
-                    window.location.href = `/teilnehmer.html?turnierId=${turnierId}`;
+                    schliesseModal();
                 } else {
-                    scanMatchedId = null;
-                    aktualisiereSpeicherButtonStatus();
+                    setzeFormularZurueck();
                 }
             }
         });
     }
+
+    // Gleicht die Mannschafts-Mitgliedschaft eines gespeicherten Teilnehmers mit dem Team-Name-
+    // Feld ab: legt bei Bedarf eine neue Mannschaft an (oder nutzt eine bestehende gleichen
+    // Namens/Vereins, um bei mehreren manuell nachgemeldeten Athleten nicht pro Athlet eine
+    // eigene Mannschaft zu erzeugen) und trägt den Teilnehmer dort ein; entfernt ihn aus einer
+    // zuvor zugeordneten, jetzt nicht mehr passenden Mannschaft. Nutzt bewusst dieselbe
+    // /api/mannschaften-Infrastruktur wie mannschaften.html (fuegeMitgliedHinzu) statt eigener
+    // Positions-/Anlege-Logik, damit Pool-Zuordnung und Gewichtsklassen-Position (siehe dortiges
+    // ordnePositionZuGewicht) konsistent bleiben.
+    const synchronisiereMannschaftsZuordnung = async (teilnehmerId, verein, teamName) => {
+        try {
+            const resp = await fetch(`/api/mannschaften?turnierId=${turnierId}`);
+            if (!resp.ok) return;
+            const teams = await resp.json();
+            const teamListe = Array.isArray(teams) ? teams : [];
+
+            const bisherigesTeam = teamListe.find(t => (t.mitglieder || []).some(m => m.turnier_teilnehmer_id === parseInt(teilnehmerId)));
+            const bisherigesMitglied = bisherigesTeam ? (bisherigesTeam.mitglieder || []).find(m => m.turnier_teilnehmer_id === parseInt(teilnehmerId)) : null;
+
+            // Unverändert -> nichts zu tun.
+            if ((bisherigesTeam?.bezeichnung || '') === teamName) return;
+
+            // Aus einer bisherigen Mannschaft entfernen (Team-Name geändert oder gelöscht).
+            if (bisherigesTeam && bisherigesMitglied) {
+                await fetch(`/api/mannschaften/${bisherigesTeam.id}/mitglieder/${bisherigesMitglied.id}`, { method: 'DELETE' });
+            }
+
+            if (!teamName) return;
+
+            // Bestehende Mannschaft gleichen Namens/Vereins wiederverwenden statt eine doppelte anzulegen.
+            let zielTeamId = teamListe.find(t => t.verein === verein && t.bezeichnung === teamName)?.id;
+            if (!zielTeamId) {
+                const createResp = await fetch('/api/mannschaften', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ turnier_id: parseInt(turnierId), verein, bezeichnung: teamName })
+                });
+                const createResult = await createResp.json();
+                if (!createResp.ok || !createResult.success) throw new Error(createResult.error || 'Mannschaft konnte nicht angelegt werden.');
+                zielTeamId = createResult.mannschaftId;
+            }
+
+            const mitgliedResp = await fetch(`/api/mannschaften/${zielTeamId}/mitglieder`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ turnier_teilnehmer_id: parseInt(teilnehmerId) })
+            });
+            const mitgliedResult = await mitgliedResp.json();
+            if (!mitgliedResp.ok || !mitgliedResult.success) throw new Error(mitgliedResult.error || 'Mannschafts-Zuordnung fehlgeschlagen.');
+        } catch (err) {
+            console.error('Fehler beim Abgleich der Mannschafts-Zuordnung:', err);
+            window.zeigeNotification?.('Teilnehmer gespeichert, aber die Mannschafts-Zuordnung konnte nicht aktualisiert werden: ' + err.message, 'error');
+        }
+    };
 
     if (teilnehmerForm) {
         teilnehmerForm.addEventListener('submit', async (e) => {
@@ -667,7 +776,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 nachname: document.getElementById('nachname').value,
                 judopass_id: document.getElementById('judopass_id').value,
                 verein: document.getElementById('verein').value,
-                geburtsdatum: document.getElementById('geburtsdatum').value,
+                geburtsjahr: parseInt(document.getElementById('geburtsjahr').value, 10),
                 graduierung: document.getElementById('graduierung').value || null,
                 lizenz_ablauf: document.getElementById('lizenz_ablauf').value,
                 geschlecht: document.getElementById('geschlecht').value,
@@ -677,8 +786,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 startgeld_bezahlt: document.getElementById('startgeld_bezahlt').checked
             };
 
-            // Beim URL-Editier-Modus wird immer die editId verwendet, sonst ein ggf.
-            // per QR-Scan gefundener Bestandsteilnehmer (sonst Neuanlage per POST).
+            // Vor setzeFormularZurueck() auslesen (das den Wert unten wieder leert).
+            const mannschaftNameEingabe = (document.getElementById('mannschaft_name')?.value || '').trim();
+
+            // Im Editier-Modus wird immer die editId verwendet, sonst ein ggf. per QR-Scan
+            // gefundener Bestandsteilnehmer (sonst Neuanlage per POST).
             const effektiveId = editId || scanMatchedId;
             const zielUrl = effektiveId ? `/api/teilnehmer/${effektiveId}` : '/api/teilnehmer';
             const methode = effektiveId ? 'PUT' : 'POST';
@@ -693,27 +805,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 const result = await response.json();
 
                 if (result.success || response.ok) {
+                    const gespeicherteId = effektiveId || result.teilnehmerId;
+
+                    if (turnierHatMannschaftKlassen && gespeicherteId) {
+                        await synchronisiereMannschaftsZuordnung(gespeicherteId, payload.verein, mannschaftNameEingabe);
+                        if (window.ladeMannschaftsZuordnung) await window.ladeMannschaftsZuordnung();
+                    }
+
                     window.zeigeNotification(effektiveId ? `Athlet ${payload.vorname} erfolgreich aktualisiert!` : `Athlet ${payload.vorname} erfolgreich eingewogen!`, 'success');
+                    if (window.ladeTeilnehmerListe) window.ladeTeilnehmerListe();
 
                     if (editId) {
-                        setTimeout(() => {
-                            window.location.href = `/teilnehmer.html?turnierId=${turnierId}`;
-                        }, 1200);
+                        setTimeout(schliesseModal, 800);
                     } else {
                         // Kampfbereit-Bestätigung anbieten, bevor das Formular für den nächsten
-                        // Athleten zurückgesetzt wird.
-                        const gespeicherteId = effektiveId || result.teilnehmerId;
+                        // Athleten zurückgesetzt wird (Modal bleibt für die Erfassung des
+                        // nächsten Kämpfers am Wiegetisch geöffnet).
+                        setzeFormularZurueck();
                         if (gespeicherteId && kampfbereitBtn) {
                             kampfbereitBtn.style.display = 'inline-flex';
                             kampfbereitBtn.dataset.teilnehmerId = gespeicherteId;
                         }
-
-                        document.getElementById('lizenz_ablauf').classList.remove('lizenz-valid', 'lizenz-expired');
-                        const startgeldCheckbox = document.getElementById('startgeld_bezahlt');
-                        if (startgeldCheckbox) startgeldCheckbox.checked = false;
-                        teilnehmerForm.reset();
-                        scanMatchedId = null;
-                        aktualisiereSpeicherButtonStatus();
                     }
                 } else {
                     window.zeigeNotification(result.error || 'Fehler beim Speichern', 'error');

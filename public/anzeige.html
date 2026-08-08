@@ -15,17 +15,73 @@
              Kämpfer schon vorbereiten können. Verschwindet über "Nächsten Kampf holen" oder
              "Overlay schließen" (siehe closeOverlay()/naechstenKampfHolen() in scoreboard.js). -->
         <div id="ovVorschau" class="overlay overlay-vorschau">
-            <div class="vorschau-section">
-                <div class="vorschau-titel">Als nächstes</div>
-                <div class="vorschau-kampf" id="vorschauKampf1"></div>
+            <div class="vorschau-header">
+                <div class="vorschau-header-left">
+                    <div class="vorschau-header-bar"></div>
+                    <div>
+                        <div class="vorschau-header-title">Kommende Kämpfe</div>
+                        <div class="vorschau-header-sub" id="vorschauMatte"></div>
+                    </div>
+                </div>
+                <div class="vorschau-uhrzeit" id="vorschauUhrzeit"></div>
             </div>
-            <div class="vorschau-section vorschau-section-danach">
-                <div class="vorschau-titel">Danach</div>
-                <div class="vorschau-kampf" id="vorschauKampf2"></div>
+
+            <div class="vorschau-card vorschau-card-primary" id="vorschauCard1">
+                <div class="vorschau-card-top">
+                    <span class="vorschau-badge">Als nächstes</span>
+                </div>
+                <div class="vorschau-pool" id="vorschauPool1"></div>
+                <div class="vorschau-colorstrip">
+                    <span class="vorschau-strip" id="vorschauStripB1"></span>
+                    <span class="vorschau-strip weiss"></span>
+                </div>
+                <div class="vorschau-matchup">
+                    <div class="vorschau-fighter">
+                        <div class="vorschau-name" id="vorschauNameB1"></div>
+                        <div class="vorschau-club" id="vorschauClubB1"></div>
+                    </div>
+                    <div class="vorschau-vs">VS</div>
+                    <div class="vorschau-fighter">
+                        <div class="vorschau-name" id="vorschauNameW1"></div>
+                        <div class="vorschau-club" id="vorschauClubW1"></div>
+                    </div>
+                </div>
             </div>
-            <div class="vorschau-section vorschau-section-danach">
-                <div class="vorschau-titel">Im Anschluss</div>
-                <div class="vorschau-kampf" id="vorschauKampf3"></div>
+
+            <div class="vorschau-card vorschau-card-secondary" id="vorschauCard2">
+                <div class="vorschau-card-top">
+                    <span class="vorschau-badge">Danach</span>
+                </div>
+                <div class="vorschau-pool" id="vorschauPool2"></div>
+                <div class="vorschau-matchup">
+                    <div class="vorschau-fighter">
+                        <div class="vorschau-name" id="vorschauNameB2"></div>
+                        <div class="vorschau-club" id="vorschauClubB2"></div>
+                    </div>
+                    <div class="vorschau-vs">vs</div>
+                    <div class="vorschau-fighter">
+                        <div class="vorschau-name" id="vorschauNameW2"></div>
+                        <div class="vorschau-club" id="vorschauClubW2"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="vorschau-card vorschau-card-tertiary" id="vorschauCard3">
+                <div class="vorschau-card-top">
+                    <span class="vorschau-badge">Im Anschluss</span>
+                </div>
+                <div class="vorschau-pool" id="vorschauPool3"></div>
+                <div class="vorschau-matchup">
+                    <div class="vorschau-fighter">
+                        <div class="vorschau-name" id="vorschauNameB3"></div>
+                        <div class="vorschau-club" id="vorschauClubB3"></div>
+                    </div>
+                    <div class="vorschau-vs">vs</div>
+                    <div class="vorschau-fighter">
+                        <div class="vorschau-name" id="vorschauNameW3"></div>
+                        <div class="vorschau-club" id="vorschauClubW3"></div>
+                    </div>
+                </div>
             </div>
         </div>
 

@@ -1,5 +1,5 @@
 import express from 'express';
-import { createTurnier, updateTurnier, getTurnier, getTurniere, deleteTurnier, exportTurnier, importTurnier, importTurnierErgebnisse, veroeffentlicheTurnier, sageTurnierAb, beendeDurchfuehrung } from '../controllers/turnierController.js';
+import { createTurnier, updateTurnier, getTurnier, getTurniere, deleteTurnier, exportTurnier, importTurnier, importTurnierErgebnisse, veroeffentlicheTurnier, sageTurnierAb, beendeDurchfuehrung, ladeAusschreibung } from '../controllers/turnierController.js';
 import { requireAuth, requireTournamentEditAccess, requireVereinFreigabe } from '../middleware/auth.js';
 
 export function getTurnierRoutes(knex) {
@@ -15,6 +15,10 @@ export function getTurnierRoutes(knex) {
 
     // Export vor der generischen "/:id"-Route, damit "export" nicht als ID interpretiert wird
     router.get('/:id/export', (req, res) => exportTurnier(knex, req, res));
+
+    // Ausschreibungs-PDF ausliefern (Klick auf "Ausschreibung ansehen" in turniere.html) —
+    // ebenfalls vor der generischen "/:id"-Route
+    router.get('/:id/ausschreibung', (req, res) => ladeAusschreibung(knex, req, res));
 
     // Ergebnisse eines offline durchgeführten Turniers hochladen (nur online, Vereinsprüfung
     // erfolgt im Controller selbst, da sie strenger ist als requireTournamentEditAccess)

@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hajime Pro - Mannschaften</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <link rel="stylesheet" href="/css/mannschaften.css">
+    <script src="/js/menu.js"></script>
+</head>
+<body>
+
+<div class="kanji-left">柔</div>
+<div class="kanji-right">道</div>
+
+<div class="mdc-card">
+    <div class="form-title-area">
+        <span class="material-icons">groups_2</span>
+        <h1 id="formTitle">Mannschaften</h1>
+        <div class="title-action-group">
+
+            <button type="button" class="toolbar-btn" id="autoVerteilenBtn" title="Legt für nicht zugeordnete Mannschaften automatisch passende Pools nach Altersklasse und Geschlecht an und ordnet sie zu">
+                <span class="material-icons">auto_awesome</span>
+                <span>Automatisch verteilen</span>
+            </button>
+            <button type="button" class="toolbar-btn toolbar-btn-primary" id="neuerPoolBtn">
+                <span class="material-icons">add</span>
+                <span>Neuer Mannschafts-Pool</span>
+            </button>
+            <button type="button" class="toolbar-btn toolbar-btn-danger" id="alleLoeschenBtn" title="Löscht alle Mannschafts-Pools dieses Turniers (Mannschaften bleiben erhalten, werden nur entzogen)">
+                <span class="material-icons">delete_sweep</span>
+                <span>Alle Pools löschen</span>
+            </button>
+        </div>
+    </div>
+
+    <div id="mannschaftsPoolsContainer">
+        <p class="no-data">Mannschafts-Pools werden geladen...</p>
+    </div>
+</div>
+
+<!-- Modal: Mannschafts-Pool anlegen -->
+<div id="poolModal" class="modal-wrapper" style="display: none;">
+    <div class="mdc-card mannschaften-modal-card">
+        <div class="mannschaften-modal-header">
+            <span class="material-icons" style="font-size: 28px; color: var(--primary);">groups_2</span>
+            <h2>Mannschafts-Pool anlegen</h2>
+            <span class="material-icons mannschaften-modal-close" id="poolModalClose">close</span>
+        </div>
+        <form id="poolForm">
+            <div class="form-group">
+                <label for="poolBezeichnung">Bezeichnung</label>
+                <input type="text" id="poolBezeichnung" placeholder="z.B. U15 männlich Team" required>
+            </div>
+            <div class="mannschaften-form-row">
+                <div class="form-group">
+                    <label for="poolGeschlecht">Geschlecht</label>
+                    <select id="poolGeschlecht" required>
+                        <option value="männlich">männlich</option>
+                        <option value="weiblich">weiblich</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="poolAltersklasse">Altersklasse</label>
+                    <select id="poolAltersklasse" required></select>
+                </div>
+            </div>
+            <div class="mannschaften-form-row">
+                <div class="form-group">
+                    <label for="poolModus">Turniersystem</label>
+                    <select id="poolModus" required>
+                        <option value="Jeder-gegen-Jeden">Jeder gegen Jeden</option>
+                        <option value="Doppel-KO-8">Doppel-KO-8 (bis zu 8 Mannschaften)</option>
+                        <option value="Doppel-KO-16">Doppel-KO-16 (bis zu 16 Mannschaften)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="poolKampfzeit">Kampfzeit</label>
+                    <select id="poolKampfzeit">
+                        <option value="120">2 Min.</option>
+                        <option value="180" selected>3 Min.</option>
+                        <option value="240">4 Min.</option>
+                        <option value="300">5 Min.</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="poolGewichtsklassen">Gewichtsklassen (kommagetrennt)</label>
+                <input type="text" id="poolGewichtsklassen" placeholder="-43, -50, -60, +60">
+                <span class="mannschaften-hint" id="poolGewichtsklassenHint"></span>
+            </div>
+            <div class="mannschaften-modal-actions">
+                <button type="button" class="btn btn-outlined" id="poolModalCancel">Abbrechen</button>
+                <button type="submit" class="btn btn-raised">Pool anlegen</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Mannschaft anlegen -->
+<div id="teamModal" class="modal-wrapper" style="display: none;">
+    <div class="mdc-card mannschaften-modal-card">
+        <div class="mannschaften-modal-header">
+            <span class="material-icons" style="font-size: 28px; color: var(--primary);">shield</span>
+            <h2>Mannschaft anlegen</h2>
+            <span class="material-icons mannschaften-modal-close" id="teamModalClose">close</span>
+        </div>
+        <form id="teamForm">
+            <input type="hidden" id="teamPoolId">
+            <div class="form-group">
+                <label for="teamVerein">Verein</label>
+                <input type="text" id="teamVerein" required>
+            </div>
+            <div class="form-group">
+                <label for="teamBezeichnung">Bezeichnung</label>
+                <input type="text" id="teamBezeichnung" placeholder="z.B. Mannschaft 1" required>
+            </div>
+            <div class="mannschaften-modal-actions">
+                <button type="button" class="btn btn-outlined" id="teamModalCancel">Abbrechen</button>
+                <button type="submit" class="btn btn-raised">Mannschaft anlegen</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script src="/js/mannschaften.js"></script>
+</body>
+</html>

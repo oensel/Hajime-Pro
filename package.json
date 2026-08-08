@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "node src/app.js"
+    "start": "node src/app.js",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@material-design-icons/font": "^0.14.15",
@@ -13,9 +15,13 @@
     "jsqr": "^1.4.0",
     "knex": "^3.1.0",
     "material-components-web": "^14.0.0",
+    "nodemailer": "^6.9.15",
     "pg": "^8.11.5",
     "qrcode-generator": "^2.0.4",
     "sqlite3": "^5.1.7",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.2/xlsx-0.20.2.tgz"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1"
   }
 }

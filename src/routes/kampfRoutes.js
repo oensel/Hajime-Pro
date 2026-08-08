@@ -6,7 +6,9 @@ import {
     updateKampf,
     deleteKampf,
     updateKampfColor,
-    tauscheKaempfeReihenfolge
+    tauscheKaempfeReihenfolge,
+    getErsatzOptionen,
+    auswechseln
 } from '../controllers/kampfController.js';
 import { requireAuth, requireTournamentEditAccess, requireTurnierAktiv } from '../middleware/auth.js';
 
@@ -26,6 +28,8 @@ export function getKampfRoutes(knex) {
     router.put('/reihenfolge-tauschen', requireTournamentEditAccess(knex), aktiv, (req, res) => tauscheKaempfeReihenfolge(knex, req, res));
 
     router.get('/:id', requireTournamentEditAccess(knex), (req, res) => getKampf(knex, req, res));
+    router.get('/:id/ersatz-optionen', requireTournamentEditAccess(knex), (req, res) => getErsatzOptionen(knex, req, res));
+    router.put('/:id/auswechseln', requireTournamentEditAccess(knex), aktiv, (req, res) => auswechseln(knex, req, res));
     router.put('/:id', requireTournamentEditAccess(knex), aktiv, (req, res) => updateKampf(knex, req, res));
     router.put('/:id/color', requireTournamentEditAccess(knex), aktiv, (req, res) => updateKampfColor(knex, req, res));
     router.delete('/:id', requireTournamentEditAccess(knex), aktiv, (req, res) => deleteKampf(knex, req, res));

@@ -142,6 +142,70 @@
         </div>
     </div>
 
+    <!-- KÄMPFE DIESER MATTE: kommende Kämpfe (Vorschau) + beendete Kämpfe (mit Korrektur-
+         Möglichkeit, analog zu "Korrigieren" in kampf.html) -->
+    <div class="collapse-wrapper legend-margin-top">
+        <div class="collapse-container">
+            <div class="collapse-header" onclick="toggleCollapse('matteKaempfeSection', 'arrowMatteKaempfe')">
+                📋 Kämpfe dieser Matte <span id="arrowMatteKaempfe" class="arrow">▲</span>
+            </div>
+            <div id="matteKaempfeSection" class="collapse-content" style="padding: 16px 20px; display: block; font-family: sans-serif;">
+                <h3 style="margin: 0 0 10px 0; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; color: #ffc107;">Kommende Kämpfe</h3>
+                <div id="steuerungUpcomingList" style="margin-bottom: 24px;"></div>
+
+                <h3 style="margin: 0 0 10px 0; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; color: #28a745;">Beendete Kämpfe</h3>
+                <div id="steuerungFinishedList"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: beendeten Kampf korrigieren (analog zu kampf.html #resultModal) -->
+    <div id="steuerungResultModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(3px); z-index: 20000; align-items: center; justify-content: center;">
+        <div class="mdc-card" style="width: 90%; max-width: 420px; padding: 24px; border-radius: 8px; border: 2px solid var(--border); box-shadow: var(--shadow); background-color: var(--bg-card); font-family: Arial, sans-serif; color: var(--text-main);">
+            <h2 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Kampfergebnis korrigieren</h2>
+
+            <input type="hidden" id="steuerungModalKampfId">
+
+            <div style="margin-bottom: 16px;">
+                <label for="steuerungSiegerSelect" style="display:block; margin-bottom: 8px; font-weight: 700;">Sieger</label>
+                <select id="steuerungSiegerSelect" style="width: 100%; padding: 8px;"></select>
+            </div>
+
+            <div style="display: flex; gap: 16px; margin-bottom: 16px;">
+                <div style="flex: 1;">
+                    <label id="steuerungScoreLabel1" for="steuerungScore1" style="display:block; margin-bottom: 8px; font-weight: 700;">Score Kämpfer 1</label>
+                    <select id="steuerungScore1" style="width: 100%; padding: 8px;">
+                        <option value="0">0</option>
+                        <option value="1">1</option>
+                        <option value="5">5</option>
+                        <option value="7">7</option>
+                        <option value="10">10</option>
+                    </select>
+                </div>
+                <div style="flex: 1;">
+                    <label id="steuerungScoreLabel2" for="steuerungScore2" style="display:block; margin-bottom: 8px; font-weight: 700;">Score Kämpfer 2</label>
+                    <select id="steuerungScore2" style="width: 100%; padding: 8px;">
+                        <option value="0">0</option>
+                        <option value="1">1</option>
+                        <option value="5">5</option>
+                        <option value="7">7</option>
+                        <option value="10">10</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="margin-bottom: 24px;">
+                <label for="steuerungKampfzeitInput" style="display:block; margin-bottom: 8px; font-weight: 700;">Kampfzeit (Sekunden)</label>
+                <input type="number" id="steuerungKampfzeitInput" min="0" style="width: 100%; padding: 8px; box-sizing: border-box;">
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 12px;">
+                <button type="button" id="steuerungKorrekturAbbrechenBtn" class="btn-main" style="background-color: #5a6268;">Abbrechen</button>
+                <button type="button" id="steuerungKorrekturSpeichernBtn" class="btn-main" style="background-color: #28a745;">Speichern</button>
+            </div>
+        </div>
+    </div>
+
     <!-- HIER FOLGT DIE TASTATUR-LEGENDE GANZ UNTEN -->
     <!-- TASTATUR-LEGENDE ALS ZUSAMMENKLAPPBARER SEKTOR -->
     <div class="collapse-wrapper legend-margin-top">

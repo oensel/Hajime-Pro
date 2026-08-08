@@ -8,6 +8,9 @@ import { DoppelKo8Manager } from '../services/DoppelKo8Manager.js';
 import { DoppelKo16Manager } from '../services/DoppelKo16Manager.js';
 import { DoppelKo32Manager } from '../services/DoppelKo32Manager.js';
 import { GruppenUeberKreuzManager } from '../services/GruppenUeberKreuzManager.js';
+import { MannschaftJederGegenJedenManager } from '../services/MannschaftJederGegenJedenManager.js';
+import { MannschaftDoppelKo8Manager } from '../services/MannschaftDoppelKo8Manager.js';
+import { MannschaftDoppelKo16Manager } from '../services/MannschaftDoppelKo16Manager.js';
 import { ermittlePausensekunden } from '../shared/pausenRegel.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -19,6 +22,9 @@ const doppelKo8 = new DoppelKo8Manager();
 const doppelKo16 = new DoppelKo16Manager();
 const doppelKo32 = new DoppelKo32Manager();
 const ueberKreuz = new GruppenUeberKreuzManager();
+const mannschaftJederGegenJeden = new MannschaftJederGegenJedenManager();
+const mannschaftDoppelKo8 = new MannschaftDoppelKo8Manager();
+const mannschaftDoppelKo16 = new MannschaftDoppelKo16Manager();
 
 // Für genau 6 TeilnehmerInnen sind beide Systeme gültig — Gruppen-Überkreuz ist die
 // Voreinstellung (siehe waehleWettkampfsystem), Jeder-gegen-Jeden ist nachträglich in
@@ -78,7 +84,7 @@ function istU13OderU15(altersklasse) {
 // Gleichstand; bei der U15 ist Golden Score auf 3 Minuten (180 s) begrenzt, danach Hantei; ab
 // U18 gilt die unbegrenzte IJF-Regel ohne Hantei. Nicht erkannte/freie Klassen (Frauen, Männer,
 // Ü30 etc.) fallen auf die unbegrenzte Erwachsenen-Regel zurück.
-function ermittleGoldenScoreEinstellungen(altersklasse) {
+export function ermittleGoldenScoreEinstellungen(altersklasse) {
     const match = String(altersklasse || '').trim().match(/^U\s*(\d+)$/i);
     if (match) {
         const jahre = parseInt(match[1], 10);
@@ -273,6 +279,41 @@ async function initialisiereKaempfeFuerPool(knex, poolId, modus) {
     }
 }
 
+async function initialisiereBegegnungenFuerMannschaftsPool(knex, poolId, modus) {
+    if (modus === 'Doppel-KO-8') {
+        await mannschaftDoppelKo8.initialisierePool(knex, poolId);
+    } else if (modus === 'Doppel-KO-16') {
+        await mannschaftDoppelKo16.initialisierePool(knex, poolId);
+    } else {
+        await mannschaftJederGegenJeden.initialisierePool(knex, poolId);
+    }
+}
+
+// Wird von mannschaftController.js nach jeder Änderung der Mannschafts-Zusammensetzung eines
+// Pools aufgerufen (Team hinzugefügt/entfernt/umgehängt) — das Mannschafts-Pendant zu
+// regeneriereKampfplanFuerPool(). Anders als dort wird der Modus NICHT automatisch aus der
+// Teamanzahl neu bestimmt: Jeder-gegen-Jeden vs. Doppel-KO-8/16 ist bei Mannschaften eine
+// bewusste Wahl der Turnierleitung beim Pool-Anlegen, keine reine Funktion der Teamanzahl.
+// poolHatBereitsEchteKaempfe() funktioniert unverändert auch für Mannschafts-Pools, da die
+// Einzelkämpfe einer Begegnung ganz normale kaempfe-Zeilen mit demselben pool_id sind.
+export async function regeneriereMannschaftsPool(knex, poolId) {
+    if (!poolId) return;
+    if (await poolHatBereitsEchteKaempfe(knex, poolId)) return;
+
+    const pool = await knex('pools').where({ id: poolId }).first();
+    if (!pool || pool.typ !== 'mannschaft') return;
+
+    // Löscht per CASCADE auch alle zugehörigen kaempfe-Zeilen (kaempfe.mannschaftskampf_id).
+    await knex('mannschaftskaempfe').where({ pool_id: poolId }).del();
+    await initialisiereBegegnungenFuerMannschaftsPool(knex, poolId, pool.modus);
+
+    // Alle Team-Zuordnungsänderungen (anlegen/entfernen/verschieben eines Mitglieds, Team einem
+    // Pool zuordnen) laufen über diese Funktion — deshalb hier zentral auch den frühen Pool-
+    // Status nachziehen (siehe aktualisierePoolStatusNachAuslosung), statt das an jeder einzelnen
+    // Aufrufstelle in mannschaftController.js zu wiederholen.
+    await aktualisierePoolStatusNachAuslosung(knex, poolId);
+}
+
 // Setzt den Pool-Status nach einer (Neu-)Auslosung passend zum aktuellen Zustand: Pools ohne
 // Kampffläche -> 'teilnehmer_zugewiesen', bereits einer Matte zugeordnete Pools bleiben
 // 'matte_zugewiesen' (die Mattenzuordnung selbst wird hier nicht angefasst). Rührt Pools NICHT
@@ -280,13 +321,20 @@ async function initialisiereKaempfeFuerPool(knex, poolId, modus) {
 // direkt auf 'abgeschlossen' gesetzt hat) — sonst würde dieser Aufruf den Abschluss rückgängig
 // machen. Wird nur für Pools aufgerufen, die garantiert noch nicht 'gestartet' waren, BEVOR
 // initialisiereKaempfeFuerPool lief (Aufrufer prüfen das per poolHatBereitsEchteKaempfe).
+// Gilt gleichermaßen für Einzel- UND Mannschafts-Pools (letztere zählen zugeordnete Mannschaften
+// statt Teilnehmer) — ordnePoolZuKampfflaeche/setzeKampfflaecheReihenfolge/verteilePools rufen
+// diese Funktion bereits typ-unabhängig für jeden Pool auf.
 const FRUEHE_POOL_STATUS = new Set(['angelegt', 'teilnehmer_zugewiesen', 'matte_zugewiesen']);
 export async function aktualisierePoolStatusNachAuslosung(knex, poolId) {
     const pool = await knex('pools').where({ id: poolId }).first();
     if (!pool || !FRUEHE_POOL_STATUS.has(pool.status)) return;
-    const teilnehmerAnzahlRow = await knex('turnier_teilnehmer').where({ pool_id: poolId }).count('* as n').first();
-    const teilnehmerAnzahl = parseInt(teilnehmerAnzahlRow.n, 10);
-    const status = teilnehmerAnzahl === 0
+
+    const anzahlRow = pool.typ === 'mannschaft'
+        ? await knex('mannschaften').where({ pool_id: poolId }).count('* as n').first()
+        : await knex('turnier_teilnehmer').where({ pool_id: poolId }).count('* as n').first();
+    const anzahl = parseInt(anzahlRow.n, 10);
+
+    const status = anzahl === 0
         ? 'angelegt'
         : (pool.kampfflaeche_id != null ? 'matte_zugewiesen' : 'teilnehmer_zugewiesen');
     await knex('pools').where({ id: poolId }).update({ status });
@@ -314,8 +362,13 @@ export async function synchronisiereMattenStatus(knex, kampflaecheId) {
 }
 
 async function loeschePoolZuordnungenFuerTurnier(knex, turnierId) {
+    // Nur Einzelwettkampf-Pools betroffen: diese Funktion räumt vor einer (Neu-)Auslosung durch
+    // generierePools()/loescheAllePools() auf, beides ausschließlich Aktionen der
+    // Einzelwettkampf-Seite (pools.html). Mannschafts-Pools werden unabhängig davon auf der
+    // Mannschaften-Seite verwaltet und dürfen hierdurch nicht mitgelöscht werden.
     const altePools = await knex('pools')
         .where({ turnier_id: turnierId })
+        .andWhereNot({ typ: 'mannschaft' })
         .select('id', 'kampfflaeche_id');
 
     const altePoolIds = altePools.map(pool => pool.id);
@@ -334,9 +387,9 @@ async function loeschePoolZuordnungenFuerTurnier(knex, turnierId) {
         .where({ turnier_id: turnierId })
         .update({ pool_id: null });
 
-    await knex('pools')
-        .where({ turnier_id: turnierId })
-        .del();
+    if (altePoolIds.length > 0) {
+        await knex('pools').whereIn('id', altePoolIds).del();
+    }
 
     for (const kampflaecheId of betroffeneMatten) {
         await synchronisiereMattenStatus(knex, kampflaecheId);
@@ -495,12 +548,23 @@ async function planeUebergeordneteMattenReihenfolge(knex, turnierId) {
 }
 
 // Single Pool Manual CRUD Operations
+const MANNSCHAFTS_MODI = new Set(['Jeder-gegen-Jeden', 'Doppel-KO-8', 'Doppel-KO-16']);
+
 export async function createPool(knex, req, res) {
     try {
-        const { turnier_id, bezeichnung, modus, altersklasse, geschlecht, gewichtsklasse, kampfzeit_sekunden, golden_score_aktiv, golden_score_max_sekunden } = req.body;
+        const {
+            turnier_id, bezeichnung, modus, altersklasse, geschlecht, gewichtsklasse,
+            kampfzeit_sekunden, golden_score_aktiv, golden_score_max_sekunden,
+            typ, mannschafts_gewichtsklassen
+        } = req.body;
 
-        if (!turnier_id || !bezeichnung || !altersklasse || !geschlecht || !gewichtsklasse) {
+        const istMannschaftsPool = typ === 'mannschaft';
+
+        if (!turnier_id || !bezeichnung || !altersklasse || !geschlecht || (!istMannschaftsPool && !gewichtsklasse)) {
             return res.status(400).json({ success: false, error: 'Pflichtfelder fehlen (turnier_id, bezeichnung, altersklasse, geschlecht, gewichtsklasse).' });
+        }
+        if (istMannschaftsPool && !MANNSCHAFTS_MODI.has(modus)) {
+            return res.status(400).json({ success: false, error: 'Für Mannschaftspools ist nur Jeder-gegen-Jeden oder Doppel-KO-8/16 wählbar.' });
         }
 
         // Ohne explizite Angabe gilt die altersklassenabhängige DJB-Vorgabe (Art. 3.12.9) statt
@@ -513,7 +577,11 @@ export async function createPool(knex, req, res) {
             modus: modus || 'Jeder-gegen-Jeden',
             altersklasse,
             geschlecht,
-            gewichtsklasse,
+            gewichtsklasse: istMannschaftsPool ? null : gewichtsklasse,
+            typ: istMannschaftsPool ? 'mannschaft' : 'einzel',
+            mannschafts_gewichtsklassen: istMannschaftsPool && Array.isArray(mannschafts_gewichtsklassen)
+                ? JSON.stringify(mannschafts_gewichtsklassen)
+                : null,
             kampfzeit_sekunden: parseInt(kampfzeit_sekunden) || 240,
             golden_score_aktiv: golden_score_aktiv !== undefined ? !!golden_score_aktiv : gsDefaults.aktiv,
             golden_score_max_sekunden: golden_score_max_sekunden !== undefined
@@ -572,7 +640,9 @@ function istAltersklasseAusgetragenServer(athlet, turnierAltersklassenKeys) {
 
 // Server-seitiges Gegenstück zu berechneStatus() in public/js/teilnehmer.js — muss exakt
 // dieselben fünf Kriterien prüfen, damit "rot in der Teilnehmerliste" und "blockiert die
-// Pool-Generierung" immer übereinstimmen.
+// Pool-Generierung" immer übereinstimmen. Die Judopass-Nummer selbst ist keine eigene
+// Voraussetzung mehr — die Lizenzprüfung (lizenzGueltig) deckt das ab, da sie an den Judopass
+// gebunden ist (siehe aendereStatusFelder in teilnehmerController.js).
 function istTeilnehmerStartberechtigt(athlet, turnier, turnierAltersklassenKeys) {
     const heuteStr = new Date().toISOString().split('T')[0];
     const turnierKostenlos = (parseFloat(turnier.startgeld) || 0) === 0;
@@ -580,10 +650,10 @@ function istTeilnehmerStartberechtigt(athlet, turnier, turnierAltersklassenKeys)
     const lizenzGueltig = !!athlet.lizenz_ablauf && athlet.lizenz_ablauf >= heuteStr;
     const startgeldBezahlt = turnierKostenlos || !!athlet.startgeld_bezahlt;
     const gewichtEingetragen = !!athlet.gewicht && parseFloat(athlet.gewicht) > 0;
-    const judopassVorhanden = !!(athlet.judopass_id && String(athlet.judopass_id).trim() !== '');
+    const gewogen = !!athlet.gewogen;
     const altersklasseGueltig = istAltersklasseAusgetragenServer(athlet, turnierAltersklassenKeys);
 
-    return lizenzGueltig && startgeldBezahlt && gewichtEingetragen && judopassVorhanden && altersklasseGueltig;
+    return lizenzGueltig && startgeldBezahlt && gewichtEingetragen && gewogen && altersklasseGueltig;
 }
 
 export async function generierePools(knex, req, res) {
@@ -601,11 +671,25 @@ export async function generierePools(knex, req, res) {
 
         const turnierAltersklassenKeys = ermittleTurnierAltersklassenKeys(turnier);
 
+        // Wer bereits konkret einer Mannschaft zugeordnet ist (mannschaft_mitglieder-Eintrag,
+        // nicht nur das reine Import-Merkmal fuer_mannschaft — siehe teilnehmer.js), nimmt an der
+        // Einzelwettkampf-Auslosung nur teil, wenn ausdrücklich "auch Einzelwettkampf" aktiviert
+        // wurde (Opt-in, siehe aendereStatusFelder in teilnehmerController.js). Ohne diesen Schalter
+        // würde derselbe Kämpfer sonst versehentlich doppelt eingeteilt (Pool UND Mannschaft).
+        const mannschaftsMitgliedIds = new Set(
+            await knex('mannschaft_mitglieder')
+                .join('mannschaften', 'mannschaft_mitglieder.mannschaft_id', 'mannschaften.id')
+                .where('mannschaften.turnier_id', turnierId)
+                .pluck('mannschaft_mitglieder.turnier_teilnehmer_id')
+        );
+
         // Nur kampfbereite Teilnehmer gehen in die eigentliche Poolbildung ein — nicht (mehr)
         // bestätigte Anmeldungen dürfen die Auslosung der übrigen nicht blockieren, sie werden
         // stattdessen einfach ignoriert (siehe nicht_erschienen-Übergang weiter unten). Vor jedem
         // destruktiven Schritt geprüft, damit kein zu kleiner Teilnehmerkreis bestehende Pools wegräumt.
-        const kampfbereiteTeilnehmer = teilnehmer.filter(t => t.status === 'kampfbereit');
+        const kampfbereiteTeilnehmer = teilnehmer.filter(t =>
+            t.status === 'kampfbereit' && (!mannschaftsMitgliedIds.has(t.id) || t.auch_einzelwettkampf)
+        );
         if (kampfbereiteTeilnehmer.length < 2) {
             return res.status(400).json({ success: false, error: 'Mindestens 2 Teilnehmer müssen als kampfbereit bestätigt sein, bevor Pools generiert werden können.' });
         }
@@ -854,7 +938,11 @@ export async function pruefeTeilnehmerlisteGesperrt(knex, req, res) {
 export async function getPoolsMitDetails(knex, req, res) {
     try {
         const { turnierId } = req.query;
-        const pools = await knex('pools').where({ turnier_id: turnierId });
+        // Mannschafts-Pools bewusst ausgeblendet: diese Ansicht (und pools.js — Drag&Drop
+        // einzelner Teilnehmer, Kämpfer-Bracket-Baum) ist strukturell auf Einzelwettkampf-Pools
+        // zugeschnitten. Mannschafts-Pools werden vollständig auf der eigenen
+        // Mannschaften-Seite (mannschaften.html) verwaltet und angezeigt.
+        const pools = await knex('pools').where({ turnier_id: turnierId }).andWhereNot({ typ: 'mannschaft' });
 
         const ergebnis = await Promise.all(pools.map(async (pool) => {
             const teilnehmer = await knex('turnier_teilnehmer').where({ pool_id: pool.id });
@@ -1059,7 +1147,7 @@ export async function loescheAllePools(knex, req, res) {
             return res.status(400).json({ success: false, error: 'turnierId ist erforderlich.' });
         }
 
-        const pools = await knex('pools').where({ turnier_id: turnierId }).select('id');
+        const pools = await knex('pools').where({ turnier_id: turnierId }).andWhereNot({ typ: 'mannschaft' }).select('id');
         for (const p of pools) {
             if (await poolHatBereitsEchteKaempfe(knex, p.id)) {
                 return res.status(409).json({
@@ -1203,6 +1291,16 @@ export async function ordnePoolZuKampfflaeche(knex, req, res) {
             });
 
             await planeKaempfeFuerKampfflaeche(knex, kampflaecheId);
+
+            // Die ALTE Matte muss ebenfalls neu geplant werden: ihre verbleibenden Pools waren
+            // beim letzten Planungslauf noch mit dem jetzt weggezogenen Pool interleaved (siehe
+            // "aktives Fenster"-Logik dort) — ohne diesen erneuten Aufruf behalten sie ihre alte,
+            // jetzt lückenhafte matten_reihenfolge und können die Mindestpausenregel zwischen zwei
+            // Kämpfen desselben Kämpfers/derselben Kämpferin verletzen (analog zum null-Zweig oben,
+            // der die alte Matte beim reinen Entfernen bereits korrekt neu plant).
+            if (oldMatId && oldMatId !== kampflaecheId) {
+                await planeKaempfeFuerKampfflaeche(knex, oldMatId);
+            }
         }
 
         await aktualisierePoolStatusNachAuslosung(knex, poolId);
@@ -1319,10 +1417,16 @@ export async function verteilePools(knex, req, res) {
             }
         }
         const verteilbarePools = pools.filter(p => !gesperrtePoolIds.has(p.id));
+        // Mannschafts-Pools laufen NICHT durch den unten stehenden Gewichts-/Altersklassen-
+        // Bin-Packing-Algorithmus mit (der ist für Einzelwettkampf-Pools gebaut: Gruppierung nach
+        // Gewichtsklasse, "jüngste weibliche Altersklasse zuerst" usw. ergeben für Mannschaften
+        // keinen Sinn) — sie werden weiter unten separat verteilt und je Matte ans Ende gehängt.
+        const verteilbareEinzelPools = verteilbarePools.filter(p => p.typ !== 'mannschaft');
+        const verteilbareMannschaftsPools = verteilbarePools.filter(p => p.typ === 'mannschaft');
 
         // Filter pools mit min. 1 Kämpfen
         const activePools = [];
-        for (const pool of verteilbarePools) {
+        for (const pool of verteilbareEinzelPools) {
             const teilnehmer = await knex('turnier_teilnehmer').where({ pool_id: pool.id });
             const kaempfe = await knex('kaempfe').where({ pool_id: pool.id });
             const n = teilnehmer.length;
@@ -1339,7 +1443,24 @@ export async function verteilePools(knex, req, res) {
             }
         }
 
-        if (activePools.length === 0) {
+        // Mannschafts-Pools: keine Teilnehmerzahl-Schätzung (Einzelkämpfer hängen nie direkt per
+        // pool_id an einem Mannschafts-Pool, sondern über mannschaften.pool_id) — stattdessen die
+        // zu diesem Zeitpunkt bereits erzeugten echten Einzelkämpfe der Begegnungen zählen (siehe
+        // mannschaftsBegegnungEngine.js, läuft bereits bei Team-Zuordnung/Automatisch verteilen).
+        const activeMannschaftsPools = [];
+        for (const pool of verteilbareMannschaftsPools) {
+            const kaempfe = await knex('kaempfe').where({ pool_id: pool.id });
+            const freilose = kaempfe.filter(kampf => kampf.status === 'freilos').length;
+            const gesamtKaempfe = Math.max(0, kaempfe.length - freilose);
+
+            if (gesamtKaempfe > 0) {
+                pool.gesamt_kaempfe = gesamtKaempfe;
+                pool.dauer_minuten = Math.ceil((gesamtKaempfe * pool.kampfzeit_sekunden) / 60);
+                activeMannschaftsPools.push(pool);
+            }
+        }
+
+        if (activePools.length === 0 && activeMannschaftsPools.length === 0) {
             return res.status(400).json({ success: false, error: 'Es gibt keine aktiven Pools mit Kämpfen zum Verteilen.' });
         }
 
@@ -1510,6 +1631,17 @@ export async function verteilePools(knex, req, res) {
             });
         }
 
+        // Mannschafts-Pools separat verteilen (einfaches Greedy-Load-Balancing über die aktuelle
+        // Matten-Auslastung durch die Einzelwettkampf-Pools) und je Matte ANS ENDE anhängen — sie
+        // werden erst eingeplant, wenn planeKaempfeFuerKampfflaeche() alle Pools mit niedrigerer
+        // matte_reihenfolge auf dieser Matte durchhat (siehe dortige "aktives Fenster"-Logik).
+        const mannschaftsPoolsSortiert = [...activeMannschaftsPools].sort((a, b) => b.dauer_minuten - a.dauer_minuten);
+        for (const pool of mannschaftsPoolsSortiert) {
+            matLoads.sort((a, b) => a.duration - b.duration);
+            matLoads[0].pools.push(pool);
+            matLoads[0].duration += pool.dauer_minuten;
+        }
+
         // Zuordnungen in der Datenbank aktualisieren (Transaktion)
         await knex.transaction(async (trx) => {
             // Zuerst alle noch verteilbaren (nicht gesperrten) Pools dieses Turniers von den
@@ -1550,22 +1682,43 @@ export async function verteilePools(knex, req, res) {
     }
 }
 
-// Sucht unter den gegebenen Pool-IDs den ersten (in Pool-Rotationsreihenfolge, dann Kampf-ID)
-// noch offenen Kampf, der das Prädikat erfüllt. Anders als eine reine Queue wird JEDER noch
-// offene Kampf eines Pools geprüft (nicht nur der jeweils vorderste) — nur so lässt sich auch
-// innerhalb eines einzelnen Pools frei umsortieren, wenn dessen eigene Grundreihenfolge
-// (z.B. die feste Jeder-gegen-Jeden-Paarungstabelle) bereits Pausenkonflikte enthält.
-function sucheKandidat(poolIdsZuPruefen, poolQueues, rotationsStart, praedikat) {
+// Sucht unter den gegebenen Pool-IDs den DRINGENDSTEN noch offenen Kampf, der das Prädikat
+// erfüllt: pro Pool zählt dabei nur dessen jeweils ERSTER Kampf, der das Prädikat erfüllt (Anders
+// als eine reine Queue wird dafür JEDER noch offene Kampf eines Pools geprüft, nicht nur der
+// vorderste — nur so lässt sich auch innerhalb eines einzelnen Pools frei umsortieren, wenn dessen
+// eigene Grundreihenfolge, z.B. die feste Jeder-gegen-Jeden-Paarungstabelle, bereits
+// Pausenkonflikte enthält). Unter den so ermittelten Kandidaten (höchstens einer pro Pool) gewinnt
+// dann NICHT einfach der zuerst in Pool-Rotationsreihenfolge gefundene, sondern der mit dem
+// kleinsten dringlichkeitFn()-Wert (kleinster verbleibender Pausenpuffer, siehe pausenPuffer()) —
+// sonst würde ein "unkritischer" Kandidat eines Pools (z.B. zwei ganz frische Kämpfer) einen
+// tatsächlich dringenderen Kandidaten eines anderen aktiven Pools blockieren, nur weil er zuerst an
+// der Reihe war. dringlichkeitFn ist optional: ohne sie verhält sich die Funktion wie zuvor
+// (erster Treffer in Pool-Rotationsreihenfolge gewinnt).
+function sucheKandidat(poolIdsZuPruefen, poolQueues, rotationsStart, praedikat, dringlichkeitFn) {
+    let bester = null;
+    let besteDringlichkeit = Infinity;
+
     for (let offset = 0; offset < poolIdsZuPruefen.length; offset++) {
         const poolId = poolIdsZuPruefen[(rotationsStart + offset) % poolIdsZuPruefen.length];
         const queue = poolQueues[poolId];
+
         for (const kampf of queue) {
-            if (praedikat(kampf, poolId)) {
+            if (!praedikat(kampf, poolId)) continue;
+
+            if (!dringlichkeitFn) {
                 return { kampf, poolId, gewaehlterOffset: offset };
             }
+
+            const dringlichkeit = dringlichkeitFn(kampf);
+            if (bester === null || dringlichkeit < besteDringlichkeit) {
+                besteDringlichkeit = dringlichkeit;
+                bester = { kampf, poolId, gewaehlterOffset: offset };
+            }
+            break; // nur der jeweils erste passende Kampf pro Pool ist dessen Kandidat
         }
     }
-    return null;
+
+    return bester;
 }
 
 // Hilfsfunktion: Ordnet alle noch ausstehenden ('bereit') Kämpfe einer Kampffläche optimal an.
@@ -1641,14 +1794,48 @@ export async function planeKaempfeFuerKampfflaeche(knex, kampfflaecheId) {
         return defizit; // <= 0 bedeutet: Pausenregel eingehalten
     }
 
-    // 4. Verbleibende Kämpfe pro Pool gruppieren (frei durchsuchbar, keine strikte FIFO-Queue)
+    // Wie DRINGEND ist es, GENAU DIESEN Kampf JETZT einzuplanen? Je kleiner der verbleibende
+    // Pausenpuffer eines Kämpfers (0 = gerade noch zulässig, größer = noch Luft bis zur Grenze),
+    // desto eher würde eine spätere Position die Pausenregel verletzen. Kämpfer ohne Vorkampf auf
+    // dieser Matte liefern keinen Beitrag (Infinity = beliebig verschiebbar) — ein Kampf zwischen
+    // zwei ganz frischen Kämpfern gilt daher als am wenigsten dringend und darf getrost warten,
+    // während ein knapp zulässiger Kandidat bevorzugt sofort verplant wird. Ohne diese Priorisierung
+    // (reine Pool-Rotationsreihenfolge wie zuvor) kann ein kleiner "Füll"-Pool mit lauter frischen
+    // Kämpfern fälschlich VOR einem dringenderen Kandidaten des anderen aktiven Pools gezogen
+    // werden und ist dann schon aufgebraucht, wenn er später als Lückenfüller gebraucht würde.
+    function pausenPuffer(kampf) {
+        const pool = poolById.get(kampf.pool_id);
+        const benoetigt = ermittlePausensekunden(pool.altersklasse);
+        let minPuffer = Infinity;
+        for (const kaempferId of [kampf.kaempfer1_id, kampf.kaempfer2_id]) {
+            if (!kaempferId) continue;
+            const letzte = letzteZeitProKaempfer.get(kaempferId);
+            if (letzte === undefined) continue;
+            minPuffer = Math.min(minPuffer, (laufendeZeit - letzte) - benoetigt);
+        }
+        return minPuffer;
+    }
+
+    // Mannschafts-Pools nehmen NICHT an der pausenoptimierten Umsortierung teil: DJB-Mannschafts-
+    // wettkämpfe laufen in einer festen, nach Gewichtsklassen geordneten Reihenfolge je Begegnung
+    // (siehe erzeugeEinzelkaempfeFuerBegegnung — legt die Kämpfe schon in dieser Reihenfolge an,
+    // ihre aufsteigende id spiegelt das also bereits wider). Sie werden weiter unten unverändert
+    // in dieser Reihenfolge ans Ende angehängt, statt wie Einzelwettkampf-Kämpfe frei nach
+    // Pausenlage zwischen Pools verschoben zu werden.
+    const einzelPoolIds = poolIds.filter(id => poolById.get(id)?.typ !== 'mannschaft');
+    const planbareMannschaftsKaempfe = planbareKaempfe
+        .filter(k => poolById.get(k.pool_id)?.typ === 'mannschaft')
+        .sort((a, b) => (poolById.get(a.pool_id)?.matte_reihenfolge ?? 0) - (poolById.get(b.pool_id)?.matte_reihenfolge ?? 0) || a.id - b.id);
+
+    // 4. Verbleibende Kämpfe pro (Einzelwettkampf-)Pool gruppieren (frei durchsuchbar, keine
+    // strikte FIFO-Queue)
     const poolQueues = {};
-    poolIds.forEach(id => { poolQueues[id] = planbareKaempfe.filter(k => k.pool_id === id); });
+    einzelPoolIds.forEach(id => { poolQueues[id] = planbareKaempfe.filter(k => k.pool_id === id); });
 
     // "Wenn möglich nicht mehr als zwei Pools gleichzeitig": aktives Fenster startet mit
     // höchstens 2 Pools, die tatsächlich noch offene Kämpfe haben; alle weiteren bleiben
     // zunächst "wartend" und werden nur bei Bedarf einzeln testweise herangezogen.
-    const poolIdsMitOffenenKaempfen = poolIds.filter(id => poolQueues[id].length > 0);
+    const poolIdsMitOffenenKaempfen = einzelPoolIds.filter(id => poolQueues[id].length > 0);
     let aktivePoolIds = poolIdsMitOffenenKaempfen.slice(0, 2);
     let wartendePoolIds = poolIdsMitOffenenKaempfen.slice(2);
 
@@ -1663,14 +1850,14 @@ export async function planeKaempfeFuerKampfflaeche(knex, kampfflaecheId) {
         }
         if (aktivePoolIds.length === 0) break;
 
-        // Schritt 1: pausenkonformer Kandidat unter den (bis zu 2) aktiven Pools
-        let treffer = sucheKandidat(aktivePoolIds, poolQueues, rotationsCursor, k => pausenDefizit(k) <= 0);
+        // Schritt 1: dringendster pausenkonformer Kandidat unter den (bis zu 2) aktiven Pools
+        let treffer = sucheKandidat(aktivePoolIds, poolQueues, rotationsCursor, k => pausenDefizit(k) <= 0, pausenPuffer);
 
         // Schritt 2: reicht das nicht, testweise EINEN weiteren (wartenden) Pool dieser Matte
         // für diesen einen Kampf hinzuziehen — "Kämpfe aus einem weiteren Pool heranziehen".
         if (!treffer && wartendePoolIds.length > 0) {
             const erweitert = [...aktivePoolIds, wartendePoolIds[0]];
-            treffer = sucheKandidat(erweitert, poolQueues, rotationsCursor, k => pausenDefizit(k) <= 0);
+            treffer = sucheKandidat(erweitert, poolQueues, rotationsCursor, k => pausenDefizit(k) <= 0, pausenPuffer);
         }
 
         // Schritt 3: immer noch nichts -> geringstes Pausen-Defizit wählen (Restfall, den die
@@ -1708,6 +1895,36 @@ export async function planeKaempfeFuerKampfflaeche(knex, kampfflaecheId) {
             if (indexImAktivenFenster !== -1) {
                 rotationsCursor = (indexImAktivenFenster + 1) % Math.max(aktivePoolIds.length, 1);
             }
+        }
+    }
+
+    // Mannschafts-Pool-Kämpfe dürfen erst dann überhaupt in die Warteschlange dieser Matte
+    // aufgenommen werden, wenn ALLE Einzelwettkampf-Pools dieser Matte fertig ausgekämpft sind
+    // ('kaempfe_beendet'/'abgeschlossen') — nicht nur, wenn gerade zufällig kein Einzelkampf
+    // 'bereit' ist (z.B. eine kurze Lücke zwischen zwei KO-Runden). Ohne diese explizite Sperre
+    // könnte eine solche Lücke einen Mannschaftskampf als "nächsten Kampf" einreihen, obwohl der
+    // Einzelwettkampf-Pool noch nicht fertig ist.
+    const einzelPools = pools.filter(p => p.typ !== 'mannschaft');
+    const alleEinzelPoolsAbgeschlossen = einzelPools.every(p => p.status === 'kaempfe_beendet' || p.status === 'abgeschlossen');
+
+    if (alleEinzelPoolsAbgeschlossen) {
+        // Mannschafts-Pool-Kämpfe unverändert in ihrer festen Reihenfolge ans Ende anhängen
+        // (siehe Kommentar oben) — sie nehmen an Schritt 4 (pausenoptimierte Umsortierung)
+        // nicht teil, die Pausen-Uhr wird aber der Vollständigkeit halber trotzdem weitergeführt.
+        for (const kampf of planbareMannschaftsKaempfe) {
+            neuGeplant.push(kampf);
+            const pool = poolById.get(kampf.pool_id);
+            laufendeZeit += (pool?.kampfzeit_sekunden || 240);
+            if (kampf.kaempfer1_id) letzteZeitProKaempfer.set(kampf.kaempfer1_id, laufendeZeit);
+            if (kampf.kaempfer2_id) letzteZeitProKaempfer.set(kampf.kaempfer2_id, laufendeZeit);
+        }
+    } else {
+        // Noch nicht dran: eine bereits vorher vergebene matten_reihenfolge zurücksetzen, damit
+        // sie sicher nicht als "nächster Kampf" vor einem noch offenen Einzelwettkampf-Pool
+        // erscheinen.
+        const zurueckzusetzen = planbareMannschaftsKaempfe.filter(k => k.matten_reihenfolge != null).map(k => k.id);
+        if (zurueckzusetzen.length > 0) {
+            await knex('kaempfe').whereIn('id', zurueckzusetzen).update({ matten_reihenfolge: null });
         }
     }
 
@@ -1774,7 +1991,7 @@ export async function getDashboardData(knex, req, res) {
         // 3. Für jede Kampffläche die Fights laden
         for (const kf of kampfflaechen) {
             // Alle Kämpfe dieser Kampffläche, die noch nicht beendet sind (bereit oder laufend), sortiert nach matten_reihenfolge
-            const fights = await knex('kaempfe')
+            let fights = await knex('kaempfe')
                 .join('pools', 'kaempfe.pool_id', '=', 'pools.id')
                 .leftJoin('turnier_teilnehmer as t1', 'kaempfe.kaempfer1_id', '=', 't1.id')
                 .leftJoin('turnier_teilnehmer as t2', 'kaempfe.kaempfer2_id', '=', 't2.id')
@@ -1792,6 +2009,24 @@ export async function getDashboardData(knex, req, res) {
                 )
                 .orderBy('kaempfe.matten_reihenfolge', 'asc')
                 .orderBy('kaempfe.id', 'asc');
+
+            // Mannschaftskampf-Einzelkämpfe dürfen erst als "bereit"/anspielbar erscheinen, wenn
+            // alle Einzelwettkampf-Pools dieser Matte fertig ausgekämpft sind (gleiche Regel wie
+            // in poolController.planeKaempfeFuerKampfflaeche und kampfController.getKaempfe).
+            const einzelPoolsAufMatte = pools.filter(p => p.kampfflaeche_id === kf.id && p.typ !== 'mannschaft');
+            const alleEinzelPoolsAbgeschlossen = einzelPoolsAufMatte.every(p => p.status === 'kaempfe_beendet' || p.status === 'abgeschlossen');
+            if (!alleEinzelPoolsAbgeschlossen) {
+                fights = fights.filter(f => !f.mannschaftskampf_id);
+            }
+
+            // Mannschaftskampf-Einzelkämpfe zeigen statt des reinen Pool-Namens "<Poolname>
+            // <Gewichtsklasse>" (siehe gleiche Logik in kampfController.getKaempfe).
+            for (const fight of fights) {
+                if (fight.mannschaft_gewichtsklasse) {
+                    const gewichtsklasse = String(fight.mannschaft_gewichtsklasse);
+                    fight.pool_bezeichnung = `${fight.pool_bezeichnung} ${/kg$/i.test(gewichtsklasse) ? gewichtsklasse : gewichtsklasse + ' kg'}`;
+                }
+            }
 
             // Aktueller Kampf (der erste mit status='gestartet' oder falls keiner, evtl null)
             const currentFight = fights.find(f => f.status === 'gestartet') || null;

@@ -33,6 +33,30 @@ export function ermittlePausensekunden(altersklasse) {
 }
 
 /**
+ * Wandelt einen DB-Zeitstempel robust in ms seit Epoch um — unabhängig davon, ob der Treiber ihn
+ * bereits als Date-Objekt liefert (PostgreSQL: TIMESTAMP-Spalten kommen über den pg-Treiber fertig
+ * geparst) oder als naiven String ohne Zeitzonen-Kennzeichnung (SQLite: CURRENT_TIMESTAMP liefert
+ * "YYYY-MM-DD HH:MM:SS" in UTC, aber OHNE "Z"/Offset). new Date() interpretiert einen solchen
+ * String ohne Zeitzone als LOKALE Zeit, nicht als UTC — auf jedem Server außerhalb UTC (z.B. MESZ =
+ * UTC+2) entsteht dadurch ein systematischer Versatz in der berechneten "verstrichenen Zeit seit
+ * dem letzten Kampf", der eine tatsächlich zu kurze Pause fälschlich als ausreichend durchgehen
+ * lässt.
+ * @param {Date|string} wert
+ * @returns {number} ms seit Epoch, oder NaN falls nicht parsbar
+ */
+function parseDbZeitstempel(wert) {
+    if (wert instanceof Date) return wert.getTime();
+    if (typeof wert !== 'string') return NaN;
+
+    const hatZeitzone = /[Zz]|[+-]\d{2}:?\d{2}$/.test(wert);
+    const normalisiert = !hatZeitzone && /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(wert)
+        ? `${wert.replace(' ', 'T')}Z`
+        : wert;
+
+    return new Date(normalisiert).getTime();
+}
+
+/**
  * Baut aus einer Liste von Kämpfen (mit id, kaempfer1_id, kaempfer2_id, status, updated_at) eine
  * Zuordnung Teilnehmer-ID -> Zeitpunkt (ms seit Epoch) des Endes seines letzten ECHTEN Kampfes.
  * 'freilos' zählt nicht (kein echter Kampf, keine körperliche Belastung, kein Mattenzeit-Verbrauch).
@@ -43,7 +67,7 @@ export function letztesKampfEndeProTeilnehmer(kaempfe) {
     const ergebnis = new Map();
     for (const kampf of kaempfe) {
         if (kampf.status !== 'beendet') continue;
-        const ende = new Date(kampf.updated_at).getTime();
+        const ende = parseDbZeitstempel(kampf.updated_at);
         if (Number.isNaN(ende)) continue;
         for (const kaempferId of [kampf.kaempfer1_id, kampf.kaempfer2_id]) {
             if (!kaempferId) continue;

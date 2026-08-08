@@ -6,7 +6,7 @@
  * @property {string|null} judopassId
  * @property {string} vorname
  * @property {string} nachname
- * @property {string} geburtsdatum
+ * @property {number} geburtsjahr
  * @property {string} lizenzAblauf
  * @property {'männlich'|'weiblich'|'mixed'} geschlecht
  * @property {string|null} verein
@@ -26,7 +26,7 @@ export function mapTeilnehmer(row) {
         judopassId: row.judopass_id,
         vorname: row.vorname,
         nachname: row.nachname,
-        geburtsdatum: row.geburtsdatum,
+        geburtsjahr: row.geburtsjahr,
         lizenzAblauf: row.lizenz_ablauf,
         geschlecht: row.geschlecht,
         verein: row.verein,

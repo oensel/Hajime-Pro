@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { hashPassword, verifyPassword } from '../utils/password.js';
+import { ladeBenutzerMitAktivemVerein, ladeVereineFuerBenutzer } from '../utils/vereinHelper.js';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -29,8 +30,6 @@ export async function register(knex, req, res) {
             vorname,
             nachname,
             password_hash,
-            verein_id: null,
-            verein_freigegeben: 0,
             created_at: knex.fn.now(),
             updated_at: knex.fn.now()
         });
@@ -40,7 +39,7 @@ export async function register(knex, req, res) {
         return res.status(201).json({
             success: true,
             token,
-            user: { id, email, vorname, nachname, verein_id: null, verein_freigegeben: false }
+            user: { id, email, vorname, nachname, verein_id: null, verein_freigegeben: false, vereine: [] }
         });
     } catch (error) {
         console.error('[Register-Fehler]:', error);
@@ -67,6 +66,9 @@ export async function login(knex, req, res) {
             { expiresIn: JWT_EXPIRES_IN }
         );
 
+        const aktuellerBenutzer = await ladeBenutzerMitAktivemVerein(knex, user.id);
+        const vereine = await ladeVereineFuerBenutzer(knex, user.id);
+
         return res.json({
             success: true,
             token,
@@ -75,8 +77,9 @@ export async function login(knex, req, res) {
                 email: user.email,
                 vorname: user.vorname,
                 nachname: user.nachname,
-                verein_id: user.verein_id,
-                verein_freigegeben: !!user.verein_freigegeben
+                verein_id: aktuellerBenutzer.verein_id,
+                verein_freigegeben: !!aktuellerBenutzer.verein_freigegeben,
+                vereine
             }
         });
 
@@ -88,20 +91,30 @@ export async function login(knex, req, res) {
 
 export async function getMe(knex, req, res) {
     try {
-        const user = await knex('benutzer').where({ id: req.user.id }).first();
+        const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
         if (!user) {
             return res.status(404).json({ success: false, error: 'Benutzer nicht gefunden.' });
         }
 
         let vereinName = null;
         let vereinMitgliederAnzahl = 0;
+        let vereinWartetAufSuperAdmin = false;
         if (user.verein_id) {
             const verein = await knex('vereine').where({ id: user.verein_id }).first();
             vereinName = verein ? verein.name : null;
 
-            const countRow = await knex('benutzer').where({ verein_id: user.verein_id }).count('* as anzahl').first();
+            const countRow = await knex('benutzer_vereine').where({ verein_id: user.verein_id }).count('* as anzahl').first();
             vereinMitgliederAnzahl = parseInt(countRow.anzahl, 10);
+
+            if (!user.verein_freigegeben) {
+                const approvedMember = await knex('benutzer_vereine')
+                    .where({ verein_id: user.verein_id, freigegeben: 1 })
+                    .first();
+                vereinWartetAufSuperAdmin = !approvedMember;
+            }
         }
+
+        const vereine = await ladeVereineFuerBenutzer(knex, user.id);
 
         return res.json({
             success: true,
@@ -113,7 +126,10 @@ export async function getMe(knex, req, res) {
                 verein_id: user.verein_id,
                 verein_name: vereinName,
                 verein_freigegeben: !!user.verein_freigegeben,
-                verein_mitglieder_anzahl: vereinMitgliederAnzahl
+                verein_wartet_auf_super_admin: vereinWartetAufSuperAdmin,
+                verein_mitglieder_anzahl: vereinMitgliederAnzahl,
+                ist_super_admin: !!user.ist_super_admin,
+                vereine
             }
         });
     } catch (error) {
@@ -166,11 +182,15 @@ export async function updateProfile(knex, req, res) {
 
         await knex('benutzer').where({ id: userId }).update(updateData);
 
+        const aktuellerBenutzer = await ladeBenutzerMitAktivemVerein(knex, userId);
+
         let vereinName = null;
-        if (user.verein_id) {
-            const verein = await knex('vereine').where({ id: user.verein_id }).first();
+        if (aktuellerBenutzer.verein_id) {
+            const verein = await knex('vereine').where({ id: aktuellerBenutzer.verein_id }).first();
             vereinName = verein ? verein.name : null;
         }
+
+        const vereine = await ladeVereineFuerBenutzer(knex, userId);
 
         const token = jwt.sign({ id: userId, email }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 
@@ -183,9 +203,10 @@ export async function updateProfile(knex, req, res) {
                 email,
                 vorname,
                 nachname,
-                verein_id: user.verein_id,
+                verein_id: aktuellerBenutzer.verein_id,
                 verein_name: vereinName,
-                verein_freigegeben: !!user.verein_freigegeben
+                verein_freigegeben: !!aktuellerBenutzer.verein_freigegeben,
+                vereine
             }
         });
     } catch (error) {

@@ -125,7 +125,7 @@ async function main() {
             table.string('judopass_id').notNullable();
             table.string('vorname').notNullable();
             table.string('nachname').notNullable();
-            table.date('geburtsdatum').notNullable();
+            table.integer('geburtsjahr').notNullable();
             table.date('lizenz_ablauf').notNullable();
             table.string('geschlecht').notNullable();
             table.string('verein').nullable();

@@ -65,6 +65,60 @@
             letter-spacing: 0.5px;
             color: var(--text-muted);
         }
+        .verein-mitglied-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 12px 14px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+        }
+        .verein-mitglied-row.aktiv {
+            border-color: var(--primary);
+        }
+        .verein-mitglied-name {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+        .verein-mitglied-status {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            color: var(--text-muted);
+        }
+        .verein-mitglied-actions {
+            display: flex;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+        .erstregistrierung-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .erstregistrierung-row:last-child {
+            border-bottom: none;
+        }
+        .erstregistrierung-name {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+        .erstregistrierung-meta {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        .erstregistrierung-actions {
+            display: flex;
+            gap: 8px;
+            flex-shrink: 0;
+        }
     </style>
     <script src="/js/menu.js"></script>
 </head>
@@ -116,27 +170,20 @@
 <div class="mdc-card" style="margin-top: 24px;">
     <div class="form-title-area">
         <span class="material-icons">groups</span>
-        <h1>Verein</h1>
+        <h1>Meine Vereine</h1>
     </div>
 
-    <div id="vereinStatusInfo" style="margin-bottom: 20px; font-size: 13px; color: var(--text-muted); text-align: center;"></div>
+    <div id="meineVereineListe" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;"></div>
 
-    <form id="vereinForm">
-        <div class="profil-form-group">
-            <label for="vereinSelect">Bestehenden Verein wählen</label>
-            <select id="vereinSelect">
-                <option value="">-- Bitte wählen --</option>
-            </select>
-        </div>
+    <a href="/verein_auswahl.html" class="btn btn-outlined" style="width: 100%; box-sizing: border-box; text-align: center; display: block; text-decoration: none;">Weiterem Verein beitreten</a>
+</div>
 
-        <div class="profil-section-title">oder neuen Verein anlegen</div>
-        <div class="profil-form-group">
-            <label for="newVereinName">Neuer Vereinsname</label>
-            <input type="text" id="newVereinName" placeholder="z.B. Judo Club Musterstadt">
-        </div>
-
-        <button type="submit" class="btn btn-raised" style="width: 100%; margin-top: 10px;">Verein wechseln</button>
-    </form>
+<div class="mdc-card" id="superAdminCard" style="margin-top: 24px; display: none;">
+    <div class="form-title-area">
+        <span class="material-icons">verified_user</span>
+        <h1>Erstregistrierungen prüfen</h1>
+    </div>
+    <div id="erstregistrierungenListe" style="display: flex; flex-direction: column;"></div>
 </div>
 
 <script>
@@ -212,9 +259,8 @@
             }
         });
 
-        // --- VEREIN WECHSELN ---
-        const vereinSelect = document.getElementById('vereinSelect');
-        const vereinStatusInfo = document.getElementById('vereinStatusInfo');
+        // --- MEINE VEREINE ---
+        const meineVereineListe = document.getElementById('meineVereineListe');
         let aktuellerNutzer = null;
 
         try {
@@ -226,91 +272,137 @@
             console.error('Fehler beim Laden des Vereinsstatus:', err);
         }
 
-        if (aktuellerNutzer) {
-            vereinStatusInfo.textContent = aktuellerNutzer.verein_id
-                ? `Aktueller Verein: ${aktuellerNutzer.verein_name || '–'} (${aktuellerNutzer.verein_freigegeben ? 'freigegeben' : 'Freigabe ausstehend'})`
-                : 'Sie sind aktuell keinem Verein zugeordnet.';
-        }
-
-        try {
-            const listResp = await fetch('/api/vereine');
-            const vereine = await listResp.json();
-            vereine.forEach(v => {
-                const option = document.createElement('option');
-                option.value = v.id;
-                option.textContent = v.name;
-                if (aktuellerNutzer && aktuellerNutzer.verein_id === v.id) option.selected = true;
-                vereinSelect.appendChild(option);
-            });
-        } catch (err) {
-            console.error('Fehler beim Laden der Vereine:', err);
-        }
-
-        document.getElementById('vereinForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-
-            const selectedId = vereinSelect.value;
-            const newName = document.getElementById('newVereinName').value.trim();
-
-            if (!selectedId && !newName) {
-                const msg = 'Bitte wählen Sie einen Verein oder geben Sie einen neuen Namen ein.';
-                window.zeigeNotification ? window.zeigeNotification(msg, 'error') : alert(msg);
+        function renderMeineVereine() {
+            if (!aktuellerNutzer || !Array.isArray(aktuellerNutzer.vereine) || aktuellerNutzer.vereine.length === 0) {
+                meineVereineListe.innerHTML = '<p style="font-size: 13px; color: var(--text-muted); text-align: center;">Sie sind aktuell keinem Verein zugeordnet.</p>';
                 return;
             }
 
-            const zielVereinId = newName ? null : parseInt(selectedId, 10);
-            const wechseltTatsaechlich = !!newName || !aktuellerNutzer || aktuellerNutzer.verein_id !== zielVereinId;
+            meineVereineListe.innerHTML = aktuellerNutzer.vereine.map(v => {
+                const istAktiv = v.verein_id === aktuellerNutzer.verein_id;
+                return `
+                    <div class="verein-mitglied-row${istAktiv ? ' aktiv' : ''}">
+                        <div>
+                            <div class="verein-mitglied-name">${v.name}${istAktiv ? ' (aktiv)' : ''}</div>
+                            <div class="verein-mitglied-status">${v.freigegeben ? 'Freigegeben' : 'Freigabe ausstehend'}</div>
+                        </div>
+                        <div class="verein-mitglied-actions">
+                            ${istAktiv ? '' : `<button type="button" class="btn btn-outlined" data-action="aktivieren" data-verein-id="${v.verein_id}" style="padding: 6px 12px; font-size: 11px;">Als aktiv setzen</button>`}
+                            <button type="button" class="btn btn-outlined" data-action="verlassen" data-verein-id="${v.verein_id}" data-verein-name="${v.name}" style="padding: 6px 12px; font-size: 11px; color: #ef4444; border-color: #ef4444;">Verlassen</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
 
-            if (wechseltTatsaechlich && aktuellerNutzer && aktuellerNutzer.verein_id && aktuellerNutzer.verein_mitglieder_anzahl <= 1) {
-                const bestaetigt = await window.zeigeZentraleBestaetigung(
-                    `Sie sind aktuell das einzige Mitglied von "${aktuellerNutzer.verein_name}". Wenn Sie fortfahren, wird dieser Verein unwiderruflich gelöscht. Fortfahren?`,
-                    'Verein wechseln',
-                    'warning'
-                );
-                if (!bestaetigt) return;
-            }
-
-            try {
-                const body = newName ? { newVereinName: newName } : { vereinId: selectedId };
-                const response = await fetch('/api/vereine/join', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
+            meineVereineListe.querySelectorAll('button[data-action="aktivieren"]').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    try {
+                        const response = await fetch('/api/vereine/aktiv', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ vereinId: btn.getAttribute('data-verein-id') })
+                        });
+                        const data = await response.json();
+                        if (!response.ok) throw new Error(data.error || 'Vereinswechsel fehlgeschlagen.');
+                        window.location.reload();
+                    } catch (err) {
+                        window.zeigeNotification ? window.zeigeNotification(err.message, 'error') : alert(err.message);
+                    }
                 });
-                const data = await response.json();
+            });
 
-                if (!response.ok) {
-                    throw new Error(data.error || 'Vereinswechsel fehlgeschlagen.');
+            meineVereineListe.querySelectorAll('button[data-action="verlassen"]').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const vereinName = btn.getAttribute('data-verein-name');
+                    const bestaetigt = await window.zeigeZentraleBestaetigung(
+                        `Möchten Sie "${vereinName}" wirklich verlassen?`,
+                        'Verein verlassen',
+                        'warning'
+                    );
+                    if (!bestaetigt) return;
+
+                    try {
+                        const response = await fetch('/api/vereine/leave', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ vereinId: btn.getAttribute('data-verein-id') })
+                        });
+                        const data = await response.json();
+                        if (!response.ok) throw new Error(data.error || 'Verein konnte nicht verlassen werden.');
+
+                        let meldung = `"${vereinName}" verlassen.`;
+                        if (data.verein_geloescht) {
+                            meldung += ' Der Verein wurde gelöscht, da er keine Mitglieder mehr hatte.';
+                        }
+                        if (window.zeigeNotification) window.zeigeNotification(meldung, 'success');
+                        setTimeout(() => window.location.reload(), 1200);
+                    } catch (err) {
+                        window.zeigeNotification ? window.zeigeNotification(err.message, 'error') : alert(err.message);
+                    }
+                });
+            });
+        }
+
+        renderMeineVereine();
+
+        // --- SUPER-ADMIN: ERSTREGISTRIERUNGEN ---
+        if (aktuellerNutzer && aktuellerNutzer.ist_super_admin) {
+            document.getElementById('superAdminCard').style.display = 'block';
+            ladeUndRendereErstregistrierungen();
+        }
+
+        async function ladeUndRendereErstregistrierungen() {
+            const liste = document.getElementById('erstregistrierungenListe');
+            try {
+                const resp = await fetch('/api/vereine/super/pending');
+                if (!resp.ok) return;
+                const pending = await resp.json();
+
+                if (!Array.isArray(pending) || pending.length === 0) {
+                    liste.innerHTML = '<p style="font-size: 13px; color: var(--text-muted); text-align: center;">Keine offenen Erstregistrierungen.</p>';
+                    return;
                 }
 
-                const meResp2 = await fetch('/api/auth/me');
-                if (meResp2.ok) {
-                    const freshUser = (await meResp2.json()).user;
-                    localStorage.setItem('dokume_user', JSON.stringify(freshUser));
-                }
+                liste.innerHTML = pending.map(p => `
+                    <div class="erstregistrierung-row">
+                        <div>
+                            <div class="erstregistrierung-name">${p.vorname} ${p.nachname}</div>
+                            <div class="erstregistrierung-meta">${p.email} &middot; ${p.verein_name}</div>
+                        </div>
+                        <div class="erstregistrierung-actions">
+                            <button type="button" class="btn btn-raised" data-action="super/approve" data-user-id="${p.id}" data-verein-id="${p.verein_id}" style="padding: 6px 12px; font-size: 11px;">Freigeben</button>
+                            <button type="button" class="btn btn-outlined" data-action="super/reject" data-user-id="${p.id}" data-verein-id="${p.verein_id}" style="padding: 6px 12px; font-size: 11px;">Ablehnen</button>
+                        </div>
+                    </div>
+                `).join('');
 
-                let meldung = data.verein_freigegeben
-                    ? 'Verein erfolgreich gewechselt und freigegeben.'
-                    : 'Beitrittsanfrage gesendet, wartet auf Freigabe durch ein bestehendes Mitglied.';
-                if (data.alter_verein_geloescht) {
-                    meldung += ' Der bisherige Verein wurde gelöscht, da er keine Mitglieder mehr hatte.';
-                }
-
-                if (window.zeigeNotification) {
-                    window.zeigeNotification(meldung, 'success');
-                } else {
-                    alert(meldung);
-                }
-
-                setTimeout(() => window.location.reload(), 1500);
+                liste.querySelectorAll('button[data-action]').forEach(btn => {
+                    btn.addEventListener('click', async () => {
+                        const userId = btn.getAttribute('data-user-id');
+                        const vereinId = btn.getAttribute('data-verein-id');
+                        const action = btn.getAttribute('data-action');
+                        try {
+                            const response = await fetch(`/api/vereine/${action}`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ userId, vereinId })
+                            });
+                            const data = await response.json();
+                            if (!response.ok) throw new Error(data.error || 'Aktion fehlgeschlagen');
+                            if (window.zeigeNotification) {
+                                window.zeigeNotification(action === 'super/approve' ? 'Erstregistrierung freigegeben.' : 'Anfrage abgelehnt.');
+                            }
+                            ladeUndRendereErstregistrierungen();
+                            if (window.hajimeAktualisiereGenehmigungsHinweis) window.hajimeAktualisiereGenehmigungsHinweis();
+                        } catch (err) {
+                            window.zeigeNotification ? window.zeigeNotification(err.message, 'error') : alert(err.message);
+                        }
+                    });
+                });
             } catch (err) {
-                if (window.zeigeNotification) {
-                    window.zeigeNotification(err.message, 'error');
-                } else {
-                    alert(err.message);
-                }
+                console.error('Fehler beim Laden der Erstregistrierungen:', err);
             }
-        });
+        }
     });
 </script>
 </body>
