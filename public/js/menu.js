@@ -151,13 +151,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <span class="material-icons">badge</span>
                     <span class="menu-text">Teilnehmer</span>
                 </a>
-                <a href="/waage.html" class="menu-item" id="nav-waage">
-                    <span class="material-icons">scale</span>
-                    <span class="menu-text">Waage</span>
-                </a>
                 <a href="/pools.html" class="menu-item" id="nav-pools">
                     <span class="material-icons">groups</span>
                     <span class="menu-text">Pools</span>
+                </a>
+                <a href="/mannschaften.html" class="menu-item" id="nav-mannschaften">
+                    <span class="material-icons">groups_2</span>
+                    <span class="menu-text">Mannschaften</span>
                 </a>
                 <a href="/matten.html" class="menu-item" id="nav-matten">
                     <span class="material-icons">layers</span>
@@ -192,9 +192,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         <div class="top-header-bar">
             <h1 class="top-header-title" id="topHeaderTitle"></h1>
+            <div class="top-header-right">
+            <div class="verein-switcher" id="vereinSwitcher" style="display: none;">
+                <button type="button" class="verein-switcher-btn" id="vereinSwitcherBtn">
+                    <span class="material-icons" style="font-size: 18px;">apartment</span>
+                    <span id="vereinSwitcherName"></span>
+                    <span class="material-icons verein-switcher-caret" id="vereinSwitcherCaret" style="display: none;">expand_more</span>
+                </button>
+                <div class="verein-switcher-menu" id="vereinSwitcherMenu" style="display: none;"></div>
+            </div>
             <div class="top-header-actions">
             <button type="button" class="theme-toggle" id="profileBtn" title="Mein Profil">
                 <span class="material-icons">account_circle</span>
+                <span class="nav-badge" id="superAdminNavBadge" style="display: none;"></span>
             </button>
             <button type="button" class="theme-toggle" id="themeToggle" title="Ansicht umschalten">
                 <span class="material-icons" id="themeIcon">dark_mode</span>
@@ -202,6 +212,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             <button type="button" class="theme-toggle" id="logoutBtn" title="Abmelden" style="color: #ef4444; border: none; background: transparent; cursor: pointer;">
                 <span class="material-icons">logout</span>
             </button>
+            </div>
             </div>
         </div>
 
@@ -242,6 +253,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                         <button type="submit" class="btn btn-raised" id="promptModalConfirmBtn" style="padding: 8px 20px; font-size: 12px;">Übernehmen</button>
                     </div>
                 </form>
+            </div>
+        </div>
+
+        <!-- LADE-MODAL für kurze, nicht abbrechbare Hintergrundaktionen (z.B. Pools aufteilen) -->
+        <div id="customLoadingModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(2px); z-index: 9999; align-items: center; justify-content: center; transition: all 0.2s;">
+            <div class="mdc-card" style="max-width: 320px; padding: 24px 32px; border-radius: 4px; border: 2px solid var(--border); box-shadow: var(--shadow); background-color: var(--bg-card); animation: modalPulse 0.2s ease-out; display: flex; align-items: center; gap: 16px;">
+                <span class="material-icons icon-spin" style="font-size: 28px; color: var(--primary);">sync</span>
+                <p id="loadingModalMessage" style="margin: 0; font-size: 14px; font-weight: 700; color: var(--text-main);">Bitte warten…</p>
             </div>
         </div>
     `;
@@ -390,6 +409,139 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.error('Fehler beim Laden des Benutzerstatus:', error);
     }
 
+    // --- GENEHMIGUNGS-HINWEIS: freizugebende Benutzer, die auf Prüfung warten ---
+    // Läuft auf jeder Seite (menu.js ist überall eingebunden), damit weder der Super-Admin
+    // (Erstregistrierungen, /api/vereine/super/pending) noch ein einfaches freigegebenes
+    // Vereinsmitglied (weitere Funktionäre des eigenen Vereins, /api/vereine/pending) die
+    // Warteschlange erst durch Aufrufen von profil.html bzw. turniere.html entdecken muss. Beide
+    // Zählungen laufen unabhängig voneinander und addieren sich zu einer Zahl auf dem Profil-Icon
+    // — ein Benutzer kann durchaus beides zugleich sein (z.B. der Super-Admin in seinem eigenen
+    // Verein). window.hajimeAktualisiereGenehmigungsHinweis ist der globale Zugriffspunkt, damit
+    // profil.html/turniere.html den Hinweis nach einer eigenen Freigabe-/Ablehnungs-Aktion sofort
+    // live aktualisieren können, ohne auf einen Seiten-Reload angewiesen zu sein.
+    window.hajimeAktualisiereGenehmigungsHinweis = async () => {
+        const badge = document.getElementById('superAdminNavBadge');
+        const profileBtn = document.getElementById('profileBtn');
+        if (!badge || !profileBtn) return;
+
+        let anzahl = 0;
+        const teile = [];
+
+        if (currentUser && currentUser.ist_super_admin) {
+            try {
+                const resp = await fetch('/api/vereine/super/pending');
+                if (resp.ok) {
+                    const pending = await resp.json();
+                    const n = Array.isArray(pending) ? pending.length : 0;
+                    if (n > 0) {
+                        anzahl += n;
+                        teile.push(`${n} Erstregistrierung${n === 1 ? '' : 'en'}`);
+                    }
+                }
+            } catch (error) {
+                console.error('Fehler beim Laden der Erstregistrierungs-Warteschlange:', error);
+            }
+        }
+
+        // Peer-Warteschlange (weitere Funktionäre des eigenen Vereins) — relevant für jedes
+        // freigegebene Vereinsmitglied, unabhängig vom Super-Admin-Status. Liefert 403, wenn der
+        // Benutzer in keinem Verein freigegebenes Mitglied ist — das ist kein Fehlerfall, sondern
+        // schlicht "keine Genehmigungsrechte", daher stillschweigend übersprungen.
+        try {
+            const resp = await fetch('/api/vereine/pending');
+            if (resp.ok) {
+                const pending = await resp.json();
+                const n = Array.isArray(pending) ? pending.length : 0;
+                if (n > 0) {
+                    anzahl += n;
+                    teile.push(`${n} Beitrittsanfrage${n === 1 ? '' : 'n'}`);
+                }
+            }
+        } catch (error) {
+            console.error('Fehler beim Laden der Beitrittsanfragen-Warteschlange:', error);
+        }
+
+        if (anzahl > 0) {
+            badge.textContent = String(anzahl);
+            badge.title = `${teile.join(', ')} wartet/warten auf Prüfung`;
+            badge.style.display = 'inline-block';
+            profileBtn.title = `Mein Profil — ${teile.join(', ')} wartet/warten auf Prüfung`;
+        } else {
+            badge.style.display = 'none';
+            profileBtn.title = 'Mein Profil';
+        }
+    };
+    await window.hajimeAktualisiereGenehmigungsHinweis();
+
+    // --- AKTIVER VEREIN IN DER KOPFLEISTE (Anzeige + Wechsler bei mehreren Vereinen) ---
+    // Ein Benutzer ist immer mindestens einem Verein zugeordnet (keine anonymen Anmeldungen);
+    // bei mehreren Mitgliedschaften kann er hier den gerade "aktiven" Verein wechseln, der
+    // bestimmt, welches Turnier/welche Daten er in der App sieht (siehe hatVereinsZugriffAufTurnier
+    // in src/utils/vereinHelper.js).
+    (function initVereinSwitcher() {
+        const vereine = currentUser && Array.isArray(currentUser.vereine) ? currentUser.vereine : [];
+        if (vereine.length === 0) return;
+
+        const switcher = document.getElementById('vereinSwitcher');
+        const btn = document.getElementById('vereinSwitcherBtn');
+        const nameEl = document.getElementById('vereinSwitcherName');
+        const caret = document.getElementById('vereinSwitcherCaret');
+        const menu = document.getElementById('vereinSwitcherMenu');
+        if (!switcher || !btn || !nameEl || !menu) return;
+
+        const aktiverVerein = vereine.find(v => v.verein_id === currentUser.verein_id) || vereine[0];
+        nameEl.textContent = aktiverVerein.name;
+        switcher.style.display = '';
+
+        if (vereine.length === 1) {
+            btn.classList.add('no-dropdown');
+            return;
+        }
+
+        caret.style.display = '';
+
+        const schliesseMenu = () => { menu.style.display = 'none'; };
+
+        menu.innerHTML = vereine.map(v => `
+            <button type="button" class="verein-switcher-item${v.verein_id === aktiverVerein.verein_id ? ' aktiv' : ''}" data-verein-id="${v.verein_id}">
+                <span>${v.name}</span>
+                <span class="verein-switcher-item-status">${v.freigegeben ? 'Freigegeben' : 'Freigabe ausstehend'}</span>
+            </button>
+        `).join('');
+
+        menu.querySelectorAll('.verein-switcher-item').forEach(item => {
+            item.addEventListener('click', async () => {
+                const vereinId = item.getAttribute('data-verein-id');
+                if (parseInt(vereinId) === aktiverVerein.verein_id) {
+                    schliesseMenu();
+                    return;
+                }
+                try {
+                    const resp = await fetch('/api/vereine/aktiv', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ vereinId })
+                    });
+                    const data = await resp.json();
+                    if (!resp.ok) throw new Error(data.error || 'Vereinswechsel fehlgeschlagen');
+                    window.location.reload();
+                } catch (err) {
+                    schliesseMenu();
+                    if (window.zeigeNotification) window.zeigeNotification(err.message, 'error');
+                    else alert(err.message);
+                }
+            });
+        });
+
+        btn.addEventListener('click', (event) => {
+            event.stopPropagation();
+            menu.style.display = menu.style.display === 'none' ? '' : 'none';
+        });
+        document.addEventListener('click', (event) => {
+            if (!switcher.contains(event.target)) schliesseMenu();
+        });
+    })();
+
     // Im Offline-Modus (lokaler Kiosk-Betrieb) gelten keine Vereins-Einschränkungen,
     // analog zur Server-Middleware.
     let istOffline = false;
@@ -402,14 +554,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.error('Fehler beim Laden der System-Konfiguration:', error);
     }
 
-    // Verein gewählt, aber Beitritt noch nicht freigegeben: Nur die Turnierübersicht
-    // darf angesehen werden, ohne jegliche Aktionen (auch keine Anlage/Bearbeitung).
+    // Verein gewählt, aber Beitritt noch nicht freigegeben: Vereinsverwaltung (eigenes Turnier
+    // anlegen/bearbeiten, Pools, Matten, ...) bleibt gesperrt. teilnehmer.html ist trotzdem
+    // erreichbar — das deckt den Gastverein-Fall ab (eigene Athlet:innen bei EINEM FREMDEN,
+    // bereits veröffentlichten Turnier anmelden; serverseitig ohnehin auf den eigenen Verein
+    // beschränkt, siehe teilnehmerController.js), ohne auf die eigene Freigabe warten zu müssen.
     const wartetAufFreigabe = !!(currentUser && currentUser.verein_id && !currentUser.verein_freigegeben);
 
     if (wartetAufFreigabe) {
-        versteckeMenuePunkte(['nav-turnier', 'nav-waage', 'nav-teilnehmer', 'nav-pools', 'nav-matten', 'nav-kampf', 'nav-siegerliste', 'nav-dashboard', 'nav-uebersicht']);
+        versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-kampf', 'nav-siegerliste', 'nav-dashboard', 'nav-uebersicht']);
 
-        const istErlaubteSeite = currentPath.includes('turniere.html') || currentPath.includes('profil.html');
+        const istErlaubteSeite = currentPath.includes('turniere.html') || currentPath.includes('profil.html') || currentPath.includes('teilnehmer.html');
         if (!istErlaubteSeite) {
             window.location.href = '/turniere.html';
             return;
@@ -418,7 +573,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // --- STUFEN-VALIDIERUNG DER SICHTBARKEIT ---
         // Direkt nach der Anmeldung (kein Turnier ausgewählt) darf nur "Turniere" sichtbar sein.
         if (!turnierId) {
-            versteckeMenuePunkte(['nav-turnier', 'nav-waage', 'nav-teilnehmer', 'nav-pools', 'nav-matten', 'nav-kampf', 'nav-siegerliste', 'nav-dashboard', 'nav-uebersicht']);
+            versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-kampf', 'nav-siegerliste', 'nav-dashboard', 'nav-uebersicht']);
         } else {
             document.querySelectorAll('.menu-item').forEach(link => {
                 const href = link.getAttribute('href');
@@ -454,6 +609,26 @@ document.addEventListener('DOMContentLoaded', async () => {
                         topHeaderTitle.textContent = turnier.bezeichnung + ' ' + deutschesDatum + ' (' + turnier.ort + ')';
                     }
 
+                    // --- POOLS-SICHTBARKEIT: pools.html verwaltet ausschließlich Einzelwettkampf-
+                    // Pools (Mannschafts-Pools laufen komplett getrennt über mannschaften.html,
+                    // siehe CLAUDE.md) — ohne Einzel-Altersklassen gäbe es dort nichts zu tun.
+                    let einzelKeys = [];
+                    if (Array.isArray(turnier.altersklassen)) {
+                        einzelKeys = turnier.altersklassen;
+                    } else if (turnier.altersklassen && typeof turnier.altersklassen === 'object') {
+                        einzelKeys = Object.keys(turnier.altersklassen);
+                    }
+                    if (einzelKeys.length === 0) {
+                        versteckeMenuePunkte(['nav-pools']);
+                    }
+
+                    // --- MANNSCHAFTEN-SICHTBARKEIT: nur wenn das Turnier überhaupt ---
+                    // Mannschafts-Altersklassen austrägt (sonst gibt es dort nichts zu verwalten).
+                    const hatMannschaftsKlassen = Array.isArray(turnier.mannschafts_altersklassen) && turnier.mannschafts_altersklassen.length > 0;
+                    if (!hatMannschaftsKlassen) {
+                        versteckeMenuePunkte(['nav-mannschaften']);
+                    }
+
                     // --- VEREINS-SICHTBARKEIT: Nutzer außerhalb des ausrichtenden Vereins ---
                     // dürfen nur die Teilnehmer-Ansicht (gefiltert auf den eigenen Verein) sehen.
                     if (currentUser && !istOffline) {
@@ -461,9 +636,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                         if (!gehoertZuEigenemVerein) {
                             // Bei einem fremden Verein dürfen nur "Turniere" und "Teilnehmer" sichtbar sein.
-                            versteckeMenuePunkte(['nav-turnier', 'nav-waage', 'nav-pools', 'nav-matten', 'nav-kampf', 'nav-siegerliste', 'nav-dashboard', 'nav-uebersicht']);
+                            // Das Anlegen/Bearbeiten-Popup (früher eigene Seite waage.html) bleibt auf
+                            // teilnehmer.html erreichbar: Gastvereine melden ihre eigenen Athlet:innen
+                            // darüber selbst an bzw. bearbeiten sie (siehe "Bearbeiten"/"Hinzufügen" in
+                            // teilnehmer.js) — der Zugriff auf fremde Teilnehmer wird dabei serverseitig
+                            // in teilnehmerController.js verhindert.
+                            versteckeMenuePunkte(['nav-turnier', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-kampf', 'nav-siegerliste', 'nav-dashboard', 'nav-uebersicht']);
 
-                            const eingeschraenkteSeiten = ['turnier.html', 'waage.html', 'pools.html', 'matten.html', 'kampf.html', 'siegerliste.html', 'dashboard.html', 'uebersicht.html'];
+                            const eingeschraenkteSeiten = ['turnier.html', 'pools.html', 'matten.html', 'kampf.html', 'siegerliste.html', 'dashboard.html', 'uebersicht.html'];
                             if (eingeschraenkteSeiten.some(seite => currentPath.includes(seite))) {
                                 window.location.href = `/teilnehmer.html?turnierId=${turnierId}`;
                                 return;
@@ -480,9 +660,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- AKTIVEN REITER HERVORHEBEN ---
     if (currentPath.includes('turniere.html')) document.getElementById('nav-turniere')?.classList.add('active');
     if (currentPath.includes('turnier.html')) document.getElementById('nav-turnier')?.classList.add('active');
-    if (currentPath.includes('waage.html')) document.getElementById('nav-waage')?.classList.add('active');
     if (currentPath.includes('teilnehmer.html')) document.getElementById('nav-teilnehmer')?.classList.add('active');
     if (currentPath.includes('pools.html')) document.getElementById('nav-pools')?.classList.add('active');
+    if (currentPath.includes('mannschaften.html')) document.getElementById('nav-mannschaften')?.classList.add('active');
     if (currentPath.includes('matten.html')) document.getElementById('nav-matten')?.classList.add('active');
     if (currentPath.includes('kampf.html')) document.getElementById('nav-kampf')?.classList.add('active');
     if (currentPath.includes('siegerliste.html')) document.getElementById('nav-siegerliste')?.classList.add('active');
@@ -576,7 +756,10 @@ window.zeigeNotification = (nachricht, typ = 'success') => {
 };
 
 
-window.zeigeZentraleBestaetigung = (nachricht, titel = "Aktion bestätigen", icon = "help_outline") => {
+// optionen.compact = true verkleinert den Dialog (schmaler, weniger Innenabstand, kleineres
+// Icon) für kurze Ja/Nein-Fragen zu leicht rückgängig zu machenden Aktionen (z.B. Bulk-
+// Statusumschaltungen) — Standardgröße bleibt für alle anderen Aufrufer unverändert.
+window.zeigeZentraleBestaetigung = (nachricht, titel = "Aktion bestätigen", icon = "help_outline", optionen = {}) => {
     return new Promise((resolve) => {
         const modal = document.getElementById('customConfirmModal');
         const txtMsg = document.getElementById('modalMessage');
@@ -593,6 +776,18 @@ window.zeigeZentraleBestaetigung = (nachricht, titel = "Aktion bestätigen", ico
         txtMsg.innerText = nachricht;
         txtTitle.innerText = titel;
         icoEl.innerText = icon;
+
+        const karte = modal.querySelector('.mdc-card');
+        if (karte) {
+            if (optionen.compact) {
+                karte.style.maxWidth = '320px';
+                karte.style.padding = '16px';
+            } else {
+                karte.style.maxWidth = '';
+                karte.style.padding = '';
+            }
+        }
+
         modal.style.display = 'flex';
 
         const schliessen = (ergebnis) => {
@@ -605,6 +800,22 @@ window.zeigeZentraleBestaetigung = (nachricht, titel = "Aktion bestätigen", ico
         document.getElementById('modalConfirmBtn').addEventListener('click', () => schliessen(true));
         document.getElementById('modalCancelBtn').addEventListener('click', () => schliessen(false));
     });
+};
+
+// Lade-Modal für kurze, nicht abbrechbare Hintergrundaktionen (z.B. Pools aufteilen, Pool auf
+// eine Matte verschieben) — blendet die Seite ab, damit während des Requests keine weitere
+// Aktion angestoßen werden kann.
+window.zeigeLadeModal = (nachricht = 'Bitte warten…') => {
+    const modal = document.getElementById('customLoadingModal');
+    const txtMsg = document.getElementById('loadingModalMessage');
+    if (!modal) return;
+    if (txtMsg) txtMsg.innerText = nachricht;
+    modal.style.display = 'flex';
+};
+
+window.versteckeLadeModal = () => {
+    const modal = document.getElementById('customLoadingModal');
+    if (modal) modal.style.display = 'none';
 };
 
 // Ersatz für window.prompt() im Look der Anwendung — löst mit dem eingegebenen Text auf,

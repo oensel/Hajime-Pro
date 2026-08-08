@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
-import { hatVereinsZugriffAufTurnier } from '../utils/vereinHelper.js';
+import { hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
 dotenv.config();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'hajime_pro_secret_key_123456!';
@@ -25,8 +25,12 @@ export async function requireAuth(req, res, next) {
                         email: 'offline@hajime.os',
                         vorname: 'Offline',
                         nachname: 'User',
+                        aktiver_verein_id: offlineVerein.id
+                    });
+                    await knex('benutzer_vereine').insert({
+                        benutzer_id: 'offline_user',
                         verein_id: offlineVerein.id,
-                        verein_freigegeben: 1
+                        freigegeben: 1
                     });
                     console.log('[DB] Offline-Mock-User "offline_user" wurde angelegt.');
                 }
@@ -138,7 +142,7 @@ export function requireTournamentEditAccess(knex) {
                 return res.status(404).json({ success: false, error: 'Turnier nicht gefunden.' });
             }
 
-            const user = await knex('benutzer').where({ id: userId }).first();
+            const user = await ladeBenutzerMitAktivemVerein(knex, userId);
 
             if (!hatVereinsZugriffAufTurnier(user, turnier)) {
                 return res.status(403).json({
@@ -205,7 +209,7 @@ export function requireVereinFreigabe(knex) {
         }
 
         try {
-            const user = await knex('benutzer').where({ id: req.user.id }).first();
+            const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
             if (!user || !user.verein_freigegeben) {
                 return res.status(403).json({
                     success: false,
@@ -216,6 +220,26 @@ export function requireVereinFreigabe(knex) {
         } catch (error) {
             console.error('[Verein-Freigabe-Check-Fehler]:', error);
             return res.status(500).json({ success: false, error: 'Interner Server-Fehler bei der Freigabe-Prüfung.' });
+        }
+    };
+}
+
+/**
+ * Middleware factory to restrict a route to the Super-Admin (Bootstrapping-Rolle, siehe
+ * src/utils/superAdmin.js). Nicht an Vereinsmitgliedschaft gebunden.
+ * @param {Object} knex - Knex instance
+ */
+export function requireSuperAdmin(knex) {
+    return async (req, res, next) => {
+        try {
+            const benutzer = await knex('benutzer').where({ id: req.user.id }).first();
+            if (!benutzer || !benutzer.ist_super_admin) {
+                return res.status(403).json({ success: false, error: 'Nur der Super-Admin hat Zugriff auf diese Funktion.' });
+            }
+            next();
+        } catch (error) {
+            console.error('[Super-Admin-Check-Fehler]:', error);
+            return res.status(500).json({ success: false, error: 'Interner Server-Fehler bei der Berechtigungsprüfung.' });
         }
     };
 }

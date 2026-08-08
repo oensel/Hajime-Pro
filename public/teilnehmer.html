@@ -13,7 +13,7 @@
 <div class="kanji-left">柔</div>
 <div class="kanji-right">道</div>
 
-<div class="mdc-card">
+<div class="mdc-card" id="teilnehmerHauptkarte">
     <div class="form-title-area">
         <span class="material-icons">badge</span>
         <h1 id="formTitle">Teilnehmer</h1>
@@ -37,21 +37,29 @@
             <input type="text" id="teilnehmerSearchInput" placeholder="Suchen...">
         </div>
         <div class="teilnehmer-toolbar-buttons">
-            <button type="button" class="toolbar-btn" id="bulkMarkWeighedBtn" title="Ausgewählte als gewogen markieren" disabled>
+            <button type="button" class="toolbar-btn" id="bulkMarkWeighedBtn" title="Ausgewählte als gewogen markieren" disabled style="display: none;">
                 <span class="material-icons">scale</span>
                 <span>Gewogen</span>
             </button>
-            <button type="button" class="toolbar-btn" id="bulkMarkPaidBtn" title="Ausgewählte als bezahlt markieren" disabled>
+            <button type="button" class="toolbar-btn" id="bulkMarkLizenzBtn" title="Lizenz für Ausgewählte bestätigen" disabled style="display: none;">
+                <span class="material-icons">badge</span>
+                <span>Lizenz</span>
+            </button>
+            <button type="button" class="toolbar-btn" id="bulkMarkPaidBtn" title="Ausgewählte als bezahlt markieren" disabled style="display: none;">
                 <span class="material-icons">payments</span>
                 <span>Bezahlt</span>
             </button>
-            <button type="button" class="toolbar-btn toolbar-btn-danger" id="bulkDeleteBtn" title="Ausgewählte löschen" disabled>
-                <span class="material-icons">delete</span>
-                <span>Löschen</span>
+            <button type="button" class="toolbar-btn toolbar-btn-danger" id="bulkDeleteBtn" title="Ausgewählte löschen" disabled style="display: none;">
+                <span class="material-icons" id="bulkDeleteBtnIcon">delete</span>
+                <span id="bulkDeleteBtnLabel">Löschen</span>
             </button>
             <button type="button" class="toolbar-btn" id="importBtn" title="Teilnehmer importieren (CSV/XLSX)">
                 <span class="material-icons">upload_file</span>
                 <span>Importieren</span>
+            </button>
+            <button type="button" class="toolbar-btn" id="scanBtn" title="Teilnehmer per QR-Scan (Judopass) anlegen/aktualisieren">
+                <span class="material-icons">qr_code_scanner</span>
+                <span>Scan</span>
             </button>
             <button type="button" class="toolbar-btn toolbar-btn-primary" id="addBtn" title="Neuen Teilnehmer hinzufügen">
                 <span class="material-icons">person_add</span>
@@ -61,6 +69,12 @@
     </div>
 
     <input type="file" id="importFileInput" accept=".csv,.xlsx,.xls" style="display: none;">
+    <div style="margin: 0 0 8px 8px; font-size: 12px; color: var(--text-muted);">
+        Vorlage für den Import herunterladen:
+        <a href="#" id="vorlageXlsxLink" style="color: var(--primary); font-weight: 600; text-decoration: none;">.xlsx</a>
+        ·
+        <a href="#" id="vorlageCsvLink" style="color: var(--primary); font-weight: 600; text-decoration: none;">.csv</a>
+    </div>
     <span id="importStatus" style="display: block; margin: 0 0 8px 8px; font-size: 12px; color: var(--text-muted); font-weight: bold;"></span>
     <div id="importSkippedList" style="display: none; margin: 0 0 8px 8px; font-size: 12px; color: #b83232;"></div>
 
@@ -73,19 +87,60 @@
                 <th style="text-align: center;">Status</th>
                 <th style="text-align: center;">Grad</th>
                 <th class="sortable" data-sort="verein">Verein <span class="sort-icon material-icons"></span></th>
+                <th id="teamSpalteHeader" class="sortable" data-sort="team" style="display: none;">Team <span class="sort-icon material-icons"></span></th>
                 <th class="sortable" data-sort="klasse">Klasse <span class="sort-icon material-icons"></span></th>
                 <th class="sortable" data-sort="gewicht">Gewicht <span class="sort-icon material-icons"></span></th>
-                <th style="text-align: center;">Gewogen</th>
+                <th id="gewogenSpalteHeader" style="text-align: center;">Gewogen</th>
+                <th id="lizenzSpalteHeader" style="text-align: center;">Lizenz</th>
                 <th style="text-align: center;">Startgeld</th>
                 <th style="text-align: center;">Aktionen</th>
             </tr>
             </thead>
             <tbody id="teilnehmerTableBody">
             <tr>
-                <td colspan="10" class="no-data">Lade Teilnehmerdaten...</td>
+                <td colspan="12" class="no-data">Lade Teilnehmerdaten...</td>
             </tr>
             </tbody>
         </table>
+    </div>
+
+    <!-- Kennzahlen-Kacheln: kurzer Überblick über den Meldestand dieses Turniers -->
+    <div class="teilnehmer-stats-grid" id="teilnehmerStatsGrid">
+        <div class="teilnehmer-stat-card">
+            <div class="teilnehmer-stat-header">
+                <span class="teilnehmer-stat-label">Teilnehmer</span>
+                <span class="material-icons teilnehmer-stat-icon">group</span>
+            </div>
+            <div class="teilnehmer-stat-value" id="statGesamtTeilnehmer">0</div>
+            <div class="teilnehmer-stat-sub"><span id="statVereine">0</span> Vereine</div>
+        </div>
+        <div class="teilnehmer-stat-card" id="statGewogenKachel">
+            <div class="teilnehmer-stat-header">
+                <span class="teilnehmer-stat-label">Gewogen</span>
+                <span class="material-icons teilnehmer-stat-icon">scale</span>
+            </div>
+            <div class="teilnehmer-stat-value" id="statGewogenProzent">0%</div>
+            <div class="teilnehmer-stat-bar"><div class="teilnehmer-stat-bar-fill" id="statGewogenBar" style="width: 0%;"></div></div>
+            <div class="teilnehmer-stat-sub" id="statGewogenAnteil"></div>
+        </div>
+        <div class="teilnehmer-stat-card" id="statLizenzKachel">
+            <div class="teilnehmer-stat-header">
+                <span class="teilnehmer-stat-label">Lizenz</span>
+                <span class="material-icons teilnehmer-stat-icon">badge</span>
+            </div>
+            <div class="teilnehmer-stat-value" id="statLizenzProzent">0%</div>
+            <div class="teilnehmer-stat-bar"><div class="teilnehmer-stat-bar-fill" id="statLizenzBar" style="width: 0%;"></div></div>
+            <div class="teilnehmer-stat-sub" id="statLizenzAnteil"></div>
+        </div>
+        <div class="teilnehmer-stat-card">
+            <div class="teilnehmer-stat-header">
+                <span class="teilnehmer-stat-label">Bezahlt</span>
+                <span class="material-icons teilnehmer-stat-icon">payments</span>
+            </div>
+            <div class="teilnehmer-stat-value" id="statBezahltProzent">0%</div>
+            <div class="teilnehmer-stat-bar"><div class="teilnehmer-stat-bar-fill" id="statBezahltBar" style="width: 0%;"></div></div>
+            <div class="teilnehmer-stat-sub" id="statBezahltHinweis"></div>
+        </div>
     </div>
 </div>
 
@@ -122,8 +177,197 @@
     </div>
 </div>
 
+<!-- Import-Ziel-Auswahl-Modal (nur wenn das Turnier sowohl Einzel- als auch Mannschafts-Altersklassen austrägt) -->
+<div id="importZielModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(2px); z-index: 9999; align-items: center; justify-content: center;">
+    <div class="mdc-card" style="max-width: 420px; width: 90%; padding: 24px; border-radius: 4px; border: 2px solid var(--border); box-shadow: var(--shadow); background-color: var(--bg-card);">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px;">
+            <span class="material-icons" style="font-size: 28px; color: var(--primary);">upload_file</span>
+            <h2 style="margin: 0; font-size: 18px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Import-Ziel wählen</h2>
+        </div>
+        <p style="margin: 0 0 20px; font-size: 13px; color: var(--text-muted);">
+            Dieses Turnier trägt sowohl Einzel- als auch Mannschaftswettkämpfe aus. Für welchen Bereich sollen die Teilnehmer aus der Datei importiert werden?
+        </p>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+            <button type="button" class="btn btn-outlined" id="importZielEinzelBtn" style="justify-content: flex-start; gap: 10px;">
+                Einzelwettkämpfe
+            </button>
+            <button type="button" class="btn btn-outlined" id="importZielMannschaftBtn" style="justify-content: flex-start; gap: 10px;">
+                Mannschaften
+            </button>
+        </div>
+        <div style="display: flex; justify-content: flex-end; margin-top: 20px;">
+            <button type="button" class="btn btn-outlined" id="importZielAbbrechenBtn">Abbrechen</button>
+        </div>
+    </div>
+</div>
+
+<!-- Import-Vorschau-Modal: zeigt vor dem eigentlichen Speichern die Spaltenzuordnung, die ersten
+     Zeilen der Datei mit farblich markierten Fehlern sowie eine Zusammenfassung. -->
+<div id="importVorschauModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(2px); z-index: 9999; align-items: center; justify-content: center;">
+    <div class="mdc-card" style="max-width: 960px; width: 95%; max-height: 88vh; overflow-y: auto; padding: 24px; border-radius: 4px; border: 2px solid var(--border); box-shadow: var(--shadow); background-color: var(--bg-card);">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+            <span class="material-icons" style="font-size: 28px; color: var(--primary);">preview</span>
+            <h2 style="margin: 0; font-size: 18px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Import-Vorschau</h2>
+        </div>
+        <p style="margin: 0 0 16px; font-size: 13px; color: var(--text-muted);">
+            Ordne jeder Spalte ein Feld zu, falls die automatische Erkennung nicht passt. Fehlerhafte Zellen sind rot markiert. Es werden die ersten Zeilen der Datei angezeigt.
+            <br>
+            <strong>* Pflichtfeld:</strong> Vorname, Name, Geschlecht, Verein sowie Geburtsdatum/-jahr. Beim Import-Ziel "Mannschaften" zusätzlich: Team-Name. Alle anderen Felder dürfen leer bleiben.
+        </p>
+        <div style="overflow-x: auto; border: 1px solid var(--border); border-radius: 4px;">
+            <table id="importVorschauTable" style="width: 100%; border-collapse: collapse; font-size: 12px; white-space: nowrap;">
+                <thead>
+                    <tr id="importVorschauMappingRow"></tr>
+                    <tr id="importVorschauHeaderRow" style="color: var(--text-muted); font-size: 11px;"></tr>
+                </thead>
+                <tbody id="importVorschauBody"></tbody>
+            </table>
+        </div>
+        <p id="importVorschauSummary" style="margin: 16px 0 0; font-size: 13px; font-weight: 700;"></p>
+        <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px;">
+            <button type="button" class="btn btn-outlined" id="importVorschauAbbrechenBtn">Abbrechen</button>
+            <button type="button" class="btn btn-raised" id="importVorschauStartenBtn">Import starten</button>
+        </div>
+    </div>
+</div>
+
+<!-- Teilnehmer anlegen/bearbeiten (Popup, vormals eigene Seite waage.html) -->
+<div id="waageModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(2px); z-index: 9999; align-items: center; justify-content: center;">
+    <div class="mdc-card" style="max-width: 480px; width: 92%; max-height: 90vh; overflow-y: auto; padding: 16px; border-radius: 4px; border: 2px solid var(--border); box-shadow: var(--shadow); background-color: var(--bg-card);">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 10px; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="material-icons" style="font-size: 20px; color: var(--primary);">scale</span>
+                <h2 id="waageModalTitle" style="margin: 0; font-size: 14px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Teilnehmer hinzufügen</h2>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <!-- Symmetrischer Aktivierungsknopf für den Webcam-QR-Scanner -->
+                <button type="button" class="theme-toggle" id="startScanBtn" title="QR-Pass scannen" style="position:static; width:auto; height:auto; padding:4px 10px; border-radius:4px; display:flex; align-items:center; gap:4px;">
+                    <span class="material-icons" style="font-size: 16px;">qr_code_scanner</span>
+                    <span style="font-size:10px; font-weight:700; text-transform:uppercase;">Scan</span>
+                </button>
+                <span class="material-icons" id="waageModalClose" style="cursor: pointer; color: var(--text-muted); font-size: 20px;" title="Schließen">close</span>
+            </div>
+        </div>
+
+        <!-- REAKTIVE WEBCAM SCANNER AREA -->
+        <div id="scannerContainer" style="display: none; flex-direction: column; align-items: center; margin-bottom: 14px; border: 2px solid var(--border); padding: 8px; border-radius: 4px; background: rgba(0,0,0,0.02);">
+            <div style="position: relative; width: 100%; max-width: 300px; aspect-ratio: 4/3; background: #000; border-radius: 4px; overflow: hidden;">
+                <video id="previewVideo" playsinline style="width: 100%; height: 100%; object-fit: cover;"></video>
+                <!-- Visuelles Fadenkreuz zur exakten Positionierung des Judo-Passes -->
+                <div style="position: absolute; top: 25%; left: 25%; width: 50%; height: 50%; border: 2px dashed var(--primary); box-shadow: 0 0 0 999px rgba(0,0,0,0.5); pointer-events: none;"></div>
+            </div>
+            <button type="button" class="btn btn-outlined" id="stopScanBtn" style="margin-top: 8px; padding: 4px 12px; font-size: 11px;">Scanner schließen</button>
+        </div>
+
+        <!-- Das Einwieg-Formular -->
+        <form id="teilnehmerForm">
+            <div class="grid-2">
+                <div class="form-group">
+                    <label for="vorname">Vorname</label>
+                    <input type="text" id="vorname" required placeholder="z.B. Max">
+                </div>
+                <div class="form-group">
+                    <label for="nachname">Nachname</label>
+                    <input type="text" id="nachname" required placeholder="z.B. Mustermann">
+                </div>
+            </div>
+
+            <div class="grid-2">
+                <div class="form-group">
+                    <label for="judopass_id">Judopass-Nummer (ID)</label>
+                    <input type="text" id="judopass_id" required placeholder="z.B. JP-1111">
+                </div>
+                <div class="form-group">
+                    <label for="lizenz_ablauf">Lizenz Gültig Bis</label>
+                    <input type="date" id="lizenz_ablauf" required style="background-color: rgba(0,0,0,0.02);">
+                </div>
+            </div>
+
+            <div class="grid-2">
+                <div class="form-group">
+                    <label for="geburtsjahr">Geburtsjahr</label>
+                    <input type="number" id="geburtsjahr" required min="1900" max="2100" placeholder="z.B. 2012">
+                </div>
+                <div class="form-group">
+                    <label for="verein">Verein</label>
+                    <input type="text" id="verein" placeholder="z.B. Judo Club Senden">
+                </div>
+            </div>
+
+            <!-- Nur sichtbar, wenn das Turnier Mannschafts-Altersklassen austrägt (siehe
+                 turnierHatMannschaftKlassen in waage-modal.js). Ordnet den Athleten optional einer
+                 Mannschaft zu (neu angelegt oder wiederverwendet, falls Name+Verein bereits
+                 existieren) — analog zur Team-Name-Spalte beim CSV-Import. -->
+            <div class="grid-2" id="teamNameRow" style="display: none;">
+                <div class="form-group">
+                    <label for="mannschaft_name">Team-Name</label>
+                    <input type="text" id="mannschaft_name" placeholder="z.B. U15 männlich">
+                </div>
+                <div></div>
+            </div>
+
+            <div class="grid-2">
+                <div class="form-group">
+                    <label for="graduierung">Graduierung</label>
+                    <select id="graduierung">
+                        <option value="">Keine Angabe</option>
+                    </select>
+                </div>
+                <div></div>
+            </div>
+
+            <div class="grid-2">
+                <div class="form-group">
+                    <label for="geschlecht">Geschlecht</label>
+                    <select id="geschlecht" required>
+                        <option value="" disabled selected hidden>Bitte wählen...</option>
+                        <option value="männlich">männlich</option>
+                        <option value="weiblich">weiblich</option>
+                        <option value="mixed">mixed</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="gewicht">Gewicht (kg)</label>
+                    <input type="text" id="gewicht" required placeholder="z.B. 34,50" inputmode="decimal">
+                </div>
+            </div>
+
+            <div class="grid-2">
+                <div class="form-group">
+                    <label for="altersklasse">Altersklasse</label>
+                    <select id="altersklasse" required>
+                        <option value="" disabled selected hidden>Bitte wählen...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="gewichtsklasse">Gewichtsklasse</label>
+                    <select id="gewichtsklasse" required>
+                        <option value="" disabled selected hidden>Bitte Altersklasse wählen...</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="grid-2" style="margin-top: 6px; margin-bottom: 10px;">
+                <div style="display: flex; align-items: center; gap: 8px; padding: 6px 0;">
+                    <input type="checkbox" id="startgeld_bezahlt" style="width: 16px; height: 16px; cursor: pointer; accent-color: var(--primary); margin: 0;">
+                    <label for="startgeld_bezahlt" style="margin: 0; cursor: pointer; font-weight: bold; user-select: none; display: inline-block; text-transform: none; font-size: 12px; letter-spacing: normal;">Startgeld bezahlt</label>
+                </div>
+                <div></div>
+            </div>
+
+            <div class="actions">
+                <button type="button" class="btn btn-outlined" id="resetBtn">Eingabe Löschen</button>
+                <button type="button" class="btn btn-outlined" id="kampfbereitBtn" style="display: none; color: #2e7d32; border-color: #2e7d32;">Kampfbereit bestätigen</button>
+                <button type="submit" class="btn btn-raised" id="submitBtn" disabled style="display: none;">Eintrag Speichern</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script src="/js/qr/jsQR.js"></script>
 <script src="/js/qrgen/qrcode.js"></script>
 <script src="/js/qrgen/qrcode_UTF8.js"></script>
 <script src="/js/teilnehmer.js"></script>
+<script type="module" src="/js/waage-modal.js"></script>
 </body>
 </html>

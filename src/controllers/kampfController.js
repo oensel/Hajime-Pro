@@ -5,6 +5,7 @@ import { DoppelKo32Manager } from '../services/DoppelKo32Manager.js';
 import { GruppenUeberKreuzManager } from '../services/GruppenUeberKreuzManager.js';
 import { planeKaempfeFuerKampfflaeche, synchronisiereMattenStatus } from './poolController.js';
 import { letztesKampfEndeProTeilnehmer, pruefeKampfPause } from '../shared/pausenRegel.js';
+import { aktualisiereMannschaftsPool, ermittleErsatzKandidaten, wechsleKaempfer } from '../services/mannschaftsBegegnungEngine.js';
 
 const jederGegenJeden = new JederGegenJedenManager();
 const doppelKo8 = new DoppelKo8Manager();
@@ -18,6 +19,13 @@ const ueberKreuz = new GruppenUeberKreuzManager();
 export async function triggerPoolUpdate(knex, poolId) {
     const pool = await knex('pools').where({ id: poolId }).first();
     if (!pool) return;
+
+    if (pool.typ === 'mannschaft') {
+        await aktualisiereMannschaftsPool(knex, poolId);
+        const { markiereTeilgenommenFuerBeendeteKaempfe } = await import('./teilnehmerController.js');
+        await markiereTeilgenommenFuerBeendeteKaempfe(knex, poolId);
+        return;
+    }
 
     if (pool.modus === 'Gruppen-Überkreuz') {
         await ueberKreuz.aktualisiereTurnier(knex, poolId);
@@ -105,6 +113,9 @@ export async function getKaempfe(knex, req, res) {
                 .join('pools', 'kaempfe.pool_id', '=', 'pools.id')
                 .leftJoin('turnier_teilnehmer as t1', 'kaempfe.kaempfer1_id', '=', 't1.id')
                 .leftJoin('turnier_teilnehmer as t2', 'kaempfe.kaempfer2_id', '=', 't2.id')
+                .leftJoin('mannschaftskaempfe as mk', 'kaempfe.mannschaftskampf_id', '=', 'mk.id')
+                .leftJoin('mannschaften as m1', 'mk.mannschaft1_id', '=', 'm1.id')
+                .leftJoin('mannschaften as m2', 'mk.mannschaft2_id', '=', 'm2.id')
                 .where('pools.kampfflaeche_id', parseInt(kampfflaecheId))
                 .select(
                     'kaempfe.*',
@@ -118,12 +129,43 @@ export async function getKaempfe(knex, req, res) {
                     't1.verein as kaempfer1_verein',
                     't2.vorname as kaempfer2_vorname',
                     't2.nachname as kaempfer2_nachname',
-                    't2.verein as kaempfer2_verein'
+                    't2.verein as kaempfer2_verein',
+                    'mk.siegpunkte_mannschaft1', 'mk.siegpunkte_mannschaft2',
+                    'm1.bezeichnung as mannschaft1_bezeichnung', 'm1.verein as mannschaft1_verein',
+                    'm2.bezeichnung as mannschaft2_bezeichnung', 'm2.verein as mannschaft2_verein'
                 )
                 .orderBy('kaempfe.matten_reihenfolge', 'asc')
                 .orderBy('kaempfe.id', 'asc');
 
             const kaempfeDerMatte = await query;
+
+            // Mannschaftskampf-Einzelkämpfe dürfen erst dann als "nächster Kampf" ausgewählt bzw.
+            // gestartet werden, wenn alle Einzelwettkampf-Pools der Matte fertig ausgekämpft sind
+            // (gleiche Regel wie in poolController.planeKaempfeFuerKampfflaeche) — sie bleiben aber
+            // in der Warteliste SICHTBAR (nur ans Ende einsortiert), damit der Tisch weiß, was auf
+            // der Matte noch folgt. Das Flag wird von kampf.js ausgewertet, um solche Kämpfe von
+            // der "aktueller Kampf"-Auswahl auszuschließen und in der Warteliste ans Ende zu setzen.
+            const einzelPoolsAufMatte = await knex('pools')
+                .where({ kampfflaeche_id: parseInt(kampfflaecheId) })
+                .andWhere(function () { this.whereNot('typ', 'mannschaft').orWhereNull('typ'); });
+            const alleEinzelPoolsAbgeschlossen = einzelPoolsAufMatte.every(p => p.status === 'kaempfe_beendet' || p.status === 'abgeschlossen');
+            if (!alleEinzelPoolsAbgeschlossen) {
+                for (const kampf of kaempfeDerMatte) {
+                    if (kampf.mannschaftskampf_id) {
+                        kampf.wartet_auf_einzelpools = true;
+                    }
+                }
+            }
+
+            // Mannschaftskampf-Einzelkämpfe zeigen statt des reinen Pool-Namens "<Poolname>
+            // <Gewichtsklasse>", damit z.B. auf der Matte/Anzeige erkennbar ist, welche
+            // Gewichtsklasse einer Begegnung gerade läuft.
+            for (const kampf of kaempfeDerMatte) {
+                if (kampf.mannschaft_gewichtsklasse) {
+                    const gewichtsklasse = String(kampf.mannschaft_gewichtsklasse);
+                    kampf.pool_bezeichnung = `${kampf.pool_bezeichnung} ${/kg$/i.test(gewichtsklasse) ? gewichtsklasse : gewichtsklasse + ' kg'}`;
+                }
+            }
 
             // Pausenwarnung mit ECHTEN Zeitstempeln (nicht der Schätzung der Matten-Planung):
             // pro noch nicht gestartetem Kampf prüfen, ob beide Kämpfer seit ihrem letzten
@@ -349,5 +391,36 @@ export async function updateKampfColor(knex, req, res) {
         return res.json({ success: true, message: 'Live-Farbe aktualisiert.', color });
     } catch (error) {
         return res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+export async function getErsatzOptionen(knex, req, res) {
+    try {
+        const { id } = req.params;
+        const ergebnis = await ermittleErsatzKandidaten(knex, parseInt(id));
+        if (!ergebnis) {
+            return res.status(400).json({ success: false, error: 'Dies ist kein Mannschaftskampf-Einzelkampf.' });
+        }
+        return res.json({
+            success: true,
+            kaempfer1Optionen: ergebnis.kaempfer1Optionen,
+            kaempfer2Optionen: ergebnis.kaempfer2Optionen
+        });
+    } catch (error) {
+        return res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+export async function auswechseln(knex, req, res) {
+    try {
+        const { id } = req.params;
+        const { seite, teilnehmerId } = req.body;
+        if (!seite || !teilnehmerId) {
+            return res.status(400).json({ success: false, error: 'seite und teilnehmerId sind erforderlich.' });
+        }
+        await wechsleKaempfer(knex, parseInt(id), seite, parseInt(teilnehmerId));
+        return res.json({ success: true, message: 'Kämpfer erfolgreich ausgewechselt.' });
+    } catch (error) {
+        return res.status(400).json({ success: false, error: error.message });
     }
 }

@@ -132,3 +132,37 @@ export async function verknuepfeQuellenFuerPool(knex, poolId, topologie) {
         });
     }
 }
+
+/**
+ * Pendant zu verknuepfeQuellenFuerPool für Mannschafts-Pools: setzt
+ * mannschaft1/2_quelle_kampf_id + _quelle_typ für alle Begegnungen (mannschaftskaempfe) eines
+ * Pools, deren reihenfolge_nummer in der übergebenen Topologie-Tabelle vorkommt. Die
+ * *_TOPOLOGIE-Konstanten selbst sind reine Bracket-Slot-Bezeichner (z.B. 'H1', 'T3') und damit
+ * entitätsneutral wiederverwendbar — nur die Zieltabelle/Spaltennamen unterscheiden sich.
+ * @param {Object} knex
+ * @param {number} poolId
+ * @param {Object} topologie - eine der obigen *_TOPOLOGIE-Konstanten
+ */
+export async function verknuepfeQuellenFuerMannschaftsPool(knex, poolId, topologie) {
+    const begegnungen = await knex('mannschaftskaempfe').where({ pool_id: poolId });
+    const idByReihenfolge = new Map(begegnungen.map(b => [b.reihenfolge_nummer, b.id]));
+
+    for (const begegnung of begegnungen) {
+        const eintrag = topologie[begegnung.reihenfolge_nummer];
+        if (!eintrag) continue;
+
+        const [m1QuelleNr, m1Typ] = eintrag.k1;
+        const [m2QuelleNr, m2Typ] = eintrag.k2;
+        const m1QuelleId = idByReihenfolge.get(m1QuelleNr);
+        const m2QuelleId = idByReihenfolge.get(m2QuelleNr);
+
+        if (!m1QuelleId || !m2QuelleId) continue;
+
+        await knex('mannschaftskaempfe').where({ id: begegnung.id }).update({
+            mannschaft1_quelle_kampf_id: m1QuelleId,
+            mannschaft1_quelle_typ: m1Typ,
+            mannschaft2_quelle_kampf_id: m2QuelleId,
+            mannschaft2_quelle_typ: m2Typ
+        });
+    }
+}

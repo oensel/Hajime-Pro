@@ -1,36 +1,283 @@
 /* public/css/turnier.css */
 
-/* Breiterer Container als der Standard-680px-Rahmen, damit die Zahlungs- und
-   Altersklassen-Raster mehr Spalten nebeneinander zeigen und man weniger scrollen muss. */
-.mdc-card {
-    max-width: 1040px;
-    padding: 36px;
+/* Die Seite nutzt ein eigenes Zweispalten-Layout (siehe .turnier-layout) statt der einzelnen
+   680px-Karte anderer Masken — daher hier bewusst kein max-width-Override auf .mdc-card global,
+   sondern gezielt auf .turnier-page. */
+.turnier-page {
+    width: 100%;
+    max-width: 1280px;
 }
 
-.form-group { margin-bottom: 24px; }
-.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
-.actions { margin-top: 4px; }
+/* Fixierte Aktionsleiste unten beansprucht Platz — Body braucht daher etwas mehr
+   Bodenfreiraum als der globale Standard aus common.css (Kaskade: diese Datei lädt danach). */
+body { padding-bottom: 96px; }
 
-/* Text-, Zahlen- und Datumsfelder exakt gleich hoch (das native Kalender-Icon lässt
-   Datumsfelder sonst ein paar Pixel höher rendern als Text-/Zahlenfelder). */
-#turnierForm input[type="text"],
-#turnierForm input[type="date"],
-#turnierForm input[type="number"] {
-    height: 46px;
-}
-
-/* Zahlungsblock: Startgeld bewusst schmal (nur 3-stellig), die übrigen Felder teilen sich den Rest. */
-.grid-zahlung {
-    display: grid;
-    grid-template-columns: 110px 1fr 1fr 1fr;
+/* --- SEITENKOPF: TITEL LINKS, LEBENSZYKLUS-AKTIONEN RECHTS --- */
+.turnier-page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     gap: 16px;
-    padding: 12px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: rgba(0, 0, 0, 0.01);
+    flex-wrap: wrap;
+    width: 100%;
+    margin-bottom: 24px;
 }
 
-@media (max-width: 700px) {
-    .grid-3 { grid-template-columns: 1fr; gap: 0; }
-    .grid-zahlung { grid-template-columns: 1fr; gap: 12px; }
+.turnier-page-header-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.turnier-page-header-title h1 {
+    margin: 0;
+    font-size: 26px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.turnier-page-header-title .material-icons {
+    font-size: 28px;
+    color: var(--primary);
+}
+
+.turnier-page-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.turnier-header-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+}
+
+.turnier-header-btn .material-icons { font-size: 18px; }
+
+.turnier-header-btn-danger {
+    color: #c62828;
+    border-color: #c62828;
+}
+
+/* --- ZWEISPALTEN-LAYOUT: SCHMALE STAMMDATEN-SPALTE + BREITE ALTERSKLASSEN-SPALTE --- */
+.turnier-layout {
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    align-items: start;
+    gap: 24px;
+    width: 100%;
+}
+
+.turnier-col-left, .turnier-col-right {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    min-width: 0;
+}
+
+@media (max-width: 900px) {
+    .turnier-layout { grid-template-columns: 1fr; }
+}
+
+/* --- KARTEN MIT EIGENEM KOPFBEREICH (Icon + Titel), STATT DER GLOBALEN .form-title-area --- */
+.turnier-section-card {
+    width: 100%;
+    max-width: none;
+    padding: 0;
+}
+
+.turnier-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 20px;
+    background: var(--bg-main);
+    border-bottom: 2px solid var(--border);
+}
+
+.turnier-card-header .material-icons {
+    font-size: 20px;
+    color: var(--primary);
+}
+
+.turnier-card-header h2 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.turnier-card-body {
+    padding: 20px;
+}
+
+.turnier-card-body .form-group { margin-bottom: 16px; }
+.turnier-card-body .form-group:last-child { margin-bottom: 0; }
+
+/* Gezielt nur auf die Stammdaten-/Zahlungsfelder beschränkt (statt aller Labels im Formular) —
+   sonst würde die ID-Selektor-Spezifität diese Regel auch über .turnier-ak-row label (die
+   Checkbox-Beschriftungen, siehe unten) gewinnen lassen. Nachfahren- statt Kind-Selektor, da PLZ
+   und Ort sich ein .form-group in einem eigenen Mini-Grid teilen (siehe #plz/#ort im HTML). */
+#turnierForm .form-group label {
+    font-size: 11px;
+}
+
+/* --- AUSTRAGUNGS-ALTERSKLASSEN: JE GESCHLECHT EIN KOMPAKTES 3-SPALTEN-RASTER --- */
+.turnier-ak-label {
+    display: block;
+    margin-bottom: 12px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+}
+
+.turnier-ak-gender-block { margin-bottom: 20px; }
+.turnier-ak-gender-block:last-child { margin-bottom: 0; }
+
+.turnier-ak-gender-title {
+    margin-bottom: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--primary);
+    text-transform: capitalize;
+}
+
+.turnier-ak-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2px 12px;
+    padding: 2px;
+    border: 2px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-main);
+}
+
+@media (max-width: 560px) {
+    .turnier-ak-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+.turnier-ak-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 4px;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.turnier-ak-row label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+    flex: 1;
+    font-size: 13px;
+    color: var(--text-main);
+    font-weight: 500;
+}
+
+.turnier-ak-row input[type="checkbox"] {
+    accent-color: var(--primary);
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
+.turnier-ak-row-active { background: rgba(30, 58, 138, 0.05); }
+[data-theme="dark"] .turnier-ak-row-active { background: rgba(59, 130, 246, 0.08); }
+
+.turnier-ak-delete-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 16px;
+    padding: 2px;
+    line-height: 1;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+.turnier-ak-delete-btn:hover { color: #c62828; }
+
+.turnier-ak-mode-group {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.turnier-ak-mode-group label {
+    font-size: 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--text-muted);
+}
+
+.turnier-ak-mode-group input[type="radio"] {
+    accent-color: var(--primary);
+    width: 12px;
+    height: 12px;
+}
+
+.turnier-ak-add-btn {
+    margin-top: 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.turnier-ak-add-btn .material-icons { font-size: 15px; }
+
+/* --- FIXIERTE AKTIONSLEISTE AM UNTEREN BILDSCHIRMRAND (Export/Abbrechen/Speichern) --- */
+.turnier-footer-bar {
+    position: fixed;
+    bottom: 0;
+    left: 260px;
+    right: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 14px 24px;
+    background-color: var(--bg-card);
+    border-top: 2px solid var(--border);
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.03);
+    z-index: 90;
+    transition: left 0.3s, background-color 0.3s, border-color 0.3s;
+}
+
+.turnier-footer-btn {
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+@media (max-width: 850px) {
+    .turnier-footer-bar { left: 72px; }
+}
+
+body.sidebar-collapsed .turnier-footer-bar {
+    left: 72px;
+}
+
+@media (max-width: 600px) {
+    .turnier-footer-bar {
+        left: 0;
+        padding: 10px 12px;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
 }

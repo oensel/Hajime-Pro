@@ -16,12 +16,9 @@ function zufallsGewicht(min, max) {
     return Math.round((min + Math.random() * (max - min)) * 10) / 10;
 }
 
-/** Zufälliges Datum im Bereich [startJahr, endeJahr] */
-function zufallsDatum(startJahr, endeJahr) {
-    const jahr = startJahr + Math.floor(Math.random() * (endeJahr - startJahr + 1));
-    const monat = String(1 + Math.floor(Math.random() * 12)).padStart(2, '0');
-    const tag = String(1 + Math.floor(Math.random() * 28)).padStart(2, '0');
-    return `${jahr}-${monat}-${tag}`;
+/** Zufälliges Geburtsjahr im Bereich [startJahr, endeJahr] */
+function zufallsJahr(startJahr, endeJahr) {
+    return startJahr + Math.floor(Math.random() * (endeJahr - startJahr + 1));
 }
 
 /** Fortlaufende Judopass-ID */
@@ -94,7 +91,7 @@ function erzeugeTeilnehmer(anzahl, geschlecht, altersklasse, gewichtsklasse, gew
             judopass_id: naechstePassId(),
             vorname: zufallsElement(vornamenPool),
             nachname: zufallsElement(nachnamen),
-            geburtsdatum: zufallsDatum(gebStartJahr, gebEndeJahr),
+            geburtsjahr: zufallsJahr(gebStartJahr, gebEndeJahr),
             lizenz_ablauf: '2027-06-30',
             geschlecht,
             verein: zufallsElement(vereine),
@@ -121,7 +118,7 @@ function erzeugeMixedTeilnehmer(anzahl, altersklasse, gewichtsklasse, gewichtMin
             judopass_id: naechstePassId(),
             vorname: zufallsElement(vornamenPool),
             nachname: zufallsElement(nachnamen),
-            geburtsdatum: zufallsDatum(gebStartJahr, gebEndeJahr),
+            geburtsjahr: zufallsJahr(gebStartJahr, gebEndeJahr),
             lizenz_ablauf: '2027-06-30',
             geschlecht: 'mixed',
             verein: zufallsElement(vereine),

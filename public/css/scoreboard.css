@@ -298,14 +298,54 @@ input:checked + .slider:before { transform: translateX(30px); background-color: 
 .preview-overlay-hantei {font-size: 8vw; color: #ffcc00; text-shadow: 0 0 20px #cc0000; }
 
 /* Vorschau auf die nächsten Kämpfe nach "Ergebnis senden" (siehe zeigeNaechsteKaempferVorschau()
-   in scoreboard.js) — Fließtext statt riesiger Schrift wie TIME/HANTEI, da hier mehrere
-   Kämpfernamen lesbar Platz finden müssen. */
-.overlay-vorschau { flex-direction: column; gap: 3vh; color: #ffffff; letter-spacing: normal; background: rgba(0, 0, 0, 0.9);}
-.vorschau-section { display: flex; flex-direction: column; align-items: center; gap: 1vh; }
-.vorschau-titel { font-size: 4vw; text-transform: uppercase; letter-spacing: 4px; color: #ffc107; }
-.vorschau-section-danach .vorschau-titel { color: #9ca3af; }
-.vorschau-kampf { font-size: 3vw; text-align: center; font-family: Arial, sans-serif; }
-.vorschau-section-danach .vorschau-kampf { font-size: 3vw; color: #d1d5db; }
+   in scoreboard.js) — Karten-Layout mit abgestufter Betonung: der nächste Kampf gelb hervor-
+   gehoben und groß, die folgenden zunehmend kompakter/gedämpfter (Blick soll zuerst auf den
+   nächsten Kampf fallen). Schriftgrößen bewusst großzügig (40"-Bildschirm, ca. 10m Betrachtungs-
+   abstand) — Innenabstände dafür etwas knapper bemessen, damit alle drei Karten ohne Scrollen
+   auf eine Bildschirmhöhe passen. */
+.overlay-vorschau { flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 1.6vh; color: #ffffff; letter-spacing: normal; background: #0f172a; padding: 2.5vh 5vw; box-sizing: border-box; font-family: Arial, sans-serif; }
+
+.vorschau-header { display: flex; align-items: flex-start; justify-content: space-between; }
+.vorschau-header-left { display: flex; align-items: stretch; gap: 1.4vw; }
+.vorschau-header-bar { width: 0.5vw; background: #ffc107; border-radius: 4px; }
+.vorschau-header-title { font-size: 6vh; font-weight: 900; text-transform: uppercase; letter-spacing: 3px; color: #ffc107; }
+.vorschau-header-sub { font-size: 2.4vh; color: #94a3b8; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 0.6vh; }
+.vorschau-uhrzeit { font-size: 6vh; font-weight: 900; color: #ffffff; }
+
+.vorschau-card { display: none; border-radius: 10px; background: #1e293b; padding: 1.8vh 2.6vw; box-sizing: border-box; }
+.vorschau-card-top { display: flex; justify-content: flex-start; align-items: center; margin-bottom: 1.2vh; }
+.vorschau-badge { display: inline-block; background: #ffc107; color: #1a1a1a; font-size: 3.2vh; font-weight: 900; text-transform: uppercase; letter-spacing: 1.5px; padding: 0.7vh 1.4vw; border-radius: 4px; }
+.vorschau-pool { font-size: 3vh; color: #94a3b8; text-transform: uppercase; letter-spacing: 2px; font-weight: bold; margin-bottom: 1vh; }
+
+.vorschau-colorstrip { display: flex; gap: 0.6vw; margin-bottom: 1.2vh; }
+.vorschau-strip { flex: 1; height: 0.7vh; border-radius: 3px; }
+.vorschau-strip.weiss { background: #e2e8f0; }
+.vorschau-strip.blau { background: #1a5cff; }
+.vorschau-strip.rot { background: #dc3545; }
+
+.vorschau-matchup { display: flex; align-items: center; justify-content: space-between; gap: 2vw; }
+.vorschau-fighter { flex: 1; text-align: center; min-width: 0; }
+.vorschau-name { font-size: 9.5vh; font-weight: 900; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vorschau-club { font-size: 3.2vh; color: #94a3b8; margin-top: 0.4vh; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vorschau-vs { font-size: 4.6vh; font-style: italic; font-weight: 900; color: #94a3b8; padding: 0 1vw; flex: none; }
+
+/* "Als nächstes": gelb umrandet und am größten, damit der Blick zuerst hierhin fällt */
+.vorschau-card-primary { border: 2px solid #ffc107; box-shadow: 0 0 3vh rgba(255, 193, 7, 0.15); }
+
+/* "Danach"/"Im Anschluss": zunehmend kompakter und gedämpfter, eigene Betonung tritt zurück */
+.vorschau-card-secondary { opacity: 0.85; }
+.vorschau-card-secondary .vorschau-badge { font-size: 2.4vh; background: #475569; color: #e2e8f0; }
+.vorschau-card-secondary .vorschau-pool { font-size: 2.2vh; }
+.vorschau-card-secondary .vorschau-name { font-size: 6.5vh; }
+.vorschau-card-secondary .vorschau-club { font-size: 2.6vh; }
+.vorschau-card-secondary .vorschau-vs { font-size: 3.2vh; }
+
+.vorschau-card-tertiary { opacity: 0.65; }
+.vorschau-card-tertiary .vorschau-badge { font-size: 2vh; background: #334155; color: #94a3b8; }
+.vorschau-card-tertiary .vorschau-pool { font-size: 1.9vh; }
+.vorschau-card-tertiary .vorschau-name { font-size: 5vh; }
+.vorschau-card-tertiary .vorschau-club { font-size: 2.2vh; }
+.vorschau-card-tertiary .vorschau-vs { font-size: 2.6vh; }
 
 .collapse-container {
     background: #f1f3f5;

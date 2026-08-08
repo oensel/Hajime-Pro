@@ -1,4 +1,5 @@
-import { hatVereinsZugriffAufTurnier } from '../utils/vereinHelper.js';
+import { hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
+import { entfernungZuPlzInKm } from '../utils/entfernungHelper.js';
 import { turnierHatEchteKaempfe } from './poolController.js';
 
 // Anmeldeschluss wird als reines Datum (ohne Uhrzeit) gespeichert; die Frist gilt bis
@@ -37,6 +38,43 @@ function ermittleEffektivenStatus(turnier, { hatEchteKaempfe = false } = {}) {
 
 const GUELTIGE_STATUS_WERTE = ['entwurf', 'veroeffentlicht', 'abgeschlossen', 'abgesagt'];
 
+// Alle Spalten außer der PDF-Binärdatei selbst — für Listen-/Auswahl-Abfragen, die die
+// Ausschreibung nur als "vorhanden ja/nein" (siehe hat_ausschreibung) benötigen und die
+// potenziell mehrere MB große Binärspalte nicht aus der DB laden sollen.
+const TURNIER_SPALTEN_OHNE_PDF = [
+    'id', 'bezeichnung', 'ort', 'plz', 'bundesland', 'datum', 'ausrichter',
+    'nutze_gewichtsklassen', 'anzahl_kampfflaechen', 'verein_id', 'altersklassen',
+    'mannschafts_altersklassen', 'status', 'anmeldeschluss', 'startgeld', 'iban',
+    'kontoinhaber', 'verwendungszweck', 'ausschreibung_dateiname', 'created_at', 'updated_at'
+];
+
+const AUSSCHREIBUNG_MAX_MB = 10;
+const AUSSCHREIBUNG_MAX_BYTES = AUSSCHREIBUNG_MAX_MB * 1024 * 1024;
+
+// Baut das Update-Fragment für die Ausschreibungs-PDF aus dem Request-Body:
+// - String (Base64) -> neue/ersetzte PDF wird gespeichert
+// - null -> Nutzer hat "PDF entfernen" geklickt, Spalten werden geleert
+// - undefined (Feld gar nicht im Body) -> unverändert lassen, leeres Fragment
+// Gibt bei zu großer Datei einen Fehlertext statt eines Fragments zurück.
+function baueAusschreibungFragment(ausschreibungPdfBase64, ausschreibungDateiname) {
+    if (ausschreibungPdfBase64 === null) {
+        return { fragment: { ausschreibung_pdf: null, ausschreibung_dateiname: null } };
+    }
+    if (typeof ausschreibungPdfBase64 === 'string' && ausschreibungPdfBase64.trim() !== '') {
+        const buffer = Buffer.from(ausschreibungPdfBase64, 'base64');
+        if (buffer.length > AUSSCHREIBUNG_MAX_BYTES) {
+            return { fehler: `Die Ausschreibung ist zu groß (max. ${AUSSCHREIBUNG_MAX_MB} MB).` };
+        }
+        return {
+            fragment: {
+                ausschreibung_pdf: buffer,
+                ausschreibung_dateiname: ausschreibungDateiname || 'Ausschreibung.pdf'
+            }
+        };
+    }
+    return { fragment: {} };
+}
+
 // Wird ein Startgeld verlangt, müssen die Zahlungsdaten vollständig sein, sonst kann später
 // niemand zuverlässig bezahlen (fehlende IBAN/Kontoinhaber/Verwendungszweck).
 function validiereZahlungsdaten(startgeld, iban, kontoinhaber, verwendungszweck) {
@@ -51,7 +89,7 @@ function validiereZahlungsdaten(startgeld, iban, kontoinhaber, verwendungszweck)
 
 export async function createTurnier(knex, req, res) {
     try {
-        const { bezeichnung, ort, datum, ausrichter, anzahl_kampfflaechen, nutze_gewichtsklassen, bundesland, altersklassen, anmeldeschluss, startgeld, iban, kontoinhaber, verwendungszweck } = req.body;
+        const { bezeichnung, ort, datum, ausrichter, anzahl_kampfflaechen, nutze_gewichtsklassen, bundesland, plz, altersklassen, mannschafts_altersklassen, anmeldeschluss, startgeld, iban, kontoinhaber, verwendungszweck, ausschreibung_pdf_base64, ausschreibung_dateiname } = req.body;
         const userId = req.user.id; // Logged in user ID from middleware
 
         const zahlungsFehler = validiereZahlungsdaten(startgeld, iban, kontoinhaber, verwendungszweck);
@@ -59,15 +97,21 @@ export async function createTurnier(knex, req, res) {
             return res.status(400).json({ success: false, error: zahlungsFehler });
         }
 
+        const { fragment: ausschreibungFragment, fehler: ausschreibungFehler } = baueAusschreibungFragment(ausschreibung_pdf_base64, ausschreibung_dateiname);
+        if (ausschreibungFehler) {
+            return res.status(400).json({ success: false, error: ausschreibungFehler });
+        }
+
         // Turnier wird an den Verein des anlegenden Benutzers gekoppelt (nicht mehr an
         // den Benutzer selbst) — requireVereinFreigabe stellt sicher, dass verein_id gesetzt ist.
-        const user = await knex('benutzer').where({ id: userId }).first();
+        const user = await ladeBenutzerMitAktivemVerein(knex, userId);
         const vereinId = user ? user.verein_id : null;
 
         // Sicherer Check: Akzeptiert die Zahl 1, den String "1" oder das Boolean true
         const wertFuerDB = (nutze_gewichtsklassen === 1 || nutze_gewichtsklassen === true || nutze_gewichtsklassen === '1' || nutze_gewichtsklassen === 'true') ? 1 : 0;
 
         const altersklassenDB = typeof altersklassen === 'string' ? altersklassen : JSON.stringify(altersklassen || {});
+        const mannschaftsAltersklassenDB = typeof mannschafts_altersklassen === 'string' ? mannschafts_altersklassen : JSON.stringify(mannschafts_altersklassen || []);
 
         const [idObj] = await knex('turniere').insert({
             bezeichnung,
@@ -78,13 +122,16 @@ export async function createTurnier(knex, req, res) {
             nutze_gewichtsklassen: wertFuerDB,
             verein_id: vereinId,
             bundesland: bundesland || null,
+            plz: plz || null,
             altersklassen: altersklassenDB,
+            mannschafts_altersklassen: mannschaftsAltersklassenDB,
             status: 'entwurf', // neue Turniere starten immer im Entwurf (Zustand 1 der Spezifikation)
             anmeldeschluss: anmeldeschluss || null,
             startgeld: startgeld !== undefined && startgeld !== '' ? parseInt(startgeld, 10) : null,
             iban: iban || null,
             kontoinhaber: kontoinhaber || null,
-            verwendungszweck: verwendungszweck || null
+            verwendungszweck: verwendungszweck || null,
+            ...ausschreibungFragment
         }).returning('id');
 
         const turnierId = typeof idObj === 'object' ? idObj.id : idObj;
@@ -98,11 +145,16 @@ export async function createTurnier(knex, req, res) {
 export async function updateTurnier(knex, req, res) {
     try {
         const { id } = req.params;
-        const { bezeichnung, ort, datum, ausrichter, anzahl_kampfflaechen, nutze_gewichtsklassen, bundesland, altersklassen, anmeldeschluss, startgeld, iban, kontoinhaber, verwendungszweck } = req.body;
+        const { bezeichnung, ort, datum, ausrichter, anzahl_kampfflaechen, nutze_gewichtsklassen, bundesland, plz, altersklassen, mannschafts_altersklassen, anmeldeschluss, startgeld, iban, kontoinhaber, verwendungszweck, ausschreibung_pdf_base64, ausschreibung_dateiname } = req.body;
 
         const zahlungsFehler = validiereZahlungsdaten(startgeld, iban, kontoinhaber, verwendungszweck);
         if (zahlungsFehler) {
             return res.status(400).json({ success: false, error: zahlungsFehler });
+        }
+
+        const { fragment: ausschreibungFragment, fehler: ausschreibungFehler } = baueAusschreibungFragment(ausschreibung_pdf_base64, ausschreibung_dateiname);
+        if (ausschreibungFehler) {
+            return res.status(400).json({ success: false, error: ausschreibungFehler });
         }
 
         const bestehendesTurnier = await knex('turniere').where({ id }).first();
@@ -118,6 +170,7 @@ export async function updateTurnier(knex, req, res) {
         const wertFuerDB = (nutze_gewichtsklassen === 1 || nutze_gewichtsklassen === true || nutze_gewichtsklassen === '1' || nutze_gewichtsklassen === 'true') ? 1 : 0;
 
         const altersklassenDB = typeof altersklassen === 'string' ? altersklassen : JSON.stringify(altersklassen || {});
+        const mannschaftsAltersklassenDB = typeof mannschafts_altersklassen === 'string' ? mannschafts_altersklassen : JSON.stringify(mannschafts_altersklassen || []);
 
         // verein_id wird hier absichtlich nicht angefasst — die Vereinszuordnung ist nach der
         // Anlage unveränderlich, damit kein Mitglied das Turnier einem anderen Verein zuordnen
@@ -131,12 +184,15 @@ export async function updateTurnier(knex, req, res) {
             anzahl_kampfflaechen: parseInt(anzahl_kampfflaechen) || 1,
             nutze_gewichtsklassen: wertFuerDB,
             bundesland: bundesland || null,
+            plz: plz || null,
             altersklassen: altersklassenDB,
+            mannschafts_altersklassen: mannschaftsAltersklassenDB,
             anmeldeschluss: anmeldeschluss || null,
             startgeld: startgeld !== undefined && startgeld !== '' ? parseInt(startgeld, 10) : null,
             iban: iban || null,
             kontoinhaber: kontoinhaber || null,
             verwendungszweck: verwendungszweck || null,
+            ...ausschreibungFragment,
             updated_at: knex.fn.now()
         });
 
@@ -159,7 +215,7 @@ export async function getTurnier(knex, req, res) {
         // Entwurf: nur für Mitglieder des ausrichtenden Vereins sichtbar (Zustand 1: "Nur für
         // den Ersteller sichtbar"). Offline-Betrieb ist Single-Tenant und bleibt ausgenommen.
         if (statusEffektiv === 'entwurf' && process.env.IS_OFFLINE !== 'true') {
-            const user = await knex('benutzer').where({ id: req.user.id }).first();
+            const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
             if (!hatVereinsZugriffAufTurnier(user, turnier)) {
                 return res.status(403).json({ error: 'Dieses Turnier befindet sich noch im Entwurf und ist nicht sichtbar.' });
             }
@@ -175,10 +231,57 @@ export async function getTurnier(knex, req, res) {
             }
         }
         turnier.altersklassen = ak || [];
+
+        let mak = turnier.mannschafts_altersklassen;
+        if (typeof mak === 'string') {
+            try {
+                mak = JSON.parse(mak);
+            } catch (e) {
+                mak = mak ? mak.split(',') : [];
+            }
+        }
+        turnier.mannschafts_altersklassen = mak || [];
+
         turnier.status_effektiv = statusEffektiv;
         turnier.teilnehmer_anzahl = await knex('turnier_teilnehmer').where({ turnier_id: turnier.id }).count('* as anzahl').first().then(r => parseInt(r.anzahl, 10));
 
+        // Die PDF-Binärdaten selbst gehören nicht in die JSON-Antwort (Größe, falsches Format) —
+        // nur ein Flag, ob eine Ausschreibung hinterlegt ist. Der eigentliche Download/die Anzeige
+        // läuft über GET /api/turniere/:id/ausschreibung (siehe ladeAusschreibung unten).
+        turnier.hat_ausschreibung = !!turnier.ausschreibung_pdf;
+        delete turnier.ausschreibung_pdf;
+
         res.json(turnier);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+}
+
+// Liefert die hinterlegte Ausschreibung als PDF-Binärdatei aus (siehe Klick auf "Ausschreibung
+// ansehen" in turniere.html/turnier.js). Dieselbe Sichtbarkeitsregel wie getTurnier: ein Entwurf
+// ist nur für Mitglieder des ausrichtenden Vereins abrufbar.
+export async function ladeAusschreibung(knex, req, res) {
+    try {
+        const turnier = await knex('turniere').where({ id: req.params.id }).first();
+        if (!turnier) return res.status(404).json({ error: 'Turnier nicht gefunden.' });
+
+        const hatEchteKaempfe = await turnierHatEchteKaempfe(knex, turnier.id);
+        const statusEffektiv = ermittleEffektivenStatus(turnier, { hatEchteKaempfe });
+
+        if (statusEffektiv === 'entwurf' && process.env.IS_OFFLINE !== 'true') {
+            const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
+            if (!hatVereinsZugriffAufTurnier(user, turnier)) {
+                return res.status(403).json({ error: 'Dieses Turnier befindet sich noch im Entwurf und ist nicht sichtbar.' });
+            }
+        }
+
+        if (!turnier.ausschreibung_pdf) {
+            return res.status(404).json({ error: 'Für dieses Turnier ist keine Ausschreibung hinterlegt.' });
+        }
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="${turnier.ausschreibung_dateiname || 'Ausschreibung.pdf'}"`);
+        res.send(turnier.ausschreibung_pdf);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -187,10 +290,13 @@ export async function getTurnier(knex, req, res) {
 export async function getTurniere(knex, req, res) {
     try {
         const userId = req.user.id;
-        const { mine, zukuenftig } = req.query;
-        const user = await knex('benutzer').where({ id: userId }).first();
+        const { mine, zukuenftig, lat, lon } = req.query;
+        const user = await ladeBenutzerMitAktivemVerein(knex, userId);
 
-        let query = knex('turniere');
+        // Explizite Spaltenliste ohne die (potenziell mehrere MB große) PDF-Binärspalte — dieser
+        // Endpunkt liefert oft viele Turniere auf einmal (siehe turniere.html) und soll die
+        // Ausschreibungen dafür nicht unnötig aus der DB laden.
+        let query = knex('turniere').select([...TURNIER_SPALTEN_OHNE_PDF, knex.raw('(ausschreibung_pdf is not null) as hat_ausschreibung')]);
 
         if (mine === 'true') {
             // "Eigene" Turniere = Turniere des eigenen Vereins
@@ -214,7 +320,18 @@ export async function getTurniere(knex, req, res) {
         if (zukuenftig === 'true') {
             const jetzt = new Date();
             const heuteStr = `${jetzt.getFullYear()}-${String(jetzt.getMonth() + 1).padStart(2, '0')}-${String(jetzt.getDate()).padStart(2, '0')}`;
-            query = query.where('datum', '>=', heuteStr);
+
+            // Eigene Entwürfe bleiben unabhängig vom (ggf. noch vorläufigen/falschen) Datum
+            // sichtbar — ein Entwurf ist noch in Bearbeitung, kein "vergangenes" Turnier, dessen
+            // Anlegerin/Anleger ihn sonst in der eigenen Übersicht nie wiederfinden würde.
+            if (user && user.verein_id) {
+                query = query.where(function () {
+                    this.where('datum', '>=', heuteStr)
+                        .orWhere({ status: 'entwurf', verein_id: user.verein_id });
+                });
+            } else {
+                query = query.where('datum', '>=', heuteStr);
+            }
         }
 
         const turniere = await query.orderBy('datum', 'desc');
@@ -236,14 +353,29 @@ export async function getTurniere(knex, req, res) {
                     ak = ak ? ak.split(',') : [];
                 }
             }
+
+            let mak = t.mannschafts_altersklassen;
+            if (typeof mak === 'string') {
+                try {
+                    mak = JSON.parse(mak);
+                } catch (e) {
+                    mak = mak ? mak.split(',') : [];
+                }
+            }
+
             // Listen-Badge: ohne hatEchteKaempfe berechnet, um N+1-Abfragen zu vermeiden (siehe
             // Plan) — kann "in_durchfuehrung" in einem schmalen Edge-Fall kurz verzögert zeigen;
             // die exakte, gate-relevante Berechnung erfolgt in getTurnier (Einzelabruf).
             return {
                 ...t,
                 altersklassen: ak || [],
+                mannschafts_altersklassen: mak || [],
                 teilnehmer_anzahl: countMap[t.id] || 0,
-                status_effektiv: ermittleEffektivenStatus(t)
+                status_effektiv: ermittleEffektivenStatus(t),
+                // Nur befüllt, wenn der Browser des Nutzers einen Standort mitliefert (lat/lon
+                // per Geolocation-API, siehe turniere.html) UND das Turnier eine PLZ hinterlegt
+                // hat — sonst null (z.B. Standort-Freigabe abgelehnt oder Turnier ohne PLZ).
+                entfernung_km: entfernungZuPlzInKm(t.plz, lat, lon)
             };
         });
 
@@ -394,7 +526,7 @@ async function importWettkampfdaten(trx, turnierId, { kampfflaechen, pools, teil
             judopass_id: teil.judopass_id || '',
             vorname: teil.vorname,
             nachname: teil.nachname,
-            geburtsdatum: teil.geburtsdatum,
+            geburtsjahr: teil.geburtsjahr,
             lizenz_ablauf: teil.lizenz_ablauf || '1970-01-01',
             geschlecht: teil.geschlecht,
             verein: teil.verein,
@@ -403,7 +535,8 @@ async function importWettkampfdaten(trx, turnierId, { kampfflaechen, pools, teil
             gewichtsklasse: teil.gewichtsklasse,
             startgeld_bezahlt: teil.startgeld_bezahlt ? 1 : 0,
             graduierung: teil.graduierung || null,
-            status: teil.status || 'angemeldet'
+            status: teil.status || 'angemeldet',
+            fuer_mannschaft: teil.fuer_mannschaft ? 1 : 0
         }).returning('id');
         teilnehmerIdMap.set(teil.id, typeof neueIdObj === 'object' ? neueIdObj.id : neueIdObj);
     }
@@ -481,6 +614,11 @@ export async function importTurnier(knex, req, res) {
             try { ak = JSON.parse(ak); } catch (e) { ak = []; }
         }
 
+        let mak = t.mannschafts_altersklassen;
+        if (typeof mak === 'string') {
+            try { mak = JSON.parse(mak); } catch (e) { mak = []; }
+        }
+
         const neuesTurnierId = await knex.transaction(async (trx) => {
             // Der Offline-Kiosk-Betrieb geht von genau einem aktiven Turnier aus (siehe
             // automatische Turnier-Auswahl in turniere.html) — vor dem Import wird die
@@ -507,7 +645,11 @@ export async function importTurnier(knex, req, res) {
                 nutze_gewichtsklassen: t.nutze_gewichtsklassen ? 1 : 0,
                 anzahl_kampfflaechen: kampfflaechen.length || parseInt(t.anzahl_kampfflaechen, 10) || 1,
                 bundesland: t.bundesland || null,
+                plz: t.plz || null,
+                ausschreibung_pdf: t.ausschreibung_pdf_base64 ? Buffer.from(t.ausschreibung_pdf_base64, 'base64') : null,
+                ausschreibung_dateiname: t.ausschreibung_pdf_base64 ? (t.ausschreibung_dateiname || 'Ausschreibung.pdf') : null,
                 altersklassen: JSON.stringify(ak || {}),
+                mannschafts_altersklassen: JSON.stringify(mak || []),
                 status: GUELTIGE_STATUS_WERTE.includes(t.status) ? t.status : 'entwurf',
                 anmeldeschluss: t.anmeldeschluss || null,
                 startgeld: t.startgeld !== undefined && t.startgeld !== '' ? parseFloat(t.startgeld) : null,
@@ -562,7 +704,7 @@ export async function importTurnierErgebnisse(knex, req, res) {
             return res.status(403).json({ success: false, error: 'Ergebnisse können erst hochgeladen werden, wenn die Anmeldefrist abgelaufen ist. Ein bereits abgeschlossenes Turnier ist schreibgeschützt.' });
         }
 
-        const user = await knex('benutzer').where({ id: req.user.id }).first();
+        const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
         if (!user || !hatVereinsZugriffAufTurnier(user, turnier)) {
             return res.status(403).json({ success: false, error: 'Nur freigegebene Mitglieder des ausrichtenden Vereins dürfen Ergebnisse hochladen.' });
         }
@@ -645,7 +787,7 @@ export async function exportTurnier(knex, req, res) {
             return res.status(403).json({ success: false, error: 'Das Turnier kann erst exportiert werden, wenn die Anmeldefrist abgelaufen ist.' });
         }
 
-        const user = await knex('benutzer').where({ id: req.user.id }).first();
+        const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
         const hatZugriff = process.env.IS_OFFLINE === 'true' || hatVereinsZugriffAufTurnier(user, turnier);
 
         if (!hatZugriff) {
@@ -670,9 +812,29 @@ export async function exportTurnier(knex, req, res) {
             }
         }
 
+        let mak = turnier.mannschafts_altersklassen;
+        if (typeof mak === 'string') {
+            try {
+                mak = JSON.parse(mak);
+            } catch (e) {
+                mak = mak ? mak.split(',') : [];
+            }
+        }
+
+        // Ausschreibungs-PDF (Buffer) als Base64-String exportieren statt als rohes Buffer-Objekt
+        // ({"type":"Buffer","data":[...]}) — analog zum bestehenden contentBase64-Muster beim
+        // Turnier-Import (siehe importTurnier unten).
+        const { ausschreibung_pdf, ...turnierOhnePdf } = turnier;
+        const ausschreibungPdfBase64 = ausschreibung_pdf ? Buffer.from(ausschreibung_pdf).toString('base64') : null;
+
         const exportData = {
             exportiert_am: new Date().toISOString(),
-            turnier: { ...turnier, altersklassen: ak || [] },
+            turnier: {
+                ...turnierOhnePdf,
+                altersklassen: ak || [],
+                mannschafts_altersklassen: mak || [],
+                ausschreibung_pdf_base64: ausschreibungPdfBase64
+            },
             kampfflaechen,
             pools,
             teilnehmer,

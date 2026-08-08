@@ -1,7 +1,29 @@
-/* Breiterer Container, damit die Tabelle auf großen Monitoren optimalen Platz hat */
-.mdc-card {
+/* Breiterer Container, damit die Tabelle auf großen Monitoren optimalen Platz hat. Feste Höhe
+   (= verfügbare Viewport-Höhe abzüglich der body-Innenabstände, siehe common.css) + Flex-Column,
+   damit die Kennzahlen-Kacheln immer am unteren Rand bleiben und nur die Tabelle dazwischen
+   scrollt, statt die ganze Seite wachsen zu lassen.
+   WICHTIG: gezielt über #teilnehmerHauptkarte statt der allgemeinen .mdc-card-Klasse — diese
+   Klasse wird auch von den Modal-Karten dieser Seite (Bestätigungsdialoge, Startgeld-/Import-
+   Modals) verwendet; über .mdc-card gesetzt, würde diese feste Höhe/Flex-Layout auch dort
+   greifen und z.B. den Bestätigungsdialog auf Bildschirmhöhe aufblähen. */
+#teilnehmerHauptkarte {
     max-width: 1300px;
     padding: 20px 24px;
+    height: calc(100vh - 112px);
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    /* Sicherheitsnetz: falls Titel/Banner/Kacheln bei sehr niedrigen Bildschirmen zusammen mit
+       der Mindesthöhe der Tabelle (siehe .table-responsive) doch nicht in die feste Kartenhöhe
+       passen, scrollt notfalls die ganze Karte sauber als Block — statt dass Inhalt unclipped
+       über die Kartengrenze hinausläuft und andere Bereiche (z.B. die Titelleiste) überlagert. */
+    overflow-y: auto;
+}
+
+/* Alles außer der Tabelle und den Kennzahlen-Kacheln behält seine natürliche Höhe — nur die
+   Tabelle darf wachsen/schrumpfen und scrollt bei Bedarf. */
+#teilnehmerHauptkarte > *:not(.table-responsive):not(.teilnehmer-stats-grid) {
+    flex-shrink: 0;
 }
 
 /* Kompakterer Titelbereich, damit auf dieser Liste mehr Platz für Tabellenzeilen bleibt */
@@ -38,7 +60,7 @@
 
 .teilnehmer-search input {
     width: 100%;
-    padding: 10px 14px 10px 40px;
+    padding: 2px 6px 2px 40px;
     border: 2px solid var(--border);
     border-radius: 4px;
     font-size: 14px;
@@ -60,25 +82,56 @@
     flex-wrap: wrap;
 }
 
-/* Macht die Tabelle auf Mobilgeräten und Tablets horizontal scrollbar, falls der Platz eng wird */
+/* Macht die Tabelle horizontal (kleine Bildschirme) UND vertikal scrollbar — die Kennzahlen-
+   Kacheln bleiben so immer sichtbar am unteren Rand der Karte, unabhängig von der Anzahl Zeilen.
+   min-height: 0 ist nötig, damit ein Flex-Kind mit overflow im Firefox/Chrome überhaupt unter
+   seine Inhaltsgröße schrumpfen und so scrollen kann. */
 .table-responsive {
     width: 100%;
     overflow-x: auto;
+    overflow-y: auto;
+    flex: 1 1 auto;
+    min-height: 160px; /* immer mindestens ein paar Zeilen sichtbar, statt auf 0 zusammenzufallen */
     margin-top: 8px;
     border-radius: 4px;
 }
 
-/* Das eigentliche Tabellen-Gerüst */
+/* Tabellenkopf bleibt beim vertikalen Scrollen sichtbar. Wichtig: position:sticky muss sowohl
+   auf thead SELBST als auch auf den th-Zellen gesetzt sein — nur auf th zu setzen reicht in der
+   Praxis nicht (der Kopf läuft dann trotzdem einfach mit dem Scrollen mit, statt fixiert zu
+   bleiben), erst beide zusammen verankern ihn zuverlässig am oberen Rand von .table-responsive. */
+.judo-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+
+.judo-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+
+/* Das eigentliche Tabellen-Gerüst. border-collapse: collapse verhindert in den meisten Browsern,
+   dass position: sticky auf th (siehe .judo-table thead th) tatsächlich greift — der Kopf würde
+   beim Scrollen einfach mitlaufen, statt fixiert zu bleiben. separate + spacing:0 behält dieselbe
+   Optik (nur border-bottom ist gesetzt, also keine doppelten Linien), macht sticky aber zuverlässig. */
 .judo-table {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     font-size: 14px;
     text-align: left;
 }
 
-/* Tabellen-Kopfzeile (Nutzt Kensho-Blue Akzente aus der common.css) */
+/* Tabellen-Kopfzeile (Nutzt Kensho-Blue Akzente aus der common.css). background-color ist
+   bewusst blickdicht (var(--bg-card)) statt der Blau-Einfärbung direkt als transparentes rgba zu
+   setzen — sonst scheinen beim Scrollen (position: sticky, siehe oben) die darunterliegenden
+   tbody-Zeilen durch den eigentlich fixierten Kopf hindurch. Die Einfärbung liegt stattdessen als
+   zusätzliches background-image (Verlauf zwischen zwei identischen Farben) obendrauf. */
 .judo-table th {
-    background-color: rgba(30, 58, 138, 0.04);
+    background-color: var(--bg-card);
+    background-image: linear-gradient(rgba(30, 58, 138, 0.04), rgba(30, 58, 138, 0.04));
     color: var(--primary);
     font-weight: 700;
     text-transform: uppercase;
@@ -97,12 +150,12 @@
 }
 
 .judo-table th.sortable:hover {
-    background-color: rgba(30, 58, 138, 0.08);
+    background-image: linear-gradient(rgba(30, 58, 138, 0.08), rgba(30, 58, 138, 0.08));
 }
 
 .judo-table th.sortable.active-sort {
     color: var(--primary);
-    background-color: rgba(30, 58, 138, 0.07);
+    background-image: linear-gradient(rgba(30, 58, 138, 0.07), rgba(30, 58, 138, 0.07));
 }
 
 .sort-icon {
@@ -112,9 +165,11 @@
     opacity: 0.7;
 }
 
-/* Anpassung des Tabellen-Kopfs für den Darkmode */
+/* Anpassung des Tabellen-Kopfs für den Darkmode — ebenfalls blickdichte background-color +
+   Einfärbung per background-image (siehe Kommentar oben bei .judo-table th) */
 [data-theme="dark"] .judo-table th {
-    background-color: rgba(59, 130, 246, 0.06);
+    background-color: var(--bg-card);
+    background-image: linear-gradient(rgba(59, 130, 246, 0.06), rgba(59, 130, 246, 0.06));
     color: var(--primary);
 }
 
@@ -249,11 +304,47 @@
     border: 1px solid rgba(198, 40, 40, 0.3);
 }
 
+/* Status-Badge als <select>: erlaubt das direkte Ändern des Teilnehmer-Status per Klick,
+   sieht dabei weiterhin wie ein Badge aus (kein natives Select-Erscheinungsbild). */
+select.status-select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    padding-right: 20px;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='6' viewBox='0 0 8 6'><path d='M0 0 L4 6 L8 0 Z' fill='%23666'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 7px center;
+}
+
+select.status-select:hover {
+    filter: brightness(0.95);
+}
+
+select.status-select:focus {
+    outline: 2px solid var(--primary, #1565c0);
+    outline-offset: 1px;
+}
+
 /* Altersklasse, die beim Turnier nicht ausgetragen wird */
 .klasse-badge.invalid {
     background-color: rgba(198, 40, 40, 0.1);
     color: #c62828;
     border: 1px solid rgba(198, 40, 40, 0.3);
+}
+
+/* Mannschafts-Badge (Positions-Zuordnung statt Einzelwettkampf-Klasse, siehe renderKlasseBadges
+   in teilnehmer.js) — eigene Farbe, damit es sich klar vom grün/roten Einzelwettkampf-Badge
+   abhebt, auch wenn beide nebeneinander in derselben Zelle stehen. */
+.klasse-badge.team {
+    background-color: rgba(106, 27, 154, 0.1);
+    color: #6a1b9a;
+    border: 1px solid rgba(106, 27, 154, 0.3);
 }
 
 /* Graduierung (Gürtelfarbe): einfarbig oder bei Zwischengurten links/rechts geteilt */
@@ -268,4 +359,125 @@
 
 .graduierung-kreis.graduierung-leer {
     background: repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.08) 3px, transparent 3px, transparent 6px);
+}
+
+/* Kennzahlen-Kacheln: eigene Section fest am unteren Rand der Karte (siehe .mdc-card/.table-
+   responsive oben) — Trennlinie macht den Abschluss der scrollbaren Tabelle sichtbar. */
+.teilnehmer-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 2px solid var(--border);
+}
+
+@media (max-width: 900px) {
+    .teilnehmer-stats-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+.teilnehmer-stat-card {
+    background-color: var(--bg-card);
+    border: 2px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 14px;
+    box-sizing: border-box;
+}
+
+.teilnehmer-stat-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+
+.teilnehmer-stat-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+}
+
+.teilnehmer-stat-icon {
+    font-size: 16px;
+    color: var(--border);
+}
+
+.teilnehmer-stat-value {
+    font-size: 21px;
+    font-weight: 800;
+    color: var(--text-main);
+    line-height: 1;
+}
+
+/* Ampel für Gewogen/Bezahlt: 100% grün, ab 80% gelb, darunter rot (siehe farbeFuerProzent() in
+   teilnehmer.js) */
+.teilnehmer-stat-value-gruen { color: #2e7d32; }
+.teilnehmer-stat-value-gelb { color: #f57c00; }
+.teilnehmer-stat-value-rot { color: #c62828; }
+
+.teilnehmer-stat-bar {
+    margin-top: 6px;
+    height: 5px;
+    border-radius: 3px;
+    background: var(--border);
+    overflow: hidden;
+}
+
+.teilnehmer-stat-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s ease, background-color 0.3s ease;
+}
+
+.teilnehmer-stat-bar-fill-gruen { background: #2e7d32; }
+.teilnehmer-stat-bar-fill-gelb { background: #f57c00; }
+.teilnehmer-stat-bar-fill-rot { background: #c62828; }
+
+.teilnehmer-stat-sub {
+    margin-top: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    min-height: 13px;
+}
+
+.teilnehmer-stat-sub-warnung { color: #c62828; }
+.teilnehmer-stat-sub-gruen { color: #2e7d32; }
+.teilnehmer-stat-sub-blau { color: var(--primary); }
+
+/* --- TEILNEHMER-POPUP (Anlegen/Bearbeiten, vormals eigene Seite waage.html) --- */
+/* Kompakter als die übrigen Formulare der Seite: als Popup über der Tabelle soll es möglichst
+   wenig Platz beanspruchen, daher eigene (kleinere) Werte statt der globalen Defaults aus
+   common.css für Label und Abstände. Eingabefelder/Buttons nutzen bewusst den common.css-Standard. */
+#waageModal .form-group { margin-bottom: 12px; }
+#waageModal .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+@media (max-width: 600px) {
+    #waageModal .grid-2 { grid-template-columns: 1fr; gap: 0; }
+}
+
+#waageModal label {
+    font-size: 10px;
+    margin-bottom: 4px;
+    letter-spacing: 0.5px;
+}
+
+#waageModal .actions {
+    padding-top: 14px;
+    gap: 10px;
+}
+
+/* Lizenz noch gültig (Grün) */
+#waageModal .lizenz-valid {
+    border-color: #2e7d32 !important;
+    background-color: rgba(46, 125, 50, 0.03) !important;
+    box-shadow: 0 0 0 3px rgba(46, 125, 50, 0.15);
+}
+
+/* Lizenz ist abgelaufen (Rot) */
+#waageModal .lizenz-expired {
+    border-color: #c62828 !important;
+    background-color: rgba(198, 40, 40, 0.03) !important;
+    box-shadow: 0 0 0 3px rgba(198, 40, 40, 0.15);
 }

@@ -2,7 +2,7 @@ import * as XLSX from 'xlsx';
 import { readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { resolveUserVereinName, hatVereinsZugriffAufTurnier } from '../utils/vereinHelper.js';
+import { resolveUserVereinName, hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
 import { turnierHatEchteKaempfe } from './poolController.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -54,13 +54,13 @@ const TEILNEHMERLISTE_GESPERRT_FEHLER = 'Die Teilnehmerliste ist gesperrt, da f�
 export async function createTeilnehmer(knex, req, res) {
     try {
         const {
-            turnier_id, judopass_id, vorname, nachname, geburtsdatum,
+            turnier_id, judopass_id, vorname, nachname, geburtsjahr,
             lizenz_ablauf, geschlecht, verein, gewicht, altersklasse, gewichtsklasse,
             startgeld_bezahlt, graduierung
         } = req.body;
 
         // Benutzer laden
-        const user = await knex('benutzer').where({ id: req.user.id }).first();
+        const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
         if (!user) {
             return res.status(401).json({ success: false, error: 'Benutzerprofil nicht gefunden.' });
         }
@@ -80,10 +80,10 @@ export async function createTeilnehmer(knex, req, res) {
         const userVereinName = await resolveUserVereinName(knex, user);
 
         // 1. Validierung: Überprüfen, ob alle Pflichtfelder da sind (Verein nur für Nicht-Gastgeber Pflicht).
-        // geburtsdatum ist hier bewusst Pflicht (nicht defaultbar): es steuert die Alters-
+        // geburtsjahr ist hier bewusst Pflicht (nicht defaultbar): es steuert die Alters-
         // klassen-Herleitung und damit sicherheitsrelevante Alterseinteilungen.
-        if (!turnier_id || !vorname || !nachname || !geburtsdatum || (!istGastgeberVerein && !verein)) {
-            return res.status(400).json({ success: false, error: 'Fehlende Pflichtfelder (Turnier-ID, Vorname, Nachname, Geburtsdatum).' });
+        if (!turnier_id || !vorname || !nachname || !geburtsjahr || (!istGastgeberVerein && !verein)) {
+            return res.status(400).json({ success: false, error: 'Fehlende Pflichtfelder (Turnier-ID, Vorname, Nachname, Geburtsjahr).' });
         }
 
         // Wer nicht Mitglied des Gastgeber-Vereins ist, muss Club-Zugehörigkeit und Turnierstatus erfüllen
@@ -118,9 +118,9 @@ export async function createTeilnehmer(knex, req, res) {
             }
         }
 
-        // Falls keine Altersklasse übergeben wurde, anhand des Geburtsdatums ermitteln (analog zu waage.html)
+        // Falls keine Altersklasse übergeben wurde, anhand des Geburtsjahres ermitteln (analog zu waage.html)
         const ermittelteAltersklasse = altersklasse || ermittleAltersklasse(
-            geburtsdatum,
+            geburtsjahr,
             geschlecht,
             turnier.datum ? new Date(turnier.datum).getFullYear() : new Date().getFullYear(),
             ermittleTurnierAltersklassenKeys(turnier)
@@ -151,7 +151,7 @@ export async function createTeilnehmer(knex, req, res) {
             judopass_id: judopass_id || '',
             vorname: vorname,
             nachname: nachname,
-            geburtsdatum: geburtsdatum,
+            geburtsjahr: parseInt(geburtsjahr, 10),
             // lizenz_ablauf ist NOT NULL; ein bewusst in der Vergangenheit liegender Default
             // (wie beim CSV-Import) markiert "keine gültige Lizenz hinterlegt", statt abzustürzen.
             lizenz_ablauf: lizenz_ablauf || '1970-01-01',
@@ -161,7 +161,10 @@ export async function createTeilnehmer(knex, req, res) {
             altersklasse: ermittelteAltersklasse,
             gewichtsklasse: ermittelteGewichtsklasse,
             graduierung: GRADUIERUNG_IDS.has(graduierung) ? graduierung : null,
-            startgeld_bezahlt: startgeld_bezahlt ? 1 : 0
+            startgeld_bezahlt: startgeld_bezahlt ? 1 : 0,
+            // createTeilnehmer wird ausschließlich über waage.html erreicht (Neuanlage am
+            // Wiegetisch) — das eingegebene Gewicht ist also ein echtes, gemessenes Gewicht.
+            gewogen: true
         }).returning('id');
 
         const teilnehmerId = typeof idObj === 'object' ? idObj.id : idObj;
@@ -186,7 +189,7 @@ export async function getTeilnehmerByTurnier(knex, req, res) {
             return res.status(404).json({ error: 'Turnier nicht gefunden.' });
         }
 
-        const user = await knex('benutzer').where({ id: req.user.id }).first();
+        const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
         const userVereinName = user ? await resolveUserVereinName(knex, user) : null;
 
         const istGastgeberVerein = process.env.IS_OFFLINE === 'true' || hatVereinsZugriffAufTurnier(user, turnier);
@@ -219,7 +222,7 @@ export async function deleteTeilnehmer(knex, req, res) {
             return res.status(404).json({ success: false, error: 'Teilnehmer nicht gefunden.' });
         }
 
-        const user = await knex('benutzer').where({ id: req.user.id }).first();
+        const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
         const turnier = await knex('turniere').where({ id: athlet.turnier_id }).first();
 
         const hatEchteKaempfe = await turnierHatEchteKaempfe(knex, athlet.turnier_id);
@@ -252,7 +255,7 @@ export async function ziehZurueck(knex, req, res) {
             return res.status(404).json({ success: false, error: 'Teilnehmer nicht gefunden.' });
         }
 
-        const user = await knex('benutzer').where({ id: req.user.id }).first();
+        const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
         const turnier = await knex('turniere').where({ id: athlet.turnier_id }).first();
 
         const hatEchteKaempfe = await turnierHatEchteKaempfe(knex, athlet.turnier_id);
@@ -292,14 +295,14 @@ export async function getTeilnehmerById(knex, req, res) {
 export async function updateTeilnehmer(knex, req, res) {
     try {
         const { id } = req.params;
-        const { vorname, nachname, judopass_id, verein, geburtsdatum, lizenz_ablauf, geschlecht, gewicht, altersklasse, gewichtsklasse, startgeld_bezahlt, graduierung } = req.body;
+        const { vorname, nachname, judopass_id, verein, geburtsjahr, lizenz_ablauf, geschlecht, gewicht, altersklasse, gewichtsklasse, startgeld_bezahlt, graduierung } = req.body;
 
         const athlet = await knex('turnier_teilnehmer').where({ id }).first();
         if (!athlet) {
             return res.status(404).json({ success: false, error: 'Teilnehmer nicht gefunden.' });
         }
 
-        const user = await knex('benutzer').where({ id: req.user.id }).first();
+        const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
         const turnier = await knex('turniere').where({ id: athlet.turnier_id }).first();
 
         const hatEchteKaempfe = await turnierHatEchteKaempfe(knex, athlet.turnier_id);
@@ -330,7 +333,7 @@ export async function updateTeilnehmer(knex, req, res) {
                 nachname,
                 judopass_id,
                 verein: istGastgeberVerein ? (verein !== undefined ? (verein || '') : athlet.verein) : userVereinName,
-                geburtsdatum,
+                geburtsjahr: geburtsjahr !== undefined ? parseInt(geburtsjahr, 10) : athlet.geburtsjahr,
                 lizenz_ablauf,
                 geschlecht,
                 gewicht: gewicht !== undefined ? parseFloat(gewicht) : athlet.gewicht,
@@ -338,6 +341,9 @@ export async function updateTeilnehmer(knex, req, res) {
                 gewichtsklasse,
                 graduierung: graduierung !== undefined ? (GRADUIERUNG_IDS.has(graduierung) ? graduierung : null) : athlet.graduierung,
                 startgeld_bezahlt: startgeld_bezahlt !== undefined ? (startgeld_bezahlt ? 1 : 0) : athlet.startgeld_bezahlt,
+                // updateTeilnehmer wird ausschließlich über waage.html erreicht (Bearbeiten am
+                // Wiegetisch) — ein hier eingetragenes Gewicht ist also ein echtes, gemessenes.
+                gewogen: true,
                 updated_at: knex.fn.now()
             });
 
@@ -359,7 +365,7 @@ export async function bestaetigeKampfbereit(knex, req, res) {
         }
 
         const turnier = await knex('turniere').where({ id: athlet.turnier_id }).first();
-        const user = await knex('benutzer').where({ id: req.user.id }).first();
+        const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
         const istGastgeberVerein = process.env.IS_OFFLINE === 'true' || hatVereinsZugriffAufTurnier(user, turnier);
         if (!istGastgeberVerein) {
             return res.status(403).json({ success: false, error: 'Nur Mitglieder des ausrichtenden Vereins dürfen Kampfbereitschaft bestätigen.' });
@@ -384,9 +390,11 @@ export async function bestaetigeKampfbereit(knex, req, res) {
         if (!athlet.gewicht || parseFloat(athlet.gewicht) <= 0) {
             return res.status(400).json({ success: false, error: 'Es ist kein gültiges Gewicht hinterlegt.' });
         }
-        if (!athlet.judopass_id || !String(athlet.judopass_id).trim()) {
-            return res.status(400).json({ success: false, error: 'Es ist keine Judopass-Nummer hinterlegt.' });
+        if (!athlet.gewogen) {
+            return res.status(400).json({ success: false, error: 'Der Teilnehmer ist noch nicht als gewogen markiert.' });
         }
+        // Die Judopass-Nummer selbst ist keine eigene Voraussetzung mehr — die Lizenzprüfung
+        // (oben, über lizenz_ablauf) deckt das ab, da sie ohnehin an den Judopass gebunden ist.
 
         await knex('turnier_teilnehmer').where({ id }).update({ status: 'kampfbereit', updated_at: knex.fn.now() });
         return res.json({ success: true, message: 'Kampfbereitschaft bestätigt.' });
@@ -425,6 +433,40 @@ async function loeseKampfAlsForfeitAuf(knex, athlet, kampfId, neuerTeilnehmerSta
         updated_at: knex.fn.now()
     });
 
+    // Abschenken-Verbot (DJB-WKO Art. 3.12.13.3): gilt NUR für einen Judoka, der nicht
+    // angetreten ist (Abschenken durch bewusstes Fernbleiben) — gehört dieser Einzelkampf dann
+    // zu einer Mannschaftsbegegnung, verliert nicht nur der Judoka seinen Kampf, sondern die
+    // GESAMTE Mannschaft die Begegnung sofort mit 0 Siegen ("zu Null"), unabhängig vom
+    // bisherigen Zwischenstand. Eine Disqualifikation (Regelverstoß WÄHREND des Kampfes, z.B.
+    // Hansoku-make) ist davon ausdrücklich NICHT betroffen — dieser Einzelkampf zählt nur als
+    // regulärer Kampfverlust, die übrigen Gewichtsklassen der Begegnung werden normal
+    // ausgetragen. Muss VOR triggerPoolUpdate passieren, damit die normale Siegpunkte-Auswertung
+    // (mannschaftsBegegnungEngine.js) die bereits 'beendet'e Begegnung nicht mehr anfasst (siehe
+    // werteBegegnungAus: überspringt bereits entschiedene Begegnungen).
+    if (kampf.mannschaftskampf_id && neuerTeilnehmerStatus === 'nicht_angetreten') {
+        const begegnung = await knex('mannschaftskaempfe').where({ id: kampf.mannschaftskampf_id }).first();
+        if (begegnung && begegnung.status !== 'beendet' && begegnung.status !== 'freilos') {
+            // kaempfer1/2_id einer Begegnungs-Einzelkampf-Zeile entsprechen per Konstruktion
+            // immer mannschaft1/2 (siehe erzeugeEinzelkaempfeFuerBegegnung) — istKaempfer1
+            // reicht daher direkt aus, um die forfeitierende Mannschaft zu bestimmen.
+            const gegnerMannschaftId = istKaempfer1 ? begegnung.mannschaft2_id : begegnung.mannschaft1_id;
+
+            // Alle noch offenen Einzelkämpfe dieser Begegnung finden nicht mehr statt.
+            await knex('kaempfe')
+                .where({ mannschaftskampf_id: begegnung.id })
+                .whereNotIn('status', ['beendet', 'freilos'])
+                .update({ status: 'freilos', sieger_id: null, updated_at: knex.fn.now() });
+
+            await knex('mannschaftskaempfe').where({ id: begegnung.id }).update({
+                status: 'beendet',
+                sieger_mannschaft_id: gegnerMannschaftId,
+                siegpunkte_mannschaft1: istKaempfer1 ? 0 : begegnung.siegpunkte_mannschaft1,
+                siegpunkte_mannschaft2: istKaempfer1 ? begegnung.siegpunkte_mannschaft2 : 0,
+                updated_at: knex.fn.now()
+            });
+        }
+    }
+
     const { triggerPoolUpdate } = await import('./kampfController.js');
     const { planeKaempfeFuerKampfflaeche } = await import('./poolController.js');
     await triggerPoolUpdate(knex, kampf.pool_id);
@@ -446,7 +488,7 @@ export async function markiereNichtAngetreten(knex, req, res) {
         }
 
         const turnier = await knex('turniere').where({ id: athlet.turnier_id }).first();
-        const user = await knex('benutzer').where({ id: req.user.id }).first();
+        const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
         const istGastgeberVerein = process.env.IS_OFFLINE === 'true' || hatVereinsZugriffAufTurnier(user, turnier);
         if (!istGastgeberVerein) {
             return res.status(403).json({ success: false, error: 'Nur Mitglieder des ausrichtenden Vereins dürfen dies markieren.' });
@@ -471,7 +513,7 @@ export async function disqualifiziere(knex, req, res) {
         }
 
         const turnier = await knex('turniere').where({ id: athlet.turnier_id }).first();
-        const user = await knex('benutzer').where({ id: req.user.id }).first();
+        const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
         const istGastgeberVerein = process.env.IS_OFFLINE === 'true' || hatVereinsZugriffAufTurnier(user, turnier);
         if (!istGastgeberVerein) {
             return res.status(403).json({ success: false, error: 'Nur Mitglieder des ausrichtenden Vereins dürfen dies markieren.' });
@@ -515,10 +557,26 @@ export async function markiereTeilgenommenFuerBeendeteKaempfe(knex, poolId) {
 // Mitglied des ausrichtenden Vereins den Status setzen (nicht auch der eigene Verein des
 // Teilnehmers) — im Offline-Modus wie gewohnt jeder. Nicht durch turnierHatEchteKaempfe gesperrt, da
 // das Bezahlt-/Gewogen-Markieren die Pool-Zusammensetzung nicht verändert.
+// Stati, die per Klick auf das Status-Badge in teilnehmer.html direkt gesetzt werden dürfen —
+// alle Werte des Lebenszyklus, für manuelle Korrekturen (z.B. Testdaten zurücksetzen). Bei
+// 'teilgenommen'/'nicht_angetreten'/'disqualifiziert' werden dabei bewusst KEINE Kampf-
+// Seiteneffekte ausgelöst (kein Forfeit-Sieg für den Gegner, siehe loeseKampfAlsForfeitAuf in
+// kampf.js) — ein manuelles Setzen hier kann den zugehörigen Kampf-Datensatz daher inkonsistent
+// zum Teilnehmer-Status zurücklassen und ist als Korrekturwerkzeug, nicht als Ersatz für die
+// Kampf-Aktionen (nicht angetreten/DSQ in kampf.js) gedacht.
+const MANUELL_SETZBARE_STATI = [
+    'angemeldet', 'nicht_erschienen', 'kampfbereit',
+    'teilgenommen', 'nicht_angetreten', 'disqualifiziert', 'zurueckgezogen'
+];
+
 export async function aendereStatusFelder(knex, req, res) {
     try {
         const { id } = req.params;
-        const { startgeld_bezahlt, lizenz_ablauf } = req.body;
+        const { startgeld_bezahlt, lizenz_ablauf, gewogen, auch_einzelwettkampf, status } = req.body;
+
+        if (status !== undefined && !MANUELL_SETZBARE_STATI.includes(status)) {
+            return res.status(400).json({ success: false, error: `Status "${status}" kann nicht direkt gesetzt werden.` });
+        }
 
         const athlet = await knex('turnier_teilnehmer').where({ id }).first();
         if (!athlet) {
@@ -526,36 +584,65 @@ export async function aendereStatusFelder(knex, req, res) {
         }
 
         const turnier = await knex('turniere').where({ id: athlet.turnier_id }).first();
-        const user = await knex('benutzer').where({ id: req.user.id }).first();
+        const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
 
         const istGastgeberVerein = process.env.IS_OFFLINE === 'true' || hatVereinsZugriffAufTurnier(user, turnier);
         if (!istGastgeberVerein) {
-            return res.status(403).json({ success: false, error: 'Nur Mitglieder des ausrichtenden Vereins dürfen den Bezahlt-/Gewogen-Status ändern.' });
+            // Nicht-Gastgeber-Vereine dürfen Gewogen/Lizenz/Bezahlt/Anmeldestatus nicht anfassen
+            // (physische Verifikation am Wiegetisch bzw. zentrale Anmeldeverwaltung des
+            // Ausrichters) — "auch Einzelwettkampf" ist davon ausgenommen: das entscheidet jeder
+            // Verein für seine eigenen gemeldeten Kämpfer selbst (siehe teilnehmer.js).
+            const userVereinName = await resolveUserVereinName(knex, user);
+            const istEigenerKaempfer = !!(userVereinName && athlet.verein === userVereinName);
+            const nurAuchEinzelwettkampf = auch_einzelwettkampf !== undefined
+                && startgeld_bezahlt === undefined && lizenz_ablauf === undefined
+                && gewogen === undefined && status === undefined;
+
+            if (!istEigenerKaempfer || !nurAuchEinzelwettkampf) {
+                return res.status(403).json({ success: false, error: 'Nur Mitglieder des ausrichtenden Vereins dürfen den Bezahlt-/Gewogen-/Lizenz-/Anmeldestatus ändern. "Auch Einzelwettkampf" können Sie nur für Ihre eigenen Kämpfer ändern.' });
+            }
         }
 
         const updates = {};
         if (startgeld_bezahlt !== undefined) updates.startgeld_bezahlt = startgeld_bezahlt ? 1 : 0;
         if (lizenz_ablauf !== undefined) updates.lizenz_ablauf = lizenz_ablauf;
+        if (gewogen !== undefined) updates.gewogen = gewogen ? 1 : 0;
+        if (auch_einzelwettkampf !== undefined) updates.auch_einzelwettkampf = auch_einzelwettkampf ? 1 : 0;
 
-        if (Object.keys(updates).length === 0) {
+        if (Object.keys(updates).length === 0 && status === undefined) {
             return res.status(400).json({ success: false, error: 'Keine gültigen Felder zum Aktualisieren übergeben.' });
         }
 
-        // Nach der Gewogen-/Bezahlt-Änderung automatisch prüfen, ob die Kampfbereitschafts-
+        // Nach der Gewogen-/Lizenz-/Bezahlt-Änderung automatisch prüfen, ob die Kampfbereitschafts-
         // Kriterien (dieselben Regeln wie in bestaetigeKampfbereit) jetzt erfüllt bzw. nicht
         // mehr erfüllt sind, und den Lebenszyklus-Status entsprechend mitziehen.
         const merged = { ...athlet, ...updates };
         const heuteStr = new Date().toISOString().split('T')[0];
         const lizenzGueltig = !!merged.lizenz_ablauf && merged.lizenz_ablauf >= heuteStr;
         const gewichtGueltig = !!merged.gewicht && parseFloat(merged.gewicht) > 0;
-        const judopassVorhanden = !!merged.judopass_id && String(merged.judopass_id).trim() !== '';
+        const istGewogen = !!merged.gewogen;
         // Bei kostenlosen Turnieren (Startgeld 0€) gilt jeder als bezahlt, analog zur
         // Frontend-Logik in teilnehmer.js (berechneStatus) und zu bestaetigeKampfbereit.
         const turnierKostenlos = (parseFloat(turnier.startgeld) || 0) === 0;
         const startgeldBezahlt = turnierKostenlos || !!merged.startgeld_bezahlt;
-        const kampfbereitErfuellt = lizenzGueltig && gewichtGueltig && judopassVorhanden && startgeldBezahlt;
+        // Die Judopass-Nummer selbst ist keine eigene Voraussetzung mehr — die Lizenzprüfung
+        // (lizenzGueltig, per Lizenz-Toggle gesetzt) deckt das ab, da sie an den Judopass gebunden ist.
+        const kampfbereitErfuellt = lizenzGueltig && gewichtGueltig && istGewogen && startgeldBezahlt;
 
-        if (kampfbereitErfuellt && ['angemeldet', 'nicht_erschienen'].includes(athlet.status)) {
+        if (status !== undefined) {
+            // Ein explizit angefordertes "kampfbereit" muss dieselben Kriterien erfüllen wie die
+            // Bestätigung am Wiegetisch (bestaetigeKampfbereit) — sonst entstünde ein inkonsistenter
+            // Zustand (als startbereit markiert, obwohl z.B. das Startgeld noch offen ist).
+            if (status === 'kampfbereit' && !kampfbereitErfuellt) {
+                const fehlend = [];
+                if (!istGewogen) fehlend.push('nicht als gewogen markiert');
+                if (!lizenzGueltig) fehlend.push('Lizenz nicht bestätigt oder abgelaufen');
+                if (!startgeldBezahlt) fehlend.push('Startgeld noch nicht bezahlt');
+                if (!gewichtGueltig) fehlend.push('kein gültiges Gewicht hinterlegt');
+                return res.status(400).json({ success: false, error: `Kampfbereitschaft kann nicht gesetzt werden: ${fehlend.join(', ')}.` });
+            }
+            updates.status = status;
+        } else if (kampfbereitErfuellt && ['angemeldet', 'nicht_erschienen'].includes(athlet.status)) {
             updates.status = 'kampfbereit';
         } else if (!kampfbereitErfuellt && athlet.status === 'kampfbereit') {
             updates.status = 'angemeldet';
@@ -582,17 +669,53 @@ const HEADER_FIELD_MAP = {
     passnummer: 'judopass_id',
     judopassnr: 'judopass_id',
     judopassnummer: 'judopass_id',
-    geburtsdatum: 'geburtsdatum',
-    geburtstag: 'geburtsdatum',
+    geburtsdatum: 'geburtsjahr',
+    geburtstag: 'geburtsjahr',
+    geburtsjahr: 'geburtsjahr',
+    jahrgang: 'geburtsjahr',
+    geburtsjahrgang: 'geburtsjahr',
     verein: 'verein',
     club: 'verein',
     geschlecht: 'geschlecht',
+    team: 'mannschaft_name',
+    teamname: 'mannschaft_name',
+    mannschaft: 'mannschaft_name',
+    mannschaftsname: 'mannschaft_name',
     graduierung: 'graduierung',
     kyu: 'graduierung',
     grtel: 'graduierung',
     gurt: 'graduierung',
     gewicht: 'gewicht'
 };
+
+// Systemfelder für den Import — Reihenfolge bestimmt sowohl die Spalten der Vorlage (siehe
+// downloadImportVorlage) als auch die Optionen im Spalten-Zuordnungs-Dropdown der Vorschau
+// (siehe previewTeilnehmerImport/teilnehmer.js). "verein" gilt im Online-Betrieb funktional nicht
+// als Pflichtfeld (wird dort immer durch den Verein des anmeldenden Nutzers ersetzt), wird hier
+// aber einheitlich als Pflichtfeld geführt, da eine Vorlage nicht wissen kann, in welchem Modus
+// sie später verwendet wird.
+// "geburtsjahr" ("Geburtsdatum/-jahr") akzeptiert sowohl ein volles Datum als auch nur den
+// Jahrgang (siehe HEADER_FIELD_MAP und ermittleGeburtsjahrAusImportwert): Altersklassen basieren
+// ausschließlich auf dem Jahrgang, ein exaktes Tagesdatum ist daher nicht erforderlich.
+// "mannschaft_name" ist nur beim Import-Ziel "Mannschaft" relevant (siehe importTeilnehmer):
+// Zeilen mit demselben Team-Namen + Verein werden automatisch zu einer gemeinsamen Mannschaft
+// zusammengefasst — daher ebenfalls nicht "pflicht" (bei Ziel "Einzel" bleibt die Spalte ungenutzt).
+const IMPORT_SYSTEMFELDER = [
+    { feld: 'vorname', label: 'Vorname', pflicht: true },
+    { feld: 'nachname', label: 'Name', pflicht: true },
+    { feld: 'judopass_id', label: 'Passnr', pflicht: false },
+    { feld: 'geburtsjahr', label: 'Geburtsdatum/-jahr', pflicht: true },
+    { feld: 'geschlecht', label: 'Geschlecht', pflicht: true },
+    { feld: 'verein', label: 'Verein', pflicht: true },
+    { feld: 'mannschaft_name', label: 'Team-Name', pflicht: false },
+    { feld: 'graduierung', label: 'Graduierung', pflicht: false },
+    { feld: 'gewicht', label: 'Gewicht', pflicht: false }
+];
+
+const IMPORT_VORLAGE_BEISPIELZEILEN = [
+    ['Max', 'Mustermann', '123456', '01.05.2012', 'männlich', 'Judo Club Senden', 'Team A', '5. Kyu (orange)', '45,5'],
+    ['Lena', 'Musterfrau', '654321', '2010', 'weiblich', 'Judo Club Senden', 'Team A', '1. Kyu (braun)', '52']
+];
 
 function normalizeDatum(wert) {
     const str = String(wert || '').trim();
@@ -603,6 +726,22 @@ function normalizeDatum(wert) {
         return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
     }
     return str;
+}
+
+// Liest aus dem Wert der zusammengeführten "Geburtsdatum/-jahr"-Spalte das Geburtsjahr heraus —
+// akzeptiert ein volles Datum (deutsches TT.MM.JJJJ via normalizeDatum, oder ein bereits
+// ISO-normalisiertes JJJJ-MM-TT aus XLSX-Zelldaten) ebenso wie eine reine 4-stellige Jahreszahl,
+// da Altersklassen ohnehin ausschließlich auf dem Jahrgang beruhen (siehe ermittleAltersklasse).
+function ermittleGeburtsjahrAusImportwert(wert) {
+    const str = String(wert || '').trim();
+    if (!str) return null;
+
+    if (/^\d{4}$/.test(str)) return parseInt(str, 10);
+
+    const normalisiert = normalizeDatum(str);
+    if (/^\d{4}-\d{2}-\d{2}/.test(normalisiert)) return parseInt(normalisiert.slice(0, 4), 10);
+
+    return null;
 }
 
 function normalizeGeschlecht(wert) {
@@ -667,8 +806,11 @@ function normalizeGraduierung(wert) {
 
 // Liest die vom Turnier ausgetragenen Altersklassen-Schlüssel aus (identische Herleitung wie
 // ermittleTurnierAltersklassenKeys in poolController.js) — null = keine Einschränkung bekannt.
-function ermittleTurnierAltersklassenKeys(turnier) {
-    let ak = turnier.altersklassen;
+// ziel='mannschaft' liest stattdessen die Mannschafts-Altersklassen aus (siehe turnier.html:
+// getrennte Sektionen "Einzel"/"Mannschaft"), damit der Import (siehe importTeilnehmer) je nach
+// gewähltem Import-Ziel gegen die passende Klassen-Liste validiert.
+function ermittleTurnierAltersklassenKeys(turnier, ziel = 'einzel') {
+    let ak = ziel === 'mannschaft' ? turnier.mannschafts_altersklassen : turnier.altersklassen;
     if (typeof ak === 'string') {
         try { ak = JSON.parse(ak); } catch (e) { ak = {}; }
     }
@@ -690,8 +832,8 @@ const STANDARD_ALTERSKLASSEN_IDS = ['U9', 'U11', 'U13', 'U15', 'U18', 'U21', 'M�
 //    turnier.html) durchsucht: "U<Zahl>" (Alter < Zahl, kleinste passende Zahl gewinnt) und
 //    "Ü<Zahl>"/"Veteranen" (Alter >= Zahl, ohne explizite Zahl gilt "Veteranen" als Ü30; größte
 //    passende Zahl gewinnt).
-function ermittleAltersklasse(geburtsdatum, geschlecht, wettkampfJahr, turnierAltersklassenKeys) {
-    const geburtsJahr = parseInt(String(geburtsdatum).slice(0, 4), 10);
+function ermittleAltersklasse(geburtsjahr, geschlecht, wettkampfJahr, turnierAltersklassenKeys) {
+    const geburtsJahr = parseInt(geburtsjahr, 10);
     if (!geburtsJahr || !wettkampfJahr) return '';
 
     const alter = wettkampfJahr - geburtsJahr;
@@ -760,11 +902,22 @@ function ermittleAltersklasse(geburtsdatum, geschlecht, wettkampfJahr, turnierAl
 // noch aufnimmt, sonst die "+X"-Schwergewichtsklasse) — identische Logik zu
 // befehleGewichtsklassenDropdown() in public/js/waage.js, hier für den CSV/XLSX-Import benötigt,
 // da dort keine manuelle Dropdown-Auswahl stattfindet.
-function ermittleGewichtsklasse(geschlecht, altersklasse, gewicht) {
+// ziel='mannschaft' nutzt bevorzugt die (gröberen) offiziellen DJB-Mannschafts-Gewichtsklassen
+// (z.B. U15/U18 mit nur 4 Positionen statt der vollen Einzelwettkampf-Staffelung) und fällt sonst
+// auf die Einzelwettkampf-Liste zurück — identische Herleitung wie
+// ermittleGewichtsklassenVorschlag() in public/js/mannschaften.js.
+function ermittleGewichtsklasse(geschlecht, altersklasse, gewicht, ziel = 'einzel') {
     if (!gewicht || gewicht <= 0) return '';
 
-    const klassenFuerGeschlecht = DJB_ALTERSKLASSEN[geschlecht] || [];
-    const selektierteKlasse = klassenFuerGeschlecht.find(k => k.id === altersklasse);
+    let selektierteKlasse = null;
+    if (ziel === 'mannschaft') {
+        const mannschaftListe = (DJB_ALTERSKLASSEN.mannschaft && DJB_ALTERSKLASSEN.mannschaft[geschlecht]) || [];
+        selektierteKlasse = mannschaftListe.find(k => k.id === altersklasse) || null;
+    }
+    if (!selektierteKlasse) {
+        const klassenFuerGeschlecht = DJB_ALTERSKLASSEN[geschlecht] || [];
+        selektierteKlasse = klassenFuerGeschlecht.find(k => k.id === altersklasse) || null;
+    }
     if (!selektierteKlasse || !selektierteKlasse.gewichtsklassen) return '';
 
     const plusKlasse = selektierteKlasse.gewichtsklassen.find(g => g.startsWith('+'));
@@ -778,21 +931,30 @@ function ermittleGewichtsklasse(geschlecht, altersklasse, gewicht) {
     return plusKlasse || '';
 }
 
-function parseImportRows(buffer, filename) {
+// spaltenZuordnungOverride: optionales Objekt {spaltenIndex: systemFeld} (siehe
+// previewTeilnehmerImport) — überschreibt die automatische Kopfzeilen-Erkennung, z.B. wenn ein
+// Nutzer im Vorschau-Dialog eine eigene Spalte manuell zugeordnet hat. Ohne Override greift wie
+// bisher die automatische Erkennung über HEADER_FIELD_MAP.
+function parseImportRows(buffer, filename, spaltenZuordnungOverride) {
     const isCsv = /\.csv$/i.test(filename || '');
+    // BOM entfernen (z.B. aus Excel-Exporten oder der eigenen Vorlage, siehe downloadImportVorlage),
+    // sonst landet ein unsichtbares "﻿" in der ersten Kopfzeile und verfälscht deren Anzeige.
     const workbook = isCsv
-        ? XLSX.read(buffer.toString('utf-8'), { type: 'string' })
+        ? XLSX.read(buffer.toString('utf-8').replace(/^﻿/, ''), { type: 'string' })
         : XLSX.read(buffer, { type: 'buffer', cellDates: true });
 
     const sheetName = workbook.SheetNames[0];
-    if (!sheetName) return [];
+    if (!sheetName) return { headerRow: [], autoFieldByColumn: [], records: [] };
     const sheet = workbook.Sheets[sheetName];
 
     const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, dateNF: 'yyyy-mm-dd', defval: '' });
-    if (rows.length === 0) return [];
+    if (rows.length === 0) return { headerRow: [], autoFieldByColumn: [], records: [] };
 
     const headerRow = rows[0];
-    const fieldByColumn = headerRow.map(h => HEADER_FIELD_MAP[normalizeHeader(h)] || null);
+    const autoFieldByColumn = headerRow.map(h => HEADER_FIELD_MAP[normalizeHeader(h)] || null);
+    const fieldByColumn = spaltenZuordnungOverride
+        ? headerRow.map((_, idx) => spaltenZuordnungOverride[idx] || null)
+        : autoFieldByColumn;
 
     const records = [];
     for (let i = 1; i < rows.length; i++) {
@@ -803,105 +965,191 @@ function parseImportRows(buffer, filename) {
         fieldByColumn.forEach((field, colIdx) => {
             if (field) record[field] = row[colIdx] !== undefined ? String(row[colIdx]).trim() : '';
         });
-        records.push({ rowNumber: i + 1, record });
+        records.push({ rowNumber: i + 1, record, rawRow: row });
     }
 
-    return records;
+    return { headerRow, autoFieldByColumn, records };
+}
+
+// Prüft und transformiert eine einzelne Import-Zeile — von importTeilnehmer (tatsächlicher
+// Import) und previewTeilnehmerImport (Vorschau vor dem Speichern) gemeinsam genutzt, damit die
+// Vorschau nie etwas anderes anzeigt, als der Import anschließend tatsächlich tut.
+function verarbeiteImportZeile(record, ctx) {
+    const felder = {
+        vorname: record.vorname || '',
+        nachname: record.nachname || '',
+        judopass_id: record.judopass_id || '',
+        geburtsjahr: ermittleGeburtsjahrAusImportwert(record.geburtsjahr),
+        geschlecht: normalizeGeschlecht(record.geschlecht),
+        graduierung: normalizeGraduierung(record.graduierung) || null,
+        verein: record.verein || '',
+        mannschaft_name: String(record.mannschaft_name || '').trim()
+    };
+
+    // Verein aus der Datei wird nur bei Super-Admin oder einem Mitglied des ausrichtenden Vereins
+    // übernommen (Missbrauchsschutz: sonst könnte jeder angemeldete Nutzer beliebige Fremdvereine
+    // in eine Startliste einschleusen) — alle anderen bekommen automatisch ihren eigenen Verein
+    // eingetragen. Im Offline-Betrieb (einzelner Host-Nutzer) bleibt der Datei-Verein wie bisher
+    // immer erhalten. Für Vorschau/Validierung zählt daher bereits hier der später tatsächlich
+    // verwendete Wert.
+    if (!ctx.istOffline && !ctx.darfVereinAusDateiUebernehmen) {
+        felder.verein = ctx.userVereinName || '';
+    }
+
+    const fehlerFelder = [];
+    if (!felder.vorname) fehlerFelder.push('vorname');
+    if (!felder.nachname) fehlerFelder.push('nachname');
+    if (!felder.geburtsjahr || felder.geburtsjahr < 1900 || felder.geburtsjahr > 2100) fehlerFelder.push('geburtsjahr');
+    if (!felder.geschlecht) fehlerFelder.push('geschlecht');
+    if (!felder.verein) fehlerFelder.push('verein');
+    // Nur beim Import-Ziel "Mannschaft" Pflicht (siehe ermittleOderErstelleMannschaft in
+    // importTeilnehmer) — ohne Team-Namen bliebe der Judoka sonst stillschweigend ein "loser"
+    // Teilnehmer ohne jede Mannschaftszuordnung, statt dass der Import das sichtbar meldet.
+    if (ctx.ziel === 'mannschaft' && !felder.mannschaft_name) fehlerFelder.push('mannschaft_name');
+
+    // Gewicht robust parsen: deutsches Komma-Dezimaltrennzeichen (z.B. "26,5" aus Excel-Exporten)
+    // wird wie bei der manuellen Eingabe in waage.js in einen Punkt umgewandelt, sonst schneidet
+    // parseFloat bei "26,5" auf 26 ab.
+    const gewicht = parseFloat(String(record.gewicht ?? '').replace(',', '.')) || 0;
+
+    let altersklasse = '';
+    let gewichtsklasse = '';
+    if (fehlerFelder.length === 0) {
+        // Altersklasse anhand des Geburtsjahres ermitteln (analog zu waage.html)
+        altersklasse = ermittleAltersklasse(felder.geburtsjahr, felder.geschlecht, ctx.wettkampfJahr, ctx.turnierAltersklassenKeys);
+        gewichtsklasse = ermittleGewichtsklasse(felder.geschlecht, altersklasse, gewicht, ctx.ziel);
+    }
+
+    return { felder, gewicht, altersklasse, gewichtsklasse, fehlerFelder };
+}
+
+// Lädt Turnier + Berechtigungsprüfung + Datei-Puffer, die importTeilnehmer und
+// previewTeilnehmerImport identisch benötigen — Rückgabe entweder {turnier, user, userVereinName,
+// istOffline, istGastgeberVerein, istSuperAdmin, buffer} oder {fehler: {status, body}}, falls eine
+// Prüfung fehlschlägt.
+async function ladeImportKontext(knex, req) {
+    const { turnier_id, filename, contentBase64 } = req.body;
+
+    if (!turnier_id || !contentBase64) {
+        return { fehler: { status: 400, body: { success: false, error: 'Turnier-ID und Dateiinhalt sind erforderlich.' } } };
+    }
+
+    const turnier = await knex('turniere').where({ id: parseInt(turnier_id) }).first();
+    if (!turnier) {
+        return { fehler: { status: 404, body: { success: false, error: 'Turnier nicht gefunden.' } } };
+    }
+
+    const hatEchteKaempfe = await turnierHatEchteKaempfe(knex, turnier.id);
+    if (hatEchteKaempfe) {
+        return { fehler: { status: 409, body: { success: false, error: TEILNEHMERLISTE_GESPERRT_FEHLER } } };
+    }
+
+    const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
+    if (!user) {
+        return { fehler: { status: 401, body: { success: false, error: 'Benutzerprofil nicht gefunden.' } } };
+    }
+
+    const userVereinName = await resolveUserVereinName(knex, user);
+    const istOffline = process.env.IS_OFFLINE === 'true';
+    const istGastgeberVerein = istOffline || hatVereinsZugriffAufTurnier(user, turnier);
+    const istSuperAdmin = !!user.ist_super_admin;
+
+    if (!istGastgeberVerein) {
+        if (ermittleEffektivenStatus(turnier, { hatEchteKaempfe }) !== 'veroeffentlicht') {
+            return { fehler: { status: 403, body: { success: false, error: 'Die Anmeldung für dieses Turnier ist nicht geöffnet.' } } };
+        }
+        if (!userVereinName) {
+            return { fehler: { status: 400, body: { success: false, error: 'Bitte treten Sie zuerst einem Verein bei.' } } };
+        }
+    }
+
+    let buffer;
+    try {
+        buffer = Buffer.from(contentBase64, 'base64');
+    } catch (e) {
+        return { fehler: { status: 400, body: { success: false, error: 'Ungültiger Dateiinhalt.' } } };
+    }
+
+    return { turnier, user, userVereinName, istOffline, istGastgeberVerein, istSuperAdmin, buffer, filename };
+}
+
+// Findet eine bereits im selben Import angelegte/wiederverwendete Mannschaft für (verein,
+// bezeichnung) über den übergebenen Cache, sonst in der Datenbank eine noch keinem Pool
+// zugeordnete Mannschaft mit gleichem Verein+Bezeichnung (pool_id ist nullable — Mannschaften aus
+// dem Import werden bewusst ohne Pool angelegt, siehe CLAUDE.md: Mannschafts-Pools werden manuell
+// angelegt), sonst legt sie neu an. Bereits einem Pool zugeordnete Mannschaften mit gleichem Namen
+// werden absichtlich NICHT wiederverwendet, um eine laufende Auslosung/Begegnung nicht durch
+// nachträglich importierte Mitglieder zu verändern.
+async function ermittleOderErstelleMannschaft(knex, { turnier_id, verein, bezeichnung }, cache) {
+    const cacheKey = `${verein} ${bezeichnung}`;
+    if (cache.has(cacheKey)) return cache.get(cacheKey);
+
+    let mannschaft = await knex('mannschaften')
+        .where({ turnier_id, verein, bezeichnung })
+        .whereNull('pool_id')
+        .first();
+
+    if (!mannschaft) {
+        const [idObj] = await knex('mannschaften').insert({
+            turnier_id,
+            pool_id: null,
+            verein,
+            bezeichnung
+        }).returning('id');
+        mannschaft = { id: typeof idObj === 'object' ? idObj.id : idObj };
+    }
+
+    cache.set(cacheKey, mannschaft.id);
+    return mannschaft.id;
 }
 
 export async function importTeilnehmer(knex, req, res) {
     try {
-        const { turnier_id, filename, contentBase64 } = req.body;
+        const { turnier_id, spaltenZuordnung } = req.body;
+        // Import-Ziel: 'einzel' (Standard, Rückwärtskompatibilität) oder 'mannschaft' — steuert,
+        // gegen welche Altersklassen-Liste des Turniers importierte Athlet:innen validiert werden
+        // (siehe Auswahl-Dialog in teilnehmer.html/teilnehmer.js).
+        const ziel = req.body.ziel === 'mannschaft' ? 'mannschaft' : 'einzel';
 
-        if (!turnier_id || !contentBase64) {
-            return res.status(400).json({ success: false, error: 'Turnier-ID und Dateiinhalt sind erforderlich.' });
-        }
+        const kontext = await ladeImportKontext(knex, req);
+        if (kontext.fehler) return res.status(kontext.fehler.status).json(kontext.fehler.body);
+        const { turnier, userVereinName, istOffline, istGastgeberVerein, istSuperAdmin, buffer, filename } = kontext;
 
-        const turnier = await knex('turniere').where({ id: parseInt(turnier_id) }).first();
-        if (!turnier) {
-            return res.status(404).json({ success: false, error: 'Turnier nicht gefunden.' });
-        }
-
-        const hatEchteKaempfe = await turnierHatEchteKaempfe(knex, turnier.id);
-        if (hatEchteKaempfe) {
-            return res.status(409).json({ success: false, error: TEILNEHMERLISTE_GESPERRT_FEHLER });
-        }
-
-        const user = await knex('benutzer').where({ id: req.user.id }).first();
-        if (!user) {
-            return res.status(401).json({ success: false, error: 'Benutzerprofil nicht gefunden.' });
-        }
-
-        const userVereinName = await resolveUserVereinName(knex, user);
-        const istOffline = process.env.IS_OFFLINE === 'true';
-        const istGastgeberVerein = istOffline || hatVereinsZugriffAufTurnier(user, turnier);
-
-        if (!istGastgeberVerein) {
-            if (ermittleEffektivenStatus(turnier, { hatEchteKaempfe }) !== 'veroeffentlicht') {
-                return res.status(403).json({ success: false, error: 'Die Anmeldung für dieses Turnier ist nicht geöffnet.' });
-            }
-            if (!userVereinName) {
-                return res.status(400).json({ success: false, error: 'Bitte treten Sie zuerst einem Verein bei.' });
-            }
-        }
-
-        let buffer;
+        let records;
         try {
-            buffer = Buffer.from(contentBase64, 'base64');
-        } catch (e) {
-            return res.status(400).json({ success: false, error: 'Ungültiger Dateiinhalt.' });
-        }
-
-        let rows;
-        try {
-            rows = parseImportRows(buffer, filename);
+            ({ records } = parseImportRows(buffer, filename, spaltenZuordnung));
         } catch (e) {
             return res.status(400).json({ success: false, error: 'Datei konnte nicht gelesen werden: ' + e.message });
         }
 
-        if (rows.length === 0) {
+        if (records.length === 0) {
             return res.status(400).json({ success: false, error: 'Die Datei enthält keine verwertbaren Datenzeilen.' });
         }
 
         const wettkampfJahr = turnier.datum ? new Date(turnier.datum).getFullYear() : new Date().getFullYear();
-        const turnierAltersklassenKeys = ermittleTurnierAltersklassenKeys(turnier);
+        const turnierAltersklassenKeys = ermittleTurnierAltersklassenKeys(turnier, ziel);
+        const darfVereinAusDateiUebernehmen = istGastgeberVerein || istSuperAdmin;
+        const ctx = { istOffline, darfVereinAusDateiUebernehmen, userVereinName, wettkampfJahr, turnierAltersklassenKeys, ziel };
 
         let imported = 0;
         const skipped = [];
+        // Cache: (verein, bezeichnung) -> mannschaft_id, damit mehrere Zeilen desselben Teams
+        // innerhalb eines Imports nur eine einzige Mannschaft anlegen statt einer pro Zeile.
+        const mannschaftCache = new Map();
 
-        for (const { rowNumber, record } of rows) {
-            const vorname = record.vorname || '';
-            const nachname = record.nachname || '';
-            const judopass_id = record.judopass_id || '';
-            const geburtsdatum = normalizeDatum(record.geburtsdatum);
-            const geschlecht = normalizeGeschlecht(record.geschlecht);
-            const graduierung = normalizeGraduierung(record.graduierung) || null;
-            let verein = record.verein || '';
+        for (const { rowNumber, record } of records) {
+            const { felder, gewicht, altersklasse, gewichtsklasse, fehlerFelder } = verarbeiteImportZeile(record, ctx);
 
-            if (!vorname || !nachname || !geburtsdatum || !geschlecht) {
-                skipped.push({ row: rowNumber, reason: 'Vorname, Name, Geburtsdatum und Geschlecht sind Pflichtfelder.' });
-                continue;
-            }
-
-            // Altersklasse anhand des Geburtsdatums ermitteln (analog zu waage.html)
-            const altersklasse = ermittleAltersklasse(geburtsdatum, geschlecht, wettkampfJahr, turnierAltersklassenKeys);
-
-            // Online: Verein wird nie aus der Datei übernommen, sondern immer auf den Verein
-            // des angemeldeten Benutzers gesetzt (verhindert falsche/fremde Vereinsangaben in
-            // der Importdatei). Offline: Der Wert aus der Datei wird unverändert übernommen.
-            if (!istOffline) {
-                verein = userVereinName;
-            }
-
-            if (!verein) {
-                skipped.push({ row: rowNumber, reason: 'Verein fehlt.' });
+            if (fehlerFelder.length > 0) {
+                const feldLabels = fehlerFelder.map(f => IMPORT_SYSTEMFELDER.find(sf => sf.feld === f)?.label || f);
+                skipped.push({ row: rowNumber, reason: `Pflichtfeld(er) fehlen oder ungültig: ${feldLabels.join(', ')}.` });
                 continue;
             }
 
             try {
-                if (judopass_id) {
+                if (felder.judopass_id) {
                     const bestehender = await knex('turnier_teilnehmer')
-                        .where({ turnier_id: parseInt(turnier_id), judopass_id: judopass_id.trim() })
+                        .where({ turnier_id: parseInt(turnier_id), judopass_id: felder.judopass_id.trim() })
                         .first();
 
                     // Bereits vorhandene Pass-Nr. wird nicht erneut angelegt, aber auch nicht mehr
@@ -912,37 +1160,188 @@ export async function importTeilnehmer(knex, req, res) {
                     }
                 }
 
-                // Gewicht robust parsen: deutsches Komma-Dezimaltrennzeichen (z.B. "26,5" aus
-                // Excel-Exporten) wird wie bei der manuellen Eingabe in waage.js in einen Punkt
-                // umgewandelt, sonst schneidet parseFloat bei "26,5" auf 26 ab.
-                const gewichtGeparst = parseFloat(String(record.gewicht ?? '').replace(',', '.')) || 0.00;
-
-                await knex('turnier_teilnehmer').insert({
+                const [neuerIdObj] = await knex('turnier_teilnehmer').insert({
                     turnier_id: parseInt(turnier_id),
                     // judopass_id ist NOT NULL, wird von der Anwendung aber als optional
                     // behandelt — leerer String statt null (siehe createTeilnehmer).
-                    judopass_id: judopass_id || '',
-                    vorname,
-                    nachname,
-                    geburtsdatum,
+                    judopass_id: felder.judopass_id || '',
+                    vorname: felder.vorname,
+                    nachname: felder.nachname,
+                    geburtsjahr: felder.geburtsjahr,
                     lizenz_ablauf: '1970-01-01',
-                    geschlecht,
-                    verein,
-                    gewicht: gewichtGeparst,
+                    geschlecht: felder.geschlecht,
+                    verein: felder.verein,
+                    gewicht,
                     altersklasse,
-                    gewichtsklasse: ermittleGewichtsklasse(geschlecht, altersklasse, gewichtGeparst),
-                    graduierung
-                });
+                    gewichtsklasse,
+                    graduierung: felder.graduierung,
+                    // Steuert nur die Anzeige ("... Team") in teilnehmer.html (siehe
+                    // formatiereAltersklasse in teilnehmer.js) — der Judoka bleibt ein normaler
+                    // turnier_teilnehmer, der z.B. auch für Einzelwettkämpfe startberechtigt ist.
+                    fuer_mannschaft: ziel === 'mannschaft'
+                }).returning('id');
 
                 imported++;
+
+                // Team-Name -> automatisch Mannschaft anlegen/wiederverwenden + Judoka als
+                // Mitglied auf der bereits berechneten Gewichtsklassen-Position eintragen (siehe
+                // ermittleOderErstelleMannschaft). Nur bei Ziel "Mannschaft" und wenn tatsächlich
+                // ein Team-Name in der Datei angegeben wurde — sonst bleibt der Judoka wie bisher
+                // ein "loser" Teilnehmer, der manuell in mannschaften.html zugeordnet werden kann.
+                if (ziel === 'mannschaft' && felder.mannschaft_name) {
+                    const teilnehmerId = typeof neuerIdObj === 'object' ? neuerIdObj.id : neuerIdObj;
+                    const mannschaftId = await ermittleOderErstelleMannschaft(
+                        knex,
+                        { turnier_id: parseInt(turnier_id), verein: felder.verein, bezeichnung: felder.mannschaft_name },
+                        mannschaftCache
+                    );
+
+                    // Für Altersklassen ohne hinterlegte Mannschafts-/Einzelwettkampf-Gewichtsklassen
+                    // (z.B. U11 — dort ist laut DJB-Vorgabe "gewichtsnah" statt fester Klassen üblich,
+                    // siehe altersklassen.json) liefert ermittleGewichtsklasse() eine leere Position.
+                    // Damit die Zuordnung trotzdem stattfindet, dient dann das tatsächliche Gewicht
+                    // als Ad-hoc-Positionsbezeichnung (frei editierbar, sobald ein Pool existiert).
+                    const position = gewichtsklasse || (gewicht > 0 ? `${gewicht}kg` : altersklasse);
+
+                    await knex('mannschaft_mitglieder').insert({
+                        mannschaft_id: mannschaftId,
+                        turnier_teilnehmer_id: teilnehmerId,
+                        gewichtsklasse: position
+                    });
+                }
             } catch (rowError) {
                 skipped.push({ row: rowNumber, reason: rowError.message });
             }
         }
 
-        return res.json({ success: true, imported, skipped, total: rows.length });
+        return res.json({ success: true, imported, skipped, total: records.length, mannschaftenBetroffen: mannschaftCache.size });
     } catch (error) {
         console.error('[Teilnehmer-Import-Fehler]:', error);
         return res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+// Vorschau vor dem eigentlichen Import (siehe importTeilnehmer): parst dieselbe Datei mit
+// denselben Regeln, schreibt aber nichts in die Datenbank. Liefert Kopfzeile + automatische
+// Spaltenzuordnung, die ersten 5 Zeilen (roh + validiert) sowie eine Zusammenfassung über die
+// komplette Datei, damit der Nutzer vor dem Speichern sieht, was passieren würde.
+export async function previewTeilnehmerImport(knex, req, res) {
+    try {
+        const { spaltenZuordnung } = req.body;
+        const ziel = req.body.ziel === 'mannschaft' ? 'mannschaft' : 'einzel';
+
+        const kontext = await ladeImportKontext(knex, req);
+        if (kontext.fehler) return res.status(kontext.fehler.status).json(kontext.fehler.body);
+        const { turnier, userVereinName, istOffline, istGastgeberVerein, istSuperAdmin, buffer, filename } = kontext;
+
+        let headerRow, autoFieldByColumn, records;
+        try {
+            ({ headerRow, autoFieldByColumn, records } = parseImportRows(buffer, filename, spaltenZuordnung));
+        } catch (e) {
+            return res.status(400).json({ success: false, error: 'Datei konnte nicht gelesen werden: ' + e.message });
+        }
+
+        if (records.length === 0) {
+            return res.status(400).json({ success: false, error: 'Die Datei enthält keine verwertbaren Datenzeilen.' });
+        }
+
+        const wettkampfJahr = turnier.datum ? new Date(turnier.datum).getFullYear() : new Date().getFullYear();
+        const turnierAltersklassenKeys = ermittleTurnierAltersklassenKeys(turnier, ziel);
+        const darfVereinAusDateiUebernehmen = istGastgeberVerein || istSuperAdmin;
+        const ctx = { istOffline, darfVereinAusDateiUebernehmen, userVereinName, wettkampfJahr, turnierAltersklassenKeys, ziel };
+
+        let gueltig = 0;
+        const vorschauZeilen = [];
+        records.forEach(({ rowNumber, record, rawRow }, idx) => {
+            const ergebnis = verarbeiteImportZeile(record, ctx);
+            if (ergebnis.fehlerFelder.length === 0) gueltig++;
+
+            // Nur die ersten 5 Zeilen werden für die Tabellen-Vorschau mitgeschickt, die
+            // Zusammenfassung darunter zählt aber immer über die komplette Datei.
+            if (idx < 5) {
+                vorschauZeilen.push({ rowNumber, raw: rawRow, felder: ergebnis.felder, fehlerFelder: ergebnis.fehlerFelder });
+            }
+        });
+
+        const verwendeteZuordnung = spaltenZuordnung || autoFieldByColumn.reduce((acc, feld, idx) => {
+            acc[idx] = feld || '';
+            return acc;
+        }, {});
+
+        // Team-Name ist nur beim Ziel "Mannschaft" Pflicht (siehe verarbeiteImportZeile) — das
+        // Frontend markiert Pflichtfelder im Zuordnungs-Dropdown anhand dieses Flags mit "*",
+        // muss also für dieses Ziel denselben (angepassten) Stand sehen wie die Validierung.
+        const systemFelderFuerZiel = ziel === 'mannschaft'
+            ? IMPORT_SYSTEMFELDER.map(f => f.feld === 'mannschaft_name' ? { ...f, pflicht: true } : f)
+            : IMPORT_SYSTEMFELDER;
+
+        res.json({
+            success: true,
+            headers: headerRow,
+            spaltenZuordnung: verwendeteZuordnung,
+            systemFelder: systemFelderFuerZiel,
+            vorschauZeilen,
+            summary: { gesamt: records.length, gueltig, ungueltig: records.length - gueltig }
+        });
+    } catch (error) {
+        console.error('[Teilnehmer-Import-Vorschau-Fehler]:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+// Erzeugt die herunterladbare Import-Vorlage (.xlsx mit zusätzlichem Hinweis-Tab und
+// Pflichtfeld-Kommentaren, oder schlankes .csv) mit den exakten Spaltenüberschriften, die
+// HEADER_FIELD_MAP erkennt, plus zwei Beispielzeilen im erwarteten Format (insb. Datum TT.MM.JJJJ).
+export function downloadImportVorlage(req, res) {
+    try {
+        const format = req.query.format === 'csv' ? 'csv' : 'xlsx';
+        const headerRow = IMPORT_SYSTEMFELDER.map(f => f.label);
+        const wsData = [headerRow, ...IMPORT_VORLAGE_BEISPIELZEILEN];
+        const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+        if (format === 'csv') {
+            const csvContent = XLSX.utils.sheet_to_csv(ws);
+            res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+            res.setHeader('Content-Disposition', 'attachment; filename="teilnehmer_vorlage.csv"');
+            // BOM, damit Excel die UTF-8-Umlaute (ü, ä, ö) korrekt erkennt statt als Mojibake anzuzeigen.
+            return res.send('﻿' + csvContent);
+        }
+
+        // Kurze Kommentare auf den Pflichtfeld-Kopfzellen (erscheinen in Excel/LibreOffice beim
+        // Überfahren mit der Maus) — zusätzlich zum ausführlicheren "Hinweise"-Tab.
+        IMPORT_SYSTEMFELDER.forEach((f, idx) => {
+            if (!f.pflicht) return;
+            const cellRef = XLSX.utils.encode_cell({ r: 0, c: idx });
+            if (!ws[cellRef]) return;
+            const text = f.feld === 'geburtsjahr' ? 'Pflichtfeld: Datum (TT.MM.JJJJ) oder nur die Jahreszahl' : 'Pflichtfeld';
+            ws[cellRef].c = [{ a: 'Hajime Pro', t: text }];
+        });
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Teilnehmer');
+
+        const hinweiseZeilen = [
+            ['Spalte', 'Pflichtfeld', 'Hinweis'],
+            ['Vorname', 'Ja', ''],
+            ['Name', 'Ja', ''],
+            ['Passnr', 'Nein', 'Judopass-Nummer, falls vorhanden — verhindert Dubletten bei wiederholtem Import.'],
+            ['Geburtsdatum/-jahr', 'Ja', 'Volles Datum (Format TT.MM.JJJJ, z.B. 01.05.2012) oder nur der Jahrgang (z.B. 2012) — beides wird akzeptiert, da Altersklassen ausschließlich auf dem Jahrgang beruhen.'],
+            ['Geschlecht', 'Ja', '"männlich"/"m", "weiblich"/"w" oder "mixed"/"x"'],
+            ['Verein', 'Ja', 'Wird automatisch durch den Verein des anmeldenden Nutzers ersetzt — außer bei Super-Admin oder einem Mitglied des ausrichtenden Vereins, dort wird der Verein aus der Datei übernommen.'],
+            ['Team-Name', 'Ja*', 'Nur beim Import-Ziel "Mannschaften" Pflicht: Zeilen mit demselben Team-Namen + Verein werden automatisch zu einer gemeinsamen Mannschaft zusammengefasst (Gewichtsklassen-Position wird automatisch aus dem Gewicht abgeleitet). Beim Ziel "Einzel" bleibt die Spalte ungenutzt.'],
+            ['Graduierung', 'Nein', 'z.B. "5. Kyu (orange)" oder "1. Dan"'],
+            ['Gewicht', 'Nein', 'In kg, Komma oder Punkt als Dezimaltrennzeichen, z.B. "45,5"'],
+            ['', '', ''],
+            ['*', '', 'Nur beim Import-Ziel "Mannschaften" Pflicht.']
+        ];
+        const hinweiseWs = XLSX.utils.aoa_to_sheet(hinweiseZeilen);
+        XLSX.utils.book_append_sheet(wb, hinweiseWs, 'Hinweise');
+
+        const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', 'attachment; filename="teilnehmer_vorlage.xlsx"');
+        return res.send(buffer);
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
     }
 }

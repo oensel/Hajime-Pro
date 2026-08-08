@@ -10,7 +10,9 @@ import {
     bestaetigeKampfbereit,
     markiereNichtAngetreten,
     disqualifiziere,
-    importTeilnehmer
+    importTeilnehmer,
+    previewTeilnehmerImport,
+    downloadImportVorlage
 } from '../controllers/teilnehmerController.js';
 import { requireAuth } from '../middleware/auth.js';
 
@@ -21,6 +23,8 @@ export function getTeilnehmerRoutes(knex) {
 
     // Bulk import
     router.post('/import', (req, res) => importTeilnehmer(knex, req, res));
+    router.post('/import-vorschau', (req, res) => previewTeilnehmerImport(knex, req, res));
+    router.get('/import-vorlage', (req, res) => downloadImportVorlage(req, res));
 
     // Specific ID routes
     router.get('/:id', (req, res) => getTeilnehmerById(knex, req, res));
