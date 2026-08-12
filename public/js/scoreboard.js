@@ -1,4 +1,5 @@
 import { berechneKaempferPatches } from '/js/shared/kampfProgression.js';
+import { berechneGruppenUeberkreuzHalbfinalPatches } from '/js/shared/gruppenUeberkreuzProgression.js';
 import { letztesKampfEndeProTeilnehmer, pruefeKampfPause } from '/js/shared/pausenRegel.js';
 
 // Global fetch wrapper to append X-Steuerung-Password and Authorization headers if available in
@@ -2228,7 +2229,12 @@ function aktualisiereTurnierOffline(poolId) {
     const kaempfe = offlineState.kaempfe.filter(k => k.pool_id === poolId);
     if (kaempfe.length === 0) return;
 
-    const patches = berechneKaempferPatches(kaempfe);
+    // Gruppen-Überkreuz-Halbfinale (HF1/HF2) zuerst: deren Kämpfer kommen aus einer
+    // Ranglistenberechnung über die Vorrunde, nicht aus einem einzelnen Quellkampf, und werden
+    // daher von berechneKaempferPatches() unten strukturell übersprungen (siehe
+    // gruppenUeberkreuzProgression.js). Ohne diesen Aufruf bliebe eine Matte, die während der
+    // Gruppenphase offline geht, für immer bei HF1/HF2 stecken.
+    const patches = [...berechneGruppenUeberkreuzHalbfinalPatches(kaempfe), ...berechneKaempferPatches(kaempfe)];
     if (patches.length === 0) return;
 
     for (const patch of patches) {

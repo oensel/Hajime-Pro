@@ -1,3 +1,18 @@
+// Bracket-Quell-Topologie (welcher Kampf speist welchen Folgekampf) wird von der bereits
+// bestehenden serverseitigen Quelle nachgeladen, statt sie hier ein zweites Mal (und wie bisher
+// je Turniermodus mit kollidierenden Kampfnummern) von Hand zu pflegen — siehe
+// src/shared/bracketTopologie.js, ausgeliefert unter /js/shared/.
+let poolBracketTopologien = null;
+import('/js/shared/bracketTopologie.js').then(mod => {
+    poolBracketTopologien = {
+        'Doppel-KO-8': mod.DOPPEL_KO_8_TOPOLOGIE,
+        'Doppel-KO-16': mod.DOPPEL_KO_16_TOPOLOGIE,
+        'Doppel-KO-32': mod.DOPPEL_KO_32_TOPOLOGIE,
+        'Gruppen-Überkreuz': mod.GRUPPEN_UEBERKREUZ_TOPOLOGIE,
+        'Gruppen-ueberkreuz': mod.GRUPPEN_UEBERKREUZ_TOPOLOGIE
+    };
+});
+
 document.addEventListener('DOMContentLoaded', () => {
     // --- TURNIER-ID INITIALISIERUNG ---
     const urlParams = new URLSearchParams(window.location.search);
@@ -204,7 +219,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 teilnehmer_zugewiesen: { text: 'Bereit', klasse: 'bereit' },
                 matte_zugewiesen: { text: 'Bereit', klasse: 'bereit' },
                 gestartet: { text: 'Laufend', klasse: 'laufend' },
-                kaempfe_beendet: { text: 'Ergebnisse prüfen', klasse: 'beendet' },
+                kaempfe_beendet: { text: 'Ergebnisse prüfen', klasse: 'pruefen' },
                 abgeschlossen: { text: 'Abgeschlossen', klasse: 'beendet' }
             };
             let { text: statusText, klasse: statusClass } = POOL_STATUS_LABELS[pool.status] || { text: 'Bereit', klasse: 'bereit' };
@@ -901,7 +916,7 @@ document.addEventListener('DOMContentLoaded', () => {
             standings.forEach((athleteJ, idxJ) => {
                 if (idxI === idxJ) {
                     // Diagonal blacked out
-                    cellsHtml += `<td style="background-color: var(--border) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; border: 1px solid var(--border);"></td>`;
+                    cellsHtml += `<td data-gegner-id="${athleteJ.id}" style="background-color: var(--border) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; border: 1px solid var(--border);"></td>`;
                 } else {
                     // Find fight
                     const fight = pool.kaempfe.find(k => 
@@ -925,7 +940,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     }
                     
-                    cellsHtml += `<td style="${cellStyle}">${cellText}</td>`;
+                    cellsHtml += `<td data-gegner-id="${athleteJ.id}" style="${cellStyle}">${cellText}</td>`;
                 }
             });
 
@@ -933,14 +948,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const punkteHtml = hasAnyFinished ? athleteI.points : '<span class="print-empty">0</span>';
 
             rowsHtml += `
-                <tr style="border-bottom: 1px solid var(--border); white-space: nowrap;">
+                <tr data-teilnehmer-id="${athleteI.id}" style="border-bottom: 1px solid var(--border); white-space: nowrap;">
                     <td style="padding: 8px; border: 1px solid var(--border); font-weight: bold; text-align: center;">${idxI + 1}</td>
                     <td style="padding: 8px; border: 1px solid var(--border); font-weight: bold; white-space: nowrap;">${escapeHtml(athleteI.nachname)}, ${escapeHtml(athleteI.vorname)}</td>
                     <td style="padding: 8px; border: 1px solid var(--border); color: var(--text-muted); font-size: 11px; white-space: nowrap;">${escapeHtml(athleteI.verein || '')}</td>
                     ${cellsHtml}
-                    <td style="padding: 8px; border: 1px solid var(--border); text-align: center; font-weight: bold; color: var(--primary);">${siegeHtml}</td>
-                    <td style="padding: 8px; border: 1px solid var(--border); text-align: center; font-weight: bold;">${punkteHtml}</td>
-                    <td style="padding: 8px; border: 1px solid var(--border); text-align: center; font-weight: bold; color: #ff9800;">${athleteI.platz}</td>
+                    <td class="matrix-siege" style="padding: 8px; border: 1px solid var(--border); text-align: center; font-weight: bold; color: var(--primary);">${siegeHtml}</td>
+                    <td class="matrix-punkte" style="padding: 8px; border: 1px solid var(--border); text-align: center; font-weight: bold;">${punkteHtml}</td>
+                    <td class="matrix-platz" style="padding: 8px; border: 1px solid var(--border); text-align: center; font-weight: bold; color: #ff9800;">${athleteI.platz}</td>
                 </tr>
             `;
         });
@@ -970,43 +985,25 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function getPlaceholderName(fightNr, compIndex) {
-        if (fightNr === 'HF1') return compIndex === 1 ? '1. Gruppe A' : '2. Gruppe B';
-        if (fightNr === 'HF2') return compIndex === 1 ? '1. Gruppe B' : '2. Gruppe A';
-        if (fightNr === 'P5') return compIndex === 1 ? '3. Gruppe A' : '3. Gruppe B';
-        if (fightNr === 'F1') return compIndex === 1 ? 'Sieger HF1' : 'Sieger HF2';
-        if (fightNr === 'F2') return compIndex === 1 ? 'Verlierer HF1' : 'Verlierer HF2';
+        // Gruppen-Überkreuz: HF1/HF2 kommen aus der Ranglistenberechnung der Vorrunden-Gruppen
+        // (kein 1:1-Quellkampf), daher hier weiterhin fest verdrahtet statt aus der Topologie.
+        if (activePoolModus === 'Gruppen-Überkreuz' || activePoolModus === 'Gruppen-ueberkreuz') {
+            if (fightNr === 'HF1') return compIndex === 1 ? '1. Gruppe A' : '2. Gruppe B';
+            if (fightNr === 'HF2') return compIndex === 1 ? '1. Gruppe B' : '2. Gruppe A';
+        }
 
-        if (fightNr === 'H5') return compIndex === 1 ? 'Sieger H1' : 'Sieger H2';
-        if (fightNr === 'H6') return compIndex === 1 ? 'Sieger H3' : 'Sieger H4';
-        if (fightNr === 'T1') return compIndex === 1 ? 'Verlierer H1' : 'Verlierer H2';
-        if (fightNr === 'T2') return compIndex === 1 ? 'Verlierer H3' : 'Verlierer H4';
-        if (fightNr === 'T3') return compIndex === 1 ? 'Sieger T1' : 'Verlierer H6';
-        if (fightNr === 'T4') return compIndex === 1 ? 'Sieger T2' : 'Verlierer H5';
-        if (fightNr === 'F') return compIndex === 1 ? 'Sieger H5' : 'Sieger H6';
-        
-        if (fightNr === 'H9') return compIndex === 1 ? 'Sieger H1' : 'Sieger H2';
-        if (fightNr === 'H10') return compIndex === 1 ? 'Sieger H3' : 'Sieger H4';
-        if (fightNr === 'H11') return compIndex === 1 ? 'Sieger H5' : 'Sieger H6';
-        if (fightNr === 'H12') return compIndex === 1 ? 'Sieger H7' : 'Sieger H8';
-        if (fightNr === 'H13') return compIndex === 1 ? 'Sieger H9' : 'Sieger H10';
-        if (fightNr === 'H14') return compIndex === 1 ? 'Sieger H11' : 'Sieger H12';
-        if (fightNr === 'F1') return compIndex === 1 ? 'Sieger H13' : 'Sieger H14';
-        
-        if (fightNr === 'T1') return compIndex === 1 ? 'Verlierer H1' : 'Verlierer H2';
-        if (fightNr === 'T2') return compIndex === 1 ? 'Verlierer H3' : 'Verlierer H4';
-        if (fightNr === 'T3') return compIndex === 1 ? 'Verlierer H5' : 'Verlierer H6';
-        if (fightNr === 'T4') return compIndex === 1 ? 'Verlierer H7' : 'Verlierer H8';
-        
-        if (fightNr === 'T5') return compIndex === 1 ? 'Sieger T1' : 'Verlierer H10';
-        if (fightNr === 'T6') return compIndex === 1 ? 'Sieger T2' : 'Verlierer H9';
-        if (fightNr === 'T7') return compIndex === 1 ? 'Sieger T3' : 'Verlierer H12';
-        if (fightNr === 'T8') return compIndex === 1 ? 'Sieger T4' : 'Verlierer H11';
-        
-        if (fightNr === 'T9') return compIndex === 1 ? 'Sieger T5' : 'Sieger T6';
-        if (fightNr === 'T10') return compIndex === 1 ? 'Sieger T7' : 'Sieger T8';
-        if (fightNr === 'T11') return compIndex === 1 ? 'Sieger T9' : 'Verlierer H14';
-        if (fightNr === 'T12') return compIndex === 1 ? 'Sieger T10' : 'Verlierer H13';
-        
+        // Alle anderen Verknüpfungen (Doppel-KO-8/16/32) kommen 1:1 aus derselben Topologie, die
+        // auch die Kaskaden-Engine speist (src/shared/bracketTopologie.js) — dieselben Kampf-
+        // nummern bedeuten in jedem Modus etwas anderes, daher immer moduspezifisch nachschlagen
+        // statt einer einzigen, modusübergreifenden Tabelle (frühere Quelle für falsch angezeigte
+        // Platzhalter bei Kollisionen wie 'T3'/'F1' zwischen den Modi).
+        const topologie = poolBracketTopologien?.[activePoolModus];
+        const eintrag = topologie?.[fightNr];
+        if (eintrag) {
+            const [quelleNr, quelleTyp] = compIndex === 1 ? eintrag.k1 : eintrag.k2;
+            return `${quelleTyp === 'sieger' ? 'Sieger' : 'Verlierer'} ${quelleNr}`;
+        }
+
         return 'noch offen';
     }
 
@@ -1017,10 +1014,13 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const k1 = athleteMap.get(fight.kaempfer1_id);
         const k2 = athleteMap.get(fight.kaempfer2_id);
-        
-        const name1 = k1 ? `${k1.nachname}, ${k1.vorname}` : getPlaceholderName(fight.reihenfolge_nummer, 1);
+
+        // Ein 'freilos' ist endgültig entschieden (siehe kampfProgression.js) — ein dort
+        // dauerhaft leerer Kämpfer-Slot bekommt nie mehr einen echten Namen. "Sieger H1" o.ä.
+        // weiter anzuzeigen würde fälschlich suggerieren, der Kampf warte noch auf ein Ergebnis.
+        const name1 = k1 ? `${k1.nachname}, ${k1.vorname}` : (fight.status === 'freilos' ? 'Freilos' : getPlaceholderName(fight.reihenfolge_nummer, 1));
         const verein1 = k1 ? (k1.verein || '') : '';
-        const name2 = k2 ? `${k2.nachname}, ${k2.vorname}` : getPlaceholderName(fight.reihenfolge_nummer, 2);
+        const name2 = k2 ? `${k2.nachname}, ${k2.vorname}` : (fight.status === 'freilos' ? 'Freilos' : getPlaceholderName(fight.reihenfolge_nummer, 2));
         const verein2 = k2 ? (k2.verein || '') : '';
         
         const isFinished = fight.status === 'beendet' || fight.status === 'freilos';
@@ -1102,18 +1102,18 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         return `
-            <div class="bracket-match-card ${isLaufend ? 'laufend-card' : ''} ${isFinished ? 'beendet-card' : ''}">
+            <div class="bracket-match-card ${isLaufend ? 'laufend-card' : ''} ${isFinished ? 'beendet-card' : ''}" data-reihenfolge-nummer="${fight.reihenfolge_nummer}" data-status="${fight.status}">
                 <div class="bracket-match-header">
                     ${badgeHtml}
                 </div>
                 <div class="bracket-fighters">
-                    <div class="bracket-fighter-row ${isK1Winner ? 'winner' : ''} ${k1 ? 'has-fighter' : 'placeholder'}">
+                    <div class="bracket-fighter-row ${isK1Winner ? 'winner' : ''} ${k1 ? 'has-fighter' : 'placeholder'}" data-kaempfer-slot="1">
                         <span class="fighter-color-indicator blue-indicator"></span>
                         <span class="fighter-name">${escapeHtml(name1)}${medal1}</span>
                         <span class="fighter-verein">${escapeHtml(verein1)}</span>
                         <span class="fighter-score">${score1}</span>
                     </div>
-                    <div class="bracket-fighter-row ${isK2Winner ? 'winner' : ''} ${k2 ? 'has-fighter' : 'placeholder'}">
+                    <div class="bracket-fighter-row ${isK2Winner ? 'winner' : ''} ${k2 ? 'has-fighter' : 'placeholder'}" data-kaempfer-slot="2">
                         <span class="fighter-color-indicator white-indicator"></span>
                         <span class="fighter-name">${escapeHtml(name2)}${medal2}</span>
                         <span class="fighter-verein">${escapeHtml(verein2)}</span>
@@ -1436,6 +1436,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const printFightplanBtn = document.getElementById('printFightplanBtn');
         const refreshFightplanBtn = document.getElementById('refreshFightplanBtn');
         const closeFightplanBtn = document.getElementById('closeFightplanBtn');
+        const confirmFightplanBtn = document.getElementById('confirmFightplanBtn');
 
         if (!fightplanModal) return;
 
@@ -1452,6 +1453,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 const pool = await response.json();
 
                 if (!response.ok) throw new Error(pool.error || 'Fehler beim Laden des Kampfplans.');
+
+                if (confirmFightplanBtn) {
+                    confirmFightplanBtn.style.display = pool.status === 'kaempfe_beendet' ? 'flex' : 'none';
+                }
 
                 // Sort fights numerically by actual order (reihenfolge_nummer)
                 pool.kaempfe.sort((a, b) => {
@@ -1538,7 +1543,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (k.status === 'beendet') {
                         const min = Math.floor(k.kampfzeit_in_sekunden / 60);
                         const sec = String(k.kampfzeit_in_sekunden % 60).padStart(2, '0');
-                        ergebnis = `Sieger: ${k.sieger_id === k.kaempfer1_id ? 'Weiß' : 'Rot'} (${k.unterbewertung_kaempfer1}:${k.unterbewertung_kaempfer2} | ${min}:${sec})`;
+                        // Kämpfer 1 = Rot, Kämpfer 2 = Weiß (siehe Tabellen-Header oben).
+                        ergebnis = `Sieger: ${k.sieger_id === k.kaempfer1_id ? 'Rot' : 'Weiß'} (${k.unterbewertung_kaempfer1}:${k.unterbewertung_kaempfer2} | ${min}:${sec})`;
                     } else if (k.status === 'freilos') {
                         ergebnis = k.sieger_id ? 'Freilos (automatischer Sieg)' : 'Freilos';
                     } else if (k.status === 'gestartet') {
@@ -1588,6 +1594,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }).join('');
             } catch (err) {
                 fightplanTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:16px; color:#b83232;">Fehler: ${escapeHtml(err.message)}</td></tr>`;
+                if (confirmFightplanBtn) confirmFightplanBtn.style.display = 'none';
             }
         }
 
@@ -1612,6 +1619,36 @@ document.addEventListener('DOMContentLoaded', () => {
         if (closeFightplanBtn) {
             closeFightplanBtn.onclick = () => {
                 fightplanModal.style.display = 'none';
+            };
+        }
+
+        if (confirmFightplanBtn) {
+            confirmFightplanBtn.onclick = async () => {
+                if (!activeFightplanPoolId) return;
+
+                const bestaetigt = await zeigeBestaetigung(
+                    'Ergebnisse dieses Pools als final bestätigen? Damit ist der Pool bereit für Urkundendruck.',
+                    'Pool abschließen',
+                    'fact_check'
+                );
+                if (!bestaetigt) return;
+
+                try {
+                    const response = await fetch(`/api/pools/${activeFightplanPoolId}/abschliessen`, { method: 'POST' });
+                    const result = await response.json();
+                    if (result.success) {
+                        zeigeNotification('Pool erfolgreich abgeschlossen.', 'success');
+                        confirmFightplanBtn.style.display = 'none';
+                        await ladePools();
+                        if (window.hajimeAktualisiereMenueSperren) {
+                            window.hajimeAktualisiereMenueSperren(['pools']);
+                        }
+                    } else {
+                        zeigeNotification(result.error || 'Fehler beim Abschließen.', 'error');
+                    }
+                } catch (err) {
+                    zeigeNotification('Netzwerkfehler beim Abschließen.', 'error');
+                }
             };
         }
 

@@ -5,7 +5,8 @@
   "scripts": {
     "start": "node src/app.js",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:vollablauf": "playwright test --config=playwright.vollablauf.config.js"
   },
   "dependencies": {
     "@material-design-icons/font": "^0.14.15",

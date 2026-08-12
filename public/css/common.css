@@ -309,6 +309,7 @@ body {
 
 /* --- REITER-STYLING (MENU ITEMS, vertikal in der Sidebar) --- */
 .menu-item {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 12px;
@@ -329,6 +330,14 @@ body {
     font-size: 20px;
     vertical-align: middle;
     flex-shrink: 0;
+}
+
+/* Gelbes Achtung-Icon auf einem Menüpunkt (z.B. Pools: mind. ein Pool wartet auf
+   Ergebnisprüfung) — absolut positioniert, damit es unabhängig vom Ein-/Ausklapp-Zustand
+   der Sidebar immer oben rechts am Menüpunkt sitzt statt den Zeilenfluss zu verschieben. */
+.menu-item-warning {
+    font-size: 16px !important;
+    color: #f5a623;
 }
 
 .menu-item:hover {

@@ -1,0 +1,22 @@
+{
+    "_hinweis": "Fixtur für tests/e2e/pools-bracket-anzeige-jeder-gegen-jeden.spec.js: ein Turnier + ein Pool + genau 4 Teilnehmer:innen -- verschiebeTeilnehmer() waehlt bei bis zu 5 Teilnehmer:innen automatisch den Modus 'Jeder-gegen-Jeden' (siehe waehleWettkampfsystem() in poolController.js). Anders als bei den Doppel-KO-Modi gibt es hier keine Kaskaden-Platzhalter (jede Paarung steht von Anfang an fest, keine Kämpfer:innen-Slots hängen vom Ausgang eines Vorkampfes ab) -- der Test prüft stattdessen, ob die Pool-Kreuztabelle (Matrix-Ansicht) Ergebnisse/Siege/Punkte/Platz korrekt aus den Kampfdaten ableitet. Wird bewusst NICHT über den Turnier-Import (POST /api/turniere/import) eingespielt, siehe Hinweis in pool-ko-doppel-ko8.json -- gleicher Grund (leert vor dem Import ALLE Turniere der gemeinsam genutzten Test-DB).",
+    "turnier": {
+        "bezeichnung": "Pool-KO Bracket-Anzeige Test (Jeder-gegen-Jeden)",
+        "ort": "Teststadt",
+        "datum": "2027-05-15",
+        "ausrichter": "JC Bracket-Test",
+        "anzahl_kampfflaechen": 1
+    },
+    "pool": {
+        "bezeichnung": "Jeder-gegen-Jeden Anzeige-Test",
+        "altersklasse": "U18",
+        "geschlecht": "männlich",
+        "gewichtsklasse": "-73kg"
+    },
+    "teilnehmer": [
+        { "vorname": "Anna", "nachname": "Adler", "verein": "JC Alpha", "gewicht": 60, "geburtsjahr": 2009 },
+        { "vorname": "Berta", "nachname": "Busch", "verein": "JC Beta", "gewicht": 61, "geburtsjahr": 2009 },
+        { "vorname": "Clara", "nachname": "Conrad", "verein": "JC Gamma", "gewicht": 62, "geburtsjahr": 2009 },
+        { "vorname": "Diana", "nachname": "Diehl", "verein": "JC Delta", "gewicht": 63, "geburtsjahr": 2009 }
+    ]
+}

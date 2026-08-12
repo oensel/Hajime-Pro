@@ -11,34 +11,85 @@ document.addEventListener('DOMContentLoaded', () => {
     const modal = document.getElementById('waageModal');
     if (!modal) return;
 
+    // --- BERECHTIGUNGEN: nur der ausrichtende Verein (bzw. Offline-Betrieb) darf Judopass-Nr.,
+    // Lizenzdatum und Gewicht am Wiegetisch verbindlich erfassen; Lizenzdatum und Startgeld-Status
+    // sind zusätzlich für den Super-Admin freigegeben (er kann fachlich prüfen, auch ohne
+    // Mitglied des Ausrichters zu sein). Andere Vereine melden ihre Athleten ohne diese Angaben an
+    // — die eigentliche Prüfung erfolgt ohnehin erst beim Einwiegen durch den Ausrichter.
+    let istGastgeberVerein = false;
+    let istPrivilegiertFuerLizenzUndStartgeld = false;
+    let aktuellerVereinName = '';
+
+    const ermittleBerechtigungen = async () => {
+        try {
+            const [meResp, turnierResp, configResp] = await Promise.all([
+                fetch('/api/auth/me'),
+                fetch(`/api/turniere/${turnierId}`),
+                fetch('/api/config')
+            ]);
+            if (!meResp.ok) return;
+            const user = (await meResp.json()).user;
+            const turnier = turnierResp.ok ? await turnierResp.json() : null;
+            const istOffline = configResp.ok && !!(await configResp.json()).isOffline;
+
+            istGastgeberVerein = istOffline || !!(user.verein_id && user.verein_freigegeben && turnier && turnier.verein_id === user.verein_id);
+            istPrivilegiertFuerLizenzUndStartgeld = istGastgeberVerein || !!user.ist_super_admin;
+            aktuellerVereinName = user.verein_name || '';
+        } catch (err) {
+            console.error('Fehler beim Ermitteln der Bearbeitungsrechte:', err);
+        }
+    };
+
+    // Verein-Feld für Nicht-Ausrichter: immer der eigene (aktive) Verein, nicht änderbar — deckt
+    // sich mit der serverseitigen Regel in teilnehmerController.js (verein !== userVereinName wird
+    // dort ohnehin abgelehnt). Zentrale Stelle statt direkter .value-Zuweisungen, damit weder
+    // Formular-Reset noch QR-Scan noch das Laden eines Bestandsdatensatzes das Feld umgehen können.
+    const setzeVereinFeldWert = (wert) => {
+        const feld = document.getElementById('verein');
+        if (!feld) return;
+        feld.value = istGastgeberVerein ? (wert || '') : aktuellerVereinName;
+    };
+
+    // Wendet die Berechtigungen auf die Formularfelder an — nach dem initialen Laden sowie nach
+    // jedem Reset/Neubefüllen, da form.reset() bzw. das Befüllen mit Bestandsdaten die Felder
+    // sonst wieder auf ihren HTML-Ausgangszustand (Verein leer, Lizenz aktivierbar) zurücksetzen
+    // würde. Die disabled-Flags selbst bleiben davon unberührt (form.reset() rührt sie nicht an).
+    const wendeBerechtigungenAufFormularAn = () => {
+        const vereinFeld = document.getElementById('verein');
+        const lizenzFeld = document.getElementById('lizenz_ablauf');
+        const startgeldRow = document.getElementById('startgeldBezahltRow');
+
+        if (vereinFeld) {
+            vereinFeld.disabled = !istGastgeberVerein;
+            if (!istGastgeberVerein) vereinFeld.value = aktuellerVereinName;
+        }
+        if (lizenzFeld) lizenzFeld.disabled = !istPrivilegiertFuerLizenzUndStartgeld;
+        if (startgeldRow) startgeldRow.style.display = istPrivilegiertFuerLizenzUndStartgeld ? '' : 'none';
+    };
+
     // --- STRIKTE FORMULAR- UND LIZENZVALIDIERUNG ---
     const aktualisiereSpeicherButtonStatus = () => {
         const submitBtn = document.getElementById('submitBtn');
         const lizenzFeld = document.getElementById('lizenz_ablauf');
 
-        const felder = [
-            'vorname', 'nachname', 'judopass_id',
-            'geburtsjahr', 'lizenz_ablauf', 'geschlecht',
-            'gewicht', 'altersklasse', 'gewichtsklasse'
-        ];
+        const immerPflicht = ['vorname', 'nachname', 'geburtsjahr', 'geschlecht', 'altersklasse', 'gewichtsklasse'];
+        // judopass_id, lizenz_ablauf und gewicht sind nur für den ausrichtenden Verein Pflicht.
+        const felder = istGastgeberVerein
+            ? [...immerPflicht, 'judopass_id', 'lizenz_ablauf', 'gewicht']
+            : immerPflicht;
 
         const alleFelderGefuellt = felder.every(id => {
             const el = document.getElementById(id);
             return el && el.value.trim() !== '';
         });
 
-        const lizenzIstGueltig = lizenzFeld && lizenzFeld.classList.contains('lizenz-valid');
+        // Die Gültigkeitsprüfung der Lizenz greift nur, wenn das Feld überhaupt Pflicht ist —
+        // sonst würde das für andere Vereine leere, deaktivierte Feld das Speichern blockieren.
+        const lizenzOk = !istGastgeberVerein || (lizenzFeld && lizenzFeld.classList.contains('lizenz-valid'));
 
         if (submitBtn) {
-            // Statt nur ausgegraut zu erscheinen, bleibt der Button komplett verborgen, bis das
-            // Formular tatsächlich speicherbar wäre.
-            if (alleFelderGefuellt && lizenzIstGueltig) {
-                submitBtn.removeAttribute('disabled');
-                submitBtn.style.display = '';
-            } else {
-                submitBtn.setAttribute('disabled', 'true');
-                submitBtn.style.display = 'none';
-            }
+            // Bleibt immer sichtbar, ist nur ausgegraut (disabled), solange nicht speicherbar.
+            submitBtn.disabled = !(alleFelderGefuellt && lizenzOk);
         }
     };
 
@@ -391,10 +442,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Befüllt sämtliche Formularfelder anhand eines bestehenden Teilnehmer-Datensatzes.
     const fuelleFormularFelder = (athlet) => {
+        // Für den "Als gewogen markieren?"-Dialog beim Speichern gemerkt (siehe Submit-Handler
+        // unten): nur eine TATSÄCHLICHE Gewichtsänderung soll überhaupt nachfragen.
+        urspruenglichesGewicht = athlet.gewicht || null;
+
         document.getElementById('vorname').value = athlet.vorname || '';
         document.getElementById('nachname').value = athlet.nachname || '';
         document.getElementById('judopass_id').value = athlet.judopass_id || athlet.judopassId || '';
-        document.getElementById('verein').value = athlet.verein || '';
+        setzeVereinFeldWert(athlet.verein);
         document.getElementById('geburtsjahr').value = athlet.geburtsjahr || '';
         document.getElementById('graduierung').value = athlet.graduierung || '';
 
@@ -452,9 +507,11 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // Setzt "Lizenz gültig bis" aus einem gescannten QR-Wert (inkl. Warnhinweis bei Ablauf).
+    // Nur relevant, wenn das Feld überhaupt bearbeitet werden darf (siehe istPrivilegiertFuer-
+    // LizenzUndStartgeld) — sonst würde ein QR-Scan die Sperre umgehen.
     const setzeLizenzAusScan = (wert, anzeigeName = '') => {
         const lizenzFeld = document.getElementById('lizenz_ablauf');
-        if (!wert || !lizenzFeld) return;
+        if (!wert || !lizenzFeld || !istPrivilegiertFuerLizenzUndStartgeld) return;
         lizenzFeld.value = wert;
         aktualisiereLizenzKlasse(wert);
         if (lizenzFeld.classList.contains('lizenz-expired')) {
@@ -467,6 +524,13 @@ document.addEventListener('DOMContentLoaded', () => {
     let editId = null;
     let scanMatchedId = null;
 
+    // Für den "Als gewogen markieren?"-Dialog beim Speichern (siehe Submit-Handler unten):
+    // urspruenglichesGewicht ist der beim Öffnen des Modals geladene Ausgangswert (null bei einer
+    // komplett neuen Person), letzteAenderungViaScan markiert, dass der aktuelle Datensatz gerade
+    // per QR-Scan aufgerufen wurde — dann entfällt die Rückfrage (siehe Anforderung).
+    let urspruenglichesGewicht = null;
+    let letzteAenderungViaScan = false;
+
     // Extrahiert das Geburtsjahr aus einem gescannten Wert — akzeptiert ein volles Datum (z.B.
     // "2012-05-01" aus einem DokuMe-Judopass-QR) ebenso wie eine bereits reine Jahreszahl.
     const ermittleJahrAusWert = (wert) => {
@@ -477,6 +541,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- QR-DATA-MAPPING & WEBCAM INTERFACE ---
     const verarbeiteGescannteDaten = async (parsedData, istDokuMe) => {
+        // Ob Treffer oder Neuanlage: der Judoka stand gerade physisch am Scanner -> beim
+        // Speichern entfällt die "Als gewogen markieren?"-Rückfrage (siehe Submit-Handler unten).
+        letzteAenderungViaScan = true;
+
         // Gescannte Daten in ein einheitliches Format überführen
         let scanVorname = '', scanNachname = '', scanJudopassId = '', scanGeburtsjahr = '', scanLizenzAblauf = '', scanVerein = '';
 
@@ -541,7 +609,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (scanNachname) document.getElementById('nachname').value = scanNachname;
             if (scanJudopassId) document.getElementById('judopass_id').value = scanJudopassId;
             if (scanGeburtsjahr) document.getElementById('geburtsjahr').value = scanGeburtsjahr;
-            if (scanVerein) document.getElementById('verein').value = scanVerein;
+            if (scanVerein) setzeVereinFeldWert(scanVerein);
             setzeLizenzAusScan(scanLizenzAblauf, `${scanVorname} ${scanNachname}`.trim());
         }
 
@@ -578,6 +646,10 @@ document.addEventListener('DOMContentLoaded', () => {
             delete kampfbereitBtn.dataset.teilnehmerId;
         }
         scanMatchedId = null;
+        urspruenglichesGewicht = null;
+        letzteAenderungViaScan = false;
+        // form.reset() leert u.a. das Verein-Feld wieder — für Nicht-Ausrichter sofort erneut sperren.
+        wendeBerechtigungenAufFormularAn();
         aktualisiereSpeicherButtonStatus();
     };
 
@@ -633,6 +705,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     const initPage = async () => {
+        await ermittleBerechtigungen();
+        wendeBerechtigungenAufFormularAn();
+        aktualisiereSpeicherButtonStatus();
         await ladeDjbKlassenKonfiguration();
         await ladeGraduierungenKonfiguration();
     };
@@ -762,9 +837,13 @@ document.addEventListener('DOMContentLoaded', () => {
             e.preventDefault();
 
             const gewichtsEingabe = document.getElementById('gewicht').value.trim();
-            const gewichtFormatiert = parseFloat(gewichtsEingabe.replace(',', '.'));
+            let gewichtFormatiert = parseFloat(gewichtsEingabe.replace(',', '.'));
 
-            if (isNaN(gewichtFormatiert) || gewichtFormatiert <= 0) {
+            if (gewichtsEingabe === '' && !istGastgeberVerein) {
+                // Nicht-Ausrichter dürfen ohne Gewicht speichern (s.o.) — das eigentliche
+                // Wiegeergebnis trägt der Ausrichter beim Einwiegen nach.
+                gewichtFormatiert = 0;
+            } else if (isNaN(gewichtFormatiert) || gewichtFormatiert <= 0) {
                 alert('Bitte geben Sie ein gültiges Gewicht mit Komma ein (z.B. 34,50).');
                 document.getElementById('gewicht').focus();
                 return;
@@ -785,6 +864,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 gewichtsklasse: document.getElementById('gewichtsklasse').value,
                 startgeld_bezahlt: document.getElementById('startgeld_bezahlt').checked
             };
+
+            // "Gewogen" darf serverseitig ohnehin nur der ausrichtende Verein (bzw. Offline-
+            // Betrieb) setzen (siehe teilnehmerController.js) — hier zusätzlich nur nachfragen,
+            // wenn sich das Gewicht überhaupt geändert hat (reine Korrekturen an Name o.ä. lösen
+            // keinen Dialog aus). Per QR-Scan aufgerufene Datensätze gelten als physisch am
+            // Wiegetisch erfasst -> Gewogen wird direkt gesetzt, ohne nachzufragen.
+            const vorherigesGewicht = parseFloat(String(urspruenglichesGewicht ?? '').replace(',', '.')) || 0;
+            const gewichtGeaendert = gewichtFormatiert > 0 && gewichtFormatiert !== vorherigesGewicht;
+
+            if (istGastgeberVerein && gewichtGeaendert) {
+                if (letzteAenderungViaScan) {
+                    payload.gewogen = true;
+                } else {
+                    payload.gewogen = await window.zeigeZentraleBestaetigung(
+                        `${payload.vorname} ${payload.nachname} als gewogen markieren?`,
+                        'Gewogen bestätigen',
+                        'scale',
+                        { compact: true, confirmText: 'Ja', cancelText: 'Nein' }
+                    );
+                }
+            }
 
             // Vor setzeFormularZurueck() auslesen (das den Wert unten wieder leert).
             const mannschaftNameEingabe = (document.getElementById('mannschaft_name')?.value || '').trim();

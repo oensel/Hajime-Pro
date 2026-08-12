@@ -17,5 +17,13 @@ data/
 /playwright-report/
 /playwright/.cache/
 
+# Laufzeit-Statusdatei des Vollablauf-E2E-Tests (siehe tests/e2e-vollablauf/) — trackt während des
+# Laufs erzeugte IDs in der echten Online-Cloud-DB für das Cleanup in global-teardown.js.
+/tests/e2e-vollablauf/.run-state.json
+
+# Heruntergeladene Turnier-Export-Dateien des Vollablauf-E2E-Tests — enthalten reale, aus der
+# echten Cloud-DB exportierte Teilnehmerdaten (siehe exportiereTurnierDaten in helpers.js).
+/tests/e2e-vollablauf/downloads/
+
 # Claude Code lokale Einstellungen
 .claude/settings.local.json

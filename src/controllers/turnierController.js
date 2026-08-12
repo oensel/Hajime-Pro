@@ -490,7 +490,7 @@ function normalisiereKampfStatus(status, kaempfer1Id, kaempfer2Id) {
 // selbstreferenzierenden Kampf-Quelle-Verknüpfungen). Gemeinsam genutzt von importTurnier
 // (komplette Neuanlage, offline) und importTurnierErgebnisse (Ergebnisse eines bestehenden
 // Turniers ersetzen, online).
-async function importWettkampfdaten(trx, turnierId, { kampfflaechen, pools, teilnehmer, kaempfe }) {
+async function importWettkampfdaten(trx, turnierId, { kampfflaechen, pools, teilnehmer, kaempfe, mannschaften = [], mannschaftMitglieder = [] }) {
     const kampfflaecheIdMap = new Map();
     for (const kf of kampfflaechen) {
         const [neueIdObj] = await trx('kampfflaechen').insert({
@@ -513,7 +513,16 @@ async function importWettkampfdaten(trx, turnierId, { kampfflaechen, pools, teil
             gewichtsklasse: p.gewichtsklasse,
             kampfzeit_sekunden: p.kampfzeit_sekunden || 240,
             matte_reihenfolge: p.matte_reihenfolge ?? null,
-            status: p.status || 'angelegt'
+            status: p.status || 'angelegt',
+            // Ohne diese vier Felder würden Mannschafts-Pools bei jedem Import/Reimport auf den
+            // Spalten-Default "typ: 'einzel'" zurückfallen — der Pool wäre danach für
+            // pools.html/mannschaften.html nicht mehr als Mannschafts-Pool erkennbar (siehe
+            // getPoolsMitDetails: .andWhereNot({ typ: 'mannschaft' })) und hätte seine
+            // Gewichtsklassen-Positionsliste sowie individuellen Golden-Score-Einstellungen verloren.
+            typ: p.typ || 'einzel',
+            mannschafts_gewichtsklassen: p.mannschafts_gewichtsklassen ?? null,
+            golden_score_aktiv: p.golden_score_aktiv === undefined ? true : !!p.golden_score_aktiv,
+            golden_score_max_sekunden: p.golden_score_max_sekunden ?? null
         }).returning('id');
         poolIdMap.set(p.id, typeof neueIdObj === 'object' ? neueIdObj.id : neueIdObj);
     }
@@ -573,6 +582,58 @@ async function importWettkampfdaten(trx, turnierId, { kampfflaechen, pools, teil
             kaempfer2_quelle_typ: k.kaempfer2_quelle_typ ?? null
         });
     }
+
+    // --- MANNSCHAFTEN + MANNSCHAFT_MITGLIEDER ---
+    // Per (verein, bezeichnung) mit einer eventuell schon vorhandenen Mannschaft DIESES Turniers
+    // abgleichen, statt sie blind neu anzulegen: importTurnierErgebnisse importiert in ein
+    // BESTEHENDES Online-Turnier, dessen Mannschaften über den regulären Anmeldungs-Workflow
+    // (Teilnehmer-Import/Waage, siehe teilnehmerController.js) bereits dort existieren — deren IDs
+    // dürfen sich beim Reimport nicht ändern, u.a. weil mannschaftskaempfe darauf verweisen.
+    // importTurnier (frischer Offline-Turnier-Import) legt dagegen immer ein brandneues Turnier
+    // an, hier gibt es nie eine bestehende Zeile zum Abgleichen — derselbe Code läuft dann als
+    // reiner Insert.
+    const mannschaftIdMap = new Map();
+    for (const m of mannschaften) {
+        const neuerPoolId = m.pool_id != null ? (poolIdMap.get(m.pool_id) ?? null) : null;
+        const bestehende = await trx('mannschaften')
+            .where({ turnier_id: turnierId, verein: m.verein, bezeichnung: m.bezeichnung })
+            .first();
+
+        if (bestehende) {
+            await trx('mannschaften').where({ id: bestehende.id }).update({
+                pool_id: neuerPoolId,
+                status: m.status || bestehende.status,
+                updated_at: trx.fn.now()
+            });
+            mannschaftIdMap.set(m.id, bestehende.id);
+        } else {
+            const [neueIdObj] = await trx('mannschaften').insert({
+                turnier_id: turnierId,
+                pool_id: neuerPoolId,
+                verein: m.verein,
+                bezeichnung: m.bezeichnung,
+                status: m.status || 'angemeldet'
+            }).returning('id');
+            mannschaftIdMap.set(m.id, typeof neueIdObj === 'object' ? neueIdObj.id : neueIdObj);
+        }
+    }
+
+    // Roster-Positionen komplett ersetzen statt zu mergen — einfacher und robust genug, da die
+    // importierte Datei ohnehin den vollständigen, aktuellen Stand jeder Mannschaft enthält.
+    if (mannschaftIdMap.size > 0) {
+        await trx('mannschaft_mitglieder').whereIn('mannschaft_id', [...mannschaftIdMap.values()]).del();
+    }
+    for (const mm of mannschaftMitglieder) {
+        const neueMannschaftId = mannschaftIdMap.get(mm.mannschaft_id);
+        const neueTeilnehmerId = mm.turnier_teilnehmer_id != null ? (teilnehmerIdMap.get(mm.turnier_teilnehmer_id) ?? null) : null;
+        if (!neueMannschaftId || !neueTeilnehmerId) continue;
+
+        await trx('mannschaft_mitglieder').insert({
+            mannschaft_id: neueMannschaftId,
+            turnier_teilnehmer_id: neueTeilnehmerId,
+            gewichtsklasse: mm.gewichtsklasse
+        });
+    }
 }
 
 // Gegenstück zu exportTurnier: importiert eine zuvor exportierte Turnier-JSON-Datei als
@@ -604,6 +665,8 @@ export async function importTurnier(knex, req, res) {
         const pools = (daten && daten.pools) || [];
         const teilnehmer = (daten && daten.teilnehmer) || [];
         const kaempfe = (daten && daten.kaempfe) || [];
+        const mannschaften = (daten && daten.mannschaften) || [];
+        const mannschaftMitglieder = (daten && daten.mannschaft_mitglieder) || [];
 
         if (!t || !t.bezeichnung || !t.ort || !t.datum || !t.ausrichter) {
             return res.status(400).json({ success: false, error: 'Ungültiges Import-Format: Turnier-Pflichtfelder (Bezeichnung, Ort, Datum, Ausrichter) fehlen.' });
@@ -656,11 +719,18 @@ export async function importTurnier(knex, req, res) {
                 iban: t.iban || null,
                 kontoinhaber: t.kontoinhaber || null,
                 verwendungszweck: t.verwendungszweck || null,
-                verein_id: verein.id
+                verein_id: verein.id,
+                // Hält die ID des Quell-Turniers fest, damit ein späterer Online-Reimport
+                // (importTurnierErgebnisse) dieses (neu angelegte, lokal andere) Offline-Turnier
+                // wieder dem richtigen Online-Turnier zuordnen kann (siehe dortiger ID-Abgleich).
+                // t.urspruengliche_id bevorzugt, falls die importierte Datei selbst schon von einem
+                // vorherigen Offline-Import stammt (Mehrfach-Hop) — sonst wäre die eigentliche
+                // Online-Herkunft nach dem zweiten Hop verloren.
+                urspruengliche_id: t.urspruengliche_id ?? t.id ?? null
             }).returning('id');
             const turnierId = typeof turnierIdObj === 'object' ? turnierIdObj.id : turnierIdObj;
 
-            await importWettkampfdaten(trx, turnierId, { kampfflaechen, pools, teilnehmer, kaempfe });
+            await importWettkampfdaten(trx, turnierId, { kampfflaechen, pools, teilnehmer, kaempfe, mannschaften, mannschaftMitglieder });
 
             return turnierId;
         });
@@ -726,10 +796,14 @@ export async function importTurnierErgebnisse(knex, req, res) {
         if (!t || t.id == null) {
             return res.status(400).json({ success: false, error: 'Ungültiges Import-Format: Turnier-ID fehlt in der Datei.' });
         }
-        if (parseInt(t.id, 10) !== turnierId) {
+        // Stammt die Datei aus einem Offline-Import (siehe urspruengliche_id in importTurnier),
+        // steht dort die tatsächliche Online-Herkunfts-ID — die eigene (lokale) Offline-ID der
+        // Datei wäre für den Abgleich mit diesem Online-Turnier bedeutungslos.
+        const quellTurnierId = t.urspruengliche_id ?? t.id;
+        if (parseInt(quellTurnierId, 10) !== turnierId) {
             return res.status(400).json({
                 success: false,
-                error: `Die Datei gehört zu Turnier-ID ${t.id}, nicht zum ausgewählten Turnier (ID ${turnierId}).`
+                error: `Die Datei gehört zu Turnier-ID ${quellTurnierId}, nicht zum ausgewählten Turnier (ID ${turnierId}).`
             });
         }
 
@@ -737,10 +811,15 @@ export async function importTurnierErgebnisse(knex, req, res) {
         const pools = (daten && daten.pools) || [];
         const teilnehmer = (daten && daten.teilnehmer) || [];
         const kaempfe = (daten && daten.kaempfe) || [];
+        const mannschaften = (daten && daten.mannschaften) || [];
+        const mannschaftMitglieder = (daten && daten.mannschaft_mitglieder) || [];
 
         await knex.transaction(async (trx) => {
             // Nur die Wettkampfdaten DIESES Turniers ersetzen — turniere/benutzer/vereine
             // bleiben unangetastet, andere Turniere sind von dieser Löschung nicht betroffen.
+            // mannschaften bewusst NICHT gelöscht (siehe importWettkampfdaten): sie werden dort
+            // per (verein, bezeichnung) mit den online bereits bestehenden Zeilen abgeglichen statt
+            // neu angelegt, damit ihre IDs stabil bleiben (worauf mannschaftskaempfe verweisen).
             const altePools = await trx('pools').where({ turnier_id: turnierId }).select('id');
             const altePoolIds = altePools.map(p => p.id);
             if (altePoolIds.length > 0) {
@@ -750,7 +829,7 @@ export async function importTurnierErgebnisse(knex, req, res) {
             await trx('pools').where({ turnier_id: turnierId }).del();
             await trx('kampfflaechen').where({ turnier_id: turnierId }).del();
 
-            await importWettkampfdaten(trx, turnierId, { kampfflaechen, pools, teilnehmer, kaempfe });
+            await importWettkampfdaten(trx, turnierId, { kampfflaechen, pools, teilnehmer, kaempfe, mannschaften, mannschaftMitglieder });
 
             // Automatischer Übergang in den Archiv-Zustand (Zustand 5: "wird automatisch durch
             // den Upload der Ergebnisdaten ... ausgelöst").
@@ -803,6 +882,17 @@ export async function exportTurnier(knex, req, res) {
             ? await knex('kaempfe').whereIn('pool_id', poolIds).orderBy('id', 'asc')
             : [];
 
+        // Mannschaften + ihre Roster-Positionen — ohne diese beiden würde jeder Turnier-Import
+        // (Offline-Ersteinlesen wie auch der Online-Ergebnis-Reimport) alle Team-Meldungen
+        // stillschweigend verlieren (siehe importWettkampfdaten). mannschaftskaempfe selbst bleiben
+        // bewusst unexportiert — ihr Ergebnis wird nach dem Import serverseitig aus den
+        // zugehörigen kaempfe-Zeilen neu berechnet (siehe triggerPoolUpdate in kampfController.js).
+        const mannschaften = await knex('mannschaften').where({ turnier_id: turnierId }).orderBy('id', 'asc');
+        const mannschaftIds = mannschaften.map(m => m.id);
+        const mannschaftMitglieder = mannschaftIds.length > 0
+            ? await knex('mannschaft_mitglieder').whereIn('mannschaft_id', mannschaftIds).orderBy('id', 'asc')
+            : [];
+
         let ak = turnier.altersklassen;
         if (typeof ak === 'string') {
             try {
@@ -838,7 +928,9 @@ export async function exportTurnier(knex, req, res) {
             kampfflaechen,
             pools,
             teilnehmer,
-            kaempfe
+            kaempfe,
+            mannschaften,
+            mannschaft_mitglieder: mannschaftMitglieder
         };
 
         const dateiname = `turnier_${turnierId}_export_${new Date().toISOString().slice(0, 10)}.json`;

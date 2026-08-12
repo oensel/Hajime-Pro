@@ -138,7 +138,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             <div class="sidebar-brand" title="by Bastian Haas">
                 <img src="hajime_pro.png" height="60">
             </div>
-            <nav class="sidebar-nav">
+            <nav class="sidebar-nav" id="sidebarNavPrimary" style="visibility: hidden;">
                 <a href="/turniere.html" class="menu-item" id="nav-turniere">
                     <span class="material-icons">calendar_month</span>
                     <span class="menu-text">anstehende Turniere</span>
@@ -154,6 +154,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <a href="/pools.html" class="menu-item" id="nav-pools">
                     <span class="material-icons">groups</span>
                     <span class="menu-text">Pools</span>
+                    <span class="material-icons menu-item-warning" id="nav-pools-warning" style="display: none;" title="Mindestens ein Pool wartet auf Ergebnisprüfung">warning</span>
                 </a>
                 <a href="/mannschaften.html" class="menu-item" id="nav-mannschaften">
                     <span class="material-icons">groups_2</span>
@@ -172,7 +173,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <span class="menu-text">Siegerliste</span>
                 </a>
             </nav>
-            <nav class="sidebar-nav">
+            <nav class="sidebar-nav" id="sidebarNavSecondary" style="visibility: hidden;">
                 <a href="/dashboard.html" class="menu-item" id="nav-dashboard">
                     <span class="material-icons">dashboard</span>
                     <span class="menu-text">Dashboard</span>
@@ -224,7 +225,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 
         <!-- OPTISCH ANSPRECHENDER MATERIAL CONFIRM DIALOG -->
-        <div id="customConfirmModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(2px); z-index: 9999; align-items: center; justify-content: center; transition: all 0.2s;">
+        <div id="customConfirmModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(2px); z-index: 10000; align-items: center; justify-content: center; transition: all 0.2s;">
             <div class="mdc-card" style="max-width: 420px; padding: 24px; border-radius: 4px; border: 2px solid var(--border); box-shadow: var(--shadow); background-color: var(--bg-card); animation: modalPulse 0.2s ease-out;">
                 <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
                     <span class="material-icons" id="modalIcon" style="font-size: 28px; color: var(--primary);">help_outline</span>
@@ -371,6 +372,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     };
 
+    // Gelbes Achtung-Icon am Menüpunkt "Pools": erscheint, sobald mindestens ein
+    // (Einzelwettkampf-)Pool im Status "Ergebnisse prüfen" (kaempfe_beendet) auf die
+    // manuelle Tischbestätigung wartet, und verschwindet wieder, sobald keiner mehr in
+    // diesem Status ist. Der Statuswechsel passiert serverseitig beim Kampfende auf
+    // kampf.html/matten.html, wo kein Skript diese Prüfung direkt anstößt — daher zusätzlich
+    // per Intervall unten periodisch neu bewertet, nicht nur reaktiv.
+    const pruefePoolsErgebnisWarnung = async (tId) => {
+        const badge = document.getElementById('nav-pools-warning');
+        if (!badge) return;
+
+        try {
+            const response = await fetch(`/api/pools/details?turnierId=${tId}`);
+            const pools = await response.json();
+            const hatWartendePools = Array.isArray(pools) && pools.some(p => p.status === 'kaempfe_beendet');
+            badge.style.display = hatWartendePools ? 'inline-block' : 'none';
+        } catch (error) {
+            console.error('Fehler bei der Prüfung offener Pool-Ergebnisse:', error);
+        }
+    };
+
     // Globaler Zugriffspunkt für andere Skripte (teilnehmer.js, pools.js, matten.js), um nach
     // einer eigenen Änderung gezielt einzelne Menü-Sperren live neu zu bewerten, ohne die
     // gesamte Seite neu laden zu müssen. bereiche: Teilmenge aus ['pools', 'matten', 'kampf'].
@@ -383,6 +404,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (bereiche.includes('pools')) aufgaben.push(pruefePoolsMenuSperre(aktiveTurnierId));
         if (bereiche.includes('matten')) aufgaben.push(pruefeMattenMenuSperre(aktiveTurnierId));
         if (bereiche.includes('kampf')) aufgaben.push(pruefeKampfMenuSperre(aktiveTurnierId));
+        if (bereiche.includes('pools')) aufgaben.push(pruefePoolsErgebnisWarnung(aktiveTurnierId));
         await Promise.all(aufgaben);
     };
 
@@ -587,8 +609,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             await Promise.all([
                 pruefePoolsMenuSperre(turnierId),
                 pruefeMattenMenuSperre(turnierId),
-                pruefeKampfMenuSperre(turnierId)
+                pruefeKampfMenuSperre(turnierId),
+                pruefePoolsErgebnisWarnung(turnierId)
             ]);
+
+            // Periodische Neubewertung: der Statuswechsel eines Pools auf "kaempfe_beendet"
+            // passiert serverseitig beim Kampfende (kampf.html/matten.html), ohne dass eines
+            // dieser Skripte die Menü-Sperren-Prüfung aktiv anstößt — Polling deckt das ab,
+            // unabhängig davon, auf welcher Seite gerade gearbeitet wird.
+            setInterval(() => pruefePoolsErgebnisWarnung(turnierId), 15000);
 
             // --- TURNIERNAME ALS ÜBERSCHRIFT IN DER KOPFLEISTE ---
             // Wird für alle Nutzer geladen (nicht nur für die Vereins-Prüfung unten), damit die
@@ -656,6 +685,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
     }
+
+    // Erst jetzt sind alle Sperr-/Versteck-Entscheidungen (Freigabe, Turnierauswahl, Vereins-
+    // zugehörigkeit, Stufen-Voraussetzungen) getroffen — die Menüpunkte waren bis hierhin bewusst
+    // unsichtbar, damit sie nicht kurz erscheinen und sofort wieder verschwinden.
+    document.getElementById('sidebarNavPrimary')?.style.removeProperty('visibility');
+    document.getElementById('sidebarNavSecondary')?.style.removeProperty('visibility');
 
     // --- AKTIVEN REITER HERVORHEBEN ---
     if (currentPath.includes('turniere.html')) document.getElementById('nav-turniere')?.classList.add('active');
@@ -776,6 +811,8 @@ window.zeigeZentraleBestaetigung = (nachricht, titel = "Aktion bestätigen", ico
         txtMsg.innerText = nachricht;
         txtTitle.innerText = titel;
         icoEl.innerText = icon;
+        btnConfirm.innerText = optionen.confirmText || 'Fortfahren';
+        btnCancel.innerText = optionen.cancelText || 'Abbrechen';
 
         const karte = modal.querySelector('.mdc-card');
         if (karte) {

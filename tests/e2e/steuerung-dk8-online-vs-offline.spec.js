@@ -103,14 +103,25 @@ async function richteDk8TurnierEin(request, bezeichnung) {
 // Teilnehmern ab, die wiederum eindeutig aus dem (identischen) Ausgangsraster + dieser Regel
 // folgen -- unabhängig davon, in welcher Reihenfolge die 11 Kämpfe nacheinander geholt werden.
 async function spieleKompletteBrackedDurch(page, anzahlKaempfe = 11) {
-    let vorherigerName = 'Kämpfer 1'; // Default-Wert des #nameW-Feldes vor dem ersten geladenen Kampf.
+    // Default-Werte von #nameW/#nameB vor dem ersten geladenen Kampf. Beide zusammen (nicht nur
+    // nameW) beobachten: derselbe Kämpfer kann in zwei verschiedenen Kämpfen hintereinander als
+    // Kämpfer 1 antreten (z.B. Gruppen-Überkreuz-Vorrunde, wo eine Person gegen mehrere
+    // Gruppenmitglieder in Folge kämpft) -- die Paarung (kaempfer1, kaempfer2) selbst wiederholt
+    // sich dagegen nie, jeder Kampf hat eine eindeutige Zwei-Personen-Kombination.
+    const paarungAuslesen = () => page.evaluate(() =>
+        `${document.getElementById('nameW').value}|${document.getElementById('nameB').value}`
+    );
+    let vorherigePaarung = 'Kämpfer 1|Kämpfer 2';
     for (let i = 0; i < anzahlKaempfe; i++) {
         await page.locator('#btnNaechsterKampfLive').click();
         // Wartet, bis naechstenKampfHolen() den Kampf tatsächlich geladen hat, bevor per
         // window.evaluate() (ohne Playwright-Actionability-Wartung) eingegriffen wird -- siehe
         // denselben Race-Condition-Kommentar in steuerung-anzeige-scoreboard.spec.js.
-        await expect(page.locator('#nameW')).not.toHaveValue(vorherigerName);
-        vorherigerName = await page.locator('#nameW').inputValue();
+        await page.waitForFunction(
+            (vorher) => `${document.getElementById('nameW').value}|${document.getElementById('nameB').value}` !== vorher,
+            vorherigePaarung
+        );
+        vorherigePaarung = await paarungAuslesen();
 
         await page.evaluate(() => window.changeScore('W', 'ippon', 1));
         await expect(page.locator('#btnErgebnisSendenLive')).toBeVisible();

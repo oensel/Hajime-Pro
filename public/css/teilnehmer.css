@@ -7,7 +7,13 @@
    Modals) verwendet; über .mdc-card gesetzt, würde diese feste Höhe/Flex-Layout auch dort
    greifen und z.B. den Bestätigungsdialog auf Bildschirmhöhe aufblähen. */
 #teilnehmerHauptkarte {
-    max-width: 1300px;
+    /* Wächst mit der verfügbaren Breite, hört aber auf zu wachsen, sobald der Inhalt (Tabelle,
+       Toolbar, Kennzahlen-Kacheln) komplett ohne Umbruch/Scrollen passt — statt eines fest
+       codierten Pixelwerts bestimmt der Inhalt selbst die Obergrenze (fit-content = min(
+       max-content, verfügbarer Platz)). Auf schmaleren Bildschirmen füllt die Karte weiterhin
+       die volle verfügbare Breite (die Tabelle scrollt dann bei Bedarf horizontal). */
+    width: fit-content;
+    max-width: 100%;
     padding: 20px 24px;
     height: calc(100vh - 112px);
     box-sizing: border-box;
@@ -466,6 +472,21 @@ select.status-select:focus {
 #waageModal .actions {
     padding-top: 14px;
     gap: 10px;
+}
+
+/* "Eintrag Speichern" bleibt immer sichtbar (statt bei unvollständigem Formular komplett zu
+   verschwinden) — nur noch per :disabled ausgegraut, solange die Pflichtfelder fehlen. */
+#waageModal .btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* Gesperrte Felder (Verein/Lizenz für Nicht-Ausrichter, siehe waage-modal.js) bleiben lesbar,
+   heben sich aber sichtbar von normal editierbaren Feldern ab. */
+#waageModal input:disabled {
+    background-color: rgba(0, 0, 0, 0.04) !important;
+    color: var(--text-muted);
+    cursor: not-allowed;
 }
 
 /* Lizenz noch gültig (Grün) */

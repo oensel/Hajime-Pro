@@ -1,0 +1,34 @@
+{
+    "_hinweis": "Fixtur für tests/e2e/pools-bracket-anzeige-doppel-ko16.spec.js: ein Turnier + ein Pool + genau 16 Teilnehmer:innen -- verschiebeTeilnehmer() waehlt bei 9-16 Teilnehmer:innen automatisch den Modus 'Doppel-KO-16' (siehe waehleWettkampfsystem() in poolController.js). Bewusst exakt 16 (kein Freilos): die 'Freilos statt Kaskaden-Platzhalter'-Regression ist bereits über pool-ko-doppel-ko8.json abgedeckt, hier geht es um die zweite, unabhängig kaputte Stelle -- getPlaceholderName() zeigte vor der Mode-Trennung für Doppel-KO-16 wegen einer If-Ketten-Kollision mit Gruppen-Überkreuz/Doppel-KO-8 (gleiche Kampfnummern 'F1'/'T3'/'T4', andere Bedeutung je Modus) falsche Platzhaltertexte, u.a. 'Sieger HF1' statt 'Sieger H13' im Finale. Wird bewusst NICHT über den Turnier-Import (POST /api/turniere/import) eingespielt, siehe Hinweis in pool-ko-doppel-ko8.json -- gleicher Grund (leert vor dem Import ALLE Turniere der gemeinsam genutzten Test-DB).",
+    "turnier": {
+        "bezeichnung": "Pool-KO Bracket-Anzeige Test (Doppel-KO-16)",
+        "ort": "Teststadt",
+        "datum": "2027-05-15",
+        "ausrichter": "JC Bracket-Test",
+        "anzahl_kampfflaechen": 1
+    },
+    "pool": {
+        "bezeichnung": "Doppel-KO-16 Anzeige-Test",
+        "altersklasse": "U18",
+        "geschlecht": "männlich",
+        "gewichtsklasse": "-73kg"
+    },
+    "teilnehmer": [
+        { "vorname": "Anna", "nachname": "Adler", "verein": "JC Alpha", "gewicht": 60, "geburtsjahr": 2009 },
+        { "vorname": "Berta", "nachname": "Busch", "verein": "JC Beta", "gewicht": 61, "geburtsjahr": 2009 },
+        { "vorname": "Clara", "nachname": "Conrad", "verein": "JC Gamma", "gewicht": 62, "geburtsjahr": 2009 },
+        { "vorname": "Diana", "nachname": "Diehl", "verein": "JC Delta", "gewicht": 63, "geburtsjahr": 2009 },
+        { "vorname": "Elena", "nachname": "Ebert", "verein": "JC Epsilon", "gewicht": 64, "geburtsjahr": 2009 },
+        { "vorname": "Frida", "nachname": "Fuchs", "verein": "JC Zeta", "gewicht": 65, "geburtsjahr": 2009 },
+        { "vorname": "Greta", "nachname": "Graf", "verein": "JC Eta", "gewicht": 66, "geburtsjahr": 2009 },
+        { "vorname": "Hanna", "nachname": "Hoffmann", "verein": "JC Theta", "gewicht": 67, "geburtsjahr": 2009 },
+        { "vorname": "Ida", "nachname": "Imhof", "verein": "JC Iota", "gewicht": 68, "geburtsjahr": 2009 },
+        { "vorname": "Julia", "nachname": "Jansen", "verein": "JC Kappa", "gewicht": 69, "geburtsjahr": 2009 },
+        { "vorname": "Klara", "nachname": "Krause", "verein": "JC Lambda", "gewicht": 70, "geburtsjahr": 2009 },
+        { "vorname": "Lena", "nachname": "Lorenz", "verein": "JC My", "gewicht": 71, "geburtsjahr": 2009 },
+        { "vorname": "Mia", "nachname": "Meyer", "verein": "JC Ny", "gewicht": 72, "geburtsjahr": 2009 },
+        { "vorname": "Nora", "nachname": "Neumann", "verein": "JC Xi", "gewicht": 73, "geburtsjahr": 2009 },
+        { "vorname": "Olivia", "nachname": "Ott", "verein": "JC Omikron", "gewicht": 74, "geburtsjahr": 2009 },
+        { "vorname": "Paula", "nachname": "Peters", "verein": "JC Pi", "gewicht": 75, "geburtsjahr": 2009 }
+    ]
+}

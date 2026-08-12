@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # Hajime Pro (hajime-pro)
 
 Turnierverwaltungssoftware für Judo-Wettkämpfe nach den Regeln des Deutschen Judo-Bundes (DJB) — deckt den gesamten Ablauf von der Anmeldung bis zur Siegerliste ab. Kein Scoring/Refereeing-Tool (keine Ippon/Waza-ari/Shido-Erfassung), sondern reine Wettkampf-Organisation: Teilnehmerverwaltung, Auslosung, Matten-/Zeitplanung, Live-Steuerung, Ergebnisanzeige.
@@ -7,6 +11,21 @@ Turnierverwaltungssoftware für Judo-Wettkämpfe nach den Regeln des Deutschen J
 - **DB:** PostgreSQL im Online-Betrieb, SQLite im Offline-Betrieb (`IS_OFFLINE=true` steuert Umschaltung in `knexfile.cjs`/`app.js`)
 - **Frontend:** Server-gerenderte statische HTML-Seiten in `public/` + Vanilla-JS, Material Components Web für UI, `jsqr`/`qrcode-generator` für QR-Scanning (Judopass) an der Waage
 - **Auth:** JWT (`jsonwebtoken`), vereinsbasierte Zugriffsrechte
+
+## Commands
+- **Dev-Server starten:** `npm start` (= `node src/app.js`), liest `.env` (`IS_OFFLINE`, `PORT`, DB-Zugangsdaten); Standardport 3000
+- **DB-Umschaltung:** `IS_OFFLINE=true` in `.env` → SQLite (`data/turnier.sqlite`, Pfad über `DB_SQLITE_PATH` überschreibbar); sonst PostgreSQL über `DB_HOST`/`DB_USER`/`DB_PASSWORD`/`DB_NAME`/`DB_PORT`
+- **Migrationen:** kein npm-Script dafür — direkt über knex ausführen, z.B. `npx knex migrate:latest --env offline` (oder `--env online`); Konfiguration in `knexfile.cjs`, Dateien in `migrations/`
+- **DB komplett zurücksetzen:** `node setup_db.js` — löscht und erstellt alle Tabellen neu für das über `IS_OFFLINE` gewählte Environment; verweigert den Lauf im Online-Modus, außer `CONFIRM_ONLINE_RESET=JA_WIRKLICH_LOESCHEN` ist zusätzlich gesetzt (Schutz gegen versehentliches Löschen der gemeinsamen Cloud-DB)
+- **E2E-Tests (Playwright):**
+  - `npm run test:e2e` — komplette Suite, headless
+  - `npm run test:e2e:ui` — Playwright UI-Modus
+  - Einzelne Datei: `npx playwright test tests/e2e/<name>.spec.js`
+  - Einzelner Test: `npx playwright test tests/e2e/<name>.spec.js -g "<Testname>"`
+  - Die Suite startet ihren eigenen Server (`node src/app.js`, Port 3100, `IS_OFFLINE=true`, isolierte SQLite-DB `data/test.sqlite`) über `webServer` in `playwright.config.js`; `globalSetup` (`tests/e2e/global-setup.js`) setzt diese DB einmalig vor dem gesamten Lauf zurück und migriert sie neu
+  - Tests laufen bewusst seriell gegen eine gemeinsame DB (`fullyParallel: false`, `workers: 1`) — keine Isolation zwischen Tests, Reihenfolge/Zustand innerhalb einer Spec-Datei kann relevant sein
+  - `test/` (Singular, Repo-Root) enthält CSV-Fixtures für Import-Tests — nicht zu verwechseln mit `tests/e2e/`
+- Kein Lint- oder Unit-Test-Script konfiguriert (Playwright-E2E ist die einzige automatisierte Testsuite)
 
 ## Domänenmodell (Kernentitäten)
 - **`vereine`** — Judo-Vereine; jeder Nutzer (`benutzer`) gehört zu genau einem Verein (`verein_freigegeben`-Flag für Mitgliedschafts-Freigabe)
@@ -20,6 +39,7 @@ Turnierverwaltungssoftware für Judo-Wettkämpfe nach den Regeln des Deutschen J
 - **`mannschaftskaempfe`** — eine Begegnung (Team A vs. Team B) innerhalb eines Mannschafts-Pools, strukturell parallel zu `kaempfe` (gleiche Status-Werte, gleiches Quelle-Verknüpfungsmuster für die Bracket-Kaskade); ihre Einzelkämpfe (einer pro gemeinsam besetzter Gewichtsklasse) sind ganz normale `kaempfe`-Zeilen
 
 ## Zentrale Architekturkonzepte
+- **Routen als Factories mit Knex-Dependency-Injection:** jede Datei in `src/routes/` exportiert eine Funktion (`getXRoutes(knex)`), die in `src/app.js` mit der einen zentral erzeugten Knex-Instanz (Online/Offline je nach `IS_OFFLINE`) aufgerufen und gemountet wird; alle Schreib-Routen (`/api/turniere`, `/api/teilnehmer`, `/api/pools`, `/api/kampfflaechen`, `/api/kaempfe`, `/api/mannschaften`, `/api/mannschaftskaempfe`, `/api/offline`) laufen zusätzlich durch `requireWriteAuth` (`src/middleware/auth.js`); `/api/auth` und `/api/vereine` bewusst ohne dieses Gate (Login/Registrierung/Vereinsauswahl)
 - **`src/shared/`** ist bewusst framework-/DB-frei gehalten (kein knex, kein DOM) und läuft identisch server- und client-seitig (Browser-Offline-Modus):
   - `bracketTopologie.js` — deklarative Turnierbaum-Struktur pro Modus (welcher Kampf bezieht seine Kämpfer aus welchem Vorkampf)
   - `kampfProgression.js` — Kaskaden-Engine: befüllt Folgekämpfe erst, wenn beide Kämpfer-Slots feststehen

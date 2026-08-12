@@ -343,13 +343,18 @@ test.describe.serial('Teilnehmer-Import und -Verwaltung, reines Mannschaftsturni
         await expect(altersklasseFeld).toHaveValue('U15');
 
         await page.locator('#gewicht').fill('45');
-        await expect(speichernBtn).toBeVisible(); // Team-Name ist optional, Speichern hängt nicht daran
+        await expect(speichernBtn).toBeEnabled(); // Team-Name ist optional, Speichern hängt nicht daran
 
         // Bestehenden Team-Namen von JC Essen erneut verwenden (siehe jcEssenW oben) statt eine
         // zweite, doppelte Mannschaft "U15 weiblich" für denselben Verein anzulegen.
         await teamNameFeld.fill('U15 weiblich');
 
         await speichernBtn.click();
+        // Gewicht wurde manuell eingetragen (nicht via QR-Scan) und offline_user gilt als
+        // ausrichtender Verein -> "Als gewogen markieren?"-Rückfrage (siehe waage-modal.js) muss
+        // bestätigt werden, bevor die eigentliche Speicherung überhaupt losläuft.
+        await expect(page.locator('#customConfirmModal')).toBeVisible();
+        await page.locator('#modalConfirmBtn').click();
         await expect(page.locator('#snackbarText')).toHaveText(`Athlet ${neuVorname} erfolgreich eingewogen!`);
         await page.locator('#waageModalClose').click();
         await expect(waageModal).toBeHidden();
@@ -483,11 +488,12 @@ test.describe.serial('Teilnehmer-Import und -Verwaltung, reines Mannschaftsturni
 
         // Aus dem Import vorbelegt: Gewicht 40kg, keine Judopass-Nr., Lizenz technisch abgelaufen
         // (1970-01-01, siehe importTeilnehmer) -> aktualisiereSpeicherButtonStatus() in
-        // waage-modal.js verbirgt den Speichern-Button deshalb zunächst komplett (fehlende Passnr.
-        // UND ungültige Lizenz).
+        // waage-modal.js hält den (immer sichtbaren) Speichern-Button deshalb zunächst deaktiviert
+        // (fehlende Passnr. UND ungültige Lizenz).
         await expect(gewichtFeld).toHaveValue('40');
         await expect(judopassFeld).toHaveValue('');
-        await expect(speichernBtn).toBeHidden();
+        await expect(speichernBtn).toBeVisible();
+        await expect(speichernBtn).toBeDisabled();
 
         // Alters- und Gewichtsklasse müssen bereits aus dem Import korrekt vorbelegt sein: U15 männlich.
         await expect(altersklasseFeld).toHaveValue('U15');
@@ -501,7 +507,7 @@ test.describe.serial('Teilnehmer-Import und -Verwaltung, reines Mannschaftsturni
         await lizenzFeld.fill('2020-01-01');
         await expect(lizenzFeld).toHaveClass(/lizenz-expired/);
         await expect(lizenzFeld).not.toHaveClass(/lizenz-valid/);
-        await expect(speichernBtn).toBeHidden();
+        await expect(speichernBtn).toBeDisabled();
 
         // Lizenz auf ein Datum in der Zukunft setzen -> muss grün (gültig) markiert werden.
         await lizenzFeld.fill('2030-12-31');
@@ -512,11 +518,16 @@ test.describe.serial('Teilnehmer-Import und -Verwaltung, reines Mannschaftsturni
         await startgeldCheckbox.check();
 
         // Fehlende Judopass-Nr. (Lizenz-Nr.) nachtragen -> jetzt sind alle Pflichtfelder gefüllt UND
-        // die Lizenz gültig, der Speichern-Button erscheint erst jetzt.
+        // die Lizenz gültig, der Speichern-Button wird erst jetzt aktiv.
         await judopassFeld.fill('JP-FTN-0001');
-        await expect(speichernBtn).toBeVisible();
+        await expect(speichernBtn).toBeEnabled();
 
         await speichernBtn.click();
+        // Gewicht wurde geändert und offline_user gilt als ausrichtender Verein -> "Als gewogen
+        // markieren?"-Rückfrage (siehe waage-modal.js) muss bestätigt werden, bevor die
+        // eigentliche Speicherung überhaupt losläuft.
+        await expect(page.locator('#customConfirmModal')).toBeVisible();
+        await page.locator('#modalConfirmBtn').click();
         await expect(page.locator('#snackbarText')).toHaveText(`Athlet ${editVorname} erfolgreich aktualisiert!`);
         await expect(waageModal).toBeHidden();
 
@@ -595,7 +606,7 @@ test.describe.serial('Teilnehmer-Import und -Verwaltung, reines Mannschaftsturni
         await expect(judopassFeld).toHaveValue('JP-NEU-9001');
         await expect(lizenzFeld).toHaveClass(/lizenz-valid/);
         await expect(altersklasseFeld).toHaveValue(''); // Geschlecht noch nicht gesetzt -> noch keine Auto-Auswahl
-        await expect(speichernBtn).toBeHidden(); // Geschlecht/Gewicht fehlen noch
+        await expect(speichernBtn).toBeDisabled(); // Geschlecht/Gewicht fehlen noch
 
         // Geschlecht manuell wählen -> Altersklasse wird automatisch anhand des gescannten Geburtsdatums ermittelt.
         await page.locator('#geschlecht').selectOption('weiblich');
@@ -605,7 +616,7 @@ test.describe.serial('Teilnehmer-Import und -Verwaltung, reines Mannschaftsturni
         // Altersklasse+Geschlecht ermittelt.
         await gewichtFeld.fill('44');
         await expect(gewichtsklasseFeld).not.toHaveValue('');
-        await expect(speichernBtn).toBeVisible();
+        await expect(speichernBtn).toBeEnabled();
 
         await speichernBtn.click();
         await expect(page.locator('#snackbarText')).toHaveText(`Athlet ${neuVorname} erfolgreich eingewogen!`);
