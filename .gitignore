@@ -27,3 +27,7 @@ data/
 
 # Claude Code lokale Einstellungen
 .claude/settings.local.json
+
+# express-pouchdb (In-Memory-CouchDB-Testserver, siehe tests/unit/helpers/couchTestServer.js)
+# schreibt trotz logPath: undefined eine log.txt ins Arbeitsverzeichnis.
+/log.txt
