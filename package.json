@@ -6,7 +6,8 @@
     "start": "node src/app.js",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "test:e2e:vollablauf": "playwright test --config=playwright.vollablauf.config.js"
+    "test:e2e:vollablauf": "playwright test --config=playwright.vollablauf.config.js",
+    "test:unit": "node --test tests/unit/**/*.test.js"
   },
   "dependencies": {
     "@material-design-icons/font": "^0.14.15",
@@ -16,6 +17,7 @@
     "jsqr": "^1.4.0",
     "knex": "^3.1.0",
     "material-components-web": "^14.0.0",
+    "nano": "^11.0.7",
     "nodemailer": "^6.9.15",
     "pg": "^8.11.5",
     "qrcode-generator": "^2.0.4",
@@ -23,6 +25,10 @@
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.2/xlsx-0.20.2.tgz"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.1"
+    "@playwright/test": "^1.62.1",
+    "express-pouchdb": "^4.2.0",
+    "pouchdb": "^9.0.0",
+    "pouchdb-adapter-memory": "^9.0.0",
+    "pouchdb-find": "^9.0.0"
   }
 }
