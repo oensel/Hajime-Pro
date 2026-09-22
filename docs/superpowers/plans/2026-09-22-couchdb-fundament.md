@@ -116,13 +116,16 @@ import expressPouchDB from 'express-pouchdb';
 
 PouchDB.plugin(memoryAdapter);
 PouchDB.plugin(pouchdbFind);
-const PouchDBMemory = PouchDB.defaults({ adapter: 'memory' });
 
-// express-pouchdb schreibt pro Datenbank auf die Adapter-Instanz, die beim Erstellen des
-// Express-Handlers festgelegt wird -- ohne .defaults({ adapter: 'memory' }) würde es
-// versuchen, LevelDB-Dateien auf die Platte zu schreiben.
+// express-pouchdb installiert beim Erstellen des Express-Handlers einmalige, statische
+// Daemons/Wrapper-Methoden auf dem übergebenen PouchDB-Konstruktor (z.B. den Replikations-
+// Daemon). Ein zweiter startTestCouchServer()-Aufruf im selben Prozess (z.B. zwei Tests in
+// derselben Datei) würde mit dem GLEICHEN Konstruktor kollidieren ("already active" /
+// "already installed") -- deshalb hier bewusst pro Aufruf ein frischer Konstruktor statt
+// eines module-weiten Singletons.
 export function startTestCouchServer() {
     return new Promise((resolve) => {
+        const PouchDBMemory = PouchDB.defaults({ adapter: 'memory' });
         const app = express();
         app.use('/', expressPouchDB(PouchDBMemory, { logPath: undefined }));
         const server = app.listen(0, () => {
@@ -236,14 +239,19 @@ git commit -m "feat: Dokument-ID-Schema mit Typ-Präfix für CouchDB-Dokumente"
 ```javascript
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { startTestCouchServer } from '../helpers/couchTestServer.js';
 import { connect, ensureDatabase } from '../../../src/db/couch.js';
 
+// Jeder Test bekommt einen eigenen, zufälligen Datenbanknamen: der In-Memory-Adapter hält
+// seine Daten prozessweit unter dem Datenbanknamen fest (unabhängig vom PouchDB-Konstruktor),
+// zwei Tests mit demselben Namen in derselben Datei würden sich sonst gegenseitig Altdaten
+// unterschieben.
 test('ensureDatabase legt eine neue Datenbank an und liefert einen nutzbaren Handle', async () => {
     const { url, close } = await startTestCouchServer();
     try {
         const nano = connect(url);
-        const db = await ensureDatabase(nano, 'turnier_test');
+        const db = await ensureDatabase(nano, `test-${randomUUID()}`);
 
         await db.insert({ _id: 'probe', ok: true });
         const doc = await db.get('probe');
@@ -258,8 +266,9 @@ test('ensureDatabase ist idempotent, wenn die Datenbank schon existiert', async 
     const { url, close } = await startTestCouchServer();
     try {
         const nano = connect(url);
-        await ensureDatabase(nano, 'turnier_test');
-        const db = await ensureDatabase(nano, 'turnier_test');
+        const dbName = `test-${randomUUID()}`;
+        await ensureDatabase(nano, dbName);
+        const db = await ensureDatabase(nano, dbName);
 
         await db.insert({ _id: 'probe', ok: true });
         const doc = await db.get('probe');
@@ -331,14 +340,18 @@ git commit -m "feat: CouchDB-Verbindung und idempotente Datenbank-Provisionierun
 ```javascript
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { startTestCouchServer } from '../helpers/couchTestServer.js';
 import { connect, ensureDatabase } from '../../../src/db/couch.js';
 import { createRepository } from '../../../src/db/baseRepository.js';
 
+// Jeder Aufruf bekommt einen eigenen, zufälligen Datenbanknamen -- siehe Kommentar in
+// couch.test.js: der In-Memory-Adapter hält Daten prozessweit unter dem Datenbanknamen fest,
+// mehrere Tests in dieser Datei mit demselben Namen würden sich sonst Altdaten unterschieben.
 async function setUp() {
     const { url, close } = await startTestCouchServer();
     const nano = connect(url);
-    const db = await ensureDatabase(nano, 'turnier_test');
+    const db = await ensureDatabase(nano, `test-${randomUUID()}`);
     return { db, close };
 }
 
