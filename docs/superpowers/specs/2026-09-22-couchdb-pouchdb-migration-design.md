@@ -117,6 +117,37 @@ Die Waage benötigt diese Kaskaden-Logik nicht: Pools werden erst nach Abschluss
 Wiegens als expliziter, manueller Schritt gebildet (siehe
 [CLAUDE.md](../../../CLAUDE.md), Abschnitt "Offline-Modus pro Matte").
 
+## Hochverfügbarkeit: gespiegelter Zweit-Server für den Technik-Koffer
+
+Ein Serverausfall am Turniertag darf den gesamten Betrieb nicht stoppen. Der Technik-Koffer
+besteht deshalb aus zwei baugleichen Linux-Notebooks (SSD-Speicher für die CouchDB-
+Datenverzeichnisse):
+
+- **Primär-Server:** läuft normal, bedient alle PouchDB-Clients.
+- **Sekundär-Server:** reiner Lese-Spiegel, nie direktes Ziel von Client-Schreibzugriffen.
+- **Virtuelle IP (VIP) via `keepalived` (VRRP):** beide Notebooks laufen im selben
+  Hallen-WLAN und teilen sich eine virtuelle Adresse, die immer zum aktuell aktiven
+  ("MASTER")-Server gehört. Alle PouchDB-Clients (und die Replikation selbst) verbinden
+  sich ausschließlich über diese VIP, nie über eine der beiden festen Geräte-IPs — dadurch
+  merken Clients einen Wechsel automatisch, ohne Rekonfiguration.
+- **Kontinuierliche Replikation, gesteuert durch `keepalived`-State-Transitions:** Der
+  jeweils passive ("BACKUP")-Server repliziert fortlaufend von der VIP (die zum aktuell
+  aktiven Server zeigt) in seine eigene lokale CouchDB. `keepalived`s `notify_backup`-Hook
+  startet diese Replikation, `notify_master`-Hook stoppt sie (ein Server repliziert nie von
+  sich selbst).
+- **Automatische Übernahme, keine manuelle Bestätigung:** Erkennt `keepalived` auf dem
+  Sekundär-Server den Ausfall des Primär-Servers (VRRP-Heartbeat bleibt aus), übernimmt er
+  automatisch die VIP und wird MASTER — bewusst ohne Rückfrage, da beide Server durch die
+  kontinuierliche Replikation ohnehin denselben Datenstand halten und eine fälschliche
+  Übernahme (z.B. durch einen kurzen WLAN-Aussetzer statt eines echten Ausfalls) keinen
+  Schaden anrichtet.
+
+Dies ist eine reine Infrastruktur-/Deployment-Maßnahme (Netzwerk- und Prozess-Konfiguration
+auf den beiden Technik-Koffer-Notebooks) und erfordert keine Änderung an
+Anwendungscode/Datenmodell — sie setzt lediglich voraus, dass alle Phase-2-Clients
+(PouchDB) und der Phase-3-Kaskadendienst grundsätzlich gegen einen konfigurierbaren
+Hostnamen/eine IP arbeiten statt eine Adresse fest zu verdrahten.
+
 ## Betroffene Umfänge (heutiger Stand, zur Einordnung der Größe)
 
 - 293 direkte `knex(...)`-Aufrufe über je 9 Dateien in `src/controllers/` und
@@ -150,6 +181,12 @@ direkt geplant.
 4. **Online↔Lokal-Sync-Werkzeug:** One-shot Pull/Wipe/Push-Replikation plus
    Datei-Export/Import-Fallback, inklusive Turnier-Übergabe-Workflow ("Turnier X auf
    Technik-Koffer laden" / "Ergebnisse hochladen & Speicher freigeben").
+5. **Hochverfügbarkeit Technik-Koffer:** `keepalived`/VRRP-Konfiguration auf den zwei
+   baugleichen Linux-Notebooks, virtuelle IP, kontinuierliche Primär→Sekundär-Replikation
+   mit automatischer Übernahme bei Ausfall (siehe Abschnitt "Hochverfügbarkeit" oben). Reine
+   Infrastruktur-Phase, unabhängig von Phase 1–3 planbar, muss aber vor dem produktiven
+   Einsatz von Phase 2 (PouchDB-Clients) stehen, da diese von Anfang an gegen die VIP statt
+   eine feste Geräte-IP konfiguriert werden.
 
 ## Offene Punkte für spätere Phasen (bewusst hier nicht entschieden)
 
@@ -159,3 +196,6 @@ direkt geplant.
 - Ob/wie eine einzelne Person (Geräteverantwortlicher) für Support-Zwecke am Technik-Koffer
   identifiziert werden soll, ohne einen echten Login einzuführen — aktuell nicht
   gewünscht, könnte aber bei Bedarf später ergänzt werden.
+- Genaue `keepalived`-Konfigurationsdetails (VRRP-Router-ID, Heartbeat-Intervalle,
+  Netzwerkschnittstelle) und das genaue Shell-Skript für die `notify_master`/
+  `notify_backup`-Hooks (Phase 5).
