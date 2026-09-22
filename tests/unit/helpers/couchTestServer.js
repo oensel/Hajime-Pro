@@ -6,13 +6,16 @@ import expressPouchDB from 'express-pouchdb';
 
 PouchDB.plugin(memoryAdapter);
 PouchDB.plugin(pouchdbFind);
-const PouchDBMemory = PouchDB.defaults({ adapter: 'memory' });
 
-// express-pouchdb schreibt pro Datenbank auf die Adapter-Instanz, die beim Erstellen des
-// Express-Handlers festgelegt wird -- ohne .defaults({ adapter: 'memory' }) würde es
-// versuchen, LevelDB-Dateien auf die Platte zu schreiben.
+// express-pouchdb installiert beim Erstellen des Express-Handlers einmalige, statische
+// Daemons/Wrapper-Methoden auf dem übergebenen PouchDB-Konstruktor (z.B. den Replikations-
+// Daemon). Ein zweiter startTestCouchServer()-Aufruf im selben Prozess (z.B. zwei Tests in
+// derselben Datei) würde mit dem GLEICHEN Konstruktor kollidieren ("already active" /
+// "already installed") -- deshalb hier bewusst pro Aufruf ein frischer Konstruktor statt
+// eines module-weiten Singletons.
 export function startTestCouchServer() {
     return new Promise((resolve) => {
+        const PouchDBMemory = PouchDB.defaults({ adapter: 'memory' });
         const app = express();
         app.use('/', expressPouchDB(PouchDBMemory, { logPath: undefined }));
         const server = app.listen(0, () => {
