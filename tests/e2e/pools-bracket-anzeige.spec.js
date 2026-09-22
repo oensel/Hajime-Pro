@@ -29,72 +29,12 @@ import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ladeUndErstelleTurnier, spieleBracketKomplettDurch } from './helpers/pool-fixture-turnier.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTUR = JSON.parse(
     fs.readFileSync(path.join(__dirname, 'fixtures', 'pool-ko-doppel-ko8.json'), 'utf-8')
 );
-
-async function ladeUndErstelleTurnier(request, fixtur) {
-    const turnierResp = await request.post('/api/turniere', { data: fixtur.turnier });
-    expect(turnierResp.ok(), await turnierResp.text()).toBeTruthy();
-    const { turnierId } = await turnierResp.json();
-
-    const poolResp = await request.post('/api/pools', {
-        data: { turnier_id: turnierId, ...fixtur.pool }
-    });
-    expect(poolResp.ok(), await poolResp.text()).toBeTruthy();
-    const { poolId } = await poolResp.json();
-
-    const teilnehmerIds = [];
-    for (const t of fixtur.teilnehmer) {
-        const tResp = await request.post('/api/teilnehmer', {
-            data: {
-                turnier_id: turnierId, vorname: t.vorname, nachname: t.nachname, verein: t.verein,
-                geburtsjahr: t.geburtsjahr, geschlecht: fixtur.pool.geschlecht, gewicht: t.gewicht,
-                altersklasse: fixtur.pool.altersklasse, gewichtsklasse: fixtur.pool.gewichtsklasse
-            }
-        });
-        expect(tResp.ok(), await tResp.text()).toBeTruthy();
-        const { teilnehmerId } = await tResp.json();
-        teilnehmerIds.push(teilnehmerId);
-    }
-
-    // Reihenfolge identisch zur Fixtur -- Voraussetzung für ein deterministisches Freilos-Raster
-    // (siehe DoppelKo8Manager.js: Teilnehmer werden ohne eigenes ORDER BY gelesen, SQLite liefert
-    // ohne Sortierung Einfüge-/Rowid-Reihenfolge).
-    for (const teilnehmerId of teilnehmerIds) {
-        const moveResp = await request.post('/api/pools/verschieben', { data: { teilnehmerId, zielPoolId: poolId } });
-        expect(moveResp.ok(), await moveResp.text()).toBeTruthy();
-    }
-
-    return { turnierId, poolId };
-}
-
-// Spielt alle gerade spielbaren ("bereit") Kämpfe eines Pools direkt über die API durch --
-// Kämpfer 1 gewinnt dabei immer per Ippon. Läuft in Runden: nach jedem Ergebnis befüllt die
-// Server-Kaskade (triggerPoolUpdate() -> kampfProgression.js) automatisch die Folgekämpfe, daher
-// erneut nachladen, bis keine 'bereit'-Kämpfe mehr übrig sind.
-async function spieleBracketKomplettDurch(request, poolId) {
-    for (let runde = 0; runde < 10; runde++) {
-        const resp = await request.get(`/api/kaempfe?poolId=${poolId}`);
-        const kaempfe = await resp.json();
-        const bereit = kaempfe.filter(k => k.status === 'bereit');
-        if (bereit.length === 0) return;
-
-        for (const k of bereit) {
-            const updateResp = await request.put(`/api/kaempfe/${k.id}`, {
-                data: {
-                    status: 'beendet', sieger_id: k.kaempfer1_id,
-                    unterbewertung_kaempfer1: 10, unterbewertung_kaempfer2: 0,
-                    kampfzeit_in_sekunden: 90
-                }
-            });
-            expect(updateResp.ok(), await updateResp.text()).toBeTruthy();
-        }
-    }
-    throw new Error('Bracket wurde nach 10 Runden nicht fertig -- vermutlich ein hängender Kaskaden-Zustand.');
-}
 
 test('Bracket-Ansicht (pools.html) zeigt nach einem komplett durchgespielten Pool-KO echte Namen statt Kaskaden-Platzhaltern', async ({ page, request }) => {
     const { turnierId, poolId } = await ladeUndErstelleTurnier(request, FIXTUR);

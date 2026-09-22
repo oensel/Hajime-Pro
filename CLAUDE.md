@@ -25,6 +25,8 @@ Turnierverwaltungssoftware für Judo-Wettkämpfe nach den Regeln des Deutschen J
   - Die Suite startet ihren eigenen Server (`node src/app.js`, Port 3100, `IS_OFFLINE=true`, isolierte SQLite-DB `data/test.sqlite`) über `webServer` in `playwright.config.js`; `globalSetup` (`tests/e2e/global-setup.js`) setzt diese DB einmalig vor dem gesamten Lauf zurück und migriert sie neu
   - Tests laufen bewusst seriell gegen eine gemeinsame DB (`fullyParallel: false`, `workers: 1`) — keine Isolation zwischen Tests, Reihenfolge/Zustand innerhalb einer Spec-Datei kann relevant sein
   - `test/` (Singular, Repo-Root) enthält CSV-Fixtures für Import-Tests — nicht zu verwechseln mit `tests/e2e/`
+  - `tests/e2e/fixtures/` (Pool-JSON-Fixturen) und `tests/e2e/helpers/` (z.B. `pool-fixture-turnier.js` — gemeinsames Turnier-Aufbau-/Bracket-Durchspiel-Gerüst) bündeln Aufbau-Logik, die mehrere Spec-Dateien identisch brauchen, damit eine Anpassung nicht in jeder Datei einzeln nachgezogen werden muss
+  - `npm run test:e2e:vollablauf` — separate Suite `tests/e2e-vollablauf/` (eigenes `playwright.vollablauf.config.js`) für den kompletten Online/Offline-Turnierablauf: startet zwei echte Serverprozesse parallel (Online gegen die echte Cloud-Postgres-DB, Offline gegen eine frische SQLite) und simuliert den realen Datenaustausch per Datei-Download/-Upload; bewusst nicht Teil von `npm run test:e2e`, da sie in die echte Cloud-DB schreibt und deutlich langsamer läuft
 - Kein Lint- oder Unit-Test-Script konfiguriert (Playwright-E2E ist die einzige automatisierte Testsuite)
 
 ## Domänenmodell (Kernentitäten)

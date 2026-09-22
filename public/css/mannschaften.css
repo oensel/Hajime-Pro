@@ -103,6 +103,32 @@
     display: flex;
     gap: 8px;
 }
+
+.pool-status-badge {
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    padding: 4px 8px;
+    border-radius: 4px;
+    display: inline-block;
+    letter-spacing: 0.5px;
+}
+.pool-status-badge.vorbereitung {
+    background-color: var(--border);
+    color: var(--text-muted);
+}
+.pool-status-badge.laufend {
+    background-color: rgba(245, 124, 0, 0.15);
+    color: #f57c00;
+}
+.pool-status-badge.beendet {
+    background-color: rgba(46, 125, 50, 0.15);
+    color: #2e7d32;
+}
+.pool-status-badge.pruefen {
+    background-color: rgba(245, 178, 0, 0.18);
+    color: #b38600;
+}
 .gewichtsklassen-chips {
     display: flex;
     gap: 6px;

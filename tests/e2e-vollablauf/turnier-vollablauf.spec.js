@@ -180,6 +180,9 @@ test.describe.serial('Kompletter Turnierablauf', () => {
         expect(offlineTurnierId).toBeTruthy();
 
         await expect(offlinePage.locator('#statGesamtTeilnehmer')).toHaveText('100');
+
+        const pfad = await exportiereTurnierDaten(offlinePage, OFFLINE_BASE_URL, offlineTurnierId, 'phase5-nach-offline-import');
+        expect(pfad).toBeTruthy();
     });
 
     // --- PHASE 6: Waage-Simulation — alle 100 gemeldeten Teilnehmer + 3 neue FC-Kleingarten-
@@ -226,6 +229,9 @@ test.describe.serial('Kompletter Turnierablauf', () => {
         await markiereAlleAlsGewogen(offlinePage, 103);
 
         await synchronisiereMannschaftsPositionen(OFFLINE_BASE_URL, offlinePage.request, offlineTurnierId, [...timRoster.personen, ...tomRoster.personen]);
+
+        const pfad = await exportiereTurnierDaten(offlinePage, OFFLINE_BASE_URL, offlineTurnierId, 'phase6-nach-waegen');
+        expect(pfad).toBeTruthy();
     });
 
     // --- PHASE 7: Pool-Einteilung (Einzel + Mannschaft) und Matten-Einteilung, alles auf dem
@@ -236,6 +242,9 @@ test.describe.serial('Kompletter Turnierablauf', () => {
         await generierePoolsUndPruefeKampflos(offlinePage, OFFLINE_BASE_URL, offlinePage.request, offlineTurnierId);
         await verteileMannschaftenAutomatisch(offlinePage, OFFLINE_BASE_URL, offlineTurnierId);
         await verteilePoolsAufMatten(offlinePage, OFFLINE_BASE_URL, offlineTurnierId);
+
+        const pfad = await exportiereTurnierDaten(offlinePage, OFFLINE_BASE_URL, offlineTurnierId, 'phase7-nach-pool-matten-verteilung');
+        expect(pfad).toBeTruthy();
     });
 
     // --- PHASE 8: Matten 1 und 2 herunterladen, Scoreboard aufrufen, alle Kämpfe (Einzel +
@@ -257,6 +266,9 @@ test.describe.serial('Kompletter Turnierablauf', () => {
         }
 
         expect(matteErgebnisPfade).toHaveLength(2);
+
+        const pfad = await exportiereTurnierDaten(offlinePage, OFFLINE_BASE_URL, offlineTurnierId, 'phase8-nach-matten-durchspielen');
+        expect(pfad).toBeTruthy();
 
         // Manuelle Inspektion: mit PAUSE_AFTER_PHASE8=1 (und --headed, sonst sind keine
         // Browserfenster sichtbar) hält der Testlauf hier an — alle bisher geöffneten Fenster
@@ -282,6 +294,9 @@ test.describe.serial('Kompletter Turnierablauf', () => {
         const pools = await kaempfeResp.json();
         const unbeendet = pools.flatMap(p => p.kaempfe).filter(k => k.status !== 'beendet' && k.status !== 'freilos');
         expect(unbeendet, `${unbeendet.length} Kämpfe sind noch nicht abgeschlossen`).toEqual([]);
+
+        const pfad = await exportiereTurnierDaten(offlinePage, OFFLINE_BASE_URL, offlineTurnierId, 'phase9-nach-ergebnis-import');
+        expect(pfad).toBeTruthy();
     });
 
     // --- PHASE 10: die kompletten (jetzt abgeschlossenen) Turnierdaten vom Offline-Server

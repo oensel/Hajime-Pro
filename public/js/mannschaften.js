@@ -119,6 +119,15 @@ document.addEventListener('DOMContentLoaded', () => {
         if (passendeOption) kampfzeitSelect.value = passendeOption.value;
     }
 
+    // Gleiche pools.status-Werte/Bedeutung wie bei Einzelwettkampf-Pools (siehe pools.js), hier
+    // nur auf die für Mannschafts-Pools tatsächlich vorkommenden Zustände reduziert.
+    const POOL_STATUS_LABELS = {
+        angelegt: { text: 'In Vorbereitung', klasse: 'vorbereitung' },
+        gestartet: { text: 'Laufend', klasse: 'laufend' },
+        kaempfe_beendet: { text: 'Ergebnisse prüfen', klasse: 'pruefen' },
+        abgeschlossen: { text: 'Abgeschlossen', klasse: 'beendet' }
+    };
+
     // --- POOLS/MANNSCHAFTEN LADEN & RENDERN ---
     async function ladeUndRendere() {
         try {
@@ -235,12 +244,16 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (e) { console.error('Begegnungen-Fehler:', e); }
         }
 
+        const { text: statusText, klasse: statusKlasse } = POOL_STATUS_LABELS[pool.status] || { text: pool.status, klasse: 'vorbereitung' };
+
         return `
             <div class="mannschafts-pool-card" data-pool-id="${pool.id}">
                 <div class="mannschafts-pool-header">
                     <h3>${escapeHtml(pool.bezeichnung)}</h3>
-                    <span class="mannschafts-pool-meta">${escapeHtml(pool.altersklasse)} ${escapeHtml(pool.geschlecht)} · ${escapeHtml(pool.modus)} · ${pool.status}</span>
+                    <span class="mannschafts-pool-meta">${escapeHtml(pool.altersklasse)} ${escapeHtml(pool.geschlecht)} · ${escapeHtml(pool.modus)}</span>
+                    <span class="pool-status-badge ${statusKlasse}">${escapeHtml(statusText)}</span>
                     <div class="mannschafts-pool-actions">
+                        ${pool.status === 'kaempfe_beendet' ? `<button type="button" class="toolbar-btn toolbar-btn-primary confirm-pool-btn" data-pool-id="${pool.id}"><span class="material-icons">fact_check</span><span>Ergebnisse bestätigen</span></button>` : ''}
                         <button type="button" class="toolbar-btn add-team-btn" data-pool-id="${pool.id}"><span class="material-icons">add</span><span>Mannschaft</span></button>
                         <button type="button" class="icon-btn-small delete-pool-btn" data-pool-id="${pool.id}" title="Pool löschen"><span class="material-icons">delete</span></button>
                     </div>
@@ -388,6 +401,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('teamPoolId').value = btn.dataset.poolId;
                 document.getElementById('teamForm').reset();
                 openModal('teamModal');
+            });
+        });
+
+        // Manueller Bestätigungsschritt "kaempfe_beendet" -> "abgeschlossen" (Tischbestätigung),
+        // analog zum confirmFightplanBtn bei Einzelwettkampf-Pools in pools.js — derselbe generische
+        // Endpunkt, hier nur bislang ohne UI-Auslöser für Mannschafts-Pools.
+        container.querySelectorAll('.confirm-pool-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const ok = await confirmDialog(
+                    'Ergebnisse dieses Mannschafts-Pools als final bestätigen?',
+                    'Pool abschließen',
+                    'fact_check'
+                );
+                if (!ok) return;
+                try {
+                    const res = await fetch(`/api/pools/${btn.dataset.poolId}/abschliessen`, { method: 'POST' });
+                    const data = await res.json();
+                    if (!res.ok || !data.success) throw new Error(data.error || 'Fehler beim Abschließen.');
+                    notify('Pool erfolgreich abgeschlossen.');
+                    ladeUndRendere();
+                    if (window.hajimeAktualisiereMenueSperren) {
+                        window.hajimeAktualisiereMenueSperren(['mannschaften']);
+                    }
+                } catch (e) { notify(e.message, 'error'); }
             });
         });
 

@@ -159,6 +159,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <a href="/mannschaften.html" class="menu-item" id="nav-mannschaften">
                     <span class="material-icons">groups_2</span>
                     <span class="menu-text">Mannschaften</span>
+                    <span class="material-icons menu-item-warning" id="nav-mannschaften-warning" style="display: none;" title="Mindestens ein Mannschafts-Pool wartet auf Ergebnisprüfung">warning</span>
                 </a>
                 <a href="/matten.html" class="menu-item" id="nav-matten">
                     <span class="material-icons">layers</span>
@@ -392,10 +393,28 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     };
 
-    // Globaler Zugriffspunkt für andere Skripte (teilnehmer.js, pools.js, matten.js), um nach
-    // einer eigenen Änderung gezielt einzelne Menü-Sperren live neu zu bewerten, ohne die
-    // gesamte Seite neu laden zu müssen. bereiche: Teilmenge aus ['pools', 'matten', 'kampf'].
-    window.hajimeAktualisiereMenueSperren = async (bereiche = ['pools', 'matten', 'kampf']) => {
+    // Gelbes Achtung-Icon am Menüpunkt "Mannschaften": exaktes Pendant zu
+    // pruefePoolsErgebnisWarnung oben, nur für Mannschafts-Pools (die bewusst nicht in
+    // /api/pools/details auftauchen, siehe pruefePoolsErgebnisWarnung), daher eigener Endpunkt
+    // und eigenes Badge statt Wiederverwendung von nav-pools-warning.
+    const pruefeMannschaftenErgebnisWarnung = async (tId) => {
+        const badge = document.getElementById('nav-mannschaften-warning');
+        if (!badge) return;
+
+        try {
+            const response = await fetch(`/api/mannschaften/pools?turnierId=${tId}`);
+            const pools = await response.json();
+            const hatWartendePools = Array.isArray(pools) && pools.some(p => p.status === 'kaempfe_beendet');
+            badge.style.display = hatWartendePools ? 'inline-block' : 'none';
+        } catch (error) {
+            console.error('Fehler bei der Prüfung offener Mannschafts-Pool-Ergebnisse:', error);
+        }
+    };
+
+    // Globaler Zugriffspunkt für andere Skripte (teilnehmer.js, pools.js, matten.js, mannschaften.js),
+    // um nach einer eigenen Änderung gezielt einzelne Menü-Sperren live neu zu bewerten, ohne die
+    // gesamte Seite neu laden zu müssen. bereiche: Teilmenge aus ['pools', 'matten', 'kampf', 'mannschaften'].
+    window.hajimeAktualisiereMenueSperren = async (bereiche = ['pools', 'matten', 'kampf', 'mannschaften']) => {
         const params = new URLSearchParams(window.location.search);
         const aktiveTurnierId = params.get('id') || params.get('turnierId');
         if (!aktiveTurnierId) return;
@@ -405,6 +424,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (bereiche.includes('matten')) aufgaben.push(pruefeMattenMenuSperre(aktiveTurnierId));
         if (bereiche.includes('kampf')) aufgaben.push(pruefeKampfMenuSperre(aktiveTurnierId));
         if (bereiche.includes('pools')) aufgaben.push(pruefePoolsErgebnisWarnung(aktiveTurnierId));
+        if (bereiche.includes('mannschaften')) aufgaben.push(pruefeMannschaftenErgebnisWarnung(aktiveTurnierId));
         await Promise.all(aufgaben);
     };
 
@@ -610,7 +630,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 pruefePoolsMenuSperre(turnierId),
                 pruefeMattenMenuSperre(turnierId),
                 pruefeKampfMenuSperre(turnierId),
-                pruefePoolsErgebnisWarnung(turnierId)
+                pruefePoolsErgebnisWarnung(turnierId),
+                pruefeMannschaftenErgebnisWarnung(turnierId)
             ]);
 
             // Periodische Neubewertung: der Statuswechsel eines Pools auf "kaempfe_beendet"
@@ -618,6 +639,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             // dieser Skripte die Menü-Sperren-Prüfung aktiv anstößt — Polling deckt das ab,
             // unabhängig davon, auf welcher Seite gerade gearbeitet wird.
             setInterval(() => pruefePoolsErgebnisWarnung(turnierId), 15000);
+            setInterval(() => pruefeMannschaftenErgebnisWarnung(turnierId), 15000);
 
             // --- TURNIERNAME ALS ÜBERSCHRIFT IN DER KOPFLEISTE ---
             // Wird für alle Nutzer geladen (nicht nur für die Vereins-Prüfung unten), damit die
