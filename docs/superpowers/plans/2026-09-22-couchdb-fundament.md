@@ -237,46 +237,48 @@ git commit -m "feat: Dokument-ID-Schema mit Typ-Präfix für CouchDB-Dokumente"
 `tests/unit/db/couch.test.js`:
 
 ```javascript
-import { test } from 'node:test';
+import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { startTestCouchServer } from '../helpers/couchTestServer.js';
 import { connect, ensureDatabase } from '../../../src/db/couch.js';
 
-// Jeder Test bekommt einen eigenen, zufälligen Datenbanknamen: der In-Memory-Adapter hält
-// seine Daten prozessweit unter dem Datenbanknamen fest (unabhängig vom PouchDB-Konstruktor),
-// zwei Tests mit demselben Namen in derselben Datei würden sich sonst gegenseitig Altdaten
-// unterschieben.
+// Genau EIN Server pro Testdatei (before/after), geteilt von allen test()-Blöcken darin --
+// mehrere startTestCouchServer()-Aufrufe in derselben Datei (= demselben Prozess, node --test
+// isoliert nur zwischen Dateien, nicht innerhalb einer Datei) bringen express-pouchdbs interne
+// Datenbank-Registrierung durcheinander (bestätigt per Spike, unabhängig vom gewählten
+// Datenbanknamen). Jeder einzelne Test bekommt trotzdem seine eigene, isolierte Datenbank
+// über einen zufälligen Namen innerhalb dieses einen Servers.
+let server;
+let nano;
+
+before(async () => {
+    server = await startTestCouchServer();
+    nano = connect(server.url);
+});
+
+after(async () => {
+    await server.close();
+});
+
 test('ensureDatabase legt eine neue Datenbank an und liefert einen nutzbaren Handle', async () => {
-    const { url, close } = await startTestCouchServer();
-    try {
-        const nano = connect(url);
-        const db = await ensureDatabase(nano, `test-${randomUUID()}`);
+    const db = await ensureDatabase(nano, `test-${randomUUID()}`);
 
-        await db.insert({ _id: 'probe', ok: true });
-        const doc = await db.get('probe');
+    await db.insert({ _id: 'probe', ok: true });
+    const doc = await db.get('probe');
 
-        assert.equal(doc.ok, true);
-    } finally {
-        await close();
-    }
+    assert.equal(doc.ok, true);
 });
 
 test('ensureDatabase ist idempotent, wenn die Datenbank schon existiert', async () => {
-    const { url, close } = await startTestCouchServer();
-    try {
-        const nano = connect(url);
-        const dbName = `test-${randomUUID()}`;
-        await ensureDatabase(nano, dbName);
-        const db = await ensureDatabase(nano, dbName);
+    const dbName = `test-${randomUUID()}`;
+    await ensureDatabase(nano, dbName);
+    const db = await ensureDatabase(nano, dbName);
 
-        await db.insert({ _id: 'probe', ok: true });
-        const doc = await db.get('probe');
+    await db.insert({ _id: 'probe', ok: true });
+    const doc = await db.get('probe');
 
-        assert.equal(doc.ok, true);
-    } finally {
-        await close();
-    }
+    assert.equal(doc.ok, true);
 });
 ```
 
@@ -338,109 +340,90 @@ git commit -m "feat: CouchDB-Verbindung und idempotente Datenbank-Provisionierun
 `tests/unit/db/baseRepository.test.js`:
 
 ```javascript
-import { test } from 'node:test';
+import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { startTestCouchServer } from '../helpers/couchTestServer.js';
 import { connect, ensureDatabase } from '../../../src/db/couch.js';
 import { createRepository } from '../../../src/db/baseRepository.js';
 
-// Jeder Aufruf bekommt einen eigenen, zufälligen Datenbanknamen -- siehe Kommentar in
-// couch.test.js: der In-Memory-Adapter hält Daten prozessweit unter dem Datenbanknamen fest,
-// mehrere Tests in dieser Datei mit demselben Namen würden sich sonst Altdaten unterschieben.
-async function setUp() {
-    const { url, close } = await startTestCouchServer();
-    const nano = connect(url);
+// Genau EIN Server für die ganze Datei (before/after) -- siehe Kommentar in couch.test.js:
+// mehrere startTestCouchServer()-Aufrufe in derselben Datei bringen express-pouchdbs interne
+// Datenbank-Registrierung durcheinander. Jeder Test bekommt trotzdem sein eigenes Repository
+// auf einer frischen, zufällig benannten Datenbank innerhalb dieses einen Servers.
+let server;
+let nano;
+
+before(async () => {
+    server = await startTestCouchServer();
+    nano = connect(server.url);
+});
+
+after(async () => {
+    await server.close();
+});
+
+async function neuesRepository(typePrefix) {
     const db = await ensureDatabase(nano, `test-${randomUUID()}`);
-    return { db, close };
+    return createRepository({ db, typePrefix });
 }
 
 test('create legt ein Dokument mit Typ-Präfix-ID an und liefert es vollständig zurück', async () => {
-    const { db, close } = await setUp();
-    try {
-        const repo = createRepository({ db, typePrefix: 'kampffl' });
-        const doc = await repo.create({ bezeichnung: 'Matte 1' });
+    const repo = await neuesRepository('kampffl');
+    const doc = await repo.create({ bezeichnung: 'Matte 1' });
 
-        assert.match(doc._id, /^kampffl:/);
-        assert.equal(doc.typ, 'kampffl');
-        assert.equal(doc.bezeichnung, 'Matte 1');
-        assert.ok(doc._rev);
-    } finally {
-        await close();
-    }
+    assert.match(doc._id, /^kampffl:/);
+    assert.equal(doc.typ, 'kampffl');
+    assert.equal(doc.bezeichnung, 'Matte 1');
+    assert.ok(doc._rev);
 });
 
 test('findById liefert ein vorhandenes Dokument', async () => {
-    const { db, close } = await setUp();
-    try {
-        const repo = createRepository({ db, typePrefix: 'kampffl' });
-        const created = await repo.create({ bezeichnung: 'Matte 1' });
+    const repo = await neuesRepository('kampffl');
+    const created = await repo.create({ bezeichnung: 'Matte 1' });
 
-        const found = await repo.findById(created._id);
+    const found = await repo.findById(created._id);
 
-        assert.equal(found.bezeichnung, 'Matte 1');
-    } finally {
-        await close();
-    }
+    assert.equal(found.bezeichnung, 'Matte 1');
 });
 
 test('findById liefert null für ein nicht vorhandenes Dokument', async () => {
-    const { db, close } = await setUp();
-    try {
-        const repo = createRepository({ db, typePrefix: 'kampffl' });
+    const repo = await neuesRepository('kampffl');
 
-        const found = await repo.findById('kampffl:nicht-vorhanden');
+    const found = await repo.findById('kampffl:nicht-vorhanden');
 
-        assert.equal(found, null);
-    } finally {
-        await close();
-    }
+    assert.equal(found, null);
 });
 
 test('update ändert einzelne Felder, ohne die übrigen zu verlieren', async () => {
-    const { db, close } = await setUp();
-    try {
-        const repo = createRepository({ db, typePrefix: 'kampffl' });
-        const created = await repo.create({ bezeichnung: 'Matte 1', status: 'frei' });
+    const repo = await neuesRepository('kampffl');
+    const created = await repo.create({ bezeichnung: 'Matte 1', status: 'frei' });
 
-        const updated = await repo.update(created._id, { status: 'pausiert' });
+    const updated = await repo.update(created._id, { status: 'pausiert' });
 
-        assert.equal(updated.status, 'pausiert');
-        assert.equal(updated.bezeichnung, 'Matte 1');
-    } finally {
-        await close();
-    }
+    assert.equal(updated.status, 'pausiert');
+    assert.equal(updated.bezeichnung, 'Matte 1');
 });
 
 test('remove löscht ein Dokument endgültig', async () => {
-    const { db, close } = await setUp();
-    try {
-        const repo = createRepository({ db, typePrefix: 'kampffl' });
-        const created = await repo.create({ bezeichnung: 'Matte 1' });
+    const repo = await neuesRepository('kampffl');
+    const created = await repo.create({ bezeichnung: 'Matte 1' });
 
-        await repo.remove(created._id);
-        const found = await repo.findById(created._id);
+    await repo.remove(created._id);
+    const found = await repo.findById(created._id);
 
-        assert.equal(found, null);
-    } finally {
-        await close();
-    }
+    assert.equal(found, null);
 });
 
 test('query findet Dokumente über zusätzliche Selector-Felder, beschränkt auf den eigenen Typ', async () => {
-    const { db, close } = await setUp();
-    try {
-        const repo = createRepository({ db, typePrefix: 'kampffl' });
-        await repo.create({ bezeichnung: 'Matte 1', turnier_id: 'turnier:1' });
-        await repo.create({ bezeichnung: 'Matte 2', turnier_id: 'turnier:1' });
-        await repo.create({ bezeichnung: 'Matte 3', turnier_id: 'turnier:2' });
+    const repo = await neuesRepository('kampffl');
+    await repo.create({ bezeichnung: 'Matte 1', turnier_id: 'turnier:1' });
+    await repo.create({ bezeichnung: 'Matte 2', turnier_id: 'turnier:1' });
+    await repo.create({ bezeichnung: 'Matte 3', turnier_id: 'turnier:2' });
 
-        const treffer = await repo.query({ turnier_id: 'turnier:1' });
+    const treffer = await repo.query({ turnier_id: 'turnier:1' });
 
-        assert.equal(treffer.length, 2);
-    } finally {
-        await close();
-    }
+    assert.equal(treffer.length, 2);
 });
 ```
 
