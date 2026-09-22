@@ -28,7 +28,7 @@ Turnierverwaltungssoftware für Judo-Wettkämpfe nach den Regeln des Deutschen J
   - `tests/e2e/fixtures/` (Pool-JSON-Fixturen) und `tests/e2e/helpers/` (z.B. `pool-fixture-turnier.js` — gemeinsames Turnier-Aufbau-/Bracket-Durchspiel-Gerüst) bündeln Aufbau-Logik, die mehrere Spec-Dateien identisch brauchen, damit eine Anpassung nicht in jeder Datei einzeln nachgezogen werden muss
   - `npm run test:e2e:vollablauf` — separate Suite `tests/e2e-vollablauf/` (eigenes `playwright.vollablauf.config.js`) für den kompletten Online/Offline-Turnierablauf: startet zwei echte Serverprozesse parallel (Online gegen die echte Cloud-Postgres-DB, Offline gegen eine frische SQLite) und simuliert den realen Datenaustausch per Datei-Download/-Upload; bewusst nicht Teil von `npm run test:e2e`, da sie in die echte Cloud-DB schreibt und deutlich langsamer läuft
 - **`tests/unit/`** — Node-eigener Test-Runner (`npm run test:unit`, `node --test`), unabhängig von der Playwright-E2E-Suite; deckt aktuell die neue CouchDB-Datenzugriffsschicht (`src/db/`) ab, getestet gegen eine In-Memory-CouchDB-kompatible HTTP-API (`tests/unit/helpers/couchTestServer.js`, `express-pouchdb` + `pouchdb-adapter-memory`), ohne dass dafür eine echte CouchDB-Installation nötig ist
-- Kein Lint- oder Unit-Test-Script konfiguriert (Playwright-E2E ist die einzige automatisierte Testsuite)
+- Kein Lint-Script konfiguriert; `npm run test:unit` (siehe `tests/unit/` oben) und die Playwright-E2E-Suite sind die einzigen automatisierten Testsuiten
 
 ## Domänenmodell (Kernentitäten)
 - **`vereine`** — Judo-Vereine; jeder Nutzer (`benutzer`) gehört zu genau einem Verein (`verein_freigegeben`-Flag für Mitgliedschafts-Freigabe)
