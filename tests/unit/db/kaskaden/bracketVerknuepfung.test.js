@@ -85,7 +85,8 @@ test('verknuepfeQuellenFuerMannschaftsPool setzt die mannschaft_quelle-Felder ge
 
 test('verknuepfeQuellenFuerMannschaftsPool überspringt einen Eintrag, wenn eine referenzierte Quelle fehlt', async () => {
     const repo = await neuesMannschaftsRepository();
-    const begegnungH2 = await repo.create({ pool_id: 'pool:1', reihenfolge_nummer: 'H2' });
+    // H1 fehlt absichtlich -- unvollständige Altdaten simulieren, siehe Kommentar im Original.
+    await repo.create({ pool_id: 'pool:1', reihenfolge_nummer: 'H2' });
     const begegnungF = await repo.create({ pool_id: 'pool:1', reihenfolge_nummer: 'F' });
 
     await verknuepfeQuellenFuerMannschaftsPool(repo, 'pool:1', { F: { k1: ['H1', 'sieger'], k2: ['H2', 'sieger'] } });
