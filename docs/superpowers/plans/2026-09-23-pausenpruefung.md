@@ -161,12 +161,18 @@ async function neuesRepository() {
 
 test('pruefePauseFuerKampf meldet zu kurze Pause seit dem letzten Kampf desselben Athleten', async () => {
     const repo = await neuesRepository();
-    const beendeterKampf = await repo.create({
-        pool_id: 'pool:1', kaempfer1_id: 'teilnehmer:1', kaempfer2_id: 'teilnehmer:2', status: 'beendet'
+    const kampf = await repo.create({
+        pool_id: 'pool:1', kaempfer1_id: 'teilnehmer:1', kaempfer2_id: 'teilnehmer:2', status: 'angelegt'
     });
+    // Ein frisch erstelltes Dokument hat noch kein updated_at (nur create() stempelt
+    // created_at, siehe kaempfeRepository.js) -- pausenRegel.js liest ausschließlich
+    // updated_at, ohne Fallback. Der Kampf muss deshalb über update() auf 'beendet' gesetzt
+    // werden, genau wie es im echten Betrieb passieren würde, damit updated_at tatsächlich
+    // gesetzt ist.
+    const beendeterKampf = await repo.update(kampf._id, { status: 'beendet' });
     // update() stempelt updated_at auf JETZT -- die Prüfung tut so, als wäre seitdem nur eine
     // Minute vergangen (deutlich weniger als die 6 Minuten Mindestpause für U15).
-    const jetztMs = new Date(beendeterKampf.updated_at ?? beendeterKampf.created_at).getTime() + 60 * 1000;
+    const jetztMs = new Date(beendeterKampf.updated_at).getTime() + 60 * 1000;
 
     const anstehenderKampf = { kaempfer1_id: 'teilnehmer:1', kaempfer2_id: 'teilnehmer:3' };
     const ergebnis = await pruefePauseFuerKampf(repo, anstehenderKampf, 'U15', jetztMs);
@@ -179,11 +185,12 @@ test('pruefePauseFuerKampf meldet zu kurze Pause seit dem letzten Kampf desselbe
 
 test('pruefePauseFuerKampf meldet ausreichende Pause nach genug verstrichener Zeit', async () => {
     const repo = await neuesRepository();
-    const beendeterKampf = await repo.create({
-        pool_id: 'pool:1', kaempfer1_id: 'teilnehmer:1', kaempfer2_id: 'teilnehmer:2', status: 'beendet'
+    const kampf = await repo.create({
+        pool_id: 'pool:1', kaempfer1_id: 'teilnehmer:1', kaempfer2_id: 'teilnehmer:2', status: 'angelegt'
     });
+    const beendeterKampf = await repo.update(kampf._id, { status: 'beendet' });
     // 400 Sekunden seit Kampfende -- mehr als die 360 Sekunden Mindestpause für U15.
-    const jetztMs = new Date(beendeterKampf.updated_at ?? beendeterKampf.created_at).getTime() + 400 * 1000;
+    const jetztMs = new Date(beendeterKampf.updated_at).getTime() + 400 * 1000;
 
     const anstehenderKampf = { kaempfer1_id: 'teilnehmer:1', kaempfer2_id: 'teilnehmer:3' };
     const ergebnis = await pruefePauseFuerKampf(repo, anstehenderKampf, 'U15', jetztMs);
@@ -203,10 +210,11 @@ test('pruefePauseFuerKampf erlaubt Athleten ohne vorherigen Kampf sofort', async
 
 test('pruefePauseFuerKampf berücksichtigt Kämpfe aus anderen Pools desselben Turniers', async () => {
     const repo = await neuesRepository();
-    const beendeterKampf = await repo.create({
-        pool_id: 'pool:andere-gewichtsklasse', kaempfer1_id: 'teilnehmer:1', kaempfer2_id: 'teilnehmer:9', status: 'beendet'
+    const kampf = await repo.create({
+        pool_id: 'pool:andere-gewichtsklasse', kaempfer1_id: 'teilnehmer:1', kaempfer2_id: 'teilnehmer:9', status: 'angelegt'
     });
-    const jetztMs = new Date(beendeterKampf.updated_at ?? beendeterKampf.created_at).getTime() + 60 * 1000;
+    const beendeterKampf = await repo.update(kampf._id, { status: 'beendet' });
+    const jetztMs = new Date(beendeterKampf.updated_at).getTime() + 60 * 1000;
 
     const anstehenderKampf = { kaempfer1_id: 'teilnehmer:1', kaempfer2_id: 'teilnehmer:3' };
     const ergebnis = await pruefePauseFuerKampf(repo, anstehenderKampf, 'U18', jetztMs);
