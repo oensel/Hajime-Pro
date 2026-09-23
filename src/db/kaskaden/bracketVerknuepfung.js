@@ -28,3 +28,31 @@ export async function verknuepfeQuellenFuerPool(kaempfeRepository, poolId, topol
         });
     }
 }
+
+// Pendant zu verknuepfeQuellenFuerPool auf Ebene der Mannschafts-Begegnungen statt der
+// Einzelkämpfe -- identische Mechanik, andere Feldnamen (mannschaftN_quelle_... statt
+// kaempferN_quelle_...), analog zum Verhältnis von mannschaftsProgression.js zu
+// kampfProgression.js.
+export async function verknuepfeQuellenFuerMannschaftsPool(mannschaftskaempfeRepository, poolId, topologie) {
+    const begegnungen = await mannschaftskaempfeRepository.findByPool(poolId);
+    const idByReihenfolge = new Map(begegnungen.map(b => [b.reihenfolge_nummer, b._id]));
+
+    for (const begegnung of begegnungen) {
+        const eintrag = topologie[begegnung.reihenfolge_nummer];
+        if (!eintrag) continue;
+
+        const [m1QuelleNr, m1Typ] = eintrag.k1;
+        const [m2QuelleNr, m2Typ] = eintrag.k2;
+        const m1QuelleId = idByReihenfolge.get(m1QuelleNr);
+        const m2QuelleId = idByReihenfolge.get(m2QuelleNr);
+
+        if (!m1QuelleId || !m2QuelleId) continue;
+
+        await mannschaftskaempfeRepository.update(begegnung._id, {
+            mannschaft1_quelle_kampf_id: m1QuelleId,
+            mannschaft1_quelle_typ: m1Typ,
+            mannschaft2_quelle_kampf_id: m2QuelleId,
+            mannschaft2_quelle_typ: m2Typ
+        });
+    }
+}
