@@ -41,25 +41,13 @@ test('create legt einen Teilnehmer mit Erstellungszeitpunkt an', async () => {
     assert.ok(teilnehmer.created_at);
 });
 
-test('findByTurnier liefert nur Teilnehmer des angegebenen Turniers', async () => {
+test('findAll liefert alle Teilnehmer dieser Datenbank in Erstellungsreihenfolge', async () => {
     const repo = await neuesRepository();
-    await repo.create({ turnier_id: 'turnier:1', vorname: 'Max', nachname: 'Mustermann' });
-    await repo.create({ turnier_id: 'turnier:2', vorname: 'Erika', nachname: 'Beispiel' });
-    await repo.create({ turnier_id: 'turnier:1', vorname: 'Anna', nachname: 'Musterfrau' });
+    await repo.create({ nachname: 'Erste' });
+    await repo.create({ nachname: 'Zweite' });
+    await repo.create({ nachname: 'Dritte' });
 
-    const gefunden = await repo.findByTurnier('turnier:1');
-
-    assert.equal(gefunden.length, 2);
-    assert.ok(gefunden.every(t => t.turnier_id === 'turnier:1'));
-});
-
-test('findByTurnier liefert die Teilnehmer in Erstellungsreihenfolge', async () => {
-    const repo = await neuesRepository();
-    await repo.create({ turnier_id: 'turnier:1', nachname: 'Erste' });
-    await repo.create({ turnier_id: 'turnier:1', nachname: 'Zweite' });
-    await repo.create({ turnier_id: 'turnier:1', nachname: 'Dritte' });
-
-    const gefunden = await repo.findByTurnier('turnier:1');
+    const gefunden = await repo.findAll();
 
     assert.deepEqual(gefunden.map(t => t.nachname), ['Erste', 'Zweite', 'Dritte']);
 });

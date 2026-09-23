@@ -37,25 +37,13 @@ test('create legt einen Pool mit Erstellungszeitpunkt an', async () => {
     assert.ok(pool.created_at);
 });
 
-test('findByTurnier liefert nur Pools des angegebenen Turniers', async () => {
+test('findAll liefert alle Pools dieser Datenbank in Erstellungsreihenfolge', async () => {
     const repo = await neuesRepository();
-    await repo.create({ turnier_id: 'turnier:1', bezeichnung: 'Pool A' });
-    await repo.create({ turnier_id: 'turnier:2', bezeichnung: 'Pool B' });
-    await repo.create({ turnier_id: 'turnier:1', bezeichnung: 'Pool C' });
+    await repo.create({ bezeichnung: 'Pool 1' });
+    await repo.create({ bezeichnung: 'Pool 2' });
+    await repo.create({ bezeichnung: 'Pool 3' });
 
-    const gefunden = await repo.findByTurnier('turnier:1');
-
-    assert.equal(gefunden.length, 2);
-    assert.ok(gefunden.every(p => p.turnier_id === 'turnier:1'));
-});
-
-test('findByTurnier liefert die Pools in Erstellungsreihenfolge', async () => {
-    const repo = await neuesRepository();
-    await repo.create({ turnier_id: 'turnier:1', bezeichnung: 'Pool 1' });
-    await repo.create({ turnier_id: 'turnier:1', bezeichnung: 'Pool 2' });
-    await repo.create({ turnier_id: 'turnier:1', bezeichnung: 'Pool 3' });
-
-    const gefunden = await repo.findByTurnier('turnier:1');
+    const gefunden = await repo.findAll();
 
     assert.deepEqual(gefunden.map(p => p.bezeichnung), ['Pool 1', 'Pool 2', 'Pool 3']);
 });

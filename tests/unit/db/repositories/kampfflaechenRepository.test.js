@@ -31,25 +31,13 @@ test('create legt eine Kampffläche mit Erstellungszeitpunkt an', async () => {
     assert.ok(kf.created_at);
 });
 
-test('findByTurnier liefert nur Kampfflächen des angegebenen Turniers', async () => {
+test('findAll liefert alle Kampfflächen dieser Datenbank in Erstellungsreihenfolge', async () => {
     const repo = await neuesRepository();
-    await repo.create({ turnier_id: 'turnier:1', bezeichnung: 'Matte 1' });
-    await repo.create({ turnier_id: 'turnier:2', bezeichnung: 'Matte A' });
-    await repo.create({ turnier_id: 'turnier:1', bezeichnung: 'Matte 2' });
+    await repo.create({ bezeichnung: 'Matte 1' });
+    await repo.create({ bezeichnung: 'Matte 2' });
+    await repo.create({ bezeichnung: 'Matte 3' });
 
-    const gefunden = await repo.findByTurnier('turnier:1');
-
-    assert.equal(gefunden.length, 2);
-    assert.ok(gefunden.every(kf => kf.turnier_id === 'turnier:1'));
-});
-
-test('findByTurnier liefert die Kampfflächen in Erstellungsreihenfolge', async () => {
-    const repo = await neuesRepository();
-    await repo.create({ turnier_id: 'turnier:1', bezeichnung: 'Matte 1' });
-    await repo.create({ turnier_id: 'turnier:1', bezeichnung: 'Matte 2' });
-    await repo.create({ turnier_id: 'turnier:1', bezeichnung: 'Matte 3' });
-
-    const gefunden = await repo.findByTurnier('turnier:1');
+    const gefunden = await repo.findAll();
 
     assert.deepEqual(gefunden.map(kf => kf.bezeichnung), ['Matte 1', 'Matte 2', 'Matte 3']);
 });
