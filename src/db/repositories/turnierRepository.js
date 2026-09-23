@@ -23,6 +23,9 @@ export function createTurnierRepository(db) {
         const doc = {
             ...data,
             _id: TURNIER_DOC_ID,
+            // Kein query() in diesem Modul filtert danach -- konsistent mit jedem anderen
+            // Dokumenttyp in der Turnier-Datenbank, falls ein künftiges datenbankübergreifendes
+            // Katalog-Werkzeug einmal nach `typ` filtern muss.
             typ: 'turnier',
             ...(bestehend ? { _rev: bestehend._rev } : {})
         };
