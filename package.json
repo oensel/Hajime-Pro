@@ -7,7 +7,7 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:vollablauf": "playwright test --config=playwright.vollablauf.config.js",
-    "test:unit": "node --test tests/unit/**/*.test.js"
+    "test:unit": "node --test \"tests/unit/**/*.test.js\""
   },
   "dependencies": {
     "@material-design-icons/font": "^0.14.15",
@@ -29,6 +29,9 @@
     "express-pouchdb": "^4.2.0",
     "pouchdb": "^9.0.0",
     "pouchdb-adapter-memory": "^9.0.0",
+    "pouchdb-find": "^9.0.0"
+  },
+  "overrides": {
     "pouchdb-find": "^9.0.0"
   }
 }

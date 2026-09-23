@@ -19,7 +19,7 @@ export function createRepository({ db, typePrefix }) {
 
     async function update(id, patch) {
         const current = await db.get(id);
-        const merged = { ...current, ...patch, _id: current._id, _rev: current._rev };
+        const merged = { ...current, ...patch, _id: current._id, _rev: current._rev, typ: current.typ };
         const result = await db.insert(merged);
         return { ...merged, _rev: result.rev };
     }
@@ -34,7 +34,16 @@ export function createRepository({ db, typePrefix }) {
     // ist das ausreichend performant, ein Index-Management ist hier bewusst nicht Teil des
     // Fundaments.
     async function query(selector) {
-        const result = await db.find({ selector: { typ: typePrefix, ...selector } });
+        // typ steht bewusst NACH dem Selector-Spread, damit der eigene Typ-Scope des
+        // Repositories nicht durch ein vom Aufrufer übergebenes `typ`-Feld überschrieben
+        // werden kann (Objekt-Spread: der später gesetzte Key gewinnt).
+        //
+        // limit: CouchDBs eigener Mango-Query-Default ist 25 -- ohne expliziten, großzügigen
+        // Wert würde query() Ergebnislisten (z.B. alle Kämpfe eines Pools oder alle
+        // Teilnehmer eines Turniers) bei realen Turniergrößen (hunderte bis niedrige
+        // Tausende Dokumente, nie annähernd Zehntausende) still abschneiden. Eine Paginierung
+        // ist auf dieser Ebene für die absehbaren Datenmengen dieser Anwendung nicht nötig.
+        const result = await db.find({ selector: { ...selector, typ: typePrefix }, limit: 10000 });
         return result.docs;
     }
 

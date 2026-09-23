@@ -83,3 +83,15 @@ test('query findet Dokumente über zusätzliche Selector-Felder, beschränkt auf
 
     assert.equal(treffer.length, 2);
 });
+
+test('query schneidet Ergebnisse nicht bei CouchDBs Mango-Default von 25 ab', async () => {
+    const repo = await neuesRepository('kampffl');
+    const anzahl = 30;
+    for (let i = 0; i < anzahl; i += 1) {
+        await repo.create({ bezeichnung: `Matte ${i}` });
+    }
+
+    const treffer = await repo.query({});
+
+    assert.equal(treffer.length, anzahl);
+});
