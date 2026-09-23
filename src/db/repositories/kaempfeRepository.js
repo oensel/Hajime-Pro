@@ -21,5 +21,21 @@ export function createKaempfeRepository(db) {
         return gefunden.sort((a, b) => a.created_at.localeCompare(b.created_at));
     }
 
-    return { ...repo, create, findByPool };
+    // findAll (statt nur findByPool) wird für die Pausenprüfung gebraucht: ein Athlet kann in
+    // unterschiedlichen Pools desselben Turniers kämpfen, die Mindestpause gilt aber
+    // poolübergreifend.
+    async function findAll() {
+        const gefunden = await repo.query({});
+        return gefunden.sort((a, b) => a.created_at.localeCompare(b.created_at));
+    }
+
+    // pausenRegel.js ermittelt das Ende des letzten Kampfes über updated_at -- anders als
+    // created_at (einmalig bei der Erstellung) muss dieses Feld bei JEDEM Update aktualisiert
+    // werden, nicht nur beim Setzen von status: 'beendet', damit es dem tatsächlichen
+    // Bearbeitungszeitpunkt entspricht.
+    async function update(id, patch) {
+        return repo.update(id, { ...patch, updated_at: new Date().toISOString() });
+    }
+
+    return { ...repo, create, update, findByPool, findAll };
 }

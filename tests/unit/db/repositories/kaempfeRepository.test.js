@@ -73,3 +73,26 @@ test('findById, update und remove funktionieren wie im generischen Repository', 
     const nachDemLoeschen = await repo.findById(kampf._id);
     assert.equal(nachDemLoeschen, null);
 });
+
+test('findAll liefert Kämpfe über mehrere Pools hinweg', async () => {
+    const repo = await neuesRepository();
+    await repo.create({ pool_id: 'pool:1', status: 'angelegt' });
+    await repo.create({ pool_id: 'pool:2', status: 'angelegt' });
+
+    const gefunden = await repo.findAll();
+
+    assert.equal(gefunden.length, 2);
+});
+
+test('update aktualisiert updated_at bei jedem Aufruf', async () => {
+    const repo = await neuesRepository();
+    const kampf = await repo.create({ pool_id: 'pool:1', status: 'angelegt' });
+
+    const vorher = Date.now();
+    const aktualisiert = await repo.update(kampf._id, { status: 'bereit' });
+    const nachher = Date.now();
+
+    assert.ok(aktualisiert.updated_at);
+    const zeitstempelMs = new Date(aktualisiert.updated_at).getTime();
+    assert.ok(zeitstempelMs >= vorher && zeitstempelMs <= nachher);
+});
