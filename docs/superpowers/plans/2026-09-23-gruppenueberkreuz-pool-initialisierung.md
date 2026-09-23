@@ -154,7 +154,7 @@ test('aktualisiereTurnier berechnet die Halbfinal-Paarung aus der Vorrunden-Rang
     const byReihenfolge = Object.fromEntries(kaempfe.map(k => [k.reihenfolge_nummer, k]));
     assert.equal(byReihenfolge.HF1.status, 'bereit');
     assert.equal(byReihenfolge.HF1.kaempfer1_id, 'pA1');
-    assert.equal(byReihenfolge.HF1.kaempfer2_id, 'pB3');
+    assert.equal(byReihenfolge.HF1.kaempfer2_id, 'pB1');
     assert.equal(byReihenfolge.HF2.status, 'bereit');
     assert.equal(byReihenfolge.HF2.kaempfer1_id, 'pB3');
     assert.equal(byReihenfolge.HF2.kaempfer2_id, 'pA2');
