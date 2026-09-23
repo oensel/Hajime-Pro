@@ -1,9 +1,10 @@
 // CouchDB-Pendant zur Begegnungs-ERZEUGUNG aus MannschaftJederGegenJedenManager.initialisierePool
 // (src/services/MannschaftJederGegenJedenManager.js) -- dort direkt knex-gebunden, hier über die
-// jeweiligen Repositories. Der anschließende aktualisiereTurnier-Aufruf des Originals delegiert an
-// mannschaftsBegegnungEngine.js (Einzelkampf-Erzeugung je Gewichtsklasse, Stichkampf-Logik,
-// Pool-Abschluss) -- diese Engine ist selbst noch nicht migriert und bewusst NICHT Teil dieser
-// Kaskade; initialisierePool endet hier nach dem Begegnungs-Insert.
+// jeweiligen Repositories. Der anschließende aktualisiereTurnier-Aufruf des Originals entspricht
+// hier dem Aufruf von aktualisiereMannschaftsPool (mannschaftsBegegnungKaskade.js) am Ende des
+// ≥2-Mannschaften-Pfads.
+import { aktualisiereMannschaftsPool } from './mannschaftsBegegnungKaskade.js';
+
 function ermittlePaarungen(n) {
     if (n === 2) return [[0, 1]];
     if (n === 3) return [[0, 1], [0, 2], [1, 2]];
@@ -23,7 +24,7 @@ function ermittlePaarungen(n) {
     return paarungen;
 }
 
-export async function initialisierePool(mannschaftskaempfeRepository, mannschaftenRepository, poolsRepository, poolId) {
+export async function initialisierePool(kaempfeRepository, mannschaftskaempfeRepository, mannschaftenRepository, mannschaftMitgliederRepository, poolsRepository, poolId) {
     const mannschaften = await mannschaftenRepository.findByPool(poolId);
 
     if (mannschaften.length < 1) return;
@@ -49,4 +50,6 @@ export async function initialisierePool(mannschaftskaempfeRepository, mannschaft
             sieger_mannschaft_id: null
         });
     }
+
+    await aktualisiereMannschaftsPool(kaempfeRepository, mannschaftskaempfeRepository, mannschaftMitgliederRepository, poolsRepository, poolId);
 }

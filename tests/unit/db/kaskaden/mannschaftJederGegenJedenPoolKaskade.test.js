@@ -6,6 +6,8 @@ import { connect, ensureDatabase } from '../../../../src/db/couch.js';
 import { createMannschaftskaempfeRepository } from '../../../../src/db/repositories/mannschaftskaempfeRepository.js';
 import { createMannschaftenRepository } from '../../../../src/db/repositories/mannschaftenRepository.js';
 import { createPoolsRepository } from '../../../../src/db/repositories/poolsRepository.js';
+import { createKaempfeRepository } from '../../../../src/db/repositories/kaempfeRepository.js';
+import { createMannschaftMitgliederRepository } from '../../../../src/db/repositories/mannschaftMitgliederRepository.js';
 import { initialisierePool } from '../../../../src/db/kaskaden/mannschaftJederGegenJedenPoolKaskade.js';
 
 let server;
@@ -23,38 +25,40 @@ after(async () => {
 async function neueRepositories() {
     const db = await ensureDatabase(nano, `test-${randomUUID()}`);
     return {
+        kaempfeRepository: createKaempfeRepository(db),
         mannschaftskaempfeRepository: createMannschaftskaempfeRepository(db),
         mannschaftenRepository: createMannschaftenRepository(db),
+        mannschaftMitgliederRepository: createMannschaftMitgliederRepository(db),
         poolsRepository: createPoolsRepository(db)
     };
 }
 
 test('initialisierePool erzeugt bei 2 Mannschaften genau eine Begegnung', async () => {
-    const { mannschaftskaempfeRepository, mannschaftenRepository, poolsRepository } = await neueRepositories();
+    const { kaempfeRepository, mannschaftskaempfeRepository, mannschaftenRepository, mannschaftMitgliederRepository, poolsRepository } = await neueRepositories();
     const pool = await poolsRepository.create({});
     const m1 = await mannschaftenRepository.create({ pool_id: pool._id, verein: 'Team A' });
     const m2 = await mannschaftenRepository.create({ pool_id: pool._id, verein: 'Team B' });
 
-    await initialisierePool(mannschaftskaempfeRepository, mannschaftenRepository, poolsRepository, pool._id);
+    await initialisierePool(kaempfeRepository, mannschaftskaempfeRepository, mannschaftenRepository, mannschaftMitgliederRepository, poolsRepository, pool._id);
 
     const begegnungen = await mannschaftskaempfeRepository.findByPool(pool._id);
     assert.equal(begegnungen.length, 1);
     assert.equal(begegnungen[0].reihenfolge_nummer, '1');
     assert.equal(begegnungen[0].mannschaft1_id, m1._id);
     assert.equal(begegnungen[0].mannschaft2_id, m2._id);
-    assert.equal(begegnungen[0].status, 'bereit');
+    assert.equal(begegnungen[0].status, 'beendet');
     assert.equal(begegnungen[0].sieger_mannschaft_id, null);
 });
 
 test('initialisierePool erzeugt bei 4 Mannschaften 6 Begegnungen gemäß der festen Paarungstabelle', async () => {
-    const { mannschaftskaempfeRepository, mannschaftenRepository, poolsRepository } = await neueRepositories();
+    const { kaempfeRepository, mannschaftskaempfeRepository, mannschaftenRepository, mannschaftMitgliederRepository, poolsRepository } = await neueRepositories();
     const pool = await poolsRepository.create({});
     const mannschaften = {};
     for (const name of ['A', 'B', 'C', 'D']) {
         mannschaften[name] = await mannschaftenRepository.create({ pool_id: pool._id, verein: `Team ${name}` });
     }
 
-    await initialisierePool(mannschaftskaempfeRepository, mannschaftenRepository, poolsRepository, pool._id);
+    await initialisierePool(kaempfeRepository, mannschaftskaempfeRepository, mannschaftenRepository, mannschaftMitgliederRepository, poolsRepository, pool._id);
 
     const begegnungen = await mannschaftskaempfeRepository.findByPool(pool._id);
     assert.equal(begegnungen.length, 6);
@@ -69,11 +73,11 @@ test('initialisierePool erzeugt bei 4 Mannschaften 6 Begegnungen gemäß der fes
 });
 
 test('initialisierePool schließt den Pool bei genau 1 Mannschaft direkt ab, ohne Begegnungen anzulegen', async () => {
-    const { mannschaftskaempfeRepository, mannschaftenRepository, poolsRepository } = await neueRepositories();
+    const { kaempfeRepository, mannschaftskaempfeRepository, mannschaftenRepository, mannschaftMitgliederRepository, poolsRepository } = await neueRepositories();
     const pool = await poolsRepository.create({});
     await mannschaftenRepository.create({ pool_id: pool._id, verein: 'Team A' });
 
-    await initialisierePool(mannschaftskaempfeRepository, mannschaftenRepository, poolsRepository, pool._id);
+    await initialisierePool(kaempfeRepository, mannschaftskaempfeRepository, mannschaftenRepository, mannschaftMitgliederRepository, poolsRepository, pool._id);
 
     const begegnungen = await mannschaftskaempfeRepository.findByPool(pool._id);
     assert.equal(begegnungen.length, 0);
@@ -82,13 +86,32 @@ test('initialisierePool schließt den Pool bei genau 1 Mannschaft direkt ab, ohn
 });
 
 test('initialisierePool legt bei 0 Mannschaften keine Begegnungen an und lässt den Pool unverändert', async () => {
-    const { mannschaftskaempfeRepository, mannschaftenRepository, poolsRepository } = await neueRepositories();
+    const { kaempfeRepository, mannschaftskaempfeRepository, mannschaftenRepository, mannschaftMitgliederRepository, poolsRepository } = await neueRepositories();
     const pool = await poolsRepository.create({ status: 'geplant' });
 
-    await initialisierePool(mannschaftskaempfeRepository, mannschaftenRepository, poolsRepository, pool._id);
+    await initialisierePool(kaempfeRepository, mannschaftskaempfeRepository, mannschaftenRepository, mannschaftMitgliederRepository, poolsRepository, pool._id);
 
     const begegnungen = await mannschaftskaempfeRepository.findByPool(pool._id);
     assert.equal(begegnungen.length, 0);
     const unveraenderterPool = await poolsRepository.findById(pool._id);
     assert.equal(unveraenderterPool.status, 'geplant');
+});
+
+test('initialisierePool ruft aktualisiereMannschaftsPool auf und erzeugt bei konfigurierten Gewichtsklassen Einzelkämpfe', async () => {
+    const { kaempfeRepository, mannschaftskaempfeRepository, mannschaftenRepository, mannschaftMitgliederRepository, poolsRepository } = await neueRepositories();
+    const pool = await poolsRepository.create({ mannschafts_gewichtsklassen: JSON.stringify(['-60kg']) });
+    const m1 = await mannschaftenRepository.create({ pool_id: pool._id, verein: 'Team A' });
+    const m2 = await mannschaftenRepository.create({ pool_id: pool._id, verein: 'Team B' });
+    await mannschaftMitgliederRepository.create({ mannschaft_id: m1._id, turnier_teilnehmer_id: 'teilnehmer:a', gewichtsklasse: '-60kg' });
+    await mannschaftMitgliederRepository.create({ mannschaft_id: m2._id, turnier_teilnehmer_id: 'teilnehmer:b', gewichtsklasse: '-60kg' });
+
+    await initialisierePool(kaempfeRepository, mannschaftskaempfeRepository, mannschaftenRepository, mannschaftMitgliederRepository, poolsRepository, pool._id);
+
+    const begegnungen = await mannschaftskaempfeRepository.findByPool(pool._id);
+    assert.equal(begegnungen.length, 1);
+    assert.equal(begegnungen[0].status, 'bereit');
+    const kaempfe = await kaempfeRepository.query({ mannschaftskampf_id: begegnungen[0]._id });
+    assert.equal(kaempfe.length, 1);
+    assert.equal(kaempfe[0].kaempfer1_id, 'teilnehmer:a');
+    assert.equal(kaempfe[0].kaempfer2_id, 'teilnehmer:b');
 });
