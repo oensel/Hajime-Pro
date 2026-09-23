@@ -1,3 +1,5 @@
+import { stripReservedFields } from '../reservedFields.js';
+
 const TURNIER_DOC_ID = 'turnier:meta';
 
 // Anders als bei den übrigen Entitäten (kampfflaechen, pools, kaempfe, ...) enthält eine
@@ -21,7 +23,7 @@ export function createTurnierRepository(db) {
     async function save(data) {
         const bestehend = await get();
         const doc = {
-            ...data,
+            ...stripReservedFields(data),
             _id: TURNIER_DOC_ID,
             // Kein query() in diesem Modul filtert danach -- konsistent mit jedem anderen
             // Dokumenttyp in der Turnier-Datenbank, falls ein künftiges datenbankübergreifendes

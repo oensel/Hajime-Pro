@@ -53,6 +53,16 @@ test('save ersetzt dasselbe Dokument, statt ein zweites anzulegen', async () => 
     assert.equal(geladen.status, 'veroeffentlicht');
 });
 
+test('save ignoriert eingeschleuste reservierte Felder wie _deleted', async () => {
+    const repo = await neuesRepository();
+
+    await repo.save({ bezeichnung: 'Landesmeisterschaft', _deleted: true });
+
+    const geladen = await repo.get();
+    assert.ok(geladen, 'Dokument muss trotz eingeschleustem _deleted weiterhin existieren');
+    assert.equal(geladen.bezeichnung, 'Landesmeisterschaft');
+});
+
 test('save ersetzt Felder vollständig, statt sie mit dem alten Stand zu vermischen', async () => {
     const repo = await neuesRepository();
     await repo.save({ bezeichnung: 'Landesmeisterschaft', ort: 'Musterstadt', status: 'entwurf' });
