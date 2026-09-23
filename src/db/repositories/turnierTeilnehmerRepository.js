@@ -20,5 +20,13 @@ export function createTurnierTeilnehmerRepository(db) {
         return gefunden.sort((a, b) => a.created_at.localeCompare(b.created_at));
     }
 
-    return { ...repo, create, findAll };
+    // Pool-Zuordnung erfolgt über turnier_teilnehmer.pool_id -- gebraucht von den
+    // Pool-Anlage-Kaskaden (z.B. jederGegenJedenPoolKaskade.js), die nur die Teilnehmer
+    // EINES Pools für die Paarungsbildung brauchen, nicht alle Teilnehmer des Turniers.
+    async function findByPool(poolId) {
+        const gefunden = await repo.query({ pool_id: poolId });
+        return gefunden.sort((a, b) => a.created_at.localeCompare(b.created_at));
+    }
+
+    return { ...repo, create, findAll, findByPool };
 }

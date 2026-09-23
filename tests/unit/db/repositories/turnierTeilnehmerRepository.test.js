@@ -52,6 +52,17 @@ test('findAll liefert alle Teilnehmer dieser Datenbank in Erstellungsreihenfolge
     assert.deepEqual(gefunden.map(t => t.nachname), ['Erste', 'Zweite', 'Dritte']);
 });
 
+test('findByPool liefert nur Teilnehmer des angegebenen Pools', async () => {
+    const repo = await neuesRepository();
+    await repo.create({ pool_id: 'pool:1', nachname: 'ImPool' });
+    await repo.create({ pool_id: 'pool:2', nachname: 'AndererPool' });
+    await repo.create({ nachname: 'NochNichtZugeordnet' });
+
+    const gefunden = await repo.findByPool('pool:1');
+
+    assert.deepEqual(gefunden.map(t => t.nachname), ['ImPool']);
+});
+
 test('findById, update und remove funktionieren wie im generischen Repository', async () => {
     const repo = await neuesRepository();
     const teilnehmer = await repo.create({ turnier_id: 'turnier:1', nachname: 'Mustermann' });
