@@ -1,9 +1,10 @@
 import { createId } from './documentId.js';
+import { stripReservedFields } from './reservedFields.js';
 
 export function createRepository({ db, typePrefix }) {
     async function create(data) {
         const _id = createId(typePrefix);
-        const doc = { ...data, _id, typ: typePrefix };
+        const doc = { ...stripReservedFields(data), _id, typ: typePrefix };
         const result = await db.insert(doc);
         return { ...doc, _rev: result.rev };
     }
@@ -19,7 +20,7 @@ export function createRepository({ db, typePrefix }) {
 
     async function update(id, patch) {
         const current = await db.get(id);
-        const merged = { ...current, ...patch, _id: current._id, _rev: current._rev, typ: current.typ };
+        const merged = { ...current, ...stripReservedFields(patch), _id: current._id, _rev: current._rev, typ: current.typ };
         const result = await db.insert(merged);
         return { ...merged, _rev: result.rev };
     }

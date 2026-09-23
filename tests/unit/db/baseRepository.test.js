@@ -36,6 +36,26 @@ test('create legt ein Dokument mit Typ-Präfix-ID an und liefert es vollständig
     assert.ok(doc._rev);
 });
 
+test('create ignoriert eingeschleuste reservierte Felder wie _deleted', async () => {
+    const repo = await neuesRepository('kampffl');
+    const doc = await repo.create({ bezeichnung: 'Matte 1', _deleted: true, _rev: 'geraten' });
+
+    const gefunden = await repo.findById(doc._id);
+    assert.ok(gefunden, 'Dokument muss trotz eingeschleustem _deleted weiterhin existieren');
+    assert.equal(gefunden.bezeichnung, 'Matte 1');
+});
+
+test('update ignoriert eingeschleuste reservierte Felder wie _deleted', async () => {
+    const repo = await neuesRepository('kampffl');
+    const created = await repo.create({ bezeichnung: 'Matte 1', status: 'frei' });
+
+    await repo.update(created._id, { status: 'pausiert', _deleted: true });
+
+    const gefunden = await repo.findById(created._id);
+    assert.ok(gefunden, 'Dokument muss trotz eingeschleustem _deleted weiterhin existieren');
+    assert.equal(gefunden.status, 'pausiert');
+});
+
 test('findById liefert ein vorhandenes Dokument', async () => {
     const repo = await neuesRepository('kampffl');
     const created = await repo.create({ bezeichnung: 'Matte 1' });
