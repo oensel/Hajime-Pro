@@ -48,8 +48,9 @@ test('initialisierePool erzeugt bei 2 Teilnehmern genau einen Kampf', async () =
 test('initialisierePool erzeugt bei 4 Teilnehmern 6 Kämpfe gemäß der festen Paarungstabelle', async () => {
     const { kaempfeRepository, turnierTeilnehmerRepository, poolsRepository } = await neueRepositories();
     const pool = await poolsRepository.create({});
+    const teilnehmer = {};
     for (const gewicht of [60, 65, 70, 75]) {
-        await turnierTeilnehmerRepository.create({ pool_id: pool._id, gewicht });
+        teilnehmer[gewicht] = await turnierTeilnehmerRepository.create({ pool_id: pool._id, gewicht });
     }
 
     await initialisierePool(kaempfeRepository, turnierTeilnehmerRepository, poolsRepository, pool._id);
@@ -57,6 +58,15 @@ test('initialisierePool erzeugt bei 4 Teilnehmern 6 Kämpfe gemäß der festen P
     const kaempfe = await kaempfeRepository.findByPool(pool._id);
     assert.equal(kaempfe.length, 6);
     assert.deepEqual(kaempfe.map(k => k.reihenfolge_nummer), [1, 2, 3, 4, 5, 6]);
+
+    // Feste Paarungstabelle für n=4 (0-indiziert nach Gewicht sortiert): [0,1],[2,3],[0,3],[1,2],[0,2],[1,3]
+    const erwartetePaare = [
+        [60, 65], [70, 75], [60, 75], [65, 70], [60, 70], [65, 75]
+    ];
+    assert.deepEqual(
+        kaempfe.map(k => [k.kaempfer1_id, k.kaempfer2_id]),
+        erwartetePaare.map(([g1, g2]) => [teilnehmer[g1]._id, teilnehmer[g2]._id])
+    );
 });
 
 test('initialisierePool schließt den Pool bei genau 1 Teilnehmer direkt ab, ohne Kämpfe anzulegen', async () => {
