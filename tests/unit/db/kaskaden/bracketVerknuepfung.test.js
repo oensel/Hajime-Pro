@@ -52,7 +52,7 @@ test('verknuepfeQuellenFuerPool lässt Kämpfe ohne passenden Topologie-Eintrag 
 test('verknuepfeQuellenFuerPool überspringt einen Eintrag, wenn eine referenzierte Quelle im Pool fehlt', async () => {
     const repo = await neuesRepository();
     // H1 fehlt absichtlich -- unvollständige Altdaten simulieren, siehe Kommentar im Original.
-    const kampfH2 = await repo.create({ pool_id: 'pool:1', reihenfolge_nummer: 'H2' });
+    await repo.create({ pool_id: 'pool:1', reihenfolge_nummer: 'H2' });
     const kampfF = await repo.create({ pool_id: 'pool:1', reihenfolge_nummer: 'F' });
 
     await verknuepfeQuellenFuerPool(repo, 'pool:1', { F: { k1: ['H1', 'sieger'], k2: ['H2', 'sieger'] } });
