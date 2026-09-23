@@ -41,6 +41,8 @@ export async function initialisierePool(mannschaftskaempfeRepository, mannschaft
         await mannschaftskaempfeRepository.create({
             pool_id: poolId,
             status: 'bereit',
+            // String, nicht Zahl -- anders als beim Einzel-Pendant (jederGegenJedenPoolKaskade.js),
+            // exakt wie im knex-Original; keine versehentliche Abweichung.
             reihenfolge_nummer: String(idx + 1),
             mannschaft1_id: mannschaften[i]._id,
             mannschaft2_id: mannschaften[j]._id,
