@@ -6,6 +6,7 @@ import { createPoolsRepository } from '../../db/repositories/poolsRepository.js'
 import { createKaempfeRepository } from '../../db/repositories/kaempfeRepository.js';
 import { pruefeHatEchteKaempfe } from '../../db/offline/turnierStatusPruefung.js';
 import { ermittleEffektivenStatus, validiereZahlungsdaten } from '../../shared/turnierRegeln.js';
+import { OFFLINE_VEREIN_ID } from '../../db/offline/offlineAccounts.js';
 import { entfernungZuPlzInKm } from '../../utils/entfernungHelper.js';
 
 async function ladeStatusEffektiv(db, turnier) {
@@ -26,7 +27,16 @@ async function synchronisiereKampfflaechen(db, anzahl) {
             await kampfflaechenRepository.create({ bezeichnung: `Matte ${i}` });
         }
     } else if (aktuelleAnzahl > anzahl) {
-        const mattenZuLoeschen = aktuelleMatten.slice(anzahl);
+        // Nach der Matten-Nummer sortieren statt der von findAll() gelieferten
+        // created_at-Reihenfolge zu vertrauen -- bei sehr schnell aufeinanderfolgenden
+        // Erstellungen (gleiche Millisekunde) wäre die Zeitstempel-Reihenfolge sonst nicht
+        // eindeutig.
+        const nachNummerSortiert = [...aktuelleMatten].sort((a, b) => {
+            const nummerA = parseInt((a.bezeichnung || '').replace(/\D/g, ''), 10) || 0;
+            const nummerB = parseInt((b.bezeichnung || '').replace(/\D/g, ''), 10) || 0;
+            return nummerA - nummerB;
+        });
+        const mattenZuLoeschen = nachNummerSortiert.slice(anzahl);
         for (const matte of mattenZuLoeschen) {
             await kampfflaechenRepository.remove(matte._id);
         }
@@ -64,7 +74,7 @@ export async function createTurnier(turnierDbRegistry, req, res) {
         const turnierId = randomUUID();
         const db = await turnierDbRegistry.openTurnierDb(turnierId);
 
-        await createTurnierRepository(db).save({ ...felder, status: 'entwurf' });
+        await createTurnierRepository(db).save({ ...felder, status: 'entwurf', verein_id: OFFLINE_VEREIN_ID });
         await synchronisiereKampfflaechen(db, felder.anzahl_kampfflaechen);
 
         res.status(201).json({ success: true, turnierId });
@@ -82,7 +92,7 @@ export async function updateTurnier(turnierDbRegistry, req, res) {
         }
 
         const { id } = req.params;
-        const db = await turnierDbRegistry.openTurnierDb(id);
+        const db = turnierDbRegistry.useTurnierDb(id);
         const turnierRepository = createTurnierRepository(db);
         const bestehendesTurnier = await turnierRepository.get();
         if (!bestehendesTurnier) {
@@ -106,7 +116,7 @@ export async function updateTurnier(turnierDbRegistry, req, res) {
 
 export async function getTurnier(turnierDbRegistry, req, res) {
     try {
-        const db = await turnierDbRegistry.openTurnierDb(req.params.id);
+        const db = turnierDbRegistry.useTurnierDb(req.params.id);
         const turnier = await createTurnierRepository(db).get();
         if (!turnier) return res.status(404).json({ error: 'Turnier nicht gefunden.' });
 
@@ -126,7 +136,7 @@ export async function getTurniere(turnierDbRegistry, req, res) {
 
         const turniere = [];
         for (const turnierId of turnierIds) {
-            const db = await turnierDbRegistry.openTurnierDb(turnierId);
+            const db = turnierDbRegistry.useTurnierDb(turnierId);
             const turnier = await createTurnierRepository(db).get();
             if (!turnier) continue;
             const teilnehmerAnzahl = (await createTurnierTeilnehmerRepository(db).findAll()).length;
@@ -162,7 +172,7 @@ export async function getTurniere(turnierDbRegistry, req, res) {
 export async function deleteTurnier(turnierDbRegistry, req, res) {
     try {
         const { id } = req.params;
-        const db = await turnierDbRegistry.openTurnierDb(id);
+        const db = turnierDbRegistry.useTurnierDb(id);
         const turnier = await createTurnierRepository(db).get();
         if (!turnier) {
             return res.status(404).json({ success: false, error: 'Turnier nicht gefunden.' });
@@ -187,7 +197,7 @@ export async function deleteTurnier(turnierDbRegistry, req, res) {
 
 export async function veroeffentlicheTurnier(turnierDbRegistry, req, res) {
     try {
-        const db = await turnierDbRegistry.openTurnierDb(req.params.id);
+        const db = turnierDbRegistry.useTurnierDb(req.params.id);
         const turnierRepository = createTurnierRepository(db);
         const turnier = await turnierRepository.get();
         if (!turnier) {
@@ -206,7 +216,7 @@ export async function veroeffentlicheTurnier(turnierDbRegistry, req, res) {
 
 export async function sageTurnierAb(turnierDbRegistry, req, res) {
     try {
-        const db = await turnierDbRegistry.openTurnierDb(req.params.id);
+        const db = turnierDbRegistry.useTurnierDb(req.params.id);
         const turnierRepository = createTurnierRepository(db);
         const turnier = await turnierRepository.get();
         if (!turnier) {
@@ -225,7 +235,7 @@ export async function sageTurnierAb(turnierDbRegistry, req, res) {
 
 export async function beendeDurchfuehrung(turnierDbRegistry, req, res) {
     try {
-        const db = await turnierDbRegistry.openTurnierDb(req.params.id);
+        const db = turnierDbRegistry.useTurnierDb(req.params.id);
         const turnierRepository = createTurnierRepository(db);
         const turnier = await turnierRepository.get();
         if (!turnier) {

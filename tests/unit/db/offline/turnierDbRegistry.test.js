@@ -57,6 +57,22 @@ test('openTurnierDb lehnt undefined, null und Großbuchstaben ab', async () => {
     await assert.rejects(() => registry.openTurnierDb('ABC123'));
 });
 
+test('useTurnierDb legt bei einer unbekannten Turnier-ID keine Datenbank an', async () => {
+    const registry = createTurnierDbRegistry(nano);
+    const unbekannteId = randomUUID();
+
+    registry.useTurnierDb(unbekannteId);
+
+    const ids = await registry.listTurnierIds();
+    assert.ok(!ids.includes(unbekannteId));
+});
+
+test('useTurnierDb lehnt eine ungültige Turnier-ID ab', () => {
+    const registry = createTurnierDbRegistry(nano);
+    assert.throws(() => registry.useTurnierDb('../etc'));
+    assert.throws(() => registry.useTurnierDb(undefined));
+});
+
 test('deleteTurnierDb löscht die Turnier-Datenbank vollständig und entfernt sie aus dem Cache', async () => {
     const registry = createTurnierDbRegistry(nano);
     const turnierId = randomUUID();

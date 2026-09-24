@@ -6,6 +6,7 @@ import { createTurnierDbRegistry } from '../../../../src/db/offline/turnierDbReg
 import { createKampfflaechenRepository } from '../../../../src/db/repositories/kampfflaechenRepository.js';
 import { createTurnierTeilnehmerRepository } from '../../../../src/db/repositories/turnierTeilnehmerRepository.js';
 import { createTurnierRepository } from '../../../../src/db/repositories/turnierRepository.js';
+import { OFFLINE_VEREIN_ID } from '../../../../src/db/offline/offlineAccounts.js';
 import {
     createTurnier, getTurnier, getTurniere, updateTurnier, deleteTurnier,
     veroeffentlicheTurnier, sageTurnierAb, beendeDurchfuehrung
@@ -55,6 +56,18 @@ test('createTurnier legt ein Turnier mit Kampfflächen an und getTurnier liest e
     assert.equal(getRes.body.teilnehmer_anzahl, 0);
 });
 
+test('createTurnier setzt verein_id auf die feste Offline-Vereins-ID', async () => {
+    const createRes = fakeRes();
+    await createTurnier(registry, {
+        body: { bezeichnung: 'Vereins-ID-Test', ort: 'X', datum: '2026-01-01', ausrichter: 'Z' }
+    }, createRes);
+    const turnierId = createRes.body.turnierId;
+
+    const getRes = fakeRes();
+    await getTurnier(registry, { params: { id: turnierId } }, getRes);
+    assert.equal(getRes.body.verein_id, OFFLINE_VEREIN_ID);
+});
+
 test('createTurnier lehnt Startgeld ohne Zahlungsdaten ab', async () => {
     const res = fakeRes();
     await createTurnier(registry, {
@@ -85,6 +98,26 @@ test('updateTurnier passt Felder an und synchronisiert die Kampfflächen-Anzahl'
     const getRes = fakeRes();
     await getTurnier(registry, { params: { id: turnierId } }, getRes);
     assert.equal(getRes.body.bezeichnung, 'Nachher');
+});
+
+test('updateTurnier entfernt bei Verkleinerung immer die Matte mit der höchsten Nummer', async () => {
+    const createRes = fakeRes();
+    await createTurnier(registry, {
+        body: { bezeichnung: 'Matten-Schrumpfung', ort: 'X', datum: '2026-01-01', ausrichter: 'Z', anzahl_kampfflaechen: '3' }
+    }, createRes);
+    const turnierId = createRes.body.turnierId;
+
+    const updateRes = fakeRes();
+    await updateTurnier(registry, {
+        params: { id: turnierId },
+        body: { bezeichnung: 'Matten-Schrumpfung', ort: 'X', datum: '2026-01-01', ausrichter: 'Z', anzahl_kampfflaechen: '1' }
+    }, updateRes);
+    assert.equal(updateRes.statusCode, 200);
+
+    const db = await registry.openTurnierDb(turnierId);
+    const kampfflaechen = await createKampfflaechenRepository(db).findAll();
+    assert.equal(kampfflaechen.length, 1);
+    assert.equal(kampfflaechen[0].bezeichnung, 'Matte 1');
 });
 
 test('updateTurnier meldet 404 für eine unbekannte Turnier-ID', async () => {
@@ -120,6 +153,13 @@ test('deleteTurnier löscht ein leeres Entwurfs-Turnier vollständig', async () 
     const getRes = fakeRes();
     await getTurnier(registry, { params: { id: turnierId } }, getRes);
     assert.equal(getRes.statusCode, 404);
+
+    // Ein erneuter Lese-Zugriff auf die gelöschte ID darf keine leere Geister-Datenbank
+    // erzeugen -- sonst würde sie hier in der Liste wieder auftauchen.
+    const listeRes = fakeRes();
+    await getTurniere(registry, { query: {} }, listeRes);
+    const gelisteteIds = listeRes.body.map((t) => t.id);
+    assert.ok(!gelisteteIds.includes(turnierId));
 });
 
 test('Lebenszyklus: veroeffentlichen -> absagen', async () => {
