@@ -1,7 +1,7 @@
 import nanoLib from 'nano';
 
 export function connect(url) {
-    return nanoLib(url);
+    return nanoLib({ url, parseUrl: false });
 }
 
 // CouchDB liefert beim Anlegen einer bereits existierenden Datenbank statusCode 412
