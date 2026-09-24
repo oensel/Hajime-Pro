@@ -97,3 +97,34 @@ test('exportiereWettkampfdaten liest alle sechs Entitätstypen einer Turnier-Dat
     assert.equal(exportiert.mannschaften.length, 0);
     assert.equal(exportiert.mannschaft_mitglieder.length, 0);
 });
+
+test('exportiereWettkampfdaten gefolgt von importiereWettkampfdaten erhält alle Fremdschlüssel (Round-Trip)', async () => {
+    const repos = await neueRepos();
+    await importiereWettkampfdaten(repos, {
+        kampfflaechen: [{ id: 1, bezeichnung: 'Matte 1' }],
+        pools: [{ id: 10, kampfflaeche_id: 1, bezeichnung: 'Pool A' }],
+        teilnehmer: [
+            { id: 100, pool_id: 10, vorname: 'Max', nachname: 'Mustermann' },
+            { id: 101, pool_id: 10, vorname: 'Erika', nachname: 'Musterfrau' }
+        ],
+        kaempfe: [{ id: 1000, pool_id: 10, kaempfer1_id: 100, kaempfer2_id: 101, sieger_id: 100, status: 'beendet' }],
+        mannschaften: [],
+        mannschaft_mitglieder: []
+    });
+
+    const exportiert = await exportiereWettkampfdaten(repos);
+
+    const zielRepos = await neueRepos();
+    const ergebnis = await importiereWettkampfdaten(zielRepos, exportiert);
+    assert.deepEqual(ergebnis, { kampfflaechen: 1, pools: 1, teilnehmer: 2, kaempfe: 1 });
+
+    const neuePools = await zielRepos.poolsRepository.findAll();
+    const neueKampfflaechen = await zielRepos.kampfflaechenRepository.findAll();
+    assert.equal(neuePools[0].kampfflaeche_id, neueKampfflaechen[0]._id);
+
+    const neueKaempfe = await zielRepos.kaempfeRepository.findByPool(neuePools[0]._id);
+    assert.equal(neueKaempfe[0].status, 'beendet');
+    assert.notEqual(neueKaempfe[0].kaempfer1_id, undefined);
+    assert.notEqual(neueKaempfe[0].kaempfer1_id, null);
+    assert.notEqual(neueKaempfe[0].sieger_id, null);
+});

@@ -122,12 +122,23 @@ export async function importiereWettkampfdaten(repos, daten) {
     };
 }
 
+// Alle exportierten Dokumente kommen aus CouchDB und tragen deshalb nur _id, nie ein
+// eigenes id-Feld. importiereWettkampfdaten schlüsselt seine Fremdschlüssel-Umschreibungs-
+// Maps aber überall nach .id (Kompatibilität zum historischen Export-Dateiformat mit
+// Integer-id-Spalten aus dem alten SQL-Schema) -- ohne diesen Alias würde ein
+// Export->Import-Roundtrip jede Map.get(...) auf undefined auflaufen lassen und damit jeden
+// Fremdschlüssel klanglos auf null/undefined setzen.
+function mitId(dokumente) {
+    return dokumente.map((d) => ({ ...d, id: d._id }));
+}
+
 // CouchDB-Äquivalent zu den Export-Abfragen in exportTurnier (src/controllers/turnierController.js):
 // deutlich einfacher, da eine Turnier-Datenbank per Konstruktion nur dieses eine Turnier
 // enthält -- alle Repositories liefern direkt "alles" statt über eine turnier_id/pool_id-
 // Kette filtern zu müssen. mannschaftenRepository/mannschaftMitgliederRepository haben kein
 // eigenes findAll -- die generische query({}) (aus baseRepository.js) liefert hier
-// gleichwertig "alle Dokumente dieses Typs".
+// gleichwertig "alle Dokumente dieses Typs". mitId() (oben) hängt an jedes Dokument den
+// Export/Import-Kompatibilitäts-Alias id = _id an, siehe dessen Kommentar.
 export async function exportiereWettkampfdaten(repos) {
     const { kampfflaechenRepository, poolsRepository, turnierTeilnehmerRepository, kaempfeRepository, mannschaftenRepository, mannschaftMitgliederRepository } = repos;
 
@@ -138,5 +149,12 @@ export async function exportiereWettkampfdaten(repos) {
     const mannschaften = await mannschaftenRepository.query({});
     const mannschaftMitglieder = await mannschaftMitgliederRepository.query({});
 
-    return { kampfflaechen, pools, teilnehmer, kaempfe, mannschaften, mannschaft_mitglieder: mannschaftMitglieder };
+    return {
+        kampfflaechen: mitId(kampfflaechen),
+        pools: mitId(pools),
+        teilnehmer: mitId(teilnehmer),
+        kaempfe: mitId(kaempfe),
+        mannschaften: mitId(mannschaften),
+        mannschaft_mitglieder: mitId(mannschaftMitglieder)
+    };
 }
