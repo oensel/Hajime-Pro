@@ -137,6 +137,25 @@ Verhaltensrisiko in diesem gesamten Umbau.
     Funktionsdurchlauf aller Offline-Seiten. Einziger Schritt mit echtem
     Verhaltensrisiko im gesamten Umbau.
 
+    **Bekannte Blocker, vor diesem Schritt zu lösen** (aus dem Abschlussreview des
+    Turniere-Controller-Plans, bewusst nicht dort mitgefixt, da sie fundamentale, bereits
+    ausgelieferte Module betreffen, die von jedem künftigen Controller mitgenutzt werden):
+    - `src/db/repositories/turnierRepository.js`s `save()` verwirft die vom Aufrufer
+      gelesene `_rev` und holt sich intern die jeweils neueste — das verwandelt CouchDBs
+      MVCC-Konfliktprüfung (409 bei veralteter Revision) in reines "letzter Schreiber
+      gewinnt". Bei einem Read-Modify-Write wie `updateTurnier` kann das einen zwischen
+      Lesen und Schreiben durch einen anderen Aufruf (z.B. `sageTurnierAb`) geänderten
+      Status wieder überschreiben. Braucht ein eigenes, dediziertes Muster (Aufrufer
+      übergibt die gelesene `_rev`, ein 409 von CouchDB wird als 409 an den Client
+      durchgereicht) über `turnierRepository.js`/`baseRepository.js` hinweg, bevor
+      irgendein Offline-Controller mit echtem Nebenbetrieb (mehrere gleichzeitige
+      Schreibzugriffe) produktiv läuft.
+    - Frontend-Dateien rufen heute an mehreren Stellen `parseInt(turnierId)` auf
+      (`public/js/pools.js`, `public/js/matten.js`, `public/js/waage-modal.js`,
+      `public/js/kampf.js`) — mit UUID-Strings statt Ganzzahlen liefert das `NaN` oder,
+      schlimmer, nur die führenden Ziffern als falsche Integer-ID. Muss vor dem Cutover
+      durchgegangen und entfernt werden.
+
 **Ausdrücklich nicht Teil dieser Phase** (folgt danach als eigener Plan, Basis-Spec Phase 2):
 PouchDB im Browser (Ersatz von REST-Fetch durch Replikation), beginnend mit der Waage.
 Diese Phase bereitet dafür nur das Fundament (CouchDB als Datenspeicher) vor — die Clients
