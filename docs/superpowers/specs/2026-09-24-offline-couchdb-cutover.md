@@ -92,23 +92,50 @@ Knex/SQLite bleiben für den Offline-Modus so lange vollständig funktionsfähig
 **alle** Controller migriert sind — erst danach wird die Offline-Knex-Konfiguration
 (`knexfile.cjs`, `--env offline`) entfernt.
 
+## Korrektur nach Schritt 1: kein Controller-für-Controller-Umschalten
+
+Die ursprüngliche Annahme unten (jeder Controller schaltet einzeln, nacheinander um) ist
+falsch: `pools`, `turnier_teilnehmer`, `kampfflaechen`, `kaempfe`, `mannschaften` und
+`mannschaftskaempfe` referenzieren `turnier_id` heute als SQL-Fremdschlüssel auf dieselbe
+`turniere`-Tabelle. Würde z.B. Schritt 2 (Turniere) allein umgeschaltet, verwiesen alle noch
+nicht migrierten Controller (Schritte 4-9) auf Turnier-IDs, die in der SQLite-`turniere`-
+Tabelle gar nicht mehr existieren — genau das dichte Beziehungsgeflecht, das die Basis-Spec
+("Betroffene Umfänge") als Grund nennt, warum eine schrittweise Migration einzelner Tabellen
+nicht möglich ist.
+
+**Korrigiertes Muster, ab Schritt 2 durchgängig:** jeder Schritt baut seine CouchDB-Variante
+eines Controllers/seiner Routen als neue, eigenständige Datei(en) unter `src/controllers/
+offline/` und `src/routes/offline/` — vollständig getestet, aber **nicht** in `app.js`
+eingehängt (additiv/ruhend, exakt wie das Fundament aus Schritt 1). Erst ein eigener,
+abschließender **Cutover-Schritt** (siehe unten, ersetzt die ursprünglichen Schritte 10-11)
+hängt für den Offline-Betrieb ALLE `src/routes/offline/*`-Router gleichzeitig in `app.js`
+ein, entfernt die Offline-Knex-Konfiguration und ist damit der einzige Moment mit echtem
+Verhaltensrisiko in diesem gesamten Umbau.
+
 ## Umsetzungsreihenfolge (je ein eigener Umsetzungsplan)
 
 1. **Fundament:** eingebettete lokale CouchDB, `offline_accounts`-Bootstrap (additiv neben
    der bestehenden Knex-Logik), Turnier-DB-Registry (öffnen/cachen per `turnierId`)
-2. Turniere-Controller/Routes (Liste + CRUD) — erste echte Umschaltung, inkl. Anpassung von
-   `requireTurnierAktiv` (`src/middleware/auth.js`)
-3. Vereine-Controller (Offline-Pfad) — schaltet auf `offline_accounts` um, danach kann die
-   parallele Knex-Provisionierung aus Schritt 1 entfernt werden
-4. Teilnehmer-Controller
-5. Pools-Controller (nutzt die 8 bereits gebauten `*PoolKaskade.js`-Module)
-6. Kampfflächen-Controller
-7. Kämpfe-Controller (nutzt `kaempfeKaskade`/`pausenPruefung`)
-8. Mannschaften- + Mannschaftskämpfe-Controller (nutzt `mannschaftsBegegnungKaskade`)
-9. Offline-Import/Export-Controller (`offlineController.js`)
-10. E2E-Test-Setup (`tests/e2e/global-setup.js`) auf die eingebettete lokale CouchDB
-    umstellen, Entfernen der Offline-Knex-Konfiguration
-11. Voller automatisierter Testlauf + manueller Funktionsdurchlauf aller Offline-Seiten
+2. Turniere-Controller/Routes (Liste + CRUD + Lebenszyklus) — CouchDB-Variante additiv unter
+   `src/controllers/offline/`/`src/routes/offline/`, noch nicht in `app.js` eingehängt
+3. Turnier-Import/-Export (Offline) — eigener Plan, da die ID-Umschreibung über 6
+   Entitätstypen hinweg ein eigenständiger, komplexer Baustein ist
+4. Vereine-Controller (Offline-Pfad) — schaltet die additive Provisionierung aus Schritt 1
+   auf echte Nutzung um (`offline_accounts` wird jetzt tatsächlich gelesen, nicht nur
+   geschrieben), bleibt aber selbst additiv/ruhend bis zum Cutover-Schritt
+5. Teilnehmer-Controller
+6. Pools-Controller (nutzt die 8 bereits gebauten `*PoolKaskade.js`-Module)
+7. Kampfflächen-Controller
+8. Kämpfe-Controller (nutzt `kaempfeKaskade`/`pausenPruefung`)
+9. Mannschaften- + Mannschaftskämpfe-Controller (nutzt `mannschaftsBegegnungKaskade`)
+10. Offline-Import/Export-Controller (`offlineController.js`, pro Kampffläche)
+11. **Cutover:** alle `src/routes/offline/*`-Router gemeinsam in `app.js` einhängen
+    (ersetzt die bisherigen Knex-Routen NUR im Offline-Zweig), `requireTurnierAktiv`
+    (`src/middleware/auth.js`) auf die Registry umstellen, E2E-Test-Setup
+    (`tests/e2e/global-setup.js`) auf die eingebettete lokale CouchDB umstellen, Entfernen
+    der Offline-Knex-Konfiguration, voller automatisierter Testlauf + manueller
+    Funktionsdurchlauf aller Offline-Seiten. Einziger Schritt mit echtem
+    Verhaltensrisiko im gesamten Umbau.
 
 **Ausdrücklich nicht Teil dieser Phase** (folgt danach als eigener Plan, Basis-Spec Phase 2):
 PouchDB im Browser (Ersatz von REST-Fetch durch Replikation), beginnend mit der Waage.
