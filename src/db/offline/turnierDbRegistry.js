@@ -1,13 +1,13 @@
 import { ensureDatabase } from '../couch.js';
 
 const PRAEFIX = 'turnier_';
-const GUELTIGE_TURNIER_ID = /^[a-zA-Z0-9_-]+$/;
+const GUELTIGE_TURNIER_ID = /^[a-z0-9_-]+$/;
 
 export function createTurnierDbRegistry(nano) {
     const cache = new Map();
 
     async function openTurnierDb(turnierId) {
-        if (!GUELTIGE_TURNIER_ID.test(String(turnierId))) {
+        if (typeof turnierId !== 'string' || !GUELTIGE_TURNIER_ID.test(turnierId)) {
             throw new Error(`Ungültige Turnier-ID: ${turnierId}`);
         }
         if (cache.has(turnierId)) return cache.get(turnierId);

@@ -49,3 +49,10 @@ test('openTurnierDb lehnt eine Turnier-ID mit ungültigen Zeichen ab', async () 
     await assert.rejects(() => registry.openTurnierDb('../etc'));
     await assert.rejects(() => registry.openTurnierDb('foo/bar'));
 });
+
+test('openTurnierDb lehnt undefined, null und Großbuchstaben ab', async () => {
+    const registry = createTurnierDbRegistry(nano);
+    await assert.rejects(() => registry.openTurnierDb(undefined));
+    await assert.rejects(() => registry.openTurnierDb(null));
+    await assert.rejects(() => registry.openTurnierDb('ABC123'));
+});
