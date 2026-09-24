@@ -83,3 +83,24 @@ test('DELETE /:id löscht ein leeres Turnier', async () => {
     const getResp = await fetch(`${baseUrl}/${turnierId}`);
     assert.equal(getResp.status, 404);
 });
+
+test('POST /import legt ein neues Turnier an, GET /:id/export liefert es als Datei zurück', async () => {
+    const importDaten = {
+        turnier: { bezeichnung: 'Routen-Import', ort: 'X', datum: '2020-01-01', ausrichter: 'Z', status: 'abgeschlossen' },
+        kampfflaechen: [], pools: [], teilnehmer: [], kaempfe: [], mannschaften: [], mannschaft_mitglieder: []
+    };
+    const contentBase64 = Buffer.from(JSON.stringify(importDaten), 'utf-8').toString('base64');
+
+    const importResp = await fetch(`${baseUrl}/import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contentBase64 })
+    });
+    assert.equal(importResp.status, 201);
+    const { turnierId } = await importResp.json();
+
+    const exportResp = await fetch(`${baseUrl}/${turnierId}/export`);
+    assert.equal(exportResp.status, 200);
+    const exportiert = await exportResp.json();
+    assert.equal(exportiert.turnier.bezeichnung, 'Routen-Import');
+});
