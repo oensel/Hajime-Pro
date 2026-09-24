@@ -9,7 +9,8 @@ import { createTurnierRepository } from '../../../../src/db/repositories/turnier
 import { OFFLINE_VEREIN_ID } from '../../../../src/db/offline/offlineAccounts.js';
 import {
     createTurnier, getTurnier, getTurniere, updateTurnier, deleteTurnier,
-    veroeffentlicheTurnier, sageTurnierAb, beendeDurchfuehrung
+    veroeffentlicheTurnier, sageTurnierAb, beendeDurchfuehrung,
+    importTurnier, exportTurnier
 } from '../../../../src/controllers/offline/turnierController.js';
 
 let server;
@@ -274,4 +275,88 @@ test('sageTurnierAb lehnt ein bereits abgeschlossenes Turnier ab', async () => {
     const absagenRes = fakeRes();
     await sageTurnierAb(registry, { params: { id: turnierId } }, absagenRes);
     assert.equal(absagenRes.statusCode, 403);
+});
+
+function bufferZuBase64(objekt) {
+    return Buffer.from(JSON.stringify(objekt), 'utf-8').toString('base64');
+}
+
+test('importTurnier legt ein neues Turnier mit umgeschriebenen IDs an und ersetzt alle bestehenden lokalen Turniere', async () => {
+    const alteRegistry = createTurnierDbRegistry(nano);
+    const altesTurnierRes = fakeRes();
+    await createTurnier(alteRegistry, { body: { bezeichnung: 'Altes Turnier', ort: 'X', datum: '2025-01-01', ausrichter: 'Z' } }, altesTurnierRes);
+    const alteTurnierId = altesTurnierRes.body.turnierId;
+
+    const importDaten = {
+        turnier: { bezeichnung: 'Importiertes Turnier', ort: 'Musterstadt', datum: '2026-06-01', ausrichter: 'TV Muster' },
+        kampfflaechen: [{ id: 1, bezeichnung: 'Matte 1' }],
+        pools: [{ id: 10, kampfflaeche_id: 1, bezeichnung: 'Pool A' }],
+        teilnehmer: [{ id: 100, pool_id: 10, vorname: 'Max', nachname: 'Mustermann' }],
+        kaempfe: [{ id: 1000, pool_id: 10, kaempfer1_id: 100, status: 'wartet' }],
+        mannschaften: [],
+        mannschaft_mitglieder: []
+    };
+
+    const importRes = fakeRes();
+    await importTurnier(alteRegistry, { body: { contentBase64: bufferZuBase64(importDaten) } }, importRes);
+    assert.equal(importRes.statusCode, 201);
+    assert.ok(importRes.body.success);
+    assert.deepEqual(importRes.body.imported, { kampfflaechen: 1, pools: 1, teilnehmer: 1, kaempfe: 1 });
+
+    const neueTurnierId = importRes.body.turnierId;
+    assert.notEqual(neueTurnierId, alteTurnierId);
+
+    const alleIds = await alteRegistry.listTurnierIds();
+    assert.ok(!alleIds.includes(alteTurnierId));
+    assert.ok(alleIds.includes(neueTurnierId));
+
+    const getRes = fakeRes();
+    await getTurnier(alteRegistry, { params: { id: neueTurnierId } }, getRes);
+    assert.equal(getRes.body.bezeichnung, 'Importiertes Turnier');
+    assert.equal(getRes.body.verein_id, OFFLINE_VEREIN_ID);
+});
+
+test('importTurnier lehnt eine Datei ohne Turnier-Pflichtfelder ab', async () => {
+    const registry = createTurnierDbRegistry(nano);
+    const daten = { turnier: { bezeichnung: 'Unvollständig' } };
+    const res = fakeRes();
+    await importTurnier(registry, { body: { contentBase64: bufferZuBase64(daten) } }, res);
+    assert.equal(res.statusCode, 400);
+});
+
+test('exportTurnier liefert 403, solange die Anmeldefrist eines veröffentlichten Turniers noch nicht abgelaufen ist', async () => {
+    const registry = createTurnierDbRegistry(nano);
+    const createRes = fakeRes();
+    await createTurnier(registry, { body: { bezeichnung: 'Export-Test', ort: 'X', datum: '2099-01-01', ausrichter: 'Z' } }, createRes);
+    const turnierId = createRes.body.turnierId;
+    await veroeffentlicheTurnier(registry, { params: { id: turnierId } }, fakeRes());
+
+    const res = fakeRes();
+    await exportTurnier(registry, { params: { id: turnierId } }, res);
+    assert.equal(res.statusCode, 403);
+});
+
+test('exportTurnier liefert die vollständigen Wettkampfdaten eines abgeschlossenen Turniers', async () => {
+    const registry = createTurnierDbRegistry(nano);
+    const importDaten = {
+        turnier: { bezeichnung: 'Export-Voll', ort: 'X', datum: '2020-01-01', ausrichter: 'Z', status: 'abgeschlossen' },
+        kampfflaechen: [{ id: 1, bezeichnung: 'Matte 1' }],
+        pools: [],
+        teilnehmer: [],
+        kaempfe: [],
+        mannschaften: [],
+        mannschaft_mitglieder: []
+    };
+    const importRes = fakeRes();
+    await importTurnier(registry, { body: { contentBase64: bufferZuBase64(importDaten) } }, importRes);
+    const turnierId = importRes.body.turnierId;
+
+    const res = fakeRes();
+    res.setHeader = () => {};
+    res.send = function (body) { this.sentBody = body; return this; };
+    await exportTurnier(registry, { params: { id: turnierId } }, res);
+
+    const exportiert = JSON.parse(res.sentBody);
+    assert.equal(exportiert.turnier.bezeichnung, 'Export-Voll');
+    assert.equal(exportiert.kampfflaechen.length, 1);
 });

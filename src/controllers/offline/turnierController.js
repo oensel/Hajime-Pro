@@ -5,9 +5,12 @@ import { createKampfflaechenRepository } from '../../db/repositories/kampfflaech
 import { createPoolsRepository } from '../../db/repositories/poolsRepository.js';
 import { createKaempfeRepository } from '../../db/repositories/kaempfeRepository.js';
 import { pruefeHatEchteKaempfe } from '../../db/offline/turnierStatusPruefung.js';
-import { ermittleEffektivenStatus, validiereZahlungsdaten } from '../../shared/turnierRegeln.js';
+import { ermittleEffektivenStatus, validiereZahlungsdaten, GUELTIGE_STATUS_WERTE } from '../../shared/turnierRegeln.js';
 import { OFFLINE_VEREIN_ID } from '../../db/offline/offlineAccounts.js';
 import { entfernungZuPlzInKm } from '../../utils/entfernungHelper.js';
+import { createMannschaftenRepository } from '../../db/repositories/mannschaftenRepository.js';
+import { createMannschaftMitgliederRepository } from '../../db/repositories/mannschaftMitgliederRepository.js';
+import { importiereWettkampfdaten, exportiereWettkampfdaten } from '../../db/offline/turnierWettkampfdaten.js';
 
 async function ladeStatusEffektiv(db, turnier) {
     const hatEchteKaempfe = await pruefeHatEchteKaempfe(createPoolsRepository(db), createKaempfeRepository(db));
@@ -250,6 +253,132 @@ export async function beendeDurchfuehrung(turnierDbRegistry, req, res) {
         await turnierRepository.save({ ...turnier, status: 'abgeschlossen', updated_at: new Date().toISOString() });
         res.json({ success: true, message: 'Durchführung erfolgreich beendet.' });
     } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+function baueWettkampfdatenRepos(db) {
+    return {
+        kampfflaechenRepository: createKampfflaechenRepository(db),
+        poolsRepository: createPoolsRepository(db),
+        turnierTeilnehmerRepository: createTurnierTeilnehmerRepository(db),
+        kaempfeRepository: createKaempfeRepository(db),
+        mannschaftenRepository: createMannschaftenRepository(db),
+        mannschaftMitgliederRepository: createMannschaftMitgliederRepository(db)
+    };
+}
+
+// Gegenstück zu importTurnier in src/controllers/turnierController.js: importiert eine
+// zuvor exportierte Turnier-JSON als komplett NEUES Turnier mit frischen IDs. Der
+// Offline-Kiosk-Betrieb geht von genau einem aktiven Turnier aus -- vor dem Import werden
+// deshalb alle lokal vorhandenen Turnier-Datenbanken vollständig entfernt.
+export async function importTurnier(turnierDbRegistry, req, res) {
+    try {
+        const { contentBase64 } = req.body;
+        if (!contentBase64) {
+            return res.status(400).json({ success: false, error: 'Dateiinhalt ist erforderlich.' });
+        }
+
+        let daten;
+        try {
+            const jsonStr = Buffer.from(contentBase64, 'base64').toString('utf-8');
+            daten = JSON.parse(jsonStr);
+        } catch (e) {
+            return res.status(400).json({ success: false, error: 'Datei konnte nicht gelesen werden: ' + e.message });
+        }
+
+        const t = daten && daten.turnier;
+        if (!t || !t.bezeichnung || !t.ort || !t.datum || !t.ausrichter) {
+            return res.status(400).json({ success: false, error: 'Ungültiges Import-Format: Turnier-Pflichtfelder (Bezeichnung, Ort, Datum, Ausrichter) fehlen.' });
+        }
+
+        let ak = t.altersklassen;
+        if (typeof ak === 'string') {
+            try { ak = JSON.parse(ak); } catch (e) { ak = []; }
+        }
+        let mak = t.mannschafts_altersklassen;
+        if (typeof mak === 'string') {
+            try { mak = JSON.parse(mak); } catch (e) { mak = []; }
+        }
+
+        const bestehendeIds = await turnierDbRegistry.listTurnierIds();
+        for (const id of bestehendeIds) {
+            await turnierDbRegistry.deleteTurnierDb(id);
+        }
+
+        const kampfflaechen = (daten && daten.kampfflaechen) || [];
+        const pools = (daten && daten.pools) || [];
+        const teilnehmer = (daten && daten.teilnehmer) || [];
+        const kaempfe = (daten && daten.kaempfe) || [];
+        const mannschaften = (daten && daten.mannschaften) || [];
+        const mannschaftMitglieder = (daten && daten.mannschaft_mitglieder) || [];
+
+        const turnierId = randomUUID();
+        const db = await turnierDbRegistry.openTurnierDb(turnierId);
+
+        await createTurnierRepository(db).save({
+            bezeichnung: t.bezeichnung,
+            ort: t.ort,
+            datum: t.datum,
+            ausrichter: t.ausrichter,
+            nutze_gewichtsklassen: !!t.nutze_gewichtsklassen,
+            anzahl_kampfflaechen: kampfflaechen.length || parseInt(t.anzahl_kampfflaechen, 10) || 1,
+            bundesland: t.bundesland || null,
+            plz: t.plz || null,
+            ausschreibung_pdf_base64: t.ausschreibung_pdf_base64 || null,
+            ausschreibung_dateiname: t.ausschreibung_pdf_base64 ? (t.ausschreibung_dateiname || 'Ausschreibung.pdf') : null,
+            altersklassen: ak || {},
+            mannschafts_altersklassen: mak || [],
+            status: GUELTIGE_STATUS_WERTE.includes(t.status) ? t.status : 'entwurf',
+            anmeldeschluss: t.anmeldeschluss || null,
+            startgeld: t.startgeld !== undefined && t.startgeld !== '' ? parseFloat(t.startgeld) : null,
+            iban: t.iban || null,
+            kontoinhaber: t.kontoinhaber || null,
+            verwendungszweck: t.verwendungszweck || null,
+            verein_id: OFFLINE_VEREIN_ID,
+            urspruengliche_id: t.urspruengliche_id ?? t.id ?? null
+        });
+
+        const importiert = await importiereWettkampfdaten(baueWettkampfdatenRepos(db), { kampfflaechen, pools, teilnehmer, kaempfe, mannschaften, mannschaft_mitglieder: mannschaftMitglieder });
+
+        return res.status(201).json({ success: true, turnierId, imported: importiert });
+    } catch (error) {
+        console.error('[Offline-Turnier-Import-Fehler]:', error);
+        return res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+// Gegenstück zu exportTurnier in src/controllers/turnierController.js: liefert die
+// Wettkampfdaten eines Turniers als JSON-Datei-Download. Kein Vereinszugriffs-Check
+// (Offline ist Single-Tenant) -- nur die Anmeldefrist-Sperre bleibt bestehen.
+export async function exportTurnier(turnierDbRegistry, req, res) {
+    try {
+        const turnierId = req.params.id;
+        const db = await turnierDbRegistry.useTurnierDb(turnierId);
+        const turnier = await createTurnierRepository(db).get();
+        if (!turnier) {
+            return res.status(404).json({ success: false, error: 'Turnier nicht gefunden.' });
+        }
+
+        const statusEffektiv = await ladeStatusEffektiv(db, turnier);
+        if (!['anmeldung_geschlossen', 'in_durchfuehrung', 'abgeschlossen'].includes(statusEffektiv)) {
+            return res.status(403).json({ success: false, error: 'Das Turnier kann erst exportiert werden, wenn die Anmeldefrist abgelaufen ist.' });
+        }
+
+        const wettkampfdaten = await exportiereWettkampfdaten(baueWettkampfdatenRepos(db));
+
+        const exportData = {
+            exportiert_am: new Date().toISOString(),
+            turnier: { ...turnier, id: turnierId },
+            ...wettkampfdaten
+        };
+
+        const dateiname = `turnier_${turnierId}_export_${new Date().toISOString().slice(0, 10)}.json`;
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Disposition', `attachment; filename="${dateiname}"`);
+        res.send(JSON.stringify(exportData, null, 2));
+    } catch (error) {
+        console.error('[Offline-Turnier-Export-Fehler]:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 }
