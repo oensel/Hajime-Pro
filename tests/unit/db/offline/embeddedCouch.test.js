@@ -37,6 +37,28 @@ test('mountEmbeddedCouch stellt eine funktionsfähige, persistente CouchDB-kompa
     }
 });
 
+test('mountEmbeddedCouch unterstützt Mango-Queries (_find) trotz minimumForPouchDB-Modus', async () => {
+    const dataPath = await mkdtemp(path.join(tmpdir(), 'hajime-embedded-couch-find-'));
+    const app = express();
+    mountEmbeddedCouch(app, dataPath);
+
+    const server = await new Promise((resolve) => {
+        const s = app.listen(0, () => resolve(s));
+    });
+
+    try {
+        const nano = connect(`http://127.0.0.1:${server.address().port}/_couch`);
+        const db = await ensureDatabase(nano, 'find-test');
+        await db.insert({ _id: 'kampf:1', typ: 'kampf', status: 'bereit' });
+
+        const ergebnis = await db.find({ selector: { typ: 'kampf' } });
+        assert.equal(ergebnis.docs.length, 1);
+        assert.equal(ergebnis.docs[0].status, 'bereit');
+    } finally {
+        await new Promise((resolve) => server.close(resolve));
+    }
+});
+
 test('nurLoopback erlaubt 127.0.0.1/::1 und lehnt alles andere mit 403 ab', () => {
     const erlaubt = (remoteAddress) => {
         let nextAufgerufen = false;

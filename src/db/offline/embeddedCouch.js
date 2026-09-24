@@ -30,7 +30,9 @@ export function mountEmbeddedCouch(app, dataPath) {
     fs.mkdirSync(dataPath, { recursive: true });
     const PouchDBLocal = PouchDB.defaults({ prefix: path.join(dataPath, path.sep) });
     app.use('/_couch', nurLoopback, expressPouchDB(PouchDBLocal, {
-        logPath: undefined,
+        mode: 'minimumForPouchDB',
+        overrideMode: { include: ['routes/find'] },
+        logPath: path.join(dataPath, 'log.txt'),
         configPath: path.join(dataPath, 'config.json')
     }));
 }
