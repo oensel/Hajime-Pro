@@ -130,6 +130,12 @@ export async function getTurniere(turnierDbRegistry, req, res) {
             const turnier = await createTurnierRepository(db).get();
             if (!turnier) continue;
             const teilnehmerAnzahl = (await createTurnierTeilnehmerRepository(db).findAll()).length;
+            // Listen-Badge: ohne hatEchteKaempfe berechnet, um N+1-Abfragen zu vermeiden --
+            // pruefeHatEchteKaempfe lädt pro Turnier erst alle Pools und dann alle Kämpfe je
+            // Pool, was bei dieser Listenansicht für JEDES Turnier einmal anfallen würde.
+            // Kann "in_durchfuehrung" in einem schmalen Edge-Fall (Wettkampftag noch nicht
+            // erreicht, aber schon echte Kämpfe gestartet) kurz verzögert zeigen; die exakte,
+            // gate-relevante Berechnung erfolgt in getTurnier (Einzelabruf).
             turniere.push({
                 ...turnier,
                 id: turnierId,

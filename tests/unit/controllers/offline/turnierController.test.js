@@ -4,6 +4,8 @@ import { startTestCouchServer } from '../../helpers/couchTestServer.js';
 import { connect } from '../../../../src/db/couch.js';
 import { createTurnierDbRegistry } from '../../../../src/db/offline/turnierDbRegistry.js';
 import { createKampfflaechenRepository } from '../../../../src/db/repositories/kampfflaechenRepository.js';
+import { createTurnierTeilnehmerRepository } from '../../../../src/db/repositories/turnierTeilnehmerRepository.js';
+import { createTurnierRepository } from '../../../../src/db/repositories/turnierRepository.js';
 import {
     createTurnier, getTurnier, getTurniere, updateTurnier, deleteTurnier,
     veroeffentlicheTurnier, sageTurnierAb, beendeDurchfuehrung
@@ -146,4 +148,90 @@ test('beendeDurchfuehrung lehnt ein Turnier ab, das nicht in Durchführung ist',
     const res = fakeRes();
     await beendeDurchfuehrung(registry, { params: { id: turnierId } }, res);
     assert.equal(res.statusCode, 403);
+});
+
+test('deleteTurnier lehnt ein veröffentlichtes Turnier ab, dessen Wettkampftag bereits erreicht ist (effektiv in_durchfuehrung)', async () => {
+    const createRes = fakeRes();
+    await createTurnier(registry, { body: { bezeichnung: 'Läuft schon', ort: 'X', datum: '2020-01-01', ausrichter: 'Z' } }, createRes);
+    const turnierId = createRes.body.turnierId;
+
+    await veroeffentlicheTurnier(registry, { params: { id: turnierId } }, fakeRes());
+
+    const deleteRes = fakeRes();
+    await deleteTurnier(registry, { params: { id: turnierId } }, deleteRes);
+    assert.equal(deleteRes.statusCode, 403);
+});
+
+test('deleteTurnier lehnt ein Turnier mit angemeldeten Teilnehmern ab', async () => {
+    const createRes = fakeRes();
+    await createTurnier(registry, { body: { bezeichnung: 'Hat Teilnehmer', ort: 'X', datum: '2026-01-01', ausrichter: 'Z' } }, createRes);
+    const turnierId = createRes.body.turnierId;
+
+    const db = await registry.openTurnierDb(turnierId);
+    await createTurnierTeilnehmerRepository(db).create({ name: 'Max Mustermann' });
+
+    const deleteRes = fakeRes();
+    await deleteTurnier(registry, { params: { id: turnierId } }, deleteRes);
+    assert.equal(deleteRes.statusCode, 409);
+});
+
+test('updateTurnier lehnt ein bereits abgeschlossenes Turnier ab', async () => {
+    const createRes = fakeRes();
+    await createTurnier(registry, { body: { bezeichnung: 'Archiv', ort: 'X', datum: '2026-01-01', ausrichter: 'Z' } }, createRes);
+    const turnierId = createRes.body.turnierId;
+
+    const db = await registry.openTurnierDb(turnierId);
+    const turnierRepository = createTurnierRepository(db);
+    const bestehend = await turnierRepository.get();
+    await turnierRepository.save({ ...bestehend, status: 'abgeschlossen' });
+
+    const updateRes = fakeRes();
+    await updateTurnier(registry, {
+        params: { id: turnierId },
+        body: { bezeichnung: 'Geänderter Name', ort: 'X', datum: '2026-01-01', ausrichter: 'Z' }
+    }, updateRes);
+    assert.equal(updateRes.statusCode, 403);
+});
+
+test('updateTurnier lehnt Startgeld ohne Zahlungsdaten ab', async () => {
+    const createRes = fakeRes();
+    await createTurnier(registry, { body: { bezeichnung: 'Update ohne Zahlungsdaten', ort: 'X', datum: '2026-01-01', ausrichter: 'Z' } }, createRes);
+    const turnierId = createRes.body.turnierId;
+
+    const updateRes = fakeRes();
+    await updateTurnier(registry, {
+        params: { id: turnierId },
+        body: { bezeichnung: 'X', ort: 'Y', datum: '2026-01-01', ausrichter: 'Z', startgeld: '10' }
+    }, updateRes);
+    assert.equal(updateRes.statusCode, 400);
+    assert.equal(updateRes.body.success, false);
+});
+
+test('veroeffentlicheTurnier lehnt ein bereits veröffentlichtes Turnier ab', async () => {
+    const createRes = fakeRes();
+    await createTurnier(registry, { body: { bezeichnung: 'Doppelt veröffentlicht', ort: 'X', datum: '2026-01-01', ausrichter: 'Z' } }, createRes);
+    const turnierId = createRes.body.turnierId;
+
+    const ersteVeroeffentlichung = fakeRes();
+    await veroeffentlicheTurnier(registry, { params: { id: turnierId } }, ersteVeroeffentlichung);
+    assert.equal(ersteVeroeffentlichung.statusCode, 200);
+
+    const zweiteVeroeffentlichung = fakeRes();
+    await veroeffentlicheTurnier(registry, { params: { id: turnierId } }, zweiteVeroeffentlichung);
+    assert.equal(zweiteVeroeffentlichung.statusCode, 400);
+});
+
+test('sageTurnierAb lehnt ein bereits abgeschlossenes Turnier ab', async () => {
+    const createRes = fakeRes();
+    await createTurnier(registry, { body: { bezeichnung: 'Schon abgeschlossen', ort: 'X', datum: '2026-01-01', ausrichter: 'Z' } }, createRes);
+    const turnierId = createRes.body.turnierId;
+
+    const db = await registry.openTurnierDb(turnierId);
+    const turnierRepository = createTurnierRepository(db);
+    const bestehend = await turnierRepository.get();
+    await turnierRepository.save({ ...bestehend, status: 'abgeschlossen' });
+
+    const absagenRes = fakeRes();
+    await sageTurnierAb(registry, { params: { id: turnierId } }, absagenRes);
+    assert.equal(absagenRes.statusCode, 403);
 });
