@@ -1,7 +1,7 @@
 import { hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
 import { entfernungZuPlzInKm } from '../utils/entfernungHelper.js';
 import { turnierHatEchteKaempfe } from './poolController.js';
-import { ermittleEffektivenStatus, istAnmeldefristAbgelaufen, validiereZahlungsdaten } from '../shared/turnierRegeln.js';
+import { ermittleEffektivenStatus, validiereZahlungsdaten } from '../shared/turnierRegeln.js';
 
 const GUELTIGE_STATUS_WERTE = ['entwurf', 'veroeffentlicht', 'abgeschlossen', 'abgesagt'];
 
