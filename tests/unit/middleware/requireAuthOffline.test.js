@@ -18,7 +18,11 @@ before(async () => {
 
 after(async () => {
     await server.close();
-    process.env.IS_OFFLINE = urspruenglichesIsOffline;
+    if (urspruenglichesIsOffline === undefined) {
+        delete process.env.IS_OFFLINE;
+    } else {
+        process.env.IS_OFFLINE = urspruenglichesIsOffline;
+    }
 });
 
 test('requireAuth legt im Offline-Betrieb zusätzlich den Offline-Verein/-Benutzer in CouchDB an', async () => {
