@@ -26,6 +26,6 @@ test('mountEmbeddedCouch stellt eine funktionsfähige, persistente CouchDB-kompa
         assert.equal(gelesen.status, 'bereit');
     } finally {
         await new Promise((resolve) => server.close(resolve));
-        await rm(dataPath, { recursive: true, force: true });
+        await rm(dataPath, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     }
 });
