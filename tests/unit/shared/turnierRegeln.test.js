@@ -4,7 +4,9 @@ import {
     berechneAnmeldefrist,
     istAnmeldefristAbgelaufen,
     ermittleEffektivenStatus,
-    validiereZahlungsdaten
+    validiereZahlungsdaten,
+    GUELTIGE_STATUS_WERTE,
+    normalisiereKampfStatus
 } from '../../../src/shared/turnierRegeln.js';
 
 test('berechneAnmeldefrist setzt bei reinem Datum 23:59:59.999 Ortszeit an', () => {
@@ -55,4 +57,17 @@ test('validiereZahlungsdaten verlangt IBAN/Kontoinhaber/Verwendungszweck bei Sta
 test('validiereZahlungsdaten ist ohne Startgeld immer gültig', () => {
     assert.equal(validiereZahlungsdaten(undefined, '', '', ''), null);
     assert.equal(validiereZahlungsdaten('0', '', '', ''), null);
+});
+
+test('GUELTIGE_STATUS_WERTE enthält genau die vier physisch gespeicherten Status-Werte', () => {
+    assert.deepEqual(GUELTIGE_STATUS_WERTE, ['entwurf', 'veroeffentlicht', 'abgeschlossen', 'abgesagt']);
+});
+
+test('normalisiereKampfStatus übersetzt das alte 3-Werte-Vokabular', () => {
+    assert.equal(normalisiereKampfStatus('laufend', 'a', 'b'), 'gestartet');
+    assert.equal(normalisiereKampfStatus('wartet', 'a', 'b'), 'bereit');
+    assert.equal(normalisiereKampfStatus('wartet', 'a', null), 'angelegt');
+    assert.equal(normalisiereKampfStatus('beendet', 'a', null), 'freilos');
+    assert.equal(normalisiereKampfStatus('beendet', 'a', 'b'), 'beendet');
+    assert.equal(normalisiereKampfStatus(undefined, 'a', 'b'), 'angelegt');
 });

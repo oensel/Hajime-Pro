@@ -1,9 +1,7 @@
 import { hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
 import { entfernungZuPlzInKm } from '../utils/entfernungHelper.js';
 import { turnierHatEchteKaempfe } from './poolController.js';
-import { ermittleEffektivenStatus, validiereZahlungsdaten } from '../shared/turnierRegeln.js';
-
-const GUELTIGE_STATUS_WERTE = ['entwurf', 'veroeffentlicht', 'abgeschlossen', 'abgesagt'];
+import { ermittleEffektivenStatus, validiereZahlungsdaten, GUELTIGE_STATUS_WERTE, normalisiereKampfStatus } from '../shared/turnierRegeln.js';
 
 // Alle Spalten außer der PDF-Binärdatei selbst — für Listen-/Auswahl-Abfragen, die die
 // Ausschreibung nur als "vorhanden ja/nein" (siehe hat_ausschreibung) benötigen und die
@@ -428,15 +426,6 @@ export async function beendeDurchfuehrung(knex, req, res) {
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
-}
-
-// Übersetzt den alten 3-Werte-Kampf-Status (wartet/laufend/beendet) aus vor dieser Migration
-// exportierten Dateien in das neue 6-Werte-Vokabular; bereits neue Werte bleiben unverändert.
-function normalisiereKampfStatus(status, kaempfer1Id, kaempfer2Id) {
-    if (status === 'laufend') return 'gestartet';
-    if (status === 'wartet') return (kaempfer1Id != null && kaempfer2Id != null) ? 'bereit' : 'angelegt';
-    if (status === 'beendet' && (kaempfer1Id == null || kaempfer2Id == null)) return 'freilos';
-    return status || 'angelegt';
 }
 
 // Fügt Kampfflächen/Pools/Teilnehmer/Kämpfe aus einer Export-JSON in ein Turnier ein, mit
