@@ -22,6 +22,9 @@ import { getKampfRoutes } from './routes/kampfRoutes.js';
 import { setupOfflineRoutes } from './routes/offlineRoutes.js';
 import { getMannschaftRoutes, getMannschaftskampfRoutes } from './routes/mannschaftRoutes.js';
 import { ensureSuperAdmin } from './utils/superAdmin.js';
+import { mountEmbeddedCouch } from './db/offline/embeddedCouch.js';
+import { connect as connectCouch } from './db/couch.js';
+import { createTurnierDbRegistry } from './db/offline/turnierDbRegistry.js';
 
 dotenv.config();
 
@@ -50,6 +53,14 @@ import { requireWriteAuth } from './middleware/auth.js';
 
 app.use(express.json({ limit: '15mb' }));
 app.use(express.static(path.join(__dirname, '../public')));
+
+if (environment === 'offline') {
+    const couchDataPath = process.env.COUCHDB_LOCAL_PATH || path.join(__dirname, '../data/couchdb');
+    mountEmbeddedCouch(app, couchDataPath);
+    const offlineCouchNano = connectCouch(`http://127.0.0.1:${PORT}/_couch`);
+    app.set('offlineCouchNano', offlineCouchNano);
+    app.set('turnierDbRegistry', createTurnierDbRegistry(offlineCouchNano));
+}
 
 // Mount routes with Knex instance dependency injection
 app.use('/api/auth', getAuthRoutes(knex));
