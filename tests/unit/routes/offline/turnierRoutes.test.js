@@ -10,8 +10,10 @@ let couchServer;
 let nano;
 let httpServer;
 let baseUrl;
+const urspruenglichesIsOffline = process.env.IS_OFFLINE;
 
 before(async () => {
+    process.env.IS_OFFLINE = 'true';
     couchServer = await startTestCouchServer();
     nano = connect(couchServer.url);
     const registry = createTurnierDbRegistry(nano);
@@ -29,6 +31,11 @@ before(async () => {
 after(async () => {
     await new Promise((resolve) => httpServer.close(resolve));
     await couchServer.close();
+    if (urspruenglichesIsOffline === undefined) {
+        delete process.env.IS_OFFLINE;
+    } else {
+        process.env.IS_OFFLINE = urspruenglichesIsOffline;
+    }
 });
 
 test('POST / legt ein Turnier an, GET /:id liest es zurück, POST /:id/veroeffentlichen ändert den Status', async () => {
