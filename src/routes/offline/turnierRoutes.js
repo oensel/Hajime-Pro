@@ -9,8 +9,8 @@ import { requireAuth } from '../../middleware/auth.js';
 // Plan). requireAuth ist die einzige Middleware: requireTournamentEditAccess und
 // requireVereinFreigabe sind im Offline-Betrieb bereits heute reine No-Ops (siehe
 // src/middleware/auth.js), eine Online-Mehrbenutzer-Berechtigungsprüfung ergibt für den
-// Single-Tenant-Offline-Betrieb keinen Sinn. import/export/ausschreibung/import-ergebnisse
-// sind bewusst nicht Teil dieser Datei -- eigener Folgeplan.
+// Single-Tenant-Offline-Betrieb keinen Sinn. ausschreibung/import-ergebnisse sind bewusst
+// nicht Teil dieser Datei -- eigener Folgeplan.
 export function getTurnierRoutesOffline(turnierDbRegistry) {
     const router = express.Router();
     router.use(requireAuth);
