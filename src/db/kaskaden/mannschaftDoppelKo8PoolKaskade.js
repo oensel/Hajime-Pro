@@ -1,16 +1,15 @@
 import { DOPPEL_KO_8_TOPOLOGIE } from '../../shared/bracketTopologie.js';
 import { verknuepfeQuellenFuerMannschaftsPool } from './bracketVerknuepfung.js';
+import { aktualisiereMannschaftsPool } from './mannschaftsBegegnungKaskade.js';
 
 // CouchDB-Pendant zur Begegnungs-ERZEUGUNG aus MannschaftDoppelKo8Manager.initialisierePool
 // (src/services/MannschaftDoppelKo8Manager.js) -- dort direkt knex-gebunden, hier über die
-// jeweiligen Repositories. Der anschließende aktualisiereTurnier-Aufruf des Originals delegiert an
-// mannschaftsBegegnungEngine.js (Einzelkampf-Erzeugung je Gewichtsklasse, Stichkampf-Logik,
-// Pool-Abschluss) -- diese Engine ist selbst noch nicht migriert und bewusst NICHT Teil dieser
-// Kaskade; initialisierePool endet hier nach der Bracket-Verknüpfung.
+// jeweiligen Repositories. Ruft nach der Bracket-Verknüpfung wie das Original
+// aktualisiereMannschaftsPool (mannschaftsBegegnungKaskade.js) auf.
 const RASTER_GROESSE = 8;
 const FREILOS_INDICES = [7, 0, 4, 3];
 
-export async function initialisierePool(mannschaftskaempfeRepository, mannschaftenRepository, poolId) {
+export async function initialisierePool(kaempfeRepository, mannschaftskaempfeRepository, mannschaftenRepository, mannschaftMitgliederRepository, poolsRepository, poolId) {
     const mannschaften = await mannschaftenRepository.findByPool(poolId);
     const N = mannschaften.length;
     const F = Math.max(0, RASTER_GROESSE - N);
@@ -52,4 +51,5 @@ export async function initialisierePool(mannschaftskaempfeRepository, mannschaft
     }
 
     await verknuepfeQuellenFuerMannschaftsPool(mannschaftskaempfeRepository, poolId, DOPPEL_KO_8_TOPOLOGIE);
+    await aktualisiereMannschaftsPool(kaempfeRepository, mannschaftskaempfeRepository, mannschaftMitgliederRepository, poolsRepository, poolId);
 }
