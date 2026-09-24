@@ -43,3 +43,9 @@ test('listTurnierIds findet alle lokal angelegten Turnier-Datenbanken', async ()
     assert.ok(ids.includes(idA));
     assert.ok(ids.includes(idB));
 });
+
+test('openTurnierDb lehnt eine Turnier-ID mit ungültigen Zeichen ab', async () => {
+    const registry = createTurnierDbRegistry(nano);
+    await assert.rejects(() => registry.openTurnierDb('../etc'));
+    await assert.rejects(() => registry.openTurnierDb('foo/bar'));
+});

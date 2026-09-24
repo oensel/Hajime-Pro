@@ -14,7 +14,7 @@ PouchDB.plugin(pouchdbFind);
 // selben Rechner aus erlauben. Sobald Phase 2 echte PouchDB-Clients im WLAN einführt, muss
 // diese Beschränkung durch echte CouchDB-Zugangsdaten ersetzt werden (nicht einfach
 // zusätzlich bestehen bleiben).
-function nurLoopback(req, res, next) {
+export function nurLoopback(req, res, next) {
     const ip = req.socket.remoteAddress;
     if (ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1') {
         return next();
