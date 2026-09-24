@@ -154,7 +154,25 @@ Verhaltensrisiko in diesem gesamten Umbau.
       (`public/js/pools.js`, `public/js/matten.js`, `public/js/waage-modal.js`,
       `public/js/kampf.js`) — mit UUID-Strings statt Ganzzahlen liefert das `NaN` oder,
       schlimmer, nur die führenden Ziffern als falsche Integer-ID. Muss vor dem Cutover
-      durchgegangen und entfernt werden.
+      durchgegangen und entfernt werden. Betrifft auch den Online-Kontrollpfad:
+      `importTurnierErgebnisse` (weiterhin Knex-basiert, unverändert) macht
+      `parseInt(quellTurnierId, 10)` gegen die `turnier.id` einer Export-Datei — bei einer
+      offline erzeugten Datei ist das eine UUID, `parseInt` würde nur deren führende Ziffern
+      als (falsche) Ziel-Turnier-ID lesen. Muss beim Durchgehen der `parseInt`-Stellen
+      mitgeprüft werden.
+    - **`pools.typ` (Domänenfeld `'einzel'`/`'mannschaft'`) kollidiert mit CouchDBs eigenem
+      Dokumenttyp-Feld**, das `baseRepository.js`s generisches `create`/`query` ebenfalls
+      `typ` nennt (`{ ...data, _id, typ: typePrefix }` überschreibt jeden vom Aufrufer
+      mitgegebenen `typ`-Wert). Jeder über `poolsRepository.create()` angelegte Pool
+      verliert seinen `typ` dadurch stillschweigend zu `'pool'` — bestätigt durch das
+      Abschlussreview des Turnier-Import/Export-Plans (`poolsRepository.create({ typ:
+      'mannschaft' })` speichert `typ: 'pool'`). Betrifft `baseRepository.js` selbst, das
+      Fundament für alle ~13 Repositories über drei bereits ausgelieferte Pläne hinweg —
+      eine Umbenennung (z.B. auf ein eigenständiges Domänenfeld statt `typ`) braucht eine
+      eigene, sorgfältige Durchsicht aller Aufrufer, nicht nur der Pools. Muss spätestens im
+      Pools-Controller-Schritt (Schritt 6) gelöst sein, bevor dort echte Mannschafts-Pools
+      angelegt werden — sonst sind Einzel- und Mannschafts-Pools nach der Migration nicht
+      mehr unterscheidbar.
 
 **Ausdrücklich nicht Teil dieser Phase** (folgt danach als eigener Plan, Basis-Spec Phase 2):
 PouchDB im Browser (Ersatz von REST-Fetch durch Replikation), beginnend mit der Waage.
