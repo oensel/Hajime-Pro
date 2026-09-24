@@ -10,6 +10,7 @@ export const OFFLINE_PORT = 3201;
 export const ONLINE_BASE_URL = `http://localhost:${ONLINE_PORT}`;
 export const OFFLINE_BASE_URL = `http://localhost:${OFFLINE_PORT}`;
 export const OFFLINE_SQLITE_PATH = './data/vollablauf-offline.sqlite';
+export const OFFLINE_COUCHDB_PATH = './data/couchdb-vollablauf-offline';
 
 // Fester Testwert, NICHT aus process.env übernommen: der echte Online-Server legt beim Start
 // (ensureSuperAdmin, siehe src/utils/superAdmin.js) idempotent judo@bastian-haas.com an — auf der
@@ -40,6 +41,7 @@ export const offlineServerEnv = {
     ...process.env,
     IS_OFFLINE: 'true',
     DB_SQLITE_PATH: OFFLINE_SQLITE_PATH,
+    COUCHDB_LOCAL_PATH: OFFLINE_COUCHDB_PATH,
     PORT: String(OFFLINE_PORT),
     STEUERUNG_PASSWORD: '',
     SMTP_HOST: ''

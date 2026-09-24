@@ -4,11 +4,11 @@
 // Live-Schema und wird hier bewusst NICHT migriert/verändert. Initialisiert außerdem die
 // Cleanup-Statusdatei (siehe run-state.js), damit ein wiederholter Lauf nicht mit den ID-Listen
 // eines vorherigen (bereits aufgeräumten) Laufs startet.
-import { existsSync, unlinkSync } from 'fs';
+import { existsSync, unlinkSync, rmSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import knexLib from 'knex';
-import { OFFLINE_SQLITE_PATH } from './test-env.js';
+import { OFFLINE_SQLITE_PATH, OFFLINE_COUCHDB_PATH } from './test-env.js';
 import { initialisiereStatus } from './run-state.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -21,6 +21,9 @@ export default async function globalSetup() {
     if (existsSync(dbPath)) {
         unlinkSync(dbPath);
     }
+
+    const couchDataPath = path.resolve(projectRoot, OFFLINE_COUCHDB_PATH);
+    rmSync(couchDataPath, { recursive: true, force: true });
 
     const knex = knexLib({
         client: 'sqlite3',

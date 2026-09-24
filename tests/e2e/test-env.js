@@ -8,11 +8,13 @@
 export const TEST_PORT = 3100;
 export const BASE_URL = `http://localhost:${TEST_PORT}`;
 export const TEST_SQLITE_PATH = './data/test.sqlite';
+export const TEST_COUCHDB_PATH = './data/couchdb-test';
 
 export const testServerEnv = {
     ...process.env,
     IS_OFFLINE: 'true',
     DB_SQLITE_PATH: TEST_SQLITE_PATH,
+    COUCHDB_LOCAL_PATH: TEST_COUCHDB_PATH,
     PORT: String(TEST_PORT),
     // Leer statt undefined: überschreibt eine evtl. in .env gesetzte STEUERUNG_PASSWORD
     // ausdrücklich (dotenv.config() in src/app.js überschreibt bereits gesetzte process.env-
