@@ -316,6 +316,37 @@ test('importTurnier legt ein neues Turnier mit umgeschriebenen IDs an und ersetz
     assert.equal(getRes.body.verein_id, OFFLINE_VEREIN_ID);
 });
 
+test('importTurnier rollt bei einem fehlerhaften Import zurück und lässt bestehende Turniere unangetastet', async () => {
+    const registry = createTurnierDbRegistry(nano);
+    const altesTurnierRes = fakeRes();
+    await createTurnier(registry, { body: { bezeichnung: 'Bestehendes Turnier', ort: 'X', datum: '2025-01-01', ausrichter: 'Z' } }, altesTurnierRes);
+    const altesTurnierId = altesTurnierRes.body.turnierId;
+
+    // idsVorher statt eines hartcodierten [altesTurnierId]-Arrays: dieser Testlauf teilt sich
+    // die CouchDB-Testinstanz mit den anderen Tests dieser Datei (siehe CLAUDE.md -- Tests
+    // laufen bewusst seriell gegen eine gemeinsame DB, keine Isolation zwischen Tests), und
+    // frühere Tests räumen ihre erzeugten Turnier-Datenbanken nicht immer weg. Die eigentliche
+    // Zusicherung dieses Tests ist ohnehin "die Menge der VOR dem fehlerhaften Import
+    // vorhandenen Turniere bleibt unverändert", nicht "es existiert exakt eines".
+    const idsVorher = (await registry.listTurnierIds()).sort();
+
+    const fehlerhafteDaten = {
+        turnier: { bezeichnung: 'Fehlerhafter Import', ort: 'X', datum: '2026-01-01', ausrichter: 'Z' },
+        kampfflaechen: [], pools: [], teilnehmer: [null], kaempfe: [], mannschaften: [], mannschaft_mitglieder: []
+    };
+    const res = fakeRes();
+    await importTurnier(registry, { body: { contentBase64: bufferZuBase64(fehlerhafteDaten) } }, res);
+    assert.equal(res.statusCode, 500);
+
+    const idsNachher = (await registry.listTurnierIds()).sort();
+    assert.deepEqual(idsNachher, idsVorher);
+    assert.ok(idsNachher.includes(altesTurnierId));
+
+    const getRes = fakeRes();
+    await getTurnier(registry, { params: { id: altesTurnierId } }, getRes);
+    assert.equal(getRes.body.bezeichnung, 'Bestehendes Turnier');
+});
+
 test('importTurnier lehnt eine Datei ohne Turnier-Pflichtfelder ab', async () => {
     const registry = createTurnierDbRegistry(nano);
     const daten = { turnier: { bezeichnung: 'Unvollständig' } };

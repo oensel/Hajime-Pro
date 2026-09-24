@@ -270,8 +270,11 @@ function baueWettkampfdatenRepos(db) {
 
 // Gegenstück zu importTurnier in src/controllers/turnierController.js: importiert eine
 // zuvor exportierte Turnier-JSON als komplett NEUES Turnier mit frischen IDs. Der
-// Offline-Kiosk-Betrieb geht von genau einem aktiven Turnier aus -- vor dem Import werden
-// deshalb alle lokal vorhandenen Turnier-Datenbanken vollständig entfernt.
+// Offline-Kiosk-Betrieb geht von genau einem aktiven Turnier aus -- alle anderen lokal
+// vorhandenen Turnier-Datenbanken werden entfernt, aber ERST NACHDEM das neue Turnier
+// erfolgreich angelegt und befüllt wurde (Rollback-Analogon zur SQL-Transaktion des
+// Knex-Originals): ein fehlerhaftes Import-File darf das bestehende, funktionierende
+// Turnier nicht antasten.
 export async function importTurnier(turnierDbRegistry, req, res) {
     try {
         const { contentBase64 } = req.body;
@@ -292,6 +295,12 @@ export async function importTurnier(turnierDbRegistry, req, res) {
             return res.status(400).json({ success: false, error: 'Ungültiges Import-Format: Turnier-Pflichtfelder (Bezeichnung, Ort, Datum, Ausrichter) fehlen.' });
         }
 
+        for (const feld of ['kampfflaechen', 'pools', 'teilnehmer', 'kaempfe', 'mannschaften', 'mannschaft_mitglieder']) {
+            if (daten[feld] !== undefined && !Array.isArray(daten[feld])) {
+                return res.status(400).json({ success: false, error: `Ungültiges Import-Format: "${feld}" muss ein Array sein.` });
+            }
+        }
+
         let ak = t.altersklassen;
         if (typeof ak === 'string') {
             try { ak = JSON.parse(ak); } catch (e) { ak = []; }
@@ -299,11 +308,6 @@ export async function importTurnier(turnierDbRegistry, req, res) {
         let mak = t.mannschafts_altersklassen;
         if (typeof mak === 'string') {
             try { mak = JSON.parse(mak); } catch (e) { mak = []; }
-        }
-
-        const bestehendeIds = await turnierDbRegistry.listTurnierIds();
-        for (const id of bestehendeIds) {
-            await turnierDbRegistry.deleteTurnierDb(id);
         }
 
         const kampfflaechen = (daten && daten.kampfflaechen) || [];
@@ -316,30 +320,48 @@ export async function importTurnier(turnierDbRegistry, req, res) {
         const turnierId = randomUUID();
         const db = await turnierDbRegistry.openTurnierDb(turnierId);
 
-        await createTurnierRepository(db).save({
-            bezeichnung: t.bezeichnung,
-            ort: t.ort,
-            datum: t.datum,
-            ausrichter: t.ausrichter,
-            nutze_gewichtsklassen: !!t.nutze_gewichtsklassen,
-            anzahl_kampfflaechen: kampfflaechen.length || parseInt(t.anzahl_kampfflaechen, 10) || 1,
-            bundesland: t.bundesland || null,
-            plz: t.plz || null,
-            ausschreibung_pdf_base64: t.ausschreibung_pdf_base64 || null,
-            ausschreibung_dateiname: t.ausschreibung_pdf_base64 ? (t.ausschreibung_dateiname || 'Ausschreibung.pdf') : null,
-            altersklassen: ak || {},
-            mannschafts_altersklassen: mak || [],
-            status: GUELTIGE_STATUS_WERTE.includes(t.status) ? t.status : 'entwurf',
-            anmeldeschluss: t.anmeldeschluss || null,
-            startgeld: t.startgeld !== undefined && t.startgeld !== '' ? parseFloat(t.startgeld) : null,
-            iban: t.iban || null,
-            kontoinhaber: t.kontoinhaber || null,
-            verwendungszweck: t.verwendungszweck || null,
-            verein_id: OFFLINE_VEREIN_ID,
-            urspruengliche_id: t.urspruengliche_id ?? t.id ?? null
-        });
+        let importiert;
+        try {
+            await createTurnierRepository(db).save({
+                bezeichnung: t.bezeichnung,
+                ort: t.ort,
+                datum: t.datum,
+                ausrichter: t.ausrichter,
+                nutze_gewichtsklassen: !!t.nutze_gewichtsklassen,
+                anzahl_kampfflaechen: kampfflaechen.length || parseInt(t.anzahl_kampfflaechen, 10) || 1,
+                bundesland: t.bundesland || null,
+                plz: t.plz || null,
+                ausschreibung_pdf_base64: t.ausschreibung_pdf_base64 || null,
+                ausschreibung_dateiname: t.ausschreibung_pdf_base64 ? (t.ausschreibung_dateiname || 'Ausschreibung.pdf') : null,
+                altersklassen: ak || {},
+                mannschafts_altersklassen: mak || [],
+                status: GUELTIGE_STATUS_WERTE.includes(t.status) ? t.status : 'entwurf',
+                anmeldeschluss: t.anmeldeschluss || null,
+                startgeld: t.startgeld !== undefined && t.startgeld !== '' ? parseFloat(t.startgeld) : null,
+                iban: t.iban || null,
+                kontoinhaber: t.kontoinhaber || null,
+                verwendungszweck: t.verwendungszweck || null,
+                verein_id: OFFLINE_VEREIN_ID,
+                urspruengliche_id: t.urspruengliche_id ?? t.id ?? null
+            });
 
-        const importiert = await importiereWettkampfdaten(baueWettkampfdatenRepos(db), { kampfflaechen, pools, teilnehmer, kaempfe, mannschaften, mannschaft_mitglieder: mannschaftMitglieder });
+            importiert = await importiereWettkampfdaten(baueWettkampfdatenRepos(db), { kampfflaechen, pools, teilnehmer, kaempfe, mannschaften, mannschaft_mitglieder: mannschaftMitglieder });
+        } catch (importFehler) {
+            // Rollback: die neu angelegte, aber unvollständige Turnier-Datenbank entfernen --
+            // bestehende Turniere dürfen bei einem fehlerhaften Import nicht angetastet
+            // werden (Verhaltensparität mit der SQL-Transaktion des Knex-Originals).
+            await turnierDbRegistry.deleteTurnierDb(turnierId);
+            throw importFehler;
+        }
+
+        // Der Offline-Kiosk-Betrieb geht von genau einem aktiven Turnier aus -- erst NACH
+        // erfolgreichem Import werden alle ANDEREN bestehenden Turnier-Datenbanken entfernt.
+        const bestehendeIds = await turnierDbRegistry.listTurnierIds();
+        for (const id of bestehendeIds) {
+            if (id !== turnierId) {
+                await turnierDbRegistry.deleteTurnierDb(id);
+            }
+        }
 
         return res.status(201).json({ success: true, turnierId, imported: importiert });
     } catch (error) {
