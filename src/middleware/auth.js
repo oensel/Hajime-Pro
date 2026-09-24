@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import { hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
+import { ensureOfflineAccountsDb } from '../db/offline/offlineAccounts.js';
 dotenv.config();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'hajime_pro_secret_key_123456!';
@@ -38,6 +39,19 @@ export async function requireAuth(req, res, next) {
                 console.error('[DB-Fehler Offline-User]:', err.message);
             }
         }
+
+        // Additiver CouchDB-Bootstrap neben der obigen Knex-Logik (siehe
+        // docs/superpowers/specs/2026-09-24-offline-couchdb-cutover.md) -- ändert noch
+        // kein sichtbares Verhalten, bereitet nur die Folge-Pläne vor.
+        const offlineCouchNano = req.app.get('offlineCouchNano');
+        if (offlineCouchNano) {
+            try {
+                await ensureOfflineAccountsDb(offlineCouchNano);
+            } catch (err) {
+                console.error('[CouchDB-Fehler Offline-User]:', err.message);
+            }
+        }
+
         return next();
     }
 
