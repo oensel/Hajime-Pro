@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import express from 'express';
@@ -26,11 +26,13 @@ test('mountEmbeddedCouch stellt eine funktionsfähige, persistente CouchDB-kompa
         assert.equal(gelesen.status, 'bereit');
     } finally {
         await new Promise((resolve) => server.close(resolve));
-        // express-pouchdb hält auf Windows die LevelDB-Locks (_replicator-Systemdatenbank)
-        // über die Prozesslaufzeit hinweg offen -- server.close() beendet nur den HTTP-Server,
-        // nicht den internen Daemon. Ein rm() direkt danach schlägt auf Windows deshalb
-        // zuverlässig mit EBUSY fehl. Das Aufräumen ist reine Tidiness, keine geprüfte
-        // Verhaltenseigenschaft der Aufgabe -- Fehlschläge hier dürfen den Test nicht rot machen.
-        await rm(dataPath, { recursive: true, force: true }).catch(() => {});
+        // express-pouchdb betreibt einen internen Daemon (verwaltet die _replicator-
+        // Systemdatenbank) mit eigenen, andauernden LevelDB-Handles, die über die
+        // Prozesslaufzeit hinweg offen bleiben -- server.close() beendet nur den
+        // HTTP-Server, nicht diesen Daemon. Das Verzeichnis danach zu löschen (auch
+        // best-effort) kollidiert auf Windows mit dessen laufenden Dateizugriffen und
+        // erzeugt eine unhandledRejection statt nur einen harmlosen rm()-Fehler.
+        // Deshalb bewusst KEIN Aufräumen hier -- das OS-Temp-Verzeichnis sammelt
+        // dadurch ein paar KB pro Testlauf an, die das Betriebssystem selbst aufräumt.
     }
 });
