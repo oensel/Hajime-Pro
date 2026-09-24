@@ -56,3 +56,21 @@ test('openTurnierDb lehnt undefined, null und Großbuchstaben ab', async () => {
     await assert.rejects(() => registry.openTurnierDb(null));
     await assert.rejects(() => registry.openTurnierDb('ABC123'));
 });
+
+test('deleteTurnierDb löscht die Turnier-Datenbank vollständig und entfernt sie aus dem Cache', async () => {
+    const registry = createTurnierDbRegistry(nano);
+    const turnierId = randomUUID();
+
+    const db = await registry.openTurnierDb(turnierId);
+    await db.insert({ _id: 'turnier:meta', typ: 'turnier', name: 'Zu löschendes Turnier' });
+
+    await registry.deleteTurnierDb(turnierId);
+
+    const idsNachLoeschen = await registry.listTurnierIds();
+    assert.ok(!idsNachLoeschen.includes(turnierId));
+
+    // Erneutes Öffnen legt eine frische, leere Datenbank an (kein Cache-Rest vom alten Handle).
+    const neueDb = await registry.openTurnierDb(turnierId);
+    const gelesen = await neueDb.get('turnier:meta').catch((err) => (err.statusCode === 404 ? null : Promise.reject(err)));
+    assert.equal(gelesen, null);
+});

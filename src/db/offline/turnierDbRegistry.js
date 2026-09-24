@@ -23,5 +23,10 @@ export function createTurnierDbRegistry(nano) {
             .map((name) => name.slice(PRAEFIX.length));
     }
 
-    return { openTurnierDb, listTurnierIds };
+    async function deleteTurnierDb(turnierId) {
+        await nano.db.destroy(`${PRAEFIX}${turnierId}`);
+        cache.delete(turnierId);
+    }
+
+    return { openTurnierDb, listTurnierIds, deleteTurnierDb };
 }
