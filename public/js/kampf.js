@@ -74,10 +74,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- MATTEN LADEN ---
     async function ladeMatten() {
         try {
-            const response = await fetch(`/api/kampfflaechen?turnierId=${turnierId}`);
-            const mats = await response.json();
-            
-            if (!response.ok) throw new Error(mats.error || 'Fehler beim Laden der Kampfflächen.');
+            const mats = await window.Datenzugriff.ladeKampfflaechen(turnierId);
 
             mattenSelect.innerHTML = '<option value="" disabled selected hidden>Bitte wählen...</option>';
             mats.forEach(mat => {
@@ -110,10 +107,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             kampfplanContainer.style.display = 'none';
             if (offlineActions) offlineActions.style.display = 'none';
 
-            const response = await fetch(`/api/kaempfe?kampfflaecheId=${matId}`);
-            allFights = await response.json();
-
-            if (!response.ok) throw new Error(allFights.error || 'Fehler beim Laden der Kämpfe.');
+            allFights = await window.Datenzugriff.ladeKaempfeDerMatte(matId);
 
             renderKämpfe();
             kampfplanContainer.style.display = 'block';
@@ -345,12 +339,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!bestaetigt) return;
 
             try {
-                const response = await fetch(`/api/kampfflaechen/${matId}/pausieren`, { method: 'POST' });
-                const result = await response.json();
-                if (!response.ok || !result.success) {
-                    throw new Error(result.error || 'Matte konnte nicht pausiert werden.');
-                }
-                zeigeNotification(result.message || 'Matte pausiert.', 'success');
+                const result = await window.Datenzugriff.pausiereMatte(matId);
+                if (!result.ok) throw new Error(result.fehler || 'Matte konnte nicht pausiert werden.');
+                zeigeNotification(result.meldung || 'Matte pausiert.', 'success');
             } catch (err) {
                 zeigeNotification(err.message, 'error');
             }
@@ -400,15 +391,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!bestaetigt) return;
 
         try {
-            const response = await fetch(`/api/teilnehmer/${teilnehmerId}/${aktion}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ kampf_id: kampfId })
-            });
-            const result = await response.json();
-            if (!response.ok || !result.success) {
-                throw new Error(result.error || 'Aktion fehlgeschlagen.');
-            }
+            const result = await window.Datenzugriff.werteForfeit(teilnehmerId, kampfId, aktion);
+            if (!result.ok) throw new Error(result.fehler || 'Aktion fehlgeschlagen.');
             zeigeNotification('Forfeit gewertet.', 'success');
             ladeKämpfe(mattenSelect.value);
         } catch (err) {
@@ -419,16 +403,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- KAMPF STARTEN ---
     async function startKampf(kampf) {
         try {
-            const response = await fetch(`/api/kaempfe/${kampf.id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: 'gestartet' })
-            });
-
-            if (!response.ok) {
-                const err = await response.json();
-                throw new Error(err.error || 'Fehler beim Starten des Kampfes.');
-            }
+            const start = await window.Datenzugriff.aktualisiereKampf(kampf.id, { status: 'gestartet' });
+            if (!start.ok) throw new Error(start.fehler || 'Fehler beim Starten des Kampfes.');
 
             zeigeNotification('Kampf gestartet.', 'success');
 
@@ -510,22 +486,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         const kampfzeit_in_sekunden = parseInt(kampfzeit.value, 10);
 
         try {
-            const response = await fetch(`/api/kaempfe/${id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    status: 'beendet',
-                    sieger_id,
-                    unterbewertung_kaempfer1,
-                    unterbewertung_kaempfer2,
-                    kampfzeit_in_sekunden
-                })
+            const ergebnis = await window.Datenzugriff.aktualisiereKampf(id, {
+                status: 'beendet',
+                sieger_id,
+                unterbewertung_kaempfer1,
+                unterbewertung_kaempfer2,
+                kampfzeit_in_sekunden
             });
-
-            if (!response.ok) {
-                const err = await response.json();
-                throw new Error(err.error || 'Fehler beim Speichern des Ergebnisses.');
-            }
+            if (!ergebnis.ok) throw new Error(ergebnis.fehler || 'Fehler beim Speichern des Ergebnisses.');
 
             zeigeNotification('Kampfergebnis gespeichert.', 'success');
             resultModal.style.display = 'none';

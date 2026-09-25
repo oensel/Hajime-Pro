@@ -235,11 +235,8 @@ function changeFighterColorSlider(isRot) {
     // Kampfergebnisses) — im Offline-Modus gibt es keinen erreichbaren Server dafür, der
     // fetch() würde nur einen Konsolenfehler erzeugen (siehe QA-Bericht F7).
     if (currentFightId && !isOfflineMode) {
-        fetch(`/api/kaempfe/${currentFightId}/color`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ color: state.fighter2Color })
-        }).catch(err => console.error("Fehler beim Speichern der Kämpferfarbe im Backend:", err));
+        window.Datenzugriff.setzeLiveFarbe(currentFightId, state.fighter2Color)
+            .catch(err => console.error("Fehler beim Speichern der Kämpferfarbe im Backend:", err));
     }
 }
 
@@ -1504,9 +1501,7 @@ async function ladeMatten() {
             return;
         }
 
-        const response = await fetch(`/api/kampfflaechen?turnierId=${turnierId}`);
-        if (!response.ok) throw new Error('Fehler beim Laden der Kampfflächen für das Turnier.');
-        const matten = await response.json();
+        const matten = await window.Datenzugriff.ladeKampfflaechen(turnierId);
         
         const selectEl = document.getElementById('matSelect');
         if (selectEl) {
@@ -1567,9 +1562,7 @@ async function naechstenKampfHolen() {
                 naechster = offlineState.kaempfe.find(k => k.status === 'angelegt');
             }
         } else {
-            const response = await fetch(`/api/kaempfe?kampfflaecheId=${selectedMatId}`);
-            if (!response.ok) throw new Error('Fehler beim Laden der Kämpfe.');
-            const kaempfe = await response.json();
+            const kaempfe = await window.Datenzugriff.ladeKaempfeDerMatte(selectedMatId);
 
             naechster = kaempfe.find(k => k.status === 'gestartet');
             if (!naechster) {
@@ -1654,11 +1647,10 @@ async function naechstenKampfHolen() {
                 naechster.status = 'gestartet';
                 localStorage.setItem('offlineState', JSON.stringify(offlineState));
             } else {
-                await fetch(`/api/kaempfe/${naechster.id}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ status: 'gestartet' })
-                });
+                // Wie bisher nicht blockierend: scheitert der Start (z.B. Matte pausiert), bleibt der
+                // Kampf trotzdem geladen.
+                const start = await window.Datenzugriff.aktualisiereKampf(naechster.id, { status: 'gestartet' });
+                if (!start.ok) console.warn('Kampf konnte nicht als gestartet markiert werden:', start.fehler);
             }
         }
         
@@ -1799,14 +1791,13 @@ async function ergebnisSenden() {
             }
             zeigeNotification("Kampfergebnis lokal gespeichert (Offline-Modus)!", "success");
         } else {
-            const response = await fetch(`/api/kaempfe/${currentFightId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-
-            if (!response.ok) throw new Error('Fehler beim Aktualisieren des Kampfes auf dem Server.');
-            zeigeNotification("Kampfergebnis erfolgreich übermittelt und gespeichert!", "success");
+            const ergebnis = await window.Datenzugriff.aktualisiereKampf(currentFightId, payload);
+            if (!ergebnis.ok) throw new Error(ergebnis.fehler || 'Fehler beim Aktualisieren des Kampfes auf dem Server.');
+            if (ergebnis.ausstehend) {
+                zeigeNotification(ergebnis.meldung, "info");
+            } else {
+                zeigeNotification("Kampfergebnis erfolgreich übermittelt und gespeichert!", "success");
+            }
         }
         
         currentFightId = null;
@@ -1832,9 +1823,11 @@ async function zeigeNaechsteKaempferVorschau() {
         if (isOfflineMode && offlineState) {
             kaempfe = offlineState.kaempfe;
         } else {
-            const response = await fetch(`/api/kaempfe?kampfflaecheId=${selectedMatId}`);
-            if (!response.ok) return;
-            kaempfe = await response.json();
+            try {
+                kaempfe = await window.Datenzugriff.ladeKaempfeDerMatte(selectedMatId);
+            } catch (err) {
+                return;
+            }
         }
 
         const anstehende = kaempfe.filter(k => k.status === 'bereit' || k.status === 'angelegt');
@@ -1886,9 +1879,11 @@ async function pruefeUndZeigePausenwarnung() {
         if (isOfflineMode && offlineState) {
             kaempfe = offlineState.kaempfe;
         } else {
-            const response = await fetch(`/api/kaempfe?kampfflaecheId=${selectedMatId}`);
-            if (!response.ok) return;
-            kaempfe = await response.json();
+            try {
+                kaempfe = await window.Datenzugriff.ladeKaempfeDerMatte(selectedMatId);
+            } catch (err) {
+                return;
+            }
         }
 
         const bereite = kaempfe
@@ -1959,15 +1954,8 @@ async function tauscheMitNaechstemKampf() {
             }
         } else {
             const turnierId = localStorage.getItem('aktiveTurnierId');
-            const response = await fetch('/api/kaempfe/reihenfolge-tauschen', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ turnierId, kampf1Id: pausenWarnungKampf.id, kampf2Id: pausenWarnungDanach.id })
-            });
-            if (!response.ok) {
-                const data = await response.json().catch(() => ({}));
-                throw new Error(data.error || 'Tausch fehlgeschlagen.');
-            }
+            const tausch = await window.Datenzugriff.tauscheReihenfolge(pausenWarnungKampf.id, pausenWarnungDanach.id, turnierId);
+            if (!tausch.ok) throw new Error(tausch.fehler || 'Tausch fehlgeschlagen.');
         }
         zeigeNotification('Reihenfolge getauscht.', 'success');
         await pruefeUndZeigePausenwarnung();
@@ -2002,9 +1990,11 @@ async function ladeMattenUebersicht() {
         if (isOfflineMode && offlineState) {
             kaempfe = offlineState.kaempfe;
         } else {
-            const response = await fetch(`/api/kaempfe?kampfflaecheId=${selectedMatId}`);
-            if (!response.ok) return;
-            kaempfe = await response.json();
+            try {
+                kaempfe = await window.Datenzugriff.ladeKaempfeDerMatte(selectedMatId);
+            } catch (err) {
+                return;
+            }
         }
 
         const kommende = kaempfe.filter(k => k.status === 'bereit' || k.status === 'angelegt');
@@ -2146,15 +2136,8 @@ async function speichereSteuerungKorrektur() {
                 localStorage.setItem('offlineState', JSON.stringify(offlineState));
             }
         } else {
-            const response = await fetch(`/api/kaempfe/${kampfId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            if (!response.ok) {
-                const data = await response.json().catch(() => ({}));
-                throw new Error(data.error || 'Korrektur fehlgeschlagen.');
-            }
+            const korrektur = await window.Datenzugriff.aktualisiereKampf(kampfId, payload);
+            if (!korrektur.ok) throw new Error(korrektur.fehler || 'Korrektur fehlgeschlagen.');
         }
 
         zeigeNotification('Kampfergebnis korrigiert.', 'success');
