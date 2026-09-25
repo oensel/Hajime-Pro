@@ -18,6 +18,13 @@ export function getSyncRoutes(holeSync) {
             if (sync) await sync.leerlauf();
             res.json({ success: true });
         });
+
+        // Simuliert einen Server-Neustart der Brücke: Feed wieder ab Sequenz 0 lesen.
+        router.post('/test/bruecke-neustart', async (req, res) => {
+            const sync = holeSync();
+            if (sync) await sync.brueckeNeuStarten();
+            res.json({ success: true });
+        });
     }
 
     return router;

@@ -4,6 +4,7 @@
 import { randomUUID } from 'crypto';
 import { erzeugeDokumentDb, turnierDbName } from './dokumentDb.js';
 import { erzeugeAbgleich } from './abgleich.js';
+import { erzeugeBruecke } from './bruecke.js';
 
 // Löscht alle Turnierdaten; benutzer/vereine bleiben erhalten (Login am Hallen-Server).
 export async function leereTurnierdaten(knex) {
@@ -24,6 +25,7 @@ export async function starteSyncDienst({ knex, konfig }) {
     const dokumentDb = erzeugeDokumentDb(konfig);
     const zustand = { instanzId: null, turnierId: null, db: null };
     const abgleich = erzeugeAbgleich({ knex, zustand });
+    const bruecke = erzeugeBruecke({ knex, zustand, abgleich });
 
     // Nur die DB der aktuellen Instanz ist über /db erreichbar — alle anderen Namen (alte
     // Instanzen, Tippfehler) liefern 404, damit niemand eine gelöschte DB versehentlich per
@@ -78,9 +80,10 @@ export async function starteSyncDienst({ knex, konfig }) {
             };
         },
         planeAbgleich() { abgleich.plane(); },
-        async leerlauf() { await abgleich.leerlauf(); },
-        async nachAktivierung() { await abgleich.fuehreAus(); },
-        async vorDeaktivierung() { await abgleich.leerlauf(); }
+        async leerlauf() { await abgleich.leerlauf(); await bruecke.leerlauf(); },
+        async nachAktivierung() { await abgleich.fuehreAus(); bruecke.starte(); },
+        async vorDeaktivierung() { await bruecke.stoppe(); await abgleich.leerlauf(); },
+        async brueckeNeuStarten() { await bruecke.neuStarten(); }
     };
 
     // Das (einzige) vorhandene Turnier wird verzögert beim ERSTEN Request aktiviert, nicht beim
