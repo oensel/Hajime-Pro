@@ -44,6 +44,7 @@ Damit dieser Ausbau ohne Umbau möglich bleibt, gelten ab Stufe 1 drei Leitlinie
 | 6 | Netz-Topologie | Server lokal in der Halle (heutiger Offline-Modus mit SQLite); Cloud-Abgleich weiter per bestehendem Turnier-Export/-Import |
 | 7 | CouchDB-Implementierung | Eingebettet per `express-pouchdb` im Node-Prozess, kein separates Apache CouchDB |
 | 8 | Mannschaftskämpfe | Stufe 1 nur Einzel-Pools; Mannschaftsdaten werden lesend repliziert |
+| – | Turniere pro Hallen-Server | Immer genau eines; Anlegen/Einlesen löscht alle Turnierdaten in SQLite und Dokument-DB, neue `instanz_id` |
 | – | Frontend-Datenzugriff | Waage und Scoreboard schreiben immer in die Dokument-DB des eigenen Knotens (`/db`); keine doppelte REST-Implementierung |
 
 ## 3. Architektur und Betriebsmodi
@@ -61,14 +62,16 @@ Weitere neue `.env`-Parameter:
 - `SYNC_SERVER_URL` – Client: Basis-URL des Hallen-Servers, z. B. `http://hallenrechner:3000/db`
 - `SYNC_SECRET` – gemeinsames Geheimnis für die Replikation Notebook ↔ Hallen-Server
 - `SYNC_DATENVERZEICHNIS` – LevelDB-Ablage, Standard `./data/dokumente`
-- `SYNC_TURNIER_ID` – Client: welches Turnier repliziert wird (alternativ Auswahl beim ersten Start
-  aus der Turnierliste des Servers)
+
+Eine Turnierauswahl auf dem Client entfällt: Der Hallen-Server trägt immer genau ein Turnier (siehe
+Abschnitt 3a), der Client repliziert die aktuell vom Server gemeldete Turnier-Instanz.
 
 ### Neue Komponenten
 
 | Datei | Modus | Aufgabe |
 |---|---|---|
-| `src/sync/dokumentDb.js` | server + client | Startet PouchDB/LevelDB, hängt `express-pouchdb` unter `/db` ein, eine DB pro Turnier (`turnier_<id>`), legt Mango-Indizes an |
+| `src/sync/dokumentDb.js` | server + client | Startet PouchDB/LevelDB, hängt `express-pouchdb` unter `/db` ein, genau eine DB `turnier_<instanz_id>` für das aktuelle Turnier, legt Mango-Indizes an |
+| `src/sync/turnierInstanz.js` | server + client | Server: Zurücksetzen beim Anlegen/Einlesen, neue `instanz_id`. Client: Instanzwechsel erkennen, lokale DB verwerfen und neu aufbauen |
 | `src/sync/authDb.js` | server + client | Middleware vor `/db`: Replikation per `SYNC_SECRET`, Browser per JWT bzw. Steuerungs-Passwort |
 | `src/sync/replikation.js` | client | Kontinuierliche bidirektionale Live-Replikation mit Retry, Uhr-Abgleich beim Verbinden, Statusmeldung an das Frontend |
 | `src/sync/bruecke/index.js` | server | Liest den `_changes`-Feed, verteilt nach Dokumenttyp, verwaltet `_local/bruecke-checkpoint` |
@@ -95,10 +98,50 @@ dupliziert wird.
   `konfig:steuerung`, damit er offline funktioniert.
 - Im Client-Modus gibt es keine Knex-/SQLite-Instanz.
 
+## 3a. Ein Turnier pro Hallen-Server
+
+Auf dem Hallen-Server wird immer genau ein Turnier ausgetragen.
+
+### Zurücksetzen beim Anlegen oder Einlesen
+
+Gilt ausschließlich für `SYNC_ROLLE=server`. Der Cloud-Betrieb (Postgres, Turniere aller Vereine)
+bleibt unverändert.
+
+Beim Anlegen eines neuen Turniers und beim Einlesen einer Turnierdatei (bestehender
+Turnier-Import) passiert in dieser Reihenfolge:
+
+1. Bestätigungsdialog in der Oberfläche: „Alle Daten des bisherigen Turniers auf diesem Server
+   werden gelöscht.“
+2. Brücke und `_changes`-Verarbeitung anhalten.
+3. SQLite: alle Turnierdaten löschen (`turniere`, `kampfflaechen`, `pools`, `turnier_teilnehmer`,
+   `kaempfe`, `mannschaften`, `mannschaft_mitglieder`, `mannschaftskaempfe`). `benutzer` und
+   `vereine` bleiben erhalten, damit der Login am Hallen-Server weiter funktioniert.
+4. Die bisherige Dokument-DB `turnier_<alte_instanz_id>` löschen (`destroy`).
+5. Neue `instanz_id` (UUID) erzeugen, Turnier anlegen bzw. importieren, neue DB
+   `turnier_<neue_instanz_id>` anlegen und vollständig aus SQLite befüllen.
+6. Brücke wieder starten.
+
+Die `instanz_id` wird in SQLite am Turnier gespeichert (neue Spalte, Migration) und über
+`/api/sync/status` ausgeliefert.
+
+### Instanzwechsel auf dem Client
+
+Der Name der Dokument-DB enthält die `instanz_id`. Ein Notebook kann alte Dokumente deshalb nie in
+die neue Server-DB zurückreplizieren, denn es repliziert immer nur zwischen gleichnamigen DBs.
+
+Beim Verbinden (und bei jedem Reconnect) fragt der Client `/api/sync/status` ab:
+
+- **Gleiche Instanz:** normale Replikation.
+- **Andere Instanz:** Replikation stoppen. Hat die lokale DB noch nicht übertragene Änderungen, werden
+  diese als JSON nach `data/verworfen/<alte_instanz_id>_<zeitstempel>.json` geschrieben, und Waage
+  bzw. Scoreboard zeigen einen Warnhinweis. Danach wird die lokale DB gelöscht und die neue Instanz
+  vollständig repliziert. Geöffnete Seiten laden sich neu.
+- **Server hat kein Turnier:** Status gelb „kein Turnier auf dem Server“, lokale DB bleibt unverändert.
+
 ## 4. Dokumentmodell
 
-Eine Datenbank pro Turnier: `turnier_<id>`. Bei wenigen hundert Dokumenten wird vollständig
-repliziert, ohne Filter.
+Genau eine Datenbank für das aktuelle Turnier: `turnier_<instanz_id>` (siehe Abschnitt 3a). Bei
+wenigen hundert Dokumenten wird vollständig repliziert, ohne Filter.
 
 Jedes Dokument spiegelt genau eine Zeile der relationalen Tabelle, **Feldnamen identisch zu den
 Spalten**, damit `src/shared/`-Logik Dokumente und DB-Zeilen gleichermaßen verarbeiten kann.
@@ -235,6 +278,9 @@ Playwright bleibt die einzige automatisierte Suite.
 3. Je ein Test pro Zeile der Konflikttabelle (Abschnitt 6).
 4. Neustart des Hallen-Servers während ausstehender Änderungen → die Brücke setzt am Checkpoint fort,
    nichts wird doppelt angewendet.
+5. Ein neues Turnier wird eingelesen, während ein Client mit ausstehenden Änderungen offline ist →
+   nach dem Reconnect enthält die Server-DB keine Dokumente des alten Turniers, der Client hat die
+   neue Instanz, und die verworfenen Änderungen liegen in `data/verworfen/`.
 
 ### Wiederverwendung
 
