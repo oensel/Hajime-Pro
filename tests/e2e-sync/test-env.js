@@ -1,0 +1,21 @@
+// Gemeinsame Konfiguration der Sync-Suite (Hallen-Server mit SYNC_ROLLE=server). Eigener Port,
+// eigene SQLite-Datei und eigenes Dokument-Verzeichnis, damit sie neben npm run test:e2e und einem
+// Dev-Server laufen kann.
+export const SYNC_TEST_PORT = 3200;
+export const SYNC_BASE_URL = `http://localhost:${SYNC_TEST_PORT}`;
+export const SYNC_TEST_SQLITE_PATH = './data/test-sync.sqlite';
+export const SYNC_TEST_DOKUMENTE = './data/test-sync-dokumente';
+
+export const syncServerEnv = {
+    ...process.env,
+    IS_OFFLINE: 'true',
+    DB_CLIENT: 'sqlite',
+    DB_SQLITE_PATH: SYNC_TEST_SQLITE_PATH,
+    PORT: String(SYNC_TEST_PORT),
+    SYNC_ROLLE: 'server',
+    SYNC_DATENVERZEICHNIS: SYNC_TEST_DOKUMENTE,
+    NODE_ENV: 'test',
+    // Leer statt undefined, siehe tests/e2e/test-env.js (dotenv überschreibt gesetzte Werte nicht).
+    STEUERUNG_PASSWORD: '',
+    SMTP_HOST: ''
+};

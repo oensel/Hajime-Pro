@@ -113,6 +113,12 @@ export async function createTurnier(knex, req, res) {
         const altersklassenDB = typeof altersklassen === 'string' ? altersklassen : JSON.stringify(altersklassen || {});
         const mannschaftsAltersklassenDB = typeof mannschafts_altersklassen === 'string' ? mannschafts_altersklassen : JSON.stringify(mannschafts_altersklassen || []);
 
+        // Hallen-Server mit Sync: genau ein Turnier — das Anlegen ersetzt das bisherige komplett
+        // (SQL + Dokument-DB, siehe Spec CouchDB-Umbau Abschnitt 8). Der Bestätigungsdialog sitzt
+        // im Frontend (turnier.js).
+        const sync = req.app.get('sync');
+        if (sync) await sync.vorTurnierwechsel();
+
         const [idObj] = await knex('turniere').insert({
             bezeichnung,
             ort,
@@ -136,6 +142,7 @@ export async function createTurnier(knex, req, res) {
 
         const turnierId = typeof idObj === 'object' ? idObj.id : idObj;
         await synchronisiereKampfflaechen(knex, turnierId, parseInt(anzahl_kampfflaechen) || 1);
+        if (sync) await sync.aktiviereTurnier(turnierId);
         res.status(201).json({ success: true, turnierId });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
@@ -682,6 +689,9 @@ export async function importTurnier(knex, req, res) {
             try { mak = JSON.parse(mak); } catch (e) { mak = []; }
         }
 
+        const sync = req.app.get('sync');
+        if (sync) await sync.vorTurnierwechsel();
+
         const neuesTurnierId = await knex.transaction(async (trx) => {
             // Der Offline-Kiosk-Betrieb geht von genau einem aktiven Turnier aus (siehe
             // automatische Turnier-Auswahl in turniere.html) — vor dem Import wird die
@@ -734,6 +744,8 @@ export async function importTurnier(knex, req, res) {
 
             return turnierId;
         });
+
+        if (sync) await sync.aktiviereTurnier(neuesTurnierId);
 
         return res.status(201).json({
             success: true,
