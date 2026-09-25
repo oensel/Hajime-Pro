@@ -17,7 +17,7 @@ test('mitServerStand übernimmt Spalten, _rev und Nur-Dokument-Felder, entfernt 
     const neu = mitServerStand(alt, 'kaempfe', { id: 7, status: 'beendet', sieger_id: 5, updated_at: datum });
     assert.equal(neu._id, 'kampf:7');
     assert.equal(neu._rev, '3-x');
-    assert.equal(neu.typ, 'kampf');
+    assert.equal(neu.dokumenttyp, 'kampf');
     assert.equal(neu.sql_id, 7);
     assert.equal(neu.status, 'beendet');
     assert.equal(neu.updated_at, '2026-09-25T10:00:00.000Z');
@@ -34,6 +34,12 @@ test('Vergleich toleriert SQLite/PostgreSQL-Darstellungen', () => {
     assert.equal(gleicheWerte(null, undefined), true);
     assert.equal(gleicheWerte('U18', 'U18'), true);
     assert.equal(gleicheWerte(5, 6), false);
+});
+
+test('Spalte typ (pools) kollidiert nicht mit dem Dokumenttyp', () => {
+    const doc = mitServerStand(null, 'pools', { id: 2, typ: 'mannschaft' });
+    assert.equal(doc.typ, 'mannschaft');
+    assert.equal(doc.dokumenttyp, 'pool');
 });
 
 test('unterscheidetSichVomServerStand', () => {

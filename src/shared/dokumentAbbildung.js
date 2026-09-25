@@ -7,6 +7,9 @@
  * und DB-Zeilen gleich verarbeiten kann. Zusätzlich gibt es Felder, die NUR im Dokument
  * existieren (Absichten der Matte/Waage und Rückmeldungen der Brücke) — sie überleben jeden
  * Abgleich mit dem Server-Stand.
+ *
+ * Jedes Dokument trägt seinen Typ in `dokumenttyp` (kampf, pool, teilnehmer, ...), nicht in `typ` —
+ * das ist eine echte Spalte von pools.
  */
 
 export const LIVE_TABELLEN = {
@@ -49,8 +52,12 @@ export function gleicheWerte(a, b) {
 }
 
 function spaltenFelder(tabelle, zeile) {
-    const felder = { typ: LIVE_TABELLEN[tabelle], sql_id: zeile.id };
+    const felder = {};
     for (const [spalte, wert] of Object.entries(zeile)) felder[spalte] = normalisiere(wert);
+    // Nach den Spalten setzen: der Dokumenttyp heißt bewusst NICHT "typ", weil pools eine
+    // gleichnamige Spalte (einzel/mannschaft) hat.
+    felder.dokumenttyp = LIVE_TABELLEN[tabelle];
+    felder.sql_id = zeile.id;
     return felder;
 }
 
