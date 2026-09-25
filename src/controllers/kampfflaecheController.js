@@ -1,4 +1,5 @@
 import { synchronisiereMattenStatus, poolHatBereitsEchteKaempfe, aktualisierePoolStatusNachAuslosung } from './poolController.js';
+import { FachFehler } from '../utils/fachFehler.js';
 
 export async function createKampfflaeche(knex, req, res) {
     try {
@@ -120,36 +121,38 @@ export async function deleteKampfflaeche(knex, req, res) {
 // Manueller Stopp einer Matte (z.B. Arzt auf der Matte, technisches Problem, Kampfrichter-
 // Besprechung). Manuelle Zustände (pausiert/gesperrt) haben Vorrang vor der automatischen
 // Neuberechnung durch synchronisiereMattenStatus, bis sie aktiv wieder aufgehoben werden.
+export async function pausiereMatte(knex, id) {
+    const kf = await knex('kampfflaechen').where({ id }).first();
+    if (!kf) throw new FachFehler(404, 'Kampffläche nicht gefunden.');
+    if (kf.status === 'gesperrt') throw new FachFehler(400, 'Eine gesperrte Matte muss erst entsperrt werden.');
+    await knex('kampfflaechen').where({ id }).update({ status: 'pausiert', updated_at: knex.fn.now() });
+}
+
 export async function pausiereKampfflaeche(knex, req, res) {
     try {
-        const { id } = req.params;
-        const kf = await knex('kampfflaechen').where({ id }).first();
-        if (!kf) return res.status(404).json({ success: false, error: 'Kampffläche nicht gefunden.' });
-        if (kf.status === 'gesperrt') {
-            return res.status(400).json({ success: false, error: 'Eine gesperrte Matte muss erst entsperrt werden.' });
-        }
-        await knex('kampfflaechen').where({ id }).update({ status: 'pausiert', updated_at: knex.fn.now() });
+        await pausiereMatte(knex, req.params.id);
         return res.json({ success: true, message: 'Matte pausiert.' });
     } catch (error) {
-        return res.status(500).json({ success: false, error: error.message });
+        return res.status(error.statusCode || 500).json({ success: false, error: error.message });
     }
 }
 
 // Hebt "pausiert" auf und berechnet den automatischen Status (frei/pools_vorhanden/
 // in_austragung) aus der aktuellen Pool-Zuordnung neu.
+export async function setzeMatteFort(knex, id) {
+    const kf = await knex('kampfflaechen').where({ id }).first();
+    if (!kf) throw new FachFehler(404, 'Kampffläche nicht gefunden.');
+    if (kf.status !== 'pausiert') throw new FachFehler(400, 'Diese Matte ist nicht pausiert.');
+    await knex('kampfflaechen').where({ id }).update({ status: 'frei', updated_at: knex.fn.now() });
+    await synchronisiereMattenStatus(knex, parseInt(id, 10));
+}
+
 export async function setzeKampfflaecheFort(knex, req, res) {
     try {
-        const { id } = req.params;
-        const kf = await knex('kampfflaechen').where({ id }).first();
-        if (!kf) return res.status(404).json({ success: false, error: 'Kampffläche nicht gefunden.' });
-        if (kf.status !== 'pausiert') {
-            return res.status(400).json({ success: false, error: 'Diese Matte ist nicht pausiert.' });
-        }
-        await knex('kampfflaechen').where({ id }).update({ status: 'frei', updated_at: knex.fn.now() });
-        await synchronisiereMattenStatus(knex, parseInt(id, 10));
+        await setzeMatteFort(knex, req.params.id);
         return res.json({ success: true, message: 'Matte fortgesetzt.' });
     } catch (error) {
-        return res.status(500).json({ success: false, error: error.message });
+        return res.status(error.statusCode || 500).json({ success: false, error: error.message });
     }
 }
 
