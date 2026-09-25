@@ -1,4 +1,4 @@
-# CouchDB-Umbau – Stufe 1: Offline-fähige Waage und Scoreboard per Dokument-Replikation
+# CouchDB-Umbau: Offline-sichere Clients und Server-Cluster
 
 **Datum:** 2026-09-25
 **Branch:** `feature/couchdb-umbau` (abgezweigt von `feature/mannschaftskaempfe`)
@@ -6,317 +6,471 @@
 
 ## 1. Ziel
 
-Waage und Scoreboard sollen bei Verlust der WLAN-Verbindung zum Hallen-Server ohne Unterbrechung
-weiterarbeiten. Alle offline erfassten Daten (Wiegungen, Nachmeldungen, Kampfergebnisse) werden bei
-Wiederherstellung der Verbindung automatisch übertragen. Der Server berechnet maßgeblich die
-Folgekämpfe und deren Reihenfolge und stellt sie den Matten bereit; offline rechnet die Matte mit
-derselben Logik vorläufig selbst weiter.
+Hajime Pro soll am Wettkampftag ausfallsicher laufen:
 
-Server und Client laufen mit **identischer Software**. Der einzige Unterschied ist der Modus:
-Server-Modus = CouchDB-kompatible Dokument-DB (Replikationsziel), Client-Modus = lokale PouchDB.
+1. **Offline-sichere Clients:** Waage und Scoreboard/Mattenleitung laufen auf Notebooks und Tablets
+   mit lokalem Node-Server und lokaler PouchDB. Bricht die Verbindung zum Server ab, arbeiten sie
+   ohne Unterbrechung weiter. Sobald der Server wieder erreichbar ist, werden alle Daten übertragen.
+2. **Server-Cluster:** Zwei identische Linux-Server laufen als Master und Secondary. Fällt der Master
+   aus, kann die Turnierleitung den Secondary manuell aktiv setzen, ohne dass bestätigte Daten
+   verloren gehen.
 
-### Zielbild und Stufung
+Auf Servern und Clients läuft **identische Software**; der Modus wird per `.env` gewählt.
 
-- **Stufe 1 (diese Spec):** CouchDB als Sync-Schicht *neben* der relationalen DB. SQLite bleibt auf
-  dem Hallen-Server führend; nur Live-Daten (Teilnehmer/Wiegung, Pools, Kampfflächen, Kämpfe)
-  werden als Dokumente repliziert. Einzel-Pools vollständig offline-fähig.
-- **Stufe 2:** Mannschafts-Pools offline-fähig (Begegnungs-Engine DB-frei nach `src/shared/`).
-- **Stufe 3 ff.:** weitere Entitäten wandern nach CouchDB, die Brücke schrumpft entsprechend, bis
-  CouchDB führend ist. Jede Stufe erhält eine eigene Spec.
+### Architekturgrundsatz (dauerhaft, nicht nur Übergang)
 
-Damit dieser Ausbau ohne Umbau möglich bleibt, gelten ab Stufe 1 drei Leitlinien:
+- **Die relationale DB (PostgreSQL) enthält immer das komplette Turnier in aktuellster Form** und ist
+  führend.
+- **CouchDB/PouchDB dient ausschließlich der sicheren Synchronisierung der Live-Daten** mit
+  offline-fähigen Clients: Teilnehmer inkl. Wiegung, Pools, Kampfflächen, Kämpfe. Sie enthält nicht
+  das ganze Turnier.
+- Fachlogik, die auch auf dem Client laufen muss, liegt DB-frei in `src/shared/`.
 
-1. Das Dokumentmodell wird so entworfen, als wäre CouchDB bereits führend (ein Dokument pro
-   Entität, stabile `_id`, Feldnamen = Spaltennamen).
-2. Die Brücke CouchDB ↔ SQLite ist pro Dokumenttyp gekapselt, damit sie typweise entfernt werden
-   kann.
-3. Fachlogik, die auch auf dem Client laufen muss, liegt DB-frei in `src/shared/`.
+### Stufen
+
+- **Stufe 1 (diese Spec):** Sync-Schicht, Offline-Clients für Einzel-Pools, Server-Cluster.
+- **Stufe 2:** Mannschafts-Pools offline-fähig (Begegnungs-Engine DB-frei nach `src/shared/`,
+  Auswechseln offline).
 
 ## 2. Getroffene Entscheidungen
 
 | # | Frage | Entscheidung |
 |---|---|---|
-| 1 | Rolle von CouchDB | Sync-Schicht neben SQLite/Postgres, schrittweiser Ausbau Richtung „CouchDB führend“ |
-| 2 | Ort der Client-PouchDB | Im Node-Prozess auf dem Notebook (LevelDB), nicht im Browser |
-| 3 | Folgekämpfe offline | Client rechnet mit `src/shared/`-Logik weiter, Server rechnet nach und ist maßgeblich |
-| 4 | Waage offline | Wiegen **und** Nachmeldungen (Client-UUIDs, Dubletten-Prüfung beim Sync); Mannschaftszuordnung nur online |
-| 5 | Parallele Waagen | Mehrere Stationen, organisatorisch getrennt → „letzter gewinnt“ ohne Konflikt-UI |
-| 6 | Netz-Topologie | Server lokal in der Halle (heutiger Offline-Modus mit SQLite); Cloud-Abgleich weiter per bestehendem Turnier-Export/-Import |
-| 7 | CouchDB-Implementierung | Eingebettet per `express-pouchdb` im Node-Prozess, kein separates Apache CouchDB |
-| 8 | Mannschaftskämpfe | Stufe 1 nur Einzel-Pools; Mannschaftsdaten werden lesend repliziert |
-| – | Turniere pro Hallen-Server | Immer genau eines; Anlegen/Einlesen löscht alle Turnierdaten in SQLite und Dokument-DB, neue `instanz_id` |
-| – | Frontend-Datenzugriff | Waage und Scoreboard schreiben immer in die Dokument-DB des eigenen Knotens (`/db`); keine doppelte REST-Implementierung |
+| 1 | Rolle von CouchDB | Nur Sync-Schicht für Live-Daten; PostgreSQL bleibt dauerhaft führend und vollständig |
+| 2 | Ort der Client-PouchDB | Im Node-Prozess auf dem Client (LevelDB), nicht im Browser |
+| 3 | Folgekämpfe offline | Client rechnet mit `src/shared/`-Logik weiter; Master rechnet nach und ist maßgeblich |
+| 4 | Waage offline | Wiegen und Nachmeldungen (Client-UUIDs, Dubletten-Prüfung beim Sync); Mannschaftszuordnung nur online |
+| 5 | Parallele Waagen | Mehrere Stationen, organisatorisch getrennt: „letzter gewinnt“ ohne Konflikt-UI |
+| 6 | Netz-Topologie | Server in der Halle; Cloud-Abgleich weiter per bestehendem Turnier-Export/-Import |
+| 7 | CouchDB-Implementierung | Eingebettet per `express-pouchdb` im Node-Prozess |
+| 8 | Mannschaftskämpfe | Stufe 1 nur Einzel-Pools offline; Mannschaftsdaten werden nur lesend repliziert |
+| 9 | Frontend-Datenzugriff | Live-Funktionen schreiben in die Dokument-DB des eigenen Knotens (`/db`) |
+| 10 | Turniere pro Server | Immer genau eines; Anlegen/Einlesen löscht alle Turnierdaten (nur Hallen-Server) |
+| 11 | Ausfallsicherheit | Zwei identische Server, Master/Secondary, **manuelles** Umschalten |
+| 12 | Relationale Replikation | PostgreSQL-Streaming-Replikation, synchron mit automatischem Rückfall auf asynchron |
+| 13 | Erreichbarkeit | Virtuelle IP (VIP) per `keepalived`, gesteuert von der App; Clients arbeiten auf `localhost` |
+| 14 | Frontend-Aufteilung | Clients: Waage + Scoreboard + Mattenleitung. Server: volles Frontend inkl. Cluster-Status/Umschalten |
+| 15 | Berechtigung Umschalten | Nur mit Turnierleitungs-Login |
 
-## 3. Architektur und Betriebsmodi
+## 3. Betriebsmodi und Topologie
 
-### Konfigurationen
+```
+                 http://vip  (hält immer der Master)
+                      │
+      ┌───────────────┴───────────────┐
+  Server 1 (Master)              Server 2 (Secondary)
+  Node + PostgreSQL Primary  ──► Node + PostgreSQL Hot Standby   (Streaming-Replikation)
+  /db (Live-Dokumente)       ◄─► /db (Live-Dokumente)            (CouchDB-Replikation)
+      ▲
+      │  PouchDB-Replikation zu http://vip/db
+  ┌───┴──────────┬──────────────┐
+  Client A       Client B       Client C       (Notebook/Tablet, Browser → http://localhost:3000)
+  Node + PouchDB Node + PouchDB Node + PouchDB
+```
 
 | Knoten | `IS_OFFLINE` | `SYNC_ROLLE` | Datenhaltung |
 |---|---|---|---|
-| Cloud (Supabase) | `false` | *(leer)* | Postgres wie heute, kein Sync |
-| Hallen-Server | `true` | `server` | SQLite + eingebettete Dokument-DB unter `/db` + Brücke |
-| Notebook (Matte/Waage) | – | `client` | nur lokale PouchDB (LevelDB), repliziert zu `SYNC_SERVER_URL` |
+| Cloud (Supabase) | `false` | *(leer)* | Postgres wie heute, kein Sync, unverändert |
+| Hallen-Server (1 und 2) | `true` | `server` | lokale PostgreSQL + eingebettete Dokument-DB `/db` |
+| Client | – | `client` | nur lokale PouchDB (LevelDB); keine relationale DB |
 
-Weitere neue `.env`-Parameter:
+`IS_OFFLINE=true` bedeutet weiterhin „Hallenbetrieb“. Die Wahl der relationalen DB im Hallenbetrieb
+wird von `IS_OFFLINE` entkoppelt: `DB_CLIENT=pg|sqlite` (neu, Standard `sqlite` für Entwicklung und
+Einzelrechner ohne Cluster; im Cluster zwingend `pg`, weil SQLite keine Server-Replikation kann).
 
-- `SYNC_SERVER_URL` – Client: Basis-URL des Hallen-Servers, z. B. `http://hallenrechner:3000/db`
-- `SYNC_SECRET` – gemeinsames Geheimnis für die Replikation Notebook ↔ Hallen-Server
-- `SYNC_DATENVERZEICHNIS` – LevelDB-Ablage, Standard `./data/dokumente`
+### Neue `.env`-Parameter
 
-Eine Turnierauswahl auf dem Client entfällt: Der Hallen-Server trägt immer genau ein Turnier (siehe
-Abschnitt 3a), der Client repliziert die aktuell vom Server gemeldete Turnier-Instanz.
+| Parameter | Knoten | Bedeutung |
+|---|---|---|
+| `SYNC_ROLLE` | alle | `server` \| `client` \| leer |
+| `DB_CLIENT` | Server | `pg` \| `sqlite` |
+| `SYNC_SECRET` | Server + Client | gemeinsames Geheimnis für die Dokument-Replikation |
+| `SYNC_DATENVERZEICHNIS` | Server + Client | LevelDB-Ablage, Standard `./data/dokumente` |
+| `SYNC_SERVER_URL` | Client | `http://<vip>` |
+| `SYNC_MATTE` | Client | optional: vorausgewählte Kampffläche für Scoreboard/Mattenleitung |
+| `CLUSTER_KNOTEN` | Server | `server1` \| `server2` (leer = kein Cluster) |
+| `CLUSTER_PARTNER_URL` | Server | feste Adresse des anderen Servers, z. B. `http://192.168.10.12:3000` |
+| `CLUSTER_VIP` | Server | die virtuelle IP (nur Anzeige und keepalived-Vorlage) |
 
-### Neue Komponenten
+## 4. Frontend-Aufteilung
+
+### Client (`http://localhost:3000`)
+
+- **Waage** (`waage-modal.js`): Wiegen, QR-Scan, Nachmeldung. Mannschaftszuordnung ist offline
+  gesperrt, mit Hinweis.
+- **Scoreboard** (`steuerung.html`/`scoreboard.js`) mit allen Funktionen: Ergebnis, Farbe tauschen,
+  Reihenfolge tauschen, Kampfuhr/Golden Score, eingebettete Anzeige.
+- **Mattenleitung** (`kampf.html`/`kampf.js`): Kampfliste, Matte pausieren, „nicht angetreten“,
+  „disqualifizieren“, Ergebnis korrigieren. Ersatzkämpfer auswechseln (Mannschaft) ist offline
+  gesperrt (Stufe 2).
+- **Anzeige/Overlay** der eigenen Matte.
+- Eigener **Sync-Status** in allen Client-Seiten: grün = verbunden, gelb = offline mit n
+  ausstehenden Änderungen, rot = Authentifizierungs-/Konfigurationsfehler, blau = Turnierwechsel läuft.
+- Alle anderen Seiten (Turnierverwaltung, Teilnehmer, Pools, Mannschaften, Matten, Siegerliste,
+  Cluster) sind im Client-Modus nicht erreichbar. Das Menü (`menu.js`) blendet sie aus, der Server
+  antwortet auf ihre URLs mit einer Hinweisseite „nur am Server unter http://&lt;vip&gt;“.
+- Der Scoreboard-Login prüft das Steuerungs-Passwort gegen den Hash im replizierten Dokument
+  `konfig:steuerung`, damit er offline funktioniert.
+
+### Server (`http://<vip>` bzw. feste IP)
+
+- **Master:** komplettes Frontend wie heute, zusätzlich die Seite **Cluster** (`cluster.html`) mit
+  Status beider Server und Umschaltfunktion sowie die **Konfliktliste**.
+- **Secondary** (nur über seine feste IP erreichbar): Turnieransicht nur lesend (Schreibaktionen
+  deaktiviert, Hinweisbanner „Secondary – nur lesend“), Seite **Cluster** mit dem Knopf „Diesen
+  Server aktiv setzen“.
+- Waage, Scoreboard und Mattenleitung sind auch im Server-Frontend nutzbar und schreiben dort in die
+  Dokument-DB des Masters, mit demselben Code wie auf dem Client.
+
+## 5. Komponenten
 
 | Datei | Modus | Aufgabe |
 |---|---|---|
-| `src/sync/dokumentDb.js` | server + client | Startet PouchDB/LevelDB, hängt `express-pouchdb` unter `/db` ein, genau eine DB `turnier_<instanz_id>` für das aktuelle Turnier, legt Mango-Indizes an |
-| `src/sync/turnierInstanz.js` | server + client | Server: Zurücksetzen beim Anlegen/Einlesen, neue `instanz_id`. Client: Instanzwechsel erkennen, lokale DB verwerfen und neu aufbauen |
-| `src/sync/authDb.js` | server + client | Middleware vor `/db`: Replikation per `SYNC_SECRET`, Browser per JWT bzw. Steuerungs-Passwort |
-| `src/sync/replikation.js` | client | Kontinuierliche bidirektionale Live-Replikation mit Retry, Uhr-Abgleich beim Verbinden, Statusmeldung an das Frontend |
-| `src/sync/bruecke/index.js` | server | Liest den `_changes`-Feed, verteilt nach Dokumenttyp, verwaltet `_local/bruecke-checkpoint` |
-| `src/sync/bruecke/teilnehmer.js`, `kampf.js`, `pool.js`, `kampfflaeche.js`, `mannschaft.js` | server | Je Dokumenttyp: Dokument → SQLite (über Service-Funktionen) und SQLite → Dokument (Spiegelung) |
-| `src/sync/spiegeln.js` | server | `spiegleNachDokumentDb(tabelle, ids)` – Hook, den die REST-Controller nach Schreiboperationen aufrufen |
-| `src/sync/konflikte.js` | server | Anlegen und Auflösen von `konflikt:`-Dokumenten, Auflösung von CouchDB-`_conflicts` |
-| `src/sync/kaskadeLokal.js` | client | Wendet `kampfProgression.js`/`pausenRegel.js` auf die Kampf-Dokumente der eigenen Matte an |
+| `src/sync/dokumentDb.js` | server + client | PouchDB/LevelDB starten, `express-pouchdb` unter `/db`, DB `turnier_<instanz_id>` und `hajime_cluster` verwalten, Mango-Indizes anlegen |
+| `src/sync/authDb.js` | server + client | Middleware vor `/db`: Replikation per `SYNC_SECRET`, Browser per JWT bzw. Steuerungs-Passwort; Client-`/db` nur von `localhost` |
+| `src/sync/replikation.js` | client | Live-Replikation in beide Richtungen zu `SYNC_SERVER_URL/db`, Retry, Uhr-Abgleich, Statusermittlung |
+| `src/sync/turnierInstanz.js` | server + client | Server: Zurücksetzen und neue `instanz_id`. Client: Instanzwechsel erkennen und lokale DB neu aufbauen |
+| `src/sync/bruecke/index.js` | server (nur Master aktiv) | `_changes`-Feed lesen, nach Dokumenttyp verteilen, Idempotenz über `sync_angewendet` |
+| `src/sync/bruecke/teilnehmer.js`, `kampf.js`, `kampfflaeche.js` | server | Je Dokumenttyp: Dokument → Service-Funktion (Fachlogik, PostgreSQL) |
+| `src/sync/spiegeln.js` | server | `spiegleNachDokumentDb(tabelle, ids)`: PostgreSQL-Zeilen der Live-Tabellen → Dokumente; No-op ohne `SYNC_ROLLE=server` |
+| `src/sync/konflikte.js` | server | `konflikt:`-Dokumente, Auflösung von CouchDB-`_conflicts` |
+| `src/sync/kaskadeLokal.js` | client | Offline-Kaskade und Einreihung auf die Kampf-Dokumente der eigenen Matte anwenden |
+| `src/cluster/rolle.js` | server | Rollenermittlung beim Start, `bin-ich-master`, Beförderung, Rückstufung, Epoche |
+| `src/cluster/pgReplikation.js` | server | Replikationsstatus (`pg_stat_replication`), Umschalten synchron/asynchron, `pg_promote()` |
+| `src/cluster/partner.js` | server | Erreichbarkeit und Status des Partners abfragen |
 | `src/routes/syncRoutes.js` | server + client | `/api/sync/status`, Konfliktliste, Test-Endpunkte (nur `NODE_ENV=test`) |
-| `public/js/datenzugriff.js` | Frontend | Einheitlicher Datenzugriff für Waage, Scoreboard und Anzeigen per PouchDB-Browser (HTTP-Adapter) gegen `/db` des eigenen Knotens |
+| `src/routes/clusterRoutes.js` | server | `/api/cluster/status`, `/api/cluster/bin-ich-master`, `/api/cluster/aktivieren` |
+| `src/middleware/nurMaster.js` | server | Weist Schreibzugriffe auf einem Secondary mit 409 ab |
+| `src/middleware/clientFrontend.js` | client | Beschränkt ausgelieferte Seiten und `/api`-Routen auf den Client-Umfang |
+| `public/js/datenzugriff.js` | Frontend | Einheitlicher Live-Datenzugriff per PouchDB-Browser (HTTP-Adapter) gegen `/db` des eigenen Knotens |
+| `public/js/syncStatus.js` | Frontend | Sync-Status-Leiste (Client und Server) |
+| `public/cluster.html`, `public/js/cluster.js` | Frontend (Server) | Cluster-Status und Umschalten |
+| `deploy/linux/` | Betrieb | PostgreSQL-Replikationskonfiguration, keepalived-Vorlage, Skripte, systemd-Units, Anleitung |
 
 Die REST-Controller (`teilnehmerController.js`, `kampfController.js`, `kampfflaecheController.js`)
-werden so umgebaut, dass die fachliche Schreiblogik in aufrufbaren Service-Funktionen ohne
-`req`/`res` liegt. REST-Route und Brücke rufen dieselbe Funktion auf, damit die Knex-Logik nicht
-dupliziert wird.
+werden so umgebaut, dass die fachliche Schreiblogik in Service-Funktionen ohne `req`/`res` liegt.
+REST-Route und Brücke rufen dieselbe Funktion auf; die Knex-Logik wird nicht dupliziert.
 
-### Client-Modus – Funktionsumfang
+## 6. Dokumentmodell (Live-Daten)
 
-- Das Notebook liefert das komplette Frontend aus `public/` aus.
-- Voll funktionsfähig: Waage (`waage-modal.js`), Scoreboard (`steuerung.html`/`scoreboard.js`),
-  Anzeigen der eigenen Matte (`anzeige`, `overlay`).
-- Verwaltungsseiten (`turnier`, `teilnehmer`, `pools`, `mannschaften`, `matten` …) zeigen den Hinweis
-  „nur am Hallen-Server verfügbar“.
-- Der Scoreboard-Login prüft das Steuerungs-Passwort gegen den Hash im replizierten Dokument
-  `konfig:steuerung`, damit er offline funktioniert.
-- Im Client-Modus gibt es keine Knex-/SQLite-Instanz.
-
-## 3a. Ein Turnier pro Hallen-Server
-
-Auf dem Hallen-Server wird immer genau ein Turnier ausgetragen.
-
-### Zurücksetzen beim Anlegen oder Einlesen
-
-Gilt ausschließlich für `SYNC_ROLLE=server`. Der Cloud-Betrieb (Postgres, Turniere aller Vereine)
-bleibt unverändert.
-
-Beim Anlegen eines neuen Turniers und beim Einlesen einer Turnierdatei (bestehender
-Turnier-Import) passiert in dieser Reihenfolge:
-
-1. Bestätigungsdialog in der Oberfläche: „Alle Daten des bisherigen Turniers auf diesem Server
-   werden gelöscht.“
-2. Brücke und `_changes`-Verarbeitung anhalten.
-3. SQLite: alle Turnierdaten löschen (`turniere`, `kampfflaechen`, `pools`, `turnier_teilnehmer`,
-   `kaempfe`, `mannschaften`, `mannschaft_mitglieder`, `mannschaftskaempfe`). `benutzer` und
-   `vereine` bleiben erhalten, damit der Login am Hallen-Server weiter funktioniert.
-4. Die bisherige Dokument-DB `turnier_<alte_instanz_id>` löschen (`destroy`).
-5. Neue `instanz_id` (UUID) erzeugen, Turnier anlegen bzw. importieren, neue DB
-   `turnier_<neue_instanz_id>` anlegen und vollständig aus SQLite befüllen.
-6. Brücke wieder starten.
-
-Die `instanz_id` wird in SQLite am Turnier gespeichert (neue Spalte, Migration) und über
-`/api/sync/status` ausgeliefert.
-
-### Instanzwechsel auf dem Client
-
-Der Name der Dokument-DB enthält die `instanz_id`. Ein Notebook kann alte Dokumente deshalb nie in
-die neue Server-DB zurückreplizieren, denn es repliziert immer nur zwischen gleichnamigen DBs.
-
-Beim Verbinden (und bei jedem Reconnect) fragt der Client `/api/sync/status` ab:
-
-- **Gleiche Instanz:** normale Replikation.
-- **Andere Instanz:** Replikation stoppen. Hat die lokale DB noch nicht übertragene Änderungen, werden
-  diese als JSON nach `data/verworfen/<alte_instanz_id>_<zeitstempel>.json` geschrieben, und Waage
-  bzw. Scoreboard zeigen einen Warnhinweis. Danach wird die lokale DB gelöscht und die neue Instanz
-  vollständig repliziert. Geöffnete Seiten laden sich neu.
-- **Server hat kein Turnier:** Status gelb „kein Turnier auf dem Server“, lokale DB bleibt unverändert.
-
-## 4. Dokumentmodell
-
-Genau eine Datenbank für das aktuelle Turnier: `turnier_<instanz_id>` (siehe Abschnitt 3a). Bei
-wenigen hundert Dokumenten wird vollständig repliziert, ohne Filter.
-
-Jedes Dokument spiegelt genau eine Zeile der relationalen Tabelle, **Feldnamen identisch zu den
-Spalten**, damit `src/shared/`-Logik Dokumente und DB-Zeilen gleichermaßen verarbeiten kann.
+Genau eine Turnier-DB `turnier_<instanz_id>`; volle Replikation ohne Filter (wenige hundert
+Dokumente). Jedes Dokument spiegelt eine Tabellenzeile; **Feldnamen identisch zu den Spalten**, damit
+`src/shared/`-Logik Dokumente und Zeilen gleich verarbeiten kann.
 
 | `_id` | Inhalt | Schreibberechtigt |
 |---|---|---|
-| `teilnehmer:<schluessel>` | Stammdaten + `gewicht`, `gewogen`, `kampfbereit`, `gewogen_am`, `gewogen_station`, `sql_id`, ggf. `dublette_von`, `bruecke_fehler` | Server (Stammdaten), Waage (Wiegefelder, Nachmeldung) |
-| `pool:<id>` | Modus, Kampfzeit, Golden-Score-Einstellungen, `kampfflaeche_id`, `typ` | nur Server |
-| `kampfflaeche:<id>` | Bezeichnung, Status (z. B. pausiert) | Server, Scoreboard (Pause) |
-| `kampf:<id>` | `pool_id`, `kampfflaeche_id`, `kaempfer1_id`/`kaempfer2_id`, `kaempfer1/2_quelle_kampf_id`/`_quelle_typ`, `status`, `sieger_id`, `unterbewertung_kaempfer1/2`, `matte_reihenfolge`, `mannschaftskampf_id`, `mannschaft_gewichtsklasse`, `bearbeitet_von`, ggf. `bruecke_fehler` | Scoreboard (Ergebnis), `kaskadeLokal` (Slots, Reihenfolge), Server (maßgeblich) |
-| `mannschaft:<id>`, `mannschaftskampf:<id>` | wie Tabellenzeile | nur Server (Stufe 1) |
-| `konfig:steuerung` | Hash des Steuerungs-Passworts, Turnier-Basisdaten (Bezeichnung, Datum) | nur Server |
+| `teilnehmer:<schluessel>` | Stammdaten, die Waage/Scoreboard brauchen (Name, Verein, Judopass-ID, Geburtsjahr, Geschlecht, Altersklasse, `pool_id`) + `gewicht`, `gewogen`, `kampfbereit`, `gewogen_am`, `gewogen_station`, `sql_id`, ggf. `dublette_von`, `bruecke_fehler` | Master (Stammdaten), Waage (Wiegefelder, Nachmeldung) |
+| `pool:<id>` | Bezeichnung, Modus, Kampfzeit, Golden-Score-Einstellungen, `kampfflaeche_id`, `typ`, Altersklasse | nur Master |
+| `kampfflaeche:<id>` | Bezeichnung, Status (pausiert) | Master, Mattenleitung (Pause) |
+| `kampf:<id>` | `pool_id`, `kampfflaeche_id`, Slots `kaempfer1_id`/`kaempfer2_id` + `..._quelle_kampf_id`/`..._quelle_typ`, `status`, `sieger_id`, `unterbewertung_kaempfer1/2`, Farbzuordnung, `matte_reihenfolge`, `mannschaftskampf_id`, `mannschaft_gewichtsklasse`, `bearbeitet_von`, ggf. `bruecke_fehler` | Scoreboard/Mattenleitung (Ergebnis, Farbe, Reihenfolge, Status), `kaskadeLokal` (Slots, Reihenfolge), Master (maßgeblich) |
+| `mannschaft:<id>`, `mannschaftskampf:<id>` | wie Tabellenzeile | nur Master (Stufe 1) |
+| `konfig:steuerung` | Hash des Steuerungs-Passworts, Turnierbezeichnung und -datum | nur Master |
 | `konflikt:<uuid>` | `typ`, `prioritaet`, `bezug_id`, `version_lokal`, `version_server`, `erstellt_am`, `erledigt` | Brücke (Anlage), Turnierleitung (`erledigt`) |
-| `_local/bruecke-checkpoint` | zuletzt verarbeitete `_changes`-Sequenz (wird nicht repliziert) | Brücke |
+
+Die Cluster-DB `hajime_cluster` wird nur zwischen den beiden Servern repliziert, nicht zu den
+Clients, und enthält ein Dokument `cluster:zustand` (siehe Abschnitt 9).
 
 ### Schlüssel
 
-- Bestehende Datensätze: SQLite-ID als Schlüssel (`teilnehmer:123`, `kampf:456`).
-- Offline-Nachmeldungen: `teilnehmer:u-<uuid>` mit `sql_id: null`. Die Brücke legt den Teilnehmer
-  in SQLite an und trägt `sql_id` nach; die `_id` bleibt unverändert, weil eine Umbenennung die
-  Replikation stören würde. Verweise aus anderen Dokumenten (`kaempfer1_id`, `sieger_id`) nutzen stets
-  die SQLite-ID; ein offline nachgemeldeter Teilnehmer kann erst nach dem Sync einem Pool zugelost
-  werden, sodass solche Verweise nie auf eine UUID zeigen müssen.
-- **Kämpfe entstehen nie auf dem Client.** Die Manager erzeugen beim Anlegen eines Pools bereits alle
-  Kämpfe samt Quell-Verknüpfungen; die Offline-Kaskade füllt nur Slots bestehender Dokumente.
+- Bestehende Datensätze: PostgreSQL-ID als Schlüssel (`teilnehmer:123`, `kampf:456`).
+- Offline-Nachmeldungen: `teilnehmer:u-<uuid>` mit `sql_id: null`. Die Brücke legt den Teilnehmer an
+  und trägt `sql_id` nach; die `_id` bleibt unverändert. Verweise (`kaempfer1_id`, `sieger_id`) nutzen
+  immer die PostgreSQL-ID; nachgemeldete Teilnehmer werden erst nach dem Sync einem Pool zugelost.
+- **Kämpfe entstehen nie auf dem Client.** Die Manager erzeugen beim Anlegen eines Pools alle Kämpfe
+  samt Quell-Verknüpfungen; die Offline-Kaskade füllt nur Slots bestehender Dokumente.
 
 ### Reihenfolge
 
-Keine separaten Reihenfolge-Dokumente: Die Reihenfolge steht in `kampf.matte_reihenfolge`. Das
-Scoreboard sortiert per Mango-Index über (`kampfflaeche_id`, `status`, `matte_reihenfolge`).
-Offline behält die Matte die zuletzt vom Server verteilte Reihenfolge; neu spielbar gewordene Kämpfe
-hängt `kaskadeLokal` unter Beachtung von `pausenRegel.js` hinten an.
+Die Reihenfolge steht in `kampf.matte_reihenfolge`; keine eigenen Reihenfolge-Dokumente. Sortierung
+per Mango-Index über (`kampfflaeche_id`, `status`, `matte_reihenfolge`). Offline behält die Matte
+die zuletzt verteilte Reihenfolge; neu spielbar gewordene Kämpfe hängt `kaskadeLokal` unter
+Beachtung von `pausenRegel.js` hinten an. Manuelles Tauschen am Scoreboard ändert
+`matte_reihenfolge` der beiden Kampf-Dokumente.
 
-## 5. Datenfluss
+## 7. Datenfluss
 
-### Waage (identisch auf Notebook und Hallen-Server)
+### Waage
 
-1. `datenzugriff.js` liest `teilnehmer:*`; der QR-Scan sucht lokal über die Judopass-ID.
+1. `datenzugriff.js` liest `teilnehmer:*` aus der Dokument-DB des eigenen Knotens; der QR-Scan sucht
+   lokal per Judopass-ID.
 2. Beim Wiegen werden `gewicht`, `gewogen`, `kampfbereit`, `gewogen_am` (Gerätezeit + Server-Offset)
-   und `gewogen_station` gesetzt und das Dokument gespeichert. Offline bleibt es in der lokalen
-   PouchDB, die Replikation überträgt es später selbstständig.
-3. Eine Nachmeldung erzeugt ein neues Dokument `teilnehmer:u-<uuid>`.
-4. Die Brücke ruft auf dem Server die bestehende Service-Logik auf (Kampfbereit setzen, Anlegen mit
-   Dubletten-Prüfung) und spiegelt das Ergebnis zurück.
-5. Mannschaftszuordnung aus der Waage heraus bleibt ein REST-Aufruf und ist offline deaktiviert, mit
-   Hinweis in der Oberfläche.
+   und `gewogen_station` gesetzt. Offline bleibt das Dokument lokal, die Replikation überträgt es
+   später selbstständig.
+3. Eine Nachmeldung erzeugt `teilnehmer:u-<uuid>`.
+4. Die Brücke des Masters ruft die Service-Logik auf (Kampfbereit, Anlegen mit Dubletten-Prüfung)
+   und spiegelt das Ergebnis zurück.
 
-### Scoreboard (Ergebnis-Eintrag)
+### Scoreboard und Mattenleitung
 
-1. Das Scoreboard schreibt das Ergebnis in `kampf:<id>` (`sieger_id`, `status`, Unterbewertungen,
-   `bearbeitet_von: matte:<kampfflaecheId>`).
-2. **Client-Modus:** `kaskadeLokal` reagiert auf den lokalen `_changes`-Feed, füllt die Slots der
-   Folgekämpfe per `kampfProgression.js` und reiht neu spielbare Kämpfe ein. Das Scoreboard sieht den
-   nächsten Kampf sofort, auch offline. Bei Kämpfen aus Mannschafts-Pools rechnet `kaskadeLokal`
-   nicht (Stufe 2); die Matte wartet auf den Server.
-3. **Server:** Die Brücke wendet das Ergebnis über die bestehende Kampf-Update-Logik an
-   (`triggerPoolUpdate`, Kaskade, `planeKaempfeFuerKampfflaeche`) und schreibt **alle** dadurch
-   geänderten Kämpfe mit `bearbeitet_von: server` zurück, inklusive maßgeblicher Reihenfolge.
-4. Die Server-Version repliziert zur Matte und überschreibt lokal berechnete Slots und Reihenfolge.
-   Im Normalfall sind sie identisch, weil beide Seiten dieselbe `src/shared/`-Logik verwenden.
+1. Ergebnis, „nicht angetreten“, „disqualifizieren“, Farbe, Reihenfolge und Pause werden als
+   Dokument-Änderung geschrieben (`bearbeitet_von: matte:<kampfflaecheId>`). Pause betrifft
+   `kampfflaeche:<id>`, Disqualifikation/„nicht angetreten“ den Kampf **und** das Teilnehmer-Dokument
+   (Feld `status`).
+2. **Client:** `kaskadeLokal` reagiert auf den lokalen `_changes`-Feed und füllt Folgekämpfe per
+   `kampfProgression.js` (inkl. Freilos bei Disqualifikation/Nichtantreten), reiht neu spielbare
+   Kämpfe ein. Bei Mannschafts-Pools rechnet es nicht (Stufe 2).
+3. **Master:** Die Brücke wendet die Änderung über die bestehende Logik an (`triggerPoolUpdate`,
+   Kaskade, `planeKaempfeFuerKampfflaeche`, Teilnehmer-Aktionen inkl. Abschenken-Verbot) und schreibt
+   alle dadurch geänderten Kämpfe mit `bearbeitet_von: server` zurück.
+4. Die Master-Version repliziert zur Matte und überschreibt lokal berechnete Slots und Reihenfolge.
 
-### Turnierleitung (REST am Hallen-Server)
+### Turnierleitung (REST am Master)
 
-Korrekturen, Umplanungen und Disqualifikationen laufen wie bisher über die REST-Controller nach
-SQLite. Am Ende jeder relevanten Schreiboperation ruft der Controller
-`spiegleNachDokumentDb(tabelle, ids)` auf, das die betroffenen Dokumente mit
-`bearbeitet_von: server` aktualisiert. Im Cloud-Modus (kein `SYNC_ROLLE`) ist der Hook ein No-op.
+Schreiboperationen laufen wie bisher über die Controller nach PostgreSQL. Betrifft eine Operation
+Live-Tabellen, ruft der Controller danach `spiegleNachDokumentDb(tabelle, ids)` auf. Die REST-Antwort
+wird erst gesendet, wenn der PostgreSQL-Commit bestätigt (siehe Abschnitt 9) und die Dokumente
+geschrieben sind.
 
-### Schleifenvermeidung
+### Idempotenz und Schleifenvermeidung
 
 - Die Brücke ignoriert Änderungen mit `bearbeitet_von: server`.
-- Die zuletzt verarbeitete Sequenz steht in `_local/bruecke-checkpoint`; nach einem Neustart setzt
-  die Brücke genau dort fort.
-- Beim Serverstart mit leerer Dokument-DB wird der Ist-Stand des Turniers einmalig vollständig aus
-  SQLite gespiegelt.
+- Verarbeitete Änderungen stehen in der PostgreSQL-Tabelle `sync_angewendet (doc_id, rev,
+  angewendet_am)`, geschrieben in derselben Transaktion wie die fachliche Änderung. Die Tabelle wird
+  mit dem Turnier nach Server 2 repliziert. Beim Start und nach einer Übernahme liest die Brücke den
+  Feed ab Sequenz 0 und überspringt alles, was mit gleicher `rev` bereits angewendet wurde.
+- Beim Anlegen/Einlesen eines Turniers wird die Dokument-DB einmalig vollständig aus PostgreSQL
+  befüllt.
 
 ### Anzeigen
 
 `anzeige`, `overlay` und `dashboard` hören per `changes({ live: true })` auf die Dokument-DB des
-eigenen Knotens. `BroadcastChannel` bleibt nur für die Kommunikation innerhalb eines Browsers
-bestehen (Scoreboard → Overlay im selben Browser).
+eigenen Knotens. `BroadcastChannel` bleibt nur für die Kommunikation innerhalb eines Browsers.
 
-## 6. Konflikte und Fehlerbehandlung
+## 8. Ein Turnier pro Hallen-Server
 
-**Grundsatz:** Der Hallen-Server ist maßgeblich. Jede fachlich relevante automatische Auflösung wird
-als `konflikt:`-Dokument protokolliert.
+Gilt ausschließlich für `SYNC_ROLLE=server`; der Cloud-Betrieb bleibt unverändert.
+
+### Zurücksetzen beim Anlegen oder Einlesen (nur am Master)
+
+1. Bestätigungsdialog: „Alle Daten des bisherigen Turniers auf diesem Server werden gelöscht.“
+2. Brücke anhalten.
+3. PostgreSQL: alle Turnierdaten löschen (`turniere`, `kampfflaechen`, `pools`, `turnier_teilnehmer`,
+   `kaempfe`, `mannschaften`, `mannschaft_mitglieder`, `mannschaftskaempfe`, `sync_angewendet`).
+   `benutzer` und `vereine` bleiben erhalten. Die Löschung erreicht Server 2 über die
+   Streaming-Replikation.
+4. Neue `instanz_id` (UUID) erzeugen und in `cluster:zustand` sowie am Turnier (neue Spalte,
+   Migration) speichern.
+5. Alte Dokument-DB löschen, Turnier anlegen bzw. importieren, `turnier_<neue_instanz_id>` anlegen
+   und aus PostgreSQL befüllen.
+6. Brücke wieder starten.
+
+Der Secondary sieht die neue `instanz_id` über `hajime_cluster`, löscht seine alte Turnier-DB und
+repliziert die neue.
+
+### Instanzwechsel auf dem Client
+
+Der DB-Name enthält die `instanz_id`, daher kann ein Client alte Dokumente nie in die neue DB
+zurückreplizieren. Bei jedem (Re-)Connect fragt der Client `http://<vip>/api/sync/status` ab:
+
+- **Gleiche Instanz:** normale Replikation.
+- **Andere Instanz:** Replikation stoppen. Nicht übertragene Änderungen werden als JSON nach
+  `data/verworfen/<alte_instanz_id>_<zeitstempel>.json` geschrieben, mit Warnhinweis. Danach die
+  lokale DB löschen, die neue Instanz vollständig replizieren und geöffnete Seiten neu laden.
+- **Server hat kein Turnier:** Status gelb „kein Turnier auf dem Server“, lokale DB unverändert.
+
+## 9. Server-Cluster
+
+### Replikationswege
+
+| Weg | Inhalt | Technik |
+|---|---|---|
+| Server 1 → Server 2 | komplettes Turnier (relational) | PostgreSQL-Streaming-Replikation, Primary → Hot Standby |
+| Server 1 ↔ Server 2 | Live-Dokumente + `hajime_cluster` | CouchDB-Replikation in beide Richtungen |
+| Clients ↔ Master | Live-Dokumente | PouchDB-Replikation über `http://<vip>/db` |
+
+### Rollen
+
+- **Master:** PostgreSQL ist Primary, die App nimmt Schreibzugriffe an, die Brücke läuft, und der
+  Server hält die VIP.
+- **Secondary:** PostgreSQL ist Hot Standby (nur lesend), die Brücke ruht, `nurMaster.js` weist
+  Schreibzugriffe mit 409 ab, keine VIP.
+- `cluster:zustand` in `hajime_cluster`: `{ master: 'server1' | 'server2', epoche: <Zahl>,
+  instanz_id, geaendert_am, geaendert_von }`.
+
+### Start
+
+**Jeder Server startet als Secondary.** Er verbindet sich mit dem Partner und gleicht
+`hajime_cluster` ab.
+
+- Laut `cluster:zustand` bin ich Master, der Partner ist erreichbar und bestätigt das, und meine
+  PostgreSQL ist Primary: Ich werde Master.
+- Der Partner meldet eine höhere Epoche mit sich selbst als Master: Ich bleibe Secondary. Ist meine
+  PostgreSQL noch Primary (ich war früher Master), meldet die Cluster-Seite „Rückstufung
+  erforderlich“ und das Skript `deploy/linux/hajime-rueckstufen.sh` setzt meine PostgreSQL per
+  `pg_rewind` (Rückfall: neue Basissicherung) als Standby des neuen Masters neu auf.
+- Der Partner ist nicht erreichbar: Ich bleibe Secondary und warte auf manuelle Aktivierung.
+- Allererster Start (kein `cluster:zustand` vorhanden): `server1` wird Master mit Epoche 1.
+
+### Manuelles Umschalten
+
+Auf der Cluster-Seite des Secondary (erreichbar über dessen feste IP) gibt es den Knopf „Diesen
+Server aktiv setzen“. Er ist nur mit Turnierleitungs-Login bedienbar und nur aktiv, wenn der Master
+vom Secondary aus nicht erreichbar ist. Ein zweiter Bestätigungsdialog nennt die Folgen.
+
+1. `pg_promote()`: PostgreSQL des Secondary wird Primary.
+2. `cluster:zustand`: `master` auf sich selbst setzen, `epoche + 1`.
+3. Brücke starten: Sie verarbeitet den Feed ab 0 und holt über `sync_angewendet` alles nach, was
+   der alte Master noch nicht angewendet hatte.
+4. `bin-ich-master` liefert `ja`, keepalived übernimmt die VIP, und die Clients replizieren über die
+   gleiche Adresse weiter.
+
+Das Zurückschalten auf den ursprünglichen Server erfolgt auf dieselbe Weise, sobald dieser als
+Secondary vollständig synchron ist.
+
+### Kein Verlust bestätigter Daten
+
+- **PostgreSQL synchron:** `synchronous_commit = on` mit `synchronous_standby_names` auf den Partner.
+  Ein REST-Schreibvorgang gilt erst als bestätigt, wenn der Standby ihn hat.
+- **Automatischer Rückfall:** `pgReplikation.js` prüft alle 2 s `pg_stat_replication`. Ist der
+  Standby länger als 5 s nicht verbunden, setzt es `synchronous_standby_names = ''`
+  (`ALTER SYSTEM` + `pg_reload_conf()`), damit der Master weiterarbeitet, und die Cluster-Seite und
+  Statusleiste zeigen gelb „ohne Absicherung“. Ist der Standby wieder synchron, wird synchron
+  wieder aktiviert.
+- **Client-Daten** liegen in beiden CouchDBs und werden über `sync_angewendet` idempotent nachgeholt.
+  Eine Waage- oder Ergebnis-Änderung gilt für den Client als übertragen, sobald sie in der
+  Dokument-DB des Masters steht.
+- **Restrisiko:** Im Modus „ohne Absicherung“ können REST-Änderungen der letzten Sekunden bei einem
+  Ausfall des Masters verloren gehen. Das wird sichtbar angezeigt.
+
+### Netztrennung statt Ausfall
+
+Wird Server 2 aktiv gesetzt, obwohl Server 1 nur vom Netz getrennt war, und hat Server 1
+zwischenzeitlich weitergerechnet:
+
+- Server 1 hat keine VIP mehr, sobald er die höhere Epoche sieht. Bis dahin erreicht ihn kein
+  Client, der die VIP nutzt. Konkurrierende VIP-Ansprüche im selben Netz löst VRRP über die Priorität.
+- Seine PostgreSQL-Änderungen nach dem Umschalten gehen beim Rückstufen verloren (`pg_rewind`).
+  Betroffen sind nur Aktionen, die in dieser Zeit direkt über seine feste IP gemacht wurden.
+- Dokumente, die er in dieser Zeit mit `bearbeitet_von: server` geschrieben hat, führen zu
+  CouchDB-Konflikten. Die Revision des aktuellen Masters gewinnt, und die Brücke legt
+  `konflikt:`-Dokumente an.
+
+### Virtuelle IP
+
+`keepalived` (VRRP) auf beiden Servern. Das Prüfskript `curl -fs http://localhost:3000/api/cluster/bin-ich-master`
+entscheidet: Nur der Server, dessen App „ja“ meldet, hält die VIP. keepalived trifft keine eigene
+Failover-Entscheidung.
+
+### Cluster-Seite (`cluster.html`, nur Server-Frontend)
+
+Für Server 1 und 2 jeweils: erreichbar ja/nein, Rolle, Epoche, PostgreSQL-Rolle, Replikationsmodus
+(synchron/asynchron), relationaler Rückstand (Bytes/Sekunden), Dokument-Replikationsrückstand,
+verbundene Clients (letzter Kontakt je Client). Dazu der Knopf „Diesen Server aktiv setzen“ und der
+Hinweis „Rückstufung erforderlich“.
+
+## 10. Konflikte und Fehlerbehandlung
+
+**Grundsatz:** Der Master ist maßgeblich. Jede fachlich relevante automatische Auflösung wird als
+`konflikt:`-Dokument protokolliert und in der Konfliktliste (Server-Frontend) angezeigt.
 
 | Fall | Auflösung |
 |---|---|
-| Zwei Wiegungen desselben Judoka (CouchDB-`_conflicts`) | Jüngerer `gewogen_am` gewinnt, die Brücke entfernt die unterlegene Revision. Kein Konflikt-Dokument. |
-| Offline-Nachmeldung ist Dublette | Nicht anlegen; UUID-Dokument per `sql_id` und `dublette_von` mit dem vorhandenen Teilnehmer verknüpfen, Wiegedaten „letzter gewinnt“ übernehmen; Konflikt-Dokument (Info). |
-| Server lehnt Mattenergebnis ab (Kampf umgeplant, Teilnehmer disqualifiziert, Ergebnis von der Turnierleitung anders gesetzt) | Server-Version gewinnt und überschreibt; Konflikt-Dokument mit beiden Versionen. |
-| Offline-Kaskade weicht ab, Kampf noch nicht gespielt | Server-Version überschreibt stillschweigend. |
-| Offline-Kaskade weicht ab, Kampf offline bereits mit anderer Paarung gespielt | Keine automatische Lösung: Kampfstatus `klaerung`, Konflikt-Dokument mit hoher Priorität, Turnierleitung entscheidet manuell. |
-| Brücke scheitert an einer Änderung (Exception) | `bruecke_fehler` am Dokument + Konflikt-Dokument; der Feed läuft weiter. Erneuter Versuch bei der nächsten Änderung des Dokuments oder per Knopf in der Konfliktliste. |
-| Replikation scheitert an der Authentifizierung | Replikation stoppt, Status rot, keine automatischen Wiederholungen bis zur Korrektur der Konfiguration. |
+| Zwei Wiegungen desselben Judoka (`_conflicts`) | Jüngerer `gewogen_am` gewinnt; unterlegene Revision entfernen; kein Konflikt-Dokument |
+| Offline-Nachmeldung ist Dublette | Nicht anlegen; per `sql_id`/`dublette_von` verknüpfen, Wiegedaten „letzter gewinnt“; Konflikt-Dokument (Info) |
+| Master lehnt Mattenaktion ab (umgeplant, disqualifiziert, Ergebnis von Turnierleitung anders gesetzt) | Master-Version gewinnt; Konflikt-Dokument mit beiden Versionen |
+| Offline-Kaskade weicht ab, Kampf noch nicht gespielt | Master-Version überschreibt stillschweigend |
+| Offline-Kaskade weicht ab, Kampf offline bereits mit anderer Paarung gespielt | Status `klaerung`, Konflikt-Dokument mit hoher Priorität, Turnierleitung entscheidet |
+| Dokumente beider Server nach Netztrennung (`_conflicts`) | Revision mit `bearbeitet_von: server` der höheren Epoche gewinnt; Konflikt-Dokument |
+| Brücke scheitert (Exception) | `bruecke_fehler` am Dokument + Konflikt-Dokument; Feed läuft weiter; Wiederholung bei nächster Änderung oder per Knopf |
+| Replikation scheitert an Authentifizierung | Replikation stoppt, Status rot |
 
-**Neuer Kampfstatus:** `klaerung` wird dem bestehenden Status-Lifecycle der Kämpfe hinzugefügt
-(Migration). Kämpfe in `klaerung` werden vom Scoreboard nicht aufgerufen.
+Neuer Kampfstatus `klaerung` (Migration); solche Kämpfe werden vom Scoreboard nicht aufgerufen.
+Kampf-Dokumente, die der Master schreibt, tragen zusätzlich `epoche`.
 
-### Sichtbarkeit
+**Geräte-Uhr:** Beim Verbinden ermittelt der Client den Offset zur Server-Uhr und speichert
+`gewogen_am` korrigiert. Eine vor dem ersten Verbinden falsch gehende Uhr bleibt ein Restrisiko,
+entschärft durch die organisatorische Trennung der Waage-Stationen.
 
-- **Sync-Status** in Waage und Scoreboard: grün = verbunden, gelb = offline mit n ausstehenden
-  Änderungen, rot = Authentifizierungs- oder Konfigurationsfehler.
-- **Konfliktliste** in der Turnierleitung (`matten.html`): offene Konflikte mit beiden Versionen,
-  Knopf „erledigt“, bei Brückenfehlern Knopf „erneut versuchen“.
+## 11. Betrieb (`deploy/linux/`)
 
-### Restrisiko Geräte-Uhr
+- `README.md`: Installationsanleitung für zwei Debian-Server (Node, PostgreSQL, keepalived),
+  Netzplan mit VIP, Einrichtung der Streaming-Replikation, Ablauf „Umschalten“ und „Rückstufen“.
+- `postgresql/`: Konfigurationsausschnitte für Primary und Standby (`wal_level`, `max_wal_senders`,
+  `hot_standby`, `primary_conninfo`, Replikationsnutzer, `pg_hba.conf`).
+- `keepalived/keepalived.conf.vorlage` mit Prüfskript.
+- `hajime-rueckstufen.sh`: stoppt PostgreSQL, `pg_rewind` gegen den neuen Master (Rückfall
+  `pg_basebackup`), setzt `standby.signal`, startet PostgreSQL.
+- `systemd/hajime-pro.service`, Start nach PostgreSQL.
+- Die App benötigt für `pg_promote()` und `ALTER SYSTEM` einen PostgreSQL-Nutzer mit den
+  entsprechenden Rechten; die Rückstufung läuft als Skript unter dem Systemnutzer `postgres` und wird
+  über einen eng begrenzten `sudo`-Eintrag von der App angestoßen.
 
-„Letzter gewinnt“ hängt an Zeitstempeln. Beim Verbinden ermittelt der Client den Offset zur
-Server-Uhr und speichert `gewogen_am` korrigiert. Eine bereits vor dem ersten Verbinden falsch
-gehende Uhr bleibt ein Risiko, das durch die organisatorische Trennung der Waage-Stationen
-entschärft ist.
-
-## 7. Tests
+## 12. Tests
 
 Playwright bleibt die einzige automatisierte Suite.
 
-### Neue Suite `tests/e2e-sync/`
+### Sync-Suite `tests/e2e-sync/` (Windows-tauglich)
 
-- Eigene Config `playwright.sync.config.js`, npm-Script `test:e2e:sync`.
-- Startet zwei Knoten: Hallen-Server (Port 3100, SQLite `data/test.sqlite`, `/db`) und Client
-  (Port 3101, `SYNC_ROLLE=client`, LevelDB unter `data/test-client/`). Beide Datenverzeichnisse
-  werden im `globalSetup` zurückgesetzt.
-- Verbindungsabbruch per Test-Endpunkt `/api/sync/test/trennen` bzw. `/api/sync/test/verbinden`
-  (nur bei `NODE_ENV=test`), statt echter Netzwerk-Manipulation.
+- Eigene Config `playwright.sync.config.js`, Script `test:e2e:sync`.
+- Ein Server (SQLite, Port 3100) und ein Client (Port 3101, LevelDB unter `data/test-client/`),
+  Rücksetzen im `globalSetup`.
+- Verbindungsabbruch per `/api/sync/test/trennen` bzw. `/api/sync/test/verbinden` (nur
+  `NODE_ENV=test`).
+- Tests:
+  1. Die Waage wiegt offline 5 Judoka und legt 1 Nachmeldung an → nach dem Reconnect alles in der DB,
+     die Nachmeldung genau einmal.
+  2. DK8-Pool offline komplett am Client-Scoreboard → Ergebnisse, Kaskade und Siegerliste identisch
+     zum Online-Durchlauf.
+  3. Mattenleitung offline: Disqualifikation und „nicht angetreten“ → Freilos-Kaskade lokal, nach dem
+     Sync identisch am Server.
+  4. Je ein Test pro Konfliktfall aus Abschnitt 10 (ohne Netztrennungsfall).
+  5. Neustart des Servers mit ausstehenden Änderungen → nichts doppelt angewendet.
+  6. Turnierwechsel, während ein Client offline mit ausstehenden Änderungen ist → keine alten
+     Dokumente in der neuen DB, verworfene Änderungen in `data/verworfen/`.
+  7. Client-Frontend: Verwaltungsseiten sind nicht erreichbar, Waage, Scoreboard und Mattenleitung
+     schon.
+- Die vier bestehenden `tests/e2e/steuerung-*-online-vs-offline.spec.js` werden auf den Sync-Pfad
+  umgestellt und in diese Suite verschoben.
 
-### Kerntests
+### Cluster-Suite `tests/e2e-cluster/` (Docker)
 
-1. Die Waage wiegt offline 5 Judoka und legt 1 Nachmeldung an → nach dem Reconnect stehen alle Daten
-   in SQLite, die Nachmeldung existiert genau einmal.
-2. Das Scoreboard spielt einen DK8-Pool offline komplett durch → nach dem Reconnect sind die
-   SQLite-Ergebnisse, die Kaskade und die Siegerliste identisch zum Online-Durchlauf.
-3. Je ein Test pro Zeile der Konflikttabelle (Abschnitt 6).
-4. Neustart des Hallen-Servers während ausstehender Änderungen → die Brücke setzt am Checkpoint fort,
-   nichts wird doppelt angewendet.
-5. Ein neues Turnier wird eingelesen, während ein Client mit ausstehenden Änderungen offline ist →
-   nach dem Reconnect enthält die Server-DB keine Dokumente des alten Turniers, der Client hat die
-   neue Instanz, und die verworfenen Änderungen liegen in `data/verworfen/`.
+- `docker compose` mit zwei Server-Containern (je Node + PostgreSQL), einem Client-Container und
+  einem kleinen VIP-Proxy-Container, der die VIP-Rolle simuliert: Er leitet an den Server weiter,
+  dessen `bin-ich-master` „ja“ meldet. Script `test:e2e:cluster`.
+- Tests:
+  1. REST-Änderung am Master → sofort im Standby lesbar (synchron).
+  2. Master stoppen → Umschalten per Knopf auf Server 2 → alle bestätigten REST-Änderungen und alle
+     Client-Dokumente vorhanden, Brücke holt Ausstehendes nach, Client repliziert über die VIP weiter.
+  3. Alter Master startet neu → erkennt höhere Epoche, bleibt Secondary, Rückstufung → wieder
+     synchroner Standby.
+  4. Standby stoppen → Master schaltet auf asynchron, Statusanzeige gelb; Standby zurück → synchron.
+  5. Netztrennung mit Doppelberechnung → Konflikt-Dokumente, Revision der höheren Epoche gewinnt.
+- Das echte keepalived-Verhalten wird nicht automatisiert getestet, sondern per Checkliste in
+  `deploy/linux/README.md` abgenommen.
 
-### Wiederverwendung
+## 13. Ablösung des alten Offline-Mechanismus
 
-Die vier bestehenden `tests/e2e/steuerung-*-online-vs-offline.spec.js` (JGJ, DK8, DK16,
-Gruppen-Überkreuz) vergleichen bereits den Online- mit dem Offline-Pfad. Sie werden auf den neuen
-Sync-Pfad umgestellt und in die Sync-Suite verschoben; sie dienen als Orakel für die
-Offline-Kaskade.
+Letzter Schritt von Stufe 1, erst wenn die Sync-Suite grün ist.
 
-Neue oder erweiterte `src/shared/`-Funktionen werden über die E2E-Pfade in beiden Modi abgedeckt
-(kein Unit-Test-Setup vorhanden).
+**Entfällt:** JSON-Export/-Import pro Matte (`offlineController.js`, `offlineRoutes.js`,
+`/api/offline/*`, Buttons in `kampf.js`) sowie `offlineState`/`isOfflineMode` in `scoreboard.js`.
 
-## 8. Ablösung des alten Offline-Mechanismus
+**Bleibt:** Turnier-Transfer Cloud ↔ Hallen-Server (Turnier-Export/-Import mit `urspruengliche_id`),
+Suite `tests/e2e-vollablauf/`, Cloud-Betrieb.
 
-Letzter Schritt von Stufe 1, erst wenn die Sync-Suite grün ist. Bis dahin existieren beide
-Mechanismen parallel.
+`CLAUDE.md` wird um Modi, `.env`-Parameter, `src/sync/`, `src/cluster/`, `deploy/linux/` und die
+neuen Suites ergänzt.
 
-**Entfällt:**
+## 14. Umsetzungsreihenfolge
 
-- JSON-Export/-Import pro Matte: `src/controllers/offlineController.js`, `src/routes/offlineRoutes.js`,
-  `/api/offline/*`, die zugehörigen Buttons in `public/js/kampf.js`
-- `offlineState` und `isOfflineMode` im `localStorage` von `public/js/scoreboard.js`
+Die Spec wird in drei Implementierungspläne zerlegt, die jeweils für sich lauffähige Software
+liefern:
 
-**Bleibt unverändert:**
+1. **Plan A – Sync-Kern:** Service-Extraktion aus den Controllern, Dokument-DB, Brücke, Spiegelung,
+   `datenzugriff.js`, Umstellung von Waage, Scoreboard und Mattenleitung (zunächst im
+   Server-Frontend), Turnier-Instanz/Zurücksetzen, `DB_CLIENT`-Entkopplung.
+2. **Plan B – Offline-Clients:** Client-Modus, Replikation, `kaskadeLokal`, eingeschränktes
+   Frontend, Sync-Status, Konfliktfälle, Instanzwechsel am Client, Sync-Suite, Ablösung des alten
+   Mechanismus.
+3. **Plan C – Cluster:** Rollen, Epoche, PostgreSQL-Replikation, Umschalten, Rückstufung, VIP,
+   Cluster-Seite, `deploy/linux/`, Cluster-Suite.
 
-- Turnier-Transfer Cloud ↔ Hallen-Server (Turnier-Export/-Import mit `urspruengliche_id` in
-  `turnierController.js`)
-- Suite `tests/e2e-vollablauf/`
-- Cloud-Betrieb mit Postgres (kein Sync)
+## 15. Außerhalb des Umfangs
 
-`CLAUDE.md` wird um die neuen Modi, `.env`-Parameter, `src/sync/` und die Sync-Suite ergänzt.
-
-## 9. Außerhalb des Umfangs von Stufe 1
-
-- Offline-Berechnung von Mannschaftsbegegnungen (Stufe 2)
+- Offline-Berechnung von Mannschaftsbegegnungen und Auswechseln offline (Stufe 2)
 - Mannschaftszuordnung an der Waage im Offline-Zustand
-- Verwaltungsseiten im Client-Modus
-- Replikation direkt zwischen Notebooks (nur Stern-Topologie zum Hallen-Server)
+- Automatisches Failover ohne manuelle Bestätigung
+- Mehr als zwei Server im Cluster
+- Replikation direkt zwischen Clients
 - Direkte Replikation Hallen-Server ↔ Cloud (weiter per Turnier-Datei-Transfer)
 - Apache CouchDB als externer Dienst
