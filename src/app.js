@@ -103,6 +103,7 @@ app.use('/api/sync', getSyncRoutes(() => app.get('sync')));
 app.use('/js/qr', express.static(path.join(__dirname, '../node_modules/jsqr/dist')));
 app.use('/js/qrgen', express.static(path.join(__dirname, '../node_modules/qrcode-generator/dist')));
 app.use('/js/shared', express.static(path.join(__dirname, 'shared')));
+app.use('/js/pouchdb', express.static(path.join(__dirname, '../node_modules/pouchdb/dist')));
 app.use('/css/material', express.static(path.join(__dirname, '../node_modules/material-components-web')));
 app.use('/icons/material', express.static(path.join(__dirname, '../node_modules/@material-design-icons/font')));
 
