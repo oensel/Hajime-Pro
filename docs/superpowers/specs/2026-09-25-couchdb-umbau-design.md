@@ -12,8 +12,9 @@ Hajime Pro soll am Wettkampftag ausfallsicher laufen:
    mit lokalem Node-Server und lokaler PouchDB. Bricht die Verbindung zum Server ab, arbeiten sie
    ohne Unterbrechung weiter. Sobald der Server wieder erreichbar ist, werden alle Daten übertragen.
 2. **Server-Cluster:** Zwei identische Linux-Server laufen als Master und Secondary. Fällt der Master
-   aus, kann die Turnierleitung den Secondary manuell aktiv setzen, ohne dass bestätigte Daten
-   verloren gehen.
+   aus, übernimmt der Secondary **automatisch**, ohne dass bestätigte Daten verloren gehen.
+3. **Mobile Clients:** Ein Client kann an jeder Matte eingesetzt werden; die Matte ist am Client
+   auswählbar und im Betrieb (mit Nachfrage) wechselbar.
 
 Auf Servern und Clients läuft **identische Software**; der Modus wird per `.env` gewählt.
 
@@ -46,11 +47,12 @@ Auf Servern und Clients läuft **identische Software**; der Modus wird per `.env
 | 8 | Mannschaftskämpfe | Stufe 1 nur Einzel-Pools offline; Mannschaftsdaten werden nur lesend repliziert |
 | 9 | Frontend-Datenzugriff | Live-Funktionen schreiben in die Dokument-DB des eigenen Knotens (`/db`) |
 | 10 | Turniere pro Server | Immer genau eines; Anlegen/Einlesen löscht alle Turnierdaten (nur Hallen-Server) |
-| 11 | Ausfallsicherheit | Zwei identische Server, Master/Secondary, **manuelles** Umschalten |
+| 11 | Ausfallsicherheit | Zwei identische Server, Master/Secondary, **automatisches** Umschalten per keepalived mit dem Hallen-Router als Zeugen; manuelles Umschalten nur für geplante Wartung |
 | 12 | Relationale Replikation | PostgreSQL-Streaming-Replikation, synchron mit automatischem Rückfall auf asynchron |
 | 13 | Erreichbarkeit | Virtuelle IP (VIP) per `keepalived`, gesteuert von der App; Clients arbeiten auf `localhost` |
 | 14 | Frontend-Aufteilung | Clients: Waage + Scoreboard + Mattenleitung. Server: volles Frontend inkl. Cluster-Status/Umschalten |
-| 15 | Berechtigung Umschalten | Nur mit Turnierleitungs-Login |
+| 15 | Berechtigung manuelles Umschalten | Nur mit Turnierleitungs-Login |
+| 16 | Matte am Client | Lokal auswählbar, im Betrieb mit Bestätigungsdialog wechselbar; Offline-Kaskade nur für die gewählte Matte |
 
 ## 3. Betriebsmodi und Topologie
 
@@ -87,10 +89,10 @@ Einzelrechner ohne Cluster; im Cluster zwingend `pg`, weil SQLite keine Server-R
 | `SYNC_SECRET` | Server + Client | gemeinsames Geheimnis für die Dokument-Replikation |
 | `SYNC_DATENVERZEICHNIS` | Server + Client | LevelDB-Ablage, Standard `./data/dokumente` |
 | `SYNC_SERVER_URL` | Client | `http://<vip>` |
-| `SYNC_MATTE` | Client | optional: vorausgewählte Kampffläche für Scoreboard/Mattenleitung |
 | `CLUSTER_KNOTEN` | Server | `server1` \| `server2` (leer = kein Cluster) |
 | `CLUSTER_PARTNER_URL` | Server | feste Adresse des anderen Servers, z. B. `http://192.168.10.12:3000` |
 | `CLUSTER_VIP` | Server | die virtuelle IP (nur Anzeige und keepalived-Vorlage) |
+| `CLUSTER_ZEUGE_IP` | Server | Zeuge gegen Split-Brain, Standard: Default-Gateway (Hallen-Router) |
 
 ## 4. Frontend-Aufteilung
 
@@ -104,6 +106,15 @@ Einzelrechner ohne Cluster; im Cluster zwingend `pg`, weil SQLite keine Server-R
   „disqualifizieren“, Ergebnis korrigieren. Ersatzkämpfer auswechseln (Mannschaft) ist offline
   gesperrt (Stufe 2).
 - **Anzeige/Overlay** der eigenen Matte.
+- **Mattenwahl:** Beim ersten Start zeigen Scoreboard und Mattenleitung eine Auswahl aus den
+  `kampfflaeche:`-Dokumenten. Die Wahl wird in `_local/client-konfig` gespeichert (nicht repliziert,
+  überlebt Neustarts). Der Knopf „Matte wechseln“ öffnet einen Bestätigungsdialog, der zeigt:
+  - wie viele Änderungen noch nicht übertragen sind (sie werden weiter synchronisiert, gehen nicht
+    verloren),
+  - ob gerade ein Kampf läuft (Wechsel erst nach Abschluss oder ausdrücklichem Abbruch),
+  - eine Warnung, wenn die Ziel-Matte laut Heartbeat bereits von einem anderen Client bedient wird.
+
+  Die Waage ist von der Mattenwahl unabhängig.
 - Eigener **Sync-Status** in allen Client-Seiten: grün = verbunden, gelb = offline mit n
   ausstehenden Änderungen, rot = Authentifizierungs-/Konfigurationsfehler, blau = Turnierwechsel läuft.
 - Alle anderen Seiten (Turnierverwaltung, Teilnehmer, Pools, Mannschaften, Matten, Siegerliste,
@@ -115,10 +126,9 @@ Einzelrechner ohne Cluster; im Cluster zwingend `pg`, weil SQLite keine Server-R
 ### Server (`http://<vip>` bzw. feste IP)
 
 - **Master:** komplettes Frontend wie heute, zusätzlich die Seite **Cluster** (`cluster.html`) mit
-  Status beider Server und Umschaltfunktion sowie die **Konfliktliste**.
+  Status beider Server, Client-Übersicht und geplanter Übergabe sowie die **Konfliktliste**.
 - **Secondary** (nur über seine feste IP erreichbar): Turnieransicht nur lesend (Schreibaktionen
-  deaktiviert, Hinweisbanner „Secondary – nur lesend“), Seite **Cluster** mit dem Knopf „Diesen
-  Server aktiv setzen“.
+  deaktiviert, Hinweisbanner „Secondary – nur lesend“), Seite **Cluster** mit Status.
 - Waage, Scoreboard und Mattenleitung sind auch im Server-Frontend nutzbar und schreiben dort in die
   Dokument-DB des Masters, mit demselben Code wie auf dem Client.
 
@@ -134,12 +144,14 @@ Einzelrechner ohne Cluster; im Cluster zwingend `pg`, weil SQLite keine Server-R
 | `src/sync/bruecke/teilnehmer.js`, `kampf.js`, `kampfflaeche.js` | server | Je Dokumenttyp: Dokument → Service-Funktion (Fachlogik, PostgreSQL) |
 | `src/sync/spiegeln.js` | server | `spiegleNachDokumentDb(tabelle, ids)`: PostgreSQL-Zeilen der Live-Tabellen → Dokumente; No-op ohne `SYNC_ROLLE=server` |
 | `src/sync/konflikte.js` | server | `konflikt:`-Dokumente, Auflösung von CouchDB-`_conflicts` |
-| `src/sync/kaskadeLokal.js` | client | Offline-Kaskade und Einreihung auf die Kampf-Dokumente der eigenen Matte anwenden |
-| `src/cluster/rolle.js` | server | Rollenermittlung beim Start, `bin-ich-master`, Beförderung, Rückstufung, Epoche |
+| `src/sync/kaskadeLokal.js` | client | Offline-Kaskade und Einreihung auf die Kampf-Dokumente der aktuell gewählten Matte anwenden |
+| `src/sync/clientKonfig.js` | client | `clientId` (einmalig erzeugt), gewählte Matte in `_local/client-konfig`, Heartbeat-Dokument |
+| `src/cluster/rolle.js` | server | Rollenermittlung beim Start, Beförderung, Rückstufung, Epoche |
+| `src/cluster/gesundheit.js` | server | Gesundheitscheck (App, PostgreSQL, Zeuge erreichbar, keine ausstehende Rückstufung) für keepalived |
 | `src/cluster/pgReplikation.js` | server | Replikationsstatus (`pg_stat_replication`), Umschalten synchron/asynchron, `pg_promote()` |
 | `src/cluster/partner.js` | server | Erreichbarkeit und Status des Partners abfragen |
 | `src/routes/syncRoutes.js` | server + client | `/api/sync/status`, Konfliktliste, Test-Endpunkte (nur `NODE_ENV=test`) |
-| `src/routes/clusterRoutes.js` | server | `/api/cluster/status`, `/api/cluster/bin-ich-master`, `/api/cluster/aktivieren` |
+| `src/routes/clusterRoutes.js` | server | `/api/cluster/status`, `/api/cluster/gesund`, `/api/cluster/befoerdern` und `/api/cluster/zurueckstufen` (nur von localhost, für keepalived), `/api/cluster/uebergeben` (geplant, Turnierleitungs-Login) |
 | `src/middleware/nurMaster.js` | server | Weist Schreibzugriffe auf einem Secondary mit 409 ab |
 | `src/middleware/clientFrontend.js` | client | Beschränkt ausgelieferte Seiten und `/api`-Routen auf den Client-Umfang |
 | `public/js/datenzugriff.js` | Frontend | Einheitlicher Live-Datenzugriff per PouchDB-Browser (HTTP-Adapter) gegen `/db` des eigenen Knotens |
@@ -164,6 +176,7 @@ Dokumente). Jedes Dokument spiegelt eine Tabellenzeile; **Feldnamen identisch zu
 | `kampfflaeche:<id>` | Bezeichnung, Status (pausiert) | Master, Mattenleitung (Pause) |
 | `kampf:<id>` | `pool_id`, `kampfflaeche_id`, Slots `kaempfer1_id`/`kaempfer2_id` + `..._quelle_kampf_id`/`..._quelle_typ`, `status`, `sieger_id`, `unterbewertung_kaempfer1/2`, Farbzuordnung, `matte_reihenfolge`, `mannschaftskampf_id`, `mannschaft_gewichtsklasse`, `bearbeitet_von`, ggf. `bruecke_fehler` | Scoreboard/Mattenleitung (Ergebnis, Farbe, Reihenfolge, Status), `kaskadeLokal` (Slots, Reihenfolge), Master (maßgeblich) |
 | `mannschaft:<id>`, `mannschaftskampf:<id>` | wie Tabellenzeile | nur Master (Stufe 1) |
+| `client:<clientId>` | Heartbeat: Gerätename, gewählte Matte, `letzter_kontakt`, Zahl ausstehender Änderungen | der jeweilige Client (alle 30 s, nur wenn verbunden) |
 | `konfig:steuerung` | Hash des Steuerungs-Passworts, Turnierbezeichnung und -datum | nur Master |
 | `konflikt:<uuid>` | `typ`, `prioritaet`, `bezug_id`, `version_lokal`, `version_server`, `erstellt_am`, `erledigt` | Brücke (Anlage), Turnierleitung (`erledigt`) |
 
@@ -278,85 +291,107 @@ zurückreplizieren. Bei jedem (Re-)Connect fragt der Client `http://<vip>/api/sy
 | Server 1 ↔ Server 2 | Live-Dokumente + `hajime_cluster` | CouchDB-Replikation in beide Richtungen |
 | Clients ↔ Master | Live-Dokumente | PouchDB-Replikation über `http://<vip>/db` |
 
+Beide Server hängen an je einem LAN-Port des Hallen-Routers.
+
 ### Rollen
 
 - **Master:** PostgreSQL ist Primary, die App nimmt Schreibzugriffe an, die Brücke läuft, und der
   Server hält die VIP.
-- **Secondary:** PostgreSQL ist Hot Standby (nur lesend), die Brücke ruht, `nurMaster.js` weist
-  Schreibzugriffe mit 409 ab, keine VIP.
+- **Secondary (Standby-Modus der App):** PostgreSQL ist Hot Standby (nur lesend). Die App läuft
+  schlank weiter, weil die eingebettete Dokument-Replikation Teil des Node-Prozesses ist: `/db`,
+  Replikation mit dem Partner, Gesundheitscheck, Cluster-Seite, Turnieransicht nur lesend. Keine
+  Brücke, `nurMaster.js` weist Schreibzugriffe mit 409 ab, keine VIP. Bei der Beförderung wird die App
+  umgeschaltet, nicht neu gestartet.
 - `cluster:zustand` in `hajime_cluster`: `{ master: 'server1' | 'server2', epoche: <Zahl>,
-  instanz_id, geaendert_am, geaendert_von }`.
+  instanz_id, geaendert_am, geaendert_von, grund: 'automatisch' | 'uebergabe' | 'erststart' }`.
 
-### Start
+### Automatisches Umschalten
 
-**Jeder Server startet als Secondary.** Er verbindet sich mit dem Partner und gleicht
-`hajime_cluster` ab.
+`keepalived` (VRRP) läuft auf beiden Servern im Zustand `BACKUP` mit `nopreempt`. Wer die VIP hält,
+entscheidet keepalived; die App führt die Folgen aus.
 
-- Laut `cluster:zustand` bin ich Master, der Partner ist erreichbar und bestätigt das, und meine
-  PostgreSQL ist Primary: Ich werde Master.
-- Der Partner meldet eine höhere Epoche mit sich selbst als Master: Ich bleibe Secondary. Ist meine
-  PostgreSQL noch Primary (ich war früher Master), meldet die Cluster-Seite „Rückstufung
-  erforderlich“ und das Skript `deploy/linux/hajime-rueckstufen.sh` setzt meine PostgreSQL per
-  `pg_rewind` (Rückfall: neue Basissicherung) als Standby des neuen Masters neu auf.
-- Der Partner ist nicht erreichbar: Ich bleibe Secondary und warte auf manuelle Aktivierung.
-- Allererster Start (kein `cluster:zustand` vorhanden): `server1` wird Master mit Epoche 1.
+- **Gesundheitscheck** (`track_script`, jede Sekunde): `curl -fs http://localhost:3000/api/cluster/gesund`.
+  Gesund heißt: App antwortet, lokale PostgreSQL erreichbar, **Zeuge** (`CLUSTER_ZEUGE_IP`, der
+  Hallen-Router) per Ping erreichbar, und der Server ist nicht als „Rückstufung erforderlich“
+  markiert. Ein ungesunder Server darf die VIP weder halten noch übernehmen.
+- **Auslöser:** Bleiben die VRRP-Signale des Masters ca. 3 s aus oder wird er ungesund, wechselt
+  keepalived auf dem Secondary nach `MASTER` und ruft `hajime-befoerdern.sh` auf. Das Skript ruft
+  `POST /api/cluster/befoerdern` (nur von localhost). Die App
+  1. führt `pg_promote()` aus,
+  2. setzt `cluster:zustand` auf sich selbst, `epoche + 1`, `grund: 'automatisch'`,
+  3. startet die Brücke, die über `sync_angewendet` alles nachholt, was der alte Master noch nicht
+     angewendet hatte,
+  4. nimmt ab jetzt Schreibzugriffe an.
 
-### Manuelles Umschalten
+  Gesamtdauer typischerweise 5–10 s. Die Clients arbeiten in dieser Zeit offline weiter und
+  replizieren danach über dieselbe VIP zum neuen Master.
+- **Verliert ein Master die Gesundheit** (z. B. Zeuge nicht erreichbar, weil sein Kabel gezogen
+  ist), gibt keepalived die VIP ab und ruft `hajime-zurueckstufen.sh`. Die App stoppt die Brücke,
+  nimmt keine Schreibzugriffe mehr an und markiert sich „Rückstufung erforderlich“.
 
-Auf der Cluster-Seite des Secondary (erreichbar über dessen feste IP) gibt es den Knopf „Diesen
-Server aktiv setzen“. Er ist nur mit Turnierleitungs-Login bedienbar und nur aktiv, wenn der Master
-vom Secondary aus nicht erreichbar ist. Ein zweiter Bestätigungsdialog nennt die Folgen.
+**Warum der Router als Zeuge reicht:** Clients und Server hängen alle am selben Router. Ein Server,
+der den Router nicht erreicht, erreicht auch keinen Client und darf deshalb nicht Master sein. Fällt
+der Router selbst aus, ist das Hallennetz weg: Kein Server ist gesund, alle Clients laufen offline
+weiter. Nach der Rückkehr des Routers bleibt der bisherige Master Master (höchste Epoche,
+`nopreempt`).
 
-1. `pg_promote()`: PostgreSQL des Secondary wird Primary.
-2. `cluster:zustand`: `master` auf sich selbst setzen, `epoche + 1`.
-3. Brücke starten: Sie verarbeitet den Feed ab 0 und holt über `sync_angewendet` alles nach, was
-   der alte Master noch nicht angewendet hatte.
-4. `bin-ich-master` liefert `ja`, keepalived übernimmt die VIP, und die Clients replizieren über die
-   gleiche Adresse weiter.
+### Start und Rückkehr eines Servers
 
-Das Zurückschalten auf den ursprünglichen Server erfolgt auf dieselbe Weise, sobald dieser als
-Secondary vollständig synchron ist.
+**Jeder Server startet im Standby-Modus** und gleicht zuerst `hajime_cluster` mit dem Partner ab.
+
+- Laut `cluster:zustand` bin ich Master, meine PostgreSQL ist Primary, und der Partner meldet keine
+  höhere Epoche: Ich melde mich gesund und keepalived gibt mir die VIP (z. B. nach Neustart des
+  ganzen Clusters).
+- Der Partner meldet eine höhere Epoche: Ich war früher Master und bin veraltet. Ich markiere mich
+  „Rückstufung erforderlich“ (damit ungesund, also keine VIP) und starte automatisch
+  `hajime-rueckstufen.sh`: PostgreSQL stoppen, `pg_rewind` gegen den neuen Master (Rückfall:
+  `pg_basebackup`), `standby.signal` setzen, PostgreSQL als Standby starten. Danach bin ich gesunder
+  Secondary, und die PostgreSQL-Replikation wird wieder synchron.
+- Der Partner ist nicht erreichbar und ich war Secondary: Ich bleibe Secondary. Eine Übernahme
+  geschieht nur über keepalived, und nur wenn ich gesund bin.
+- Allererster Start (kein `cluster:zustand` vorhanden): `server1` wird Master mit Epoche 1,
+  `grund: 'erststart'`.
+
+### Geplante Übergabe (Wartung)
+
+Die Cluster-Seite des Masters bietet „Rolle an Server X übergeben“. Das geht nur mit
+Turnierleitungs-Login und nur, wenn der Partner gesund und synchron ist. Der Master stuft sich
+geordnet zurück (Brücke stoppen, letzte Änderungen abwarten, als ungesund melden). keepalived
+verschiebt die VIP, der Partner wird befördert (`grund: 'uebergabe'`), und der alte Master wird per
+`hajime-rueckstufen.sh` zum Standby.
 
 ### Kein Verlust bestätigter Daten
 
 - **PostgreSQL synchron:** `synchronous_commit = on` mit `synchronous_standby_names` auf den Partner.
-  Ein REST-Schreibvorgang gilt erst als bestätigt, wenn der Standby ihn hat.
+  Ein REST-Schreibvorgang gilt erst als bestätigt, wenn der Standby ihn hat. Fällt der Master aus,
+  hat der Secondary jeden bestätigten Stand.
 - **Automatischer Rückfall:** `pgReplikation.js` prüft alle 2 s `pg_stat_replication`. Ist der
   Standby länger als 5 s nicht verbunden, setzt es `synchronous_standby_names = ''`
-  (`ALTER SYSTEM` + `pg_reload_conf()`), damit der Master weiterarbeitet, und die Cluster-Seite und
-  Statusleiste zeigen gelb „ohne Absicherung“. Ist der Standby wieder synchron, wird synchron
-  wieder aktiviert.
+  (`ALTER SYSTEM` + `pg_reload_conf()`), damit der Master weiterarbeitet, und die Cluster-Seite
+  zeigt gelb „ohne Absicherung“. Ist der Standby wieder synchron, wird synchron wieder aktiviert.
 - **Client-Daten** liegen in beiden CouchDBs und werden über `sync_angewendet` idempotent nachgeholt.
-  Eine Waage- oder Ergebnis-Änderung gilt für den Client als übertragen, sobald sie in der
-  Dokument-DB des Masters steht.
-- **Restrisiko:** Im Modus „ohne Absicherung“ können REST-Änderungen der letzten Sekunden bei einem
-  Ausfall des Masters verloren gehen. Das wird sichtbar angezeigt.
+- **Restrisiko Doppelausfall:** Fällt der Master aus, während der Cluster „ohne Absicherung“ läuft
+  (der Secondary war bereits weg), gibt es keinen Server, der übernehmen könnte.
 
-### Netztrennung statt Ausfall
+### Netztrennung
 
-Wird Server 2 aktiv gesetzt, obwohl Server 1 nur vom Netz getrennt war, und hat Server 1
-zwischenzeitlich weitergerechnet:
+Durch den Zeugen kann nur ein Server gesund sein, der den Router sieht. Der Sonderfall „beide sehen
+den Router, aber nicht einander“ könnte dazu führen, dass beide Master werden. Da die VRRP-Signale
+über denselben Router laufen, ist das im Hallenaufbau mit einem Router praktisch ausgeschlossen.
+Tritt es doch auf, gilt:
 
-- Server 1 hat keine VIP mehr, sobald er die höhere Epoche sieht. Bis dahin erreicht ihn kein
-  Client, der die VIP nutzt. Konkurrierende VIP-Ansprüche im selben Netz löst VRRP über die Priorität.
-- Seine PostgreSQL-Änderungen nach dem Umschalten gehen beim Rückstufen verloren (`pg_rewind`).
-  Betroffen sind nur Aktionen, die in dieser Zeit direkt über seine feste IP gemacht wurden.
-- Dokumente, die er in dieser Zeit mit `bearbeitet_von: server` geschrieben hat, führen zu
-  CouchDB-Konflikten. Die Revision des aktuellen Masters gewinnt, und die Brücke legt
-  `konflikt:`-Dokumente an.
-
-### Virtuelle IP
-
-`keepalived` (VRRP) auf beiden Servern. Das Prüfskript `curl -fs http://localhost:3000/api/cluster/bin-ich-master`
-entscheidet: Nur der Server, dessen App „ja“ meldet, hält die VIP. keepalived trifft keine eigene
-Failover-Entscheidung.
+- Sobald sich die Server wieder sehen, gewinnt die höhere Epoche; der andere stuft sich zurück.
+- Die PostgreSQL-Änderungen des Zurückgestuften seit der Trennung gehen beim Rückstufen verloren.
+- Seine Dokumente mit `bearbeitet_von: server` führen zu CouchDB-Konflikten: Die Revision der
+  höheren Epoche gewinnt, und die Brücke legt `konflikt:`-Dokumente an.
 
 ### Cluster-Seite (`cluster.html`, nur Server-Frontend)
 
-Für Server 1 und 2 jeweils: erreichbar ja/nein, Rolle, Epoche, PostgreSQL-Rolle, Replikationsmodus
-(synchron/asynchron), relationaler Rückstand (Bytes/Sekunden), Dokument-Replikationsrückstand,
-verbundene Clients (letzter Kontakt je Client). Dazu der Knopf „Diesen Server aktiv setzen“ und der
-Hinweis „Rückstufung erforderlich“.
+Für Server 1 und 2 jeweils: erreichbar, gesund (mit Grund), Rolle, Epoche, PostgreSQL-Rolle,
+Replikationsmodus (synchron/asynchron), relationaler Rückstand, Dokument-Replikationsrückstand.
+Dazu der Verlauf der letzten Rollenwechsel (mit `grund`), die Liste der Clients aus den
+Heartbeat-Dokumenten (Gerät, Matte, letzter Kontakt, ausstehende Änderungen) und auf dem Master der
+Knopf für die geplante Übergabe.
 
 ## 10. Konflikte und Fehlerbehandlung
 
@@ -384,10 +419,13 @@ entschärft durch die organisatorische Trennung der Waage-Stationen.
 ## 11. Betrieb (`deploy/linux/`)
 
 - `README.md`: Installationsanleitung für zwei Debian-Server (Node, PostgreSQL, keepalived),
-  Netzplan mit VIP, Einrichtung der Streaming-Replikation, Ablauf „Umschalten“ und „Rückstufen“.
+  Netzplan (beide Server an je einem LAN-Port des Hallen-Routers, VIP, feste IPs), Einrichtung der
+  Streaming-Replikation, Abläufe „automatische Übernahme“, „geplante Übergabe“ und „Rückstufen“,
+  Abnahme-Checkliste für den Aufbau in der Halle.
 - `postgresql/`: Konfigurationsausschnitte für Primary und Standby (`wal_level`, `max_wal_senders`,
   `hot_standby`, `primary_conninfo`, Replikationsnutzer, `pg_hba.conf`).
-- `keepalived/keepalived.conf.vorlage` mit Prüfskript.
+- `keepalived/keepalived.conf.vorlage` (`BACKUP`, `nopreempt`, `track_script` auf `/api/cluster/gesund`,
+  `notify_master`/`notify_backup`/`notify_fault`) sowie `hajime-befoerdern.sh`.
 - `hajime-rueckstufen.sh`: stoppt PostgreSQL, `pg_rewind` gegen den neuen Master (Rückfall
   `pg_basebackup`), setzt `standby.signal`, startet PostgreSQL.
 - `systemd/hajime-pro.service`, Start nach PostgreSQL.
@@ -419,24 +457,32 @@ Playwright bleibt die einzige automatisierte Suite.
      Dokumente in der neuen DB, verworfene Änderungen in `data/verworfen/`.
   7. Client-Frontend: Verwaltungsseiten sind nicht erreichbar, Waage, Scoreboard und Mattenleitung
      schon.
+  8. Mattenwahl: erster Start mit Auswahl; Wechsel mit ausstehenden Änderungen → Dialog nennt die
+     Anzahl, die Änderungen werden trotzdem übertragen; danach rechnet `kaskadeLokal` nur für die
+     neue Matte; Warnung, wenn ein zweiter Client die Ziel-Matte bedient.
 - Die vier bestehenden `tests/e2e/steuerung-*-online-vs-offline.spec.js` werden auf den Sync-Pfad
   umgestellt und in diese Suite verschoben.
 
 ### Cluster-Suite `tests/e2e-cluster/` (Docker)
 
-- `docker compose` mit zwei Server-Containern (je Node + PostgreSQL), einem Client-Container und
-  einem kleinen VIP-Proxy-Container, der die VIP-Rolle simuliert: Er leitet an den Server weiter,
-  dessen `bin-ich-master` „ja“ meldet. Script `test:e2e:cluster`.
+- `docker compose` mit zwei Server-Containern (je Node + PostgreSQL + keepalived, `cap_add:
+  NET_ADMIN`), einem Zeugen-Container (simuliert den Router), einem Client-Container und dem
+  Playwright-Runner, alle im selben Docker-Netz; die VIP ist eine Adresse in diesem Netz. Script
+  `test:e2e:cluster`.
+- Ausfälle werden per `docker stop` bzw. `docker network disconnect` erzeugt.
 - Tests:
   1. REST-Änderung am Master → sofort im Standby lesbar (synchron).
-  2. Master stoppen → Umschalten per Knopf auf Server 2 → alle bestätigten REST-Änderungen und alle
-     Client-Dokumente vorhanden, Brücke holt Ausstehendes nach, Client repliziert über die VIP weiter.
-  3. Alter Master startet neu → erkennt höhere Epoche, bleibt Secondary, Rückstufung → wieder
-     synchroner Standby.
-  4. Standby stoppen → Master schaltet auf asynchron, Statusanzeige gelb; Standby zurück → synchron.
-  5. Netztrennung mit Doppelberechnung → Konflikt-Dokumente, Revision der höheren Epoche gewinnt.
-- Das echte keepalived-Verhalten wird nicht automatisiert getestet, sondern per Checkliste in
-  `deploy/linux/README.md` abgenommen.
+  2. Master-Container stoppen → Server 2 übernimmt automatisch die VIP innerhalb von 15 s → alle
+     bestätigten REST-Änderungen und alle Client-Dokumente vorhanden, die Brücke holt Ausstehendes
+     nach, der Client repliziert über die VIP weiter.
+  3. Alter Master startet neu → erkennt die höhere Epoche, stuft sich automatisch zurück → wieder
+     synchroner Standby, die VIP bleibt beim neuen Master.
+  4. Master vom Zeugen trennen → er meldet sich ungesund, gibt die VIP ab, Server 2 übernimmt.
+  5. Standby stoppen → Master schaltet auf asynchron, Anzeige „ohne Absicherung“; Standby zurück →
+     synchron.
+  6. Geplante Übergabe per Knopf → Rollen getauscht, keine Daten verloren.
+- Der Aufbau mit echter Hardware in der Halle wird per Checkliste in `deploy/linux/README.md`
+  abgenommen.
 
 ## 13. Ablösung des alten Offline-Mechanismus
 
@@ -459,17 +505,18 @@ liefern:
 1. **Plan A – Sync-Kern:** Service-Extraktion aus den Controllern, Dokument-DB, Brücke, Spiegelung,
    `datenzugriff.js`, Umstellung von Waage, Scoreboard und Mattenleitung (zunächst im
    Server-Frontend), Turnier-Instanz/Zurücksetzen, `DB_CLIENT`-Entkopplung.
-2. **Plan B – Offline-Clients:** Client-Modus, Replikation, `kaskadeLokal`, eingeschränktes
-   Frontend, Sync-Status, Konfliktfälle, Instanzwechsel am Client, Sync-Suite, Ablösung des alten
+2. **Plan B – Offline-Clients:** Client-Modus, Replikation, `kaskadeLokal`, Mattenwahl und
+   Heartbeat, eingeschränktes Frontend, Sync-Status, Konfliktfälle, Instanzwechsel am Client, Sync-Suite, Ablösung des alten
    Mechanismus.
-3. **Plan C – Cluster:** Rollen, Epoche, PostgreSQL-Replikation, Umschalten, Rückstufung, VIP,
-   Cluster-Seite, `deploy/linux/`, Cluster-Suite.
+3. **Plan C – Cluster:** Rollen, Epoche, PostgreSQL-Replikation, automatische Übernahme per
+   keepalived mit Zeugen, Rückstufung, geplante Übergabe, Cluster-Seite, `deploy/linux/`,
+   Cluster-Suite.
 
 ## 15. Außerhalb des Umfangs
 
 - Offline-Berechnung von Mannschaftsbegegnungen und Auswechseln offline (Stufe 2)
 - Mannschaftszuordnung an der Waage im Offline-Zustand
-- Automatisches Failover ohne manuelle Bestätigung
+- Automatisches Zurückschalten auf den ursprünglichen Master (`nopreempt`; nur per geplanter Übergabe)
 - Mehr als zwei Server im Cluster
 - Replikation direkt zwischen Clients
 - Direkte Replikation Hallen-Server ↔ Cloud (weiter per Turnier-Datei-Transfer)
