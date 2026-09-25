@@ -744,15 +744,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!teilnehmerId) return;
 
             try {
-                const response = await fetch(`/api/teilnehmer/${teilnehmerId}/kampfbereit`, { method: 'POST' });
-                const result = await response.json();
-                if (result.success) {
+                const result = await window.Datenzugriff.bestaetigeKampfbereit(teilnehmerId);
+                if (result.ok) {
                     window.zeigeNotification('Kampfbereitschaft bestätigt.', 'success');
                     kampfbereitBtn.style.display = 'none';
                     delete kampfbereitBtn.dataset.teilnehmerId;
                     if (window.ladeTeilnehmerListe) window.ladeTeilnehmerListe();
                 } else {
-                    window.zeigeNotification(result.error || 'Fehler bei der Bestätigung.', 'error');
+                    window.zeigeNotification(result.fehler || 'Fehler bei der Bestätigung.', 'error');
                 }
             } catch (error) {
                 window.zeigeNotification('Netzwerk- oder Serverfehler: ' + error.message, 'error');
@@ -892,19 +891,13 @@ document.addEventListener('DOMContentLoaded', () => {
             // Im Editier-Modus wird immer die editId verwendet, sonst ein ggf. per QR-Scan
             // gefundener Bestandsteilnehmer (sonst Neuanlage per POST).
             const effektiveId = editId || scanMatchedId;
-            const zielUrl = effektiveId ? `/api/teilnehmer/${effektiveId}` : '/api/teilnehmer';
-            const methode = effektiveId ? 'PUT' : 'POST';
 
             try {
-                const response = await fetch(zielUrl, {
-                    method: methode,
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(payload)
-                });
+                // Datenzugriff (datenzugriff.js) wählt selbst REST (ohne Sync) oder die Dokument-DB
+                // (Hallen-Server mit Sync) — die Bedienung der Waage ist in beiden Fällen identisch.
+                const result = await window.Datenzugriff.speichereTeilnehmer(effektiveId || null, payload);
 
-                const result = await response.json();
-
-                if (result.success || response.ok) {
+                if (result.ok) {
                     const gespeicherteId = effektiveId || result.teilnehmerId;
 
                     if (turnierHatMannschaftKlassen && gespeicherteId) {
@@ -913,6 +906,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
 
                     window.zeigeNotification(effektiveId ? `Athlet ${payload.vorname} erfolgreich aktualisiert!` : `Athlet ${payload.vorname} erfolgreich eingewogen!`, 'success');
+                    if (result.ausstehend) window.zeigeNotification(result.meldung, 'info');
                     if (window.ladeTeilnehmerListe) window.ladeTeilnehmerListe();
 
                     if (editId) {
@@ -928,7 +922,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     }
                 } else {
-                    window.zeigeNotification(result.error || 'Fehler beim Speichern', 'error');
+                    window.zeigeNotification(result.fehler || 'Fehler beim Speichern', 'error');
                 }
             } catch (error) {
                 window.zeigeNotification('Netzwerk- oder Serverfehler: ' + error.message, 'error');
