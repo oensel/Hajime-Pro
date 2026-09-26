@@ -36,6 +36,18 @@
     </div>
 </div>
 
+<!-- Sync-Konflikte (nur Hallen-Server mit SYNC_ROLLE=server, siehe public/js/konflikte.js) -->
+<div class="mdc-card" id="syncKonflikteKarte" style="display: none; margin-top: 24px; padding: 16px 24px;">
+    <div class="form-title-area">
+        <span class="material-icons">sync_problem</span>
+        <h1>Sync-Konflikte</h1>
+        <span class="material-icons">sync_problem</span>
+    </div>
+    <p style="color: var(--text-muted); font-size: 13px; margin-top: 0;">Abweichungen zwischen Matten/Waagen und dem Server, die automatisch aufgelöst wurden oder eine Entscheidung der Turnierleitung brauchen.</p>
+    <div id="syncKonflikteListe">Wird geladen …</div>
+</div>
+
 <script src="/js/matten.js"></script>
+<script src="/js/konflikte.js"></script>
 </body>
 </html>

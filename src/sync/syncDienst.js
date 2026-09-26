@@ -93,7 +93,10 @@ export async function starteSyncDienst({ knex, konfig }) {
         async leerlauf() { await abgleich.leerlauf(); await bruecke.leerlauf(); },
         async nachAktivierung() { await abgleich.fuehreAus(); bruecke.starte(); },
         async vorDeaktivierung() { await bruecke.stoppe(); await abgleich.leerlauf(); },
-        async brueckeNeuStarten() { await bruecke.neuStarten(); }
+        async brueckeNeuStarten() { await bruecke.neuStarten(); },
+        listeKonflikte: () => bruecke.listeKonflikte(),
+        erledigeKonflikt: (id) => bruecke.erledigeKonflikt(id),
+        wiederholeKonflikt: (id) => bruecke.wiederholeKonflikt(id)
     };
 
     // Das (einzige) vorhandene Turnier wird verzögert beim ERSTEN Request aktiviert, nicht beim

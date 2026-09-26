@@ -200,12 +200,49 @@ export function erzeugeBruecke({ knex, zustand, abgleich }) {
         await legeKonfliktAnIn(db, fachlich ? 'abgelehnt' : 'bruecke_fehler', doc, fehler.message);
     }
 
+    // CouchDB-Konflikt (zwei Revisionen desselben Dokuments, z.B. Wiegung an zwei Waagen oder
+    // Matten-Ergebnis während der Server das Dokument geändert hat). Grundsatz: eine Revision eines
+    // Geräts (bearbeitet_von !== 'server') ist eine Absicht und darf nicht verloren gehen —
+    // sie gewinnt gegen Server-Revisionen (die sind jederzeit per Abgleich wiederherstellbar).
+    // Unter mehreren Geräte-Revisionen eines Teilnehmers gewinnt die jüngste Wiegung (gewogen_am,
+    // Spec Abschnitt 10), sonst die von CouchDB gewählte. Liefert true, wenn ein neues Dokument
+    // geschrieben wurde (das dann als eigene Änderung erneut durch die Brücke läuft).
+    async function loeseKonflikte(db, doc) {
+        const revs = [doc._rev, ...doc._conflicts];
+        const versionen = [];
+        for (const rev of revs) {
+            const v = await db.get(doc._id, { rev }).catch(() => null);
+            if (v) versionen.push(v);
+        }
+        const geraete = versionen.filter(v => v.bearbeitet_von !== 'server');
+        const kandidaten = geraete.length ? geraete : versionen;
+        let gewinner = kandidaten.find(v => v._rev === doc._rev) || kandidaten[0];
+        if (doc._id.startsWith('teilnehmer:')) {
+            for (const v of kandidaten) {
+                if (String(v.gewogen_am || '') > String(gewinner.gewogen_am || '')) gewinner = v;
+            }
+        }
+        const verlierer = versionen.filter(v => v._rev !== doc._rev);
+        await db.bulkDocs(verlierer.map(v => ({ _id: v._id, _rev: v._rev, _deleted: true })));
+        if (gewinner._rev !== doc._rev) {
+            const { _rev, _conflicts, ...inhalt } = gewinner;
+            await db.put({ ...inhalt, _id: doc._id, _rev: doc._rev });
+            return true;
+        }
+        return false;
+    }
+
     async function markiereAngewendet(doc) {
         await knex('sync_angewendet').insert({ doc_id: doc._id, rev: doc._rev }).onConflict(['doc_id', 'rev']).ignore();
     }
 
     async function verarbeite(db, doc) {
-        if (!doc || doc._deleted || doc.bearbeitet_von === 'server') return;
+        if (!doc || doc._deleted) return;
+        if (doc._conflicts && doc._conflicts.length) {
+            if (await loeseKonflikte(db, doc)) return;
+            delete doc._conflicts;
+        }
+        if (doc.bearbeitet_von === 'server') return;
         const typ = doc._id.split(':')[0];
         const tabelle = TABELLE_ZU_TYP[typ];
         if (!tabelle) return;
@@ -241,7 +278,7 @@ export function erzeugeBruecke({ knex, zustand, abgleich }) {
     function starte() {
         const db = zustand.db;
         if (!db || feed) return;
-        feed = db.changes({ since: 0, live: true, include_docs: true });
+        feed = db.changes({ since: 0, live: true, include_docs: true, conflicts: true });
         feed.on('change', (change) => {
             offen++;
             if (klaerungsTimer) {
@@ -283,5 +320,33 @@ export function erzeugeBruecke({ knex, zustand, abgleich }) {
         starte();
     }
 
-    return { starte, stoppe, leerlauf, neuStarten };
+    // Konfliktliste der Turnierleitung (matten.html): offene zuerst, hohe Priorität zuerst.
+    async function listeKonflikte() {
+        const db = zustand.db;
+        if (!db) return [];
+        const res = await db.allDocs({ include_docs: true, startkey: 'konflikt:', endkey: 'konflikt:\ufff0' });
+        const rang = { hoch: 0, normal: 1 };
+        return res.rows.map(r => r.doc)
+            .filter(d => !d.erledigt)
+            .sort((a, b) => (rang[a.prioritaet] ?? 1) - (rang[b.prioritaet] ?? 1) || String(b.erstellt_am).localeCompare(String(a.erstellt_am)));
+    }
+
+    async function erledigeKonflikt(id) {
+        const db = zustand.db;
+        const doc = await db.get(id);
+        await db.put({ ...doc, erledigt: true, erledigt_am: new Date().toISOString() });
+    }
+
+    // "Erneut versuchen" (v.a. bei technischen Brückenfehlern): die damals abgelehnte Geräte-
+    // Version noch einmal als Änderung einspielen — die Brücke verarbeitet sie wie neu.
+    async function wiederholeKonflikt(id) {
+        const db = zustand.db;
+        const konflikt = await db.get(id);
+        const aktuell = await db.get(konflikt.bezug_id).catch(() => null);
+        const { _rev, _conflicts, letzte_ablehnung, ...inhalt } = konflikt.version_lokal || {};
+        await db.put({ ...inhalt, _id: konflikt.bezug_id, ...(aktuell ? { _rev: aktuell._rev } : {}), bearbeitet_von: 'wiederholung' });
+        await erledigeKonflikt(id);
+    }
+
+    return { starte, stoppe, leerlauf, neuStarten, listeKonflikte, erledigeKonflikt, wiederholeKonflikt };
 }

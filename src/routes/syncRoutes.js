@@ -13,6 +13,36 @@ export function getSyncRoutes(holeSync) {
         return res.json(await sync.status());
     });
 
+    // --- Konfliktliste der Turnierleitung (nur Hallen-Server, Spec Abschnitt 10) ---
+    const nurServer = (req, res, next) => {
+        const sync = holeSync();
+        if (!sync || sync.rolle !== 'server') return res.status(404).json({ success: false, error: 'Nur am Hallen-Server.' });
+        req.server = sync;
+        next();
+    };
+
+    router.get('/konflikte', nurServer, async (req, res) => {
+        res.json(await req.server.listeKonflikte());
+    });
+
+    router.post('/konflikte/:id/erledigt', nurServer, async (req, res) => {
+        try {
+            await req.server.erledigeKonflikt(req.params.id);
+            res.json({ success: true });
+        } catch (err) {
+            res.status(err.status || 500).json({ success: false, error: err.message });
+        }
+    });
+
+    router.post('/konflikte/:id/wiederholen', nurServer, async (req, res) => {
+        try {
+            await req.server.wiederholeKonflikt(req.params.id);
+            res.json({ success: true });
+        } catch (err) {
+            res.status(err.status || 500).json({ success: false, error: err.message });
+        }
+    });
+
     // --- Mattenwahl eines Client-Geräts (Spec Abschnitt 4) ---
     const nurClient = (req, res, next) => {
         const sync = holeSync();
