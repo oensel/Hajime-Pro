@@ -117,6 +117,11 @@ Einzelrechner ohne Cluster; im Cluster zwingend `pg`, weil SQLite keine Server-R
   Die Waage ist von der Mattenwahl unabhängig.
 - Eigener **Sync-Status** in allen Client-Seiten: grün = verbunden, gelb = offline mit n
   ausstehenden Änderungen, rot = Authentifizierungs-/Konfigurationsfehler, blau = Turnierwechsel läuft.
+- Umsetzung (Plan B): Eine Client-API (`src/sync/clientApi.js`) beantwortet die Lese-Endpunkte
+  der Seiten aus den lokalen Dokumenten. Dafür wird zusätzlich die Turnierzeile ohne PDF als
+  `turnier:<id>`-Dokument gespiegelt. Die Waage läuft auf `teilnehmer.html`, deren
+  Verwaltungsaktionen am Client mit 403 „Nur am Hallen-Server verfügbar“ antworten. Offline
+  nachgemeldete Teilnehmer erscheinen dort erst nach dem Sync in der Liste.
 - Alle anderen Seiten (Turnierverwaltung, Teilnehmer, Pools, Mannschaften, Matten, Siegerliste,
   Cluster) sind im Client-Modus nicht erreichbar. Das Menü (`menu.js`) blendet sie aus, der Server
   antwortet auf ihre URLs mit einer Hinweisseite „nur am Server unter http://&lt;vip&gt;“.
@@ -294,6 +299,11 @@ zurückreplizieren. Bei jedem (Re-)Connect fragt der Client `http://<vip>/api/sy
   lokale DB löschen, die neue Instanz vollständig replizieren und geöffnete Seiten neu laden.
 - **Server hat kein Turnier:** Status gelb „kein Turnier auf dem Server“, lokale DB unverändert.
 
+Umsetzung (Plan B): Verworfenes landet unter `<SYNC_DATENVERZEICHNIS>/verworfen/` (je Gerät).
+Ausstehend sind die eigenen, noch nicht übertragenen Revisionen (Markierung
+`geschrieben_von_knoten`). Nach dem Wiederverbinden startet die Replikation erst, nachdem die
+Instanz beim Server geprüft wurde.
+
 ## 9. Server-Cluster
 
 ### Replikationswege
@@ -422,7 +432,20 @@ Knopf für die geplante Übergabe.
 | Brücke scheitert (Exception) | `bruecke_fehler` am Dokument + Konflikt-Dokument; Feed läuft weiter; Wiederholung bei nächster Änderung oder per Knopf |
 | Replikation scheitert an Authentifizierung | Replikation stoppt, Status rot |
 
-Neuer Kampfstatus `klaerung` (Migration); solche Kämpfe werden vom Scoreboard nicht aufgerufen.
+Neuer Kampfstatus `klaerung` (keine Migration nötig, `status` ist ein String); solche Kämpfe werden
+vom Scoreboard nicht aufgerufen.
+
+**Umsetzung (Plan B):**
+- **Reihenfolgeunabhängigkeit:** Die Replikation liefert Ergebnisse nicht in Spielreihenfolge. Ein
+  Ergebnis, dessen Paarung noch nicht zum SQL-Stand passt, wird zurückgestellt und nachgeholt,
+  sobald die übrigen Änderungen verarbeitet sind. Erst wenn es 2 s nach dem letzten Eingang immer
+  noch abweicht, wird es zum Klärungsfall.
+- **CouchDB-Konflikte:** Revisionen eines Geräts gewinnen vor Server-Revisionen (Absicht geht
+  nicht verloren; der Server-Stand ist per Abgleich wiederherstellbar). Unter Geräte-Revisionen
+  eines Teilnehmers gewinnt das jüngste `gewogen_am`.
+- **Kaskaden-Dokumente eines Geräts** (`bearbeitet_von: 'kaskade:<clientId>'`) wendet die Brücke
+  nicht an. Sie markiert sie als verarbeitet, damit der Abgleich sie mit dem Server-Stand
+  überschreiben darf.
 Kampf-Dokumente, die der Master schreibt, tragen zusätzlich `epoche`.
 
 **Geräte-Uhr:** Beim Verbinden ermittelt der Client den Offset zur Server-Uhr und speichert
