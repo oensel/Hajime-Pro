@@ -36,11 +36,16 @@ test('Scoreboard am Client: DK8 komplett offline, danach identisch am Server', a
     expect(lokal.every(k => k.status === 'beendet')).toBe(true);
     expect(lokal.find(k => k.reihenfolge_nummer === 'F').kaempfer1_nachname).toBe('Adler');
     expect((await clientStatus(request)).ausstehend).toBeGreaterThan(0);
+    // Statusleiste (syncStatus.js): gelb mit Anzahl der ausstehenden Änderungen.
+    await expect(page.locator('#syncStatusLeiste')).toHaveAttribute('data-zustand', 'offline');
+    await expect(page.locator('#syncStatusLeiste')).toContainText('ausstehend');
     const serverVorher = await (await request.get(`/api/kaempfe?kampfflaecheId=${matId}`)).json();
     expect(serverVorher.some(k => k.status !== 'beendet')).toBe(true);
 
     await clientVerbinden(request);
     await syncLeerlauf(request);
+    await expect(page.locator('#syncStatusLeiste')).toHaveAttribute('data-zustand', 'verbunden');
+    await expect(page.locator('#syncStatusLeiste')).toHaveText('verbunden');
 
     const server = await (await request.get(`/api/kaempfe?kampfflaecheId=${matId}`)).json();
     expect(server).toHaveLength(11);

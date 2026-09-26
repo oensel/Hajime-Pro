@@ -278,8 +278,17 @@
         return ohneDoc(await aendereDokument(doc._id, { status: 'kampfbereit' }));
     }
 
+    // Matte dieses Client-Geräts (null auf Server/Cloud oder wenn noch keine gewählt ist).
+    async function clientMatte() {
+        await init();
+        if (knoten.rolle !== 'client') return null;
+        const antwort = await fetch('/api/sync/client/matte').then(r => r.json()).catch(() => ({}));
+        return antwort.matte_id || null;
+    }
+
     window.Datenzugriff = {
         init,
+        clientMatte,
         modus: () => modus,
         rolle: () => knoten.rolle,
         ladeKampfflaechen,

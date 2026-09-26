@@ -84,8 +84,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 mattenSelect.appendChild(opt);
             });
 
-            // Vorherige Auswahl wiederherstellen
-            const letzteMatte = localStorage.getItem('aktiveMatteId');
+            // Vorherige Auswahl wiederherstellen (Client-Gerät: die auf dem Gerät gewählte Matte)
+            const geraeteMatte = await window.Datenzugriff.clientMatte();
+            const letzteMatte = geraeteMatte ? String(geraeteMatte) : localStorage.getItem('aktiveMatteId');
             if (letzteMatte && mats.some(m => m.id === parseInt(letzteMatte))) {
                 mattenSelect.value = letzteMatte;
                 ladeKämpfe(letzteMatte);
@@ -604,8 +605,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // --- SELECT BINDING & REFRESH ---
-    mattenSelect.addEventListener('change', (e) => {
-        ladeKämpfe(e.target.value);
+    let angezeigteMatte = null;
+    mattenSelect.addEventListener('change', async (e) => {
+        const neu = e.target.value;
+        // Client-Gerät: Mattenwechsel im Betrieb mit Nachfrage (siehe syncStatus.js).
+        if (window.Datenzugriff.rolle() === 'client') {
+            const bisher = angezeigteMatte || await window.Datenzugriff.clientMatte();
+            const gewechselt = await window.wechsleClientMatte(neu, bisher);
+            if (!gewechselt) {
+                if (bisher) mattenSelect.value = String(bisher);
+                return;
+            }
+        }
+        angezeigteMatte = neu;
+        ladeKämpfe(neu);
     });
 
     const refreshBtn = document.getElementById('refreshBtn');

@@ -1507,7 +1507,13 @@ async function ladeMatten() {
         if (selectEl) {
             selectEl.innerHTML = '';
             
-            const initialMatId = params.get('matId');
+            // Client-Gerät: ohne matId-Parameter gilt die auf dem Gerät gewählte Matte; mit
+            // Parameter wird sie übernommen, falls auf dem Gerät noch keine gewählt ist.
+            const geraeteMatte = await window.Datenzugriff.clientMatte();
+            if (window.Datenzugriff.rolle() === 'client' && params.get('matId') && !geraeteMatte) {
+                await window.wechsleClientMatte(params.get('matId'), null);
+            }
+            const initialMatId = params.get('matId') || geraeteMatte;
 
             matten.forEach((m, idx) => {
                 const opt = document.createElement('option');
@@ -1537,6 +1543,16 @@ async function ladeMatten() {
 // Sicherheitsabfrage (resetTimerBestaetigen) — das ist hier kein riskanter manueller Klick,
 // sondern Teil des automatischen Ladevorgangs.
 async function updateSelectedMat(val) {
+    // Client-Gerät: die Matte gehört zum Gerät — ein Wechsel im Betrieb fragt vorher nach
+    // (ausstehende Änderungen, laufender Kampf, anderes Gerät auf der Ziel-Matte).
+    if (window.Datenzugriff.rolle() === 'client' && val && String(val) !== String(selectedMatId || '')) {
+        const gewechselt = await window.wechsleClientMatte(val, selectedMatId);
+        if (!gewechselt) {
+            const selectEl = document.getElementById('matSelect');
+            if (selectEl && selectedMatId) selectEl.value = String(selectedMatId);
+            return;
+        }
+    }
     selectedMatId = val ? parseInt(val, 10) : null;
     if (selectedMatId) {
         await naechstenKampfHolen();
