@@ -556,6 +556,12 @@ Letzter Schritt von Stufe 1, erst wenn die Sync-Suite grün ist.
 **Bleibt:** Turnier-Transfer Cloud ↔ Hallen-Server (Turnier-Export/-Import mit `urspruengliche_id`),
 Suite `tests/e2e-vollablauf/`, Cloud-Betrieb.
 
+**Umsetzung:** entfernt. Die vier `steuerung-*-online-vs-offline.spec.js` heißen jetzt
+`steuerung-*-komplett.spec.js` und spielen nur noch am Server; der Vergleich Server ↔ offline
+spielendes Gerät liegt in `tests/e2e-sync/client-vs-server-vergleich.spec.js`.
+`steuerung-offline-modus.spec.js` ist gelöscht. Die Vollablauf-Suite spielt die Matten per
+Scoreboard direkt am Offline-Server statt über Matten-Dateien.
+
 `CLAUDE.md` wird um Modi, `.env`-Parameter, `src/sync/`, `src/cluster/`, `deploy/linux/` und die
 neuen Suites ergänzt.
 

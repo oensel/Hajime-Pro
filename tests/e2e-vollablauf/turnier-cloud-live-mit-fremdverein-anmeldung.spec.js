@@ -171,7 +171,7 @@ test.describe.serial('Szenario 1 (volle Cloud-Lösung) als ein durchgängiger Te
     // -- vereinsbasierte Zugriffsrechte erlauben nur jans eigenem Verein das Werten, siehe
     // requireTournamentEditAccess in src/middleware/auth.js) spielt den kompletten Pool live gegen
     // den Cloud-Server durch. Kein Export/Import an dieser Stelle -- das ist der eigentliche
-    // Unterschied zu turnier-vollablauf.spec.js (dort läuft diese Phase per Datei-Ex-/Import).
+    // Unterschied zu turnier-vollablauf.spec.js (dort wird das Turnier per Datei auf einen Offline-Server übertragen).
     test('Phase 5: die Wettkampffläche spielt den Pool live gegen den Cloud-Server durch', async ({ request }) => {
         test.setTimeout(60_000);
 

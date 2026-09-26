@@ -553,81 +553,52 @@ export async function verteilePoolsAufMatten(page, baseUrl, turnierId) {
     await expect(page.locator('#snackbarText')).toBeVisible();
 }
 
-// --- MATTEN-DOWNLOAD + SCOREBOARD (Phase 8, echte UI, siehe kampf.html/steuerung.html) ---
-
-/** Lädt die Wettkampfdaten einer einzelnen Kampffläche herunter (entspricht kampf.html#exportBtn
- * -> GET /api/offline/export) — hier direkt per API statt Datei-Download/-Upload-Umweg, da wir die
- * Daten sofort im selben Testlauf weiterverarbeiten. */
-export async function holeMatteDaten(baseUrl, request, kampfflaecheId, turnierId) {
-    const resp = await request.get(`${baseUrl}/api/offline/export?kampfflaecheId=${kampfflaecheId}&turnierId=${turnierId}`);
-    expect(resp.ok(), await resp.text()).toBeTruthy();
-    return resp.json();
-}
+// --- SCOREBOARD JE MATTE (Phase 8, echte UI, siehe steuerung.html) ---
 
 /**
- * Spielt eine komplette Matte durch: importiert die per holeMatteDaten() geladenen Daten in
- * steuerung.html (rein clientseitiger Offline-Modus, kein Server-Kontakt mehr — echte
- * Matten-Trennung, siehe Plan "Cross-Server-BroadcastChannel"-Hinweis), entscheidet JEDEN Kampf
- * über die echten Scoreboard-Bedienelemente per Ippon für "W" (kaempfer1) — identisches Muster wie
- * tests/e2e/steuerung-dk8-online-vs-offline.spec.js — und lädt das Ergebnis am Ende wieder herunter.
+ * Spielt eine komplette Matte direkt am Hallen-Server durch (steuerung.html mit turnierId/matId,
+ * jedes Ergebnis geht sofort an den Server, der die Kaskade rechnet). Entscheidet JEDEN Kampf über
+ * die echten Scoreboard-Bedienelemente per Ippon für "W" (kaempfer1) — identisches Muster wie
+ * tests/e2e/steuerung-dk8-komplett.spec.js.
+ *
+ * Der Fortschritt wird am Server abgelesen statt an den Namensfeldern: da "W" jeden Kampf gewinnt,
+ * kann dieselbe Paarung über Pool-Grenzen hinweg nicht sicher als "neuer Kampf" erkannt werden.
+ * Die Schleife endet, sobald auf der Matte kein Kampf mehr 'bereit' oder 'gestartet' ist
+ * (Gruppen-Überkreuz-Final-Hüllen können per Kaskade zu "freilos" werden).
  */
-export async function spieleMatteKomplettDurch(page, baseUrl, matteDaten) {
-    // Obergrenze statt exakter Zielzahl: manche "Kämpfe"-Zeilen sind bei Gruppen-Überkreuz-Pools
-    // zunächst nur Platzhalter für spätere Finalrunden ("Final-Hüllen") ohne feststehende
-    // Teilnehmer — je nach Vorrunden-Ergebnis können einzelne davon per Kaskade noch automatisch
-    // zu "freilos" werden, bevor sie überhaupt spielbar sind. Die tatsächliche Anzahl steht daher
-    // erst zur Laufzeit fest; die Schleife bricht ab, sobald "nächster Kampf" keinen weiteren
-    // echten Kampf mehr lädt.
-    const maxKaempfe = matteDaten.kaempfe.filter(k => k.status !== 'freilos').length;
+export async function spieleMatteAmServerDurch(page, baseUrl, turnierId, kampfflaecheId) {
+    const ladeKaempfe = async () => {
+        const resp = await page.request.get(`${baseUrl}/api/kaempfe?kampfflaecheId=${kampfflaecheId}`);
+        expect(resp.ok(), await resp.text()).toBeTruthy();
+        return resp.json();
+    };
 
-    await page.goto(`${baseUrl}/steuerung.html?turnierId=999999999`);
-    await page.locator('#offlineImportInput').setInputFiles({
-        name: `matte_${matteDaten.kampfflaecheId}.json`,
-        mimeType: 'application/json',
-        buffer: Buffer.from(JSON.stringify(matteDaten))
-    });
-    await expect(page.locator('#connectionModeText')).toHaveText('Offline (Lokal)');
+    await page.goto(`${baseUrl}/steuerung.html?turnierId=${turnierId}&matId=${kampfflaecheId}`);
+    await expect(page.locator('#matSelect')).toHaveValue(String(kampfflaecheId));
 
-    // Kein "warte bis der Name sich ändert"-Anker nötig (anders als im festen 8er-Bracket-
-    // Vergleichstest steuerung-dk8-online-vs-offline.spec.js, wo das für einen anderen Zweck
-    // dient): naechstenKampfHolen() liest im Offline-Modus synchron aus offlineState.kaempfe
-    // (kein await, siehe scoreboard.js) — die DOM-Felder sind also spätestens dann aktuell, wenn
-    // Playwrights .click() zurückkehrt. Ein Vergleich auf "hat sich geändert" wäre hier sogar
-    // falsch: da "W" (kaempfer1) JEDEN Kampf gewinnt, kann derselbe Name über mehrere Runden
-    // hinweg wiederholt als nameW/nameB auftauchen, weil er/sie immer weiter aufrückt.
-    for (let i = 0; i < maxKaempfe; i++) {
+    const obergrenze = (await ladeKaempfe()).length;
+    let gespielt = 0;
+    for (; gespielt < obergrenze; gespielt++) {
+        const offen = (await ladeKaempfe()).filter(k => k.status === 'bereit' || k.status === 'gestartet');
+        if (offen.length === 0) break;
+
+        // Zustand an Knöpfen und Server ablesen, nicht an #centerNotification (die Meldung erscheint
+        // erst nach weiteren awaits in naechstenKampfHolen()/ergebnisSenden()).
         await page.locator('#btnNaechsterKampfLive').click();
+        await expect(page.locator('#btnNaechsterKampfLive')).toBeHidden();
+        let laufend;
+        await expect.poll(async () => {
+            laufend = (await ladeKaempfe()).find(k => k.status === 'gestartet');
+            return Boolean(laufend);
+        }, { message: 'nach "Nächster Kampf" ist kein Kampf gestartet' }).toBe(true);
+
         await page.evaluate(() => window.changeScore('W', 'ippon', 1));
-
-        // Kein weiterer echter Kampf geladen ("Keine anstehenden Kämpfe" statt eines Kampfes,
-        // siehe naechstenKampfHolen in scoreboard.js — Name-Felder bleiben dabei leer/"," statt
-        // auf den ursprünglichen Platzhalter zurückzuspringen) -> alle spielbaren Kämpfe dieser
-        // Matte sind bereits erledigt, die übrigen ursprünglich gezählten Zeilen sind
-        // zwischenzeitlich per Kaskade "freilos" geworden (siehe Kommentar zu maxKaempfe oben).
-        const sendBtn = page.locator('#btnErgebnisSendenLive');
-        const kampfGeladen = await sendBtn.isVisible();
-        if (!kampfGeladen) break;
-
-        await sendBtn.click();
-        await expect(page.locator('#btnNaechsterKampfLive')).toBeVisible();
+        await expect(page.locator('#btnErgebnisSendenLive')).toBeVisible();
+        await page.locator('#btnErgebnisSendenLive').click();
+        await expect(page.locator('#btnNaechsterKampfLive'), 'Ergebnis wurde nicht angenommen').toBeVisible();
+        await expect.poll(async () => (await ladeKaempfe()).find(k => k.id === laufend.id)?.status).toBe('beendet');
     }
-
-    const [download] = await Promise.all([
-        page.waitForEvent('download'),
-        page.locator('#btnOfflineExport').click()
-    ]);
-    return download.path();
-}
-
-// --- ERGEBNIS-RÜCKIMPORT JE MATTE (Phase 9, echte UI, siehe kampf.html#importInput) ---
-
-/** Liest die per spieleMatteKomplettDurch() heruntergeladene Ergebnisdatei einer Matte wieder in
- * das (Offline-)Turnier ein (POST /api/offline/import) — echtes &lt;input type="file"&gt;, kein
- * über einen Button ausgelöster nativer Datei-Dialog, daher direktes setInputFiles(). */
-export async function importiereMatteErgebnisse(page, baseUrl, turnierId, dateiPfad) {
-    await page.goto(`${baseUrl}/kampf.html?id=${turnierId}`);
-    await page.locator('#importInput').setInputFiles(dateiPfad);
-    await expect(page.locator('#snackbarText')).toContainText('erfolgreich eingelesen');
+    return gespielt;
 }
 
 // --- ONLINE-RÜCKSYNC (Phase 10, echte UI, siehe turnier.html#importTurnierBtn "Ergebnisse hochladen") ---

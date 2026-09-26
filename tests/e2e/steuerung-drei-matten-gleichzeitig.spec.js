@@ -3,7 +3,7 @@
 // selben WLAN") sprechen gleichzeitig live per Netzwerk-Requests mit ihm, OHNE jemals zu
 // exportieren/importieren -- exakt der in scoreboard.js/kampf.js verwendete Online-Zweig
 // (naechstenKampfHolen()/ergebnisSenden() mit echten fetch()-Aufrufen), nur eben gegen einen
-// lokalen statt einen Cloud-Server. Anders als die steuerung-*-online-vs-offline.spec.js-Dateien
+// lokalen statt einen Cloud-Server. Anders als die steuerung-*-komplett.spec.js-Dateien
 // (die jeweils NUR eine Matte nacheinander bedienen) spielen hier drei Matten ECHT GLEICHZEITIG
 // (Promise.all über drei unabhängige Browser-Kontexte = drei unabhängige Laptops), um
 // Race-Conditions/Cross-Contamination bei parallelen Schreibzugriffen auf denselben Server
@@ -106,7 +106,7 @@ async function richteTurnierMitDreiMattenEin(request) {
     return { turnierId, matten };
 }
 
-// Identisch zum Wartemuster in den steuerung-*-online-vs-offline.spec.js-Dateien: Paarung
+// Identisch zum Wartemuster in den steuerung-*-komplett.spec.js-Dateien: Paarung
 // (kaempfer1|kaempfer2) statt nur nameW beobachten, da sich derselbe Kämpfer in zwei
 // verschiedenen Kämpfen hintereinander wiederholen kann, die Paarung selbst aber nie.
 async function spieleMatteDurch(page, anzahlKaempfe) {

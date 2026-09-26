@@ -1,7 +1,7 @@
 /**
  * Reine, seiteneffektfreie Regeln für die Mindest-Pausenzeit zwischen zwei Kämpfen desselben
  * Kämpfers auf derselben Matte. Analog zu kampfProgression.js server- und client-seitig
- * (Browser-Offline-Modus) identisch nutzbar — keine Abhängigkeit von knex/DOM.
+ * (Client-Geräte, siehe mattenAnsicht.js) identisch nutzbar — keine Abhängigkeit von knex/DOM.
  *
  * Zwei getrennte Anwendungsfälle nutzen dieselben Regeln:
  *  - Vorausschauende Matten-Planung (planeKaempfeFuerKampfflaeche): rechnet mit GESCHÄTZTEN

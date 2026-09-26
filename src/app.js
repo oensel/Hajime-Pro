@@ -19,7 +19,6 @@ import { getTeilnehmerRoutes } from './routes/teilnehmerRoutes.js';
 import { getPoolRoutes } from './routes/poolRoutes.js';
 import { getKampfflaecheRoutes } from './routes/kampfflaecheRoutes.js';
 import { getKampfRoutes } from './routes/kampfRoutes.js';
-import { setupOfflineRoutes } from './routes/offlineRoutes.js';
 import { getMannschaftRoutes, getMannschaftskampfRoutes } from './routes/mannschaftRoutes.js';
 import { ensureSuperAdmin } from './utils/superAdmin.js';
 import { waehleKnexUmgebung } from './utils/dbUmgebung.js';
@@ -132,7 +131,6 @@ if (syncKonfig.istClient) {
     app.use('/api/kaempfe', requireWriteAuth, getKampfRoutes(knex));
     app.use('/api/mannschaften', requireWriteAuth, getMannschaftRoutes(knex));
     app.use('/api/mannschaftskaempfe', requireWriteAuth, getMannschaftskampfRoutes(knex));
-    app.use('/api/offline', requireWriteAuth, setupOfflineRoutes(knex));
     app.use('/api/sync', getSyncRoutes(() => app.get('sync')));
 }
 

@@ -20,9 +20,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- DOM ELEMENTE ---
     const mattenSelect = document.getElementById('mattenSelect');
     const kampfplanContainer = document.getElementById('kampfplanContainer');
-    const offlineActions = document.getElementById('offlineActions');
-    const exportBtn = document.getElementById('exportBtn');
-    const importInput = document.getElementById('importInput');
     
     const currentPoolTitle = document.getElementById('currentPoolTitle');
     const currentFighter1Name = document.getElementById('currentFighter1Name');
@@ -99,23 +96,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- KÄMPFE LADEN ---
     async function ladeKämpfe(matId) {
         if (!matId) {
-            if (offlineActions) offlineActions.style.display = 'none';
             return;
         }
         localStorage.setItem('aktiveMatteId', matId);
 
         try {
             kampfplanContainer.style.display = 'none';
-            if (offlineActions) offlineActions.style.display = 'none';
 
             allFights = await window.Datenzugriff.ladeKaempfeDerMatte(matId);
 
             renderKämpfe();
             kampfplanContainer.style.display = 'block';
-            if (offlineActions) offlineActions.style.display = 'flex';
         } catch (err) {
             zeigeNotification('Fehler beim Laden der Kämpfe: ' + err.message, 'error');
-            if (offlineActions) offlineActions.style.display = 'none';
         }
     }
 
@@ -631,85 +624,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             } else {
                 zeigeNotification('Bitte zuerst eine Kampffläche auswählen', 'info');
             }
-        });
-    }
-
-    // --- OFFLINE IMPORT / EXPORT BINDINGS ---
-    if (exportBtn) {
-        exportBtn.addEventListener('click', async () => {
-            const matId = mattenSelect.value;
-            if (!matId) {
-                zeigeNotification('Bitte zuerst eine Kampffläche auswählen', 'error');
-                return;
-            }
-            // Direkte Navigation (window.location.href) sendet keinen Authorization-Header mit
-            // und schlägt im Online-Modus daher fehl — stattdessen per fetch() laden (der globale
-            // fetch-Wrapper in menu.js ergänzt Authorization/X-Steuerung-Password automatisch)
-            // und den Download clientseitig über einen Blob-Link auslösen.
-            try {
-                const response = await fetch(`/api/offline/export?kampfflaecheId=${matId}&turnierId=${turnierId}`);
-                if (!response.ok) {
-                    const data = await response.json().catch(() => ({}));
-                    throw new Error(data.error || 'Export fehlgeschlagen.');
-                }
-                const blob = await response.blob();
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `turnier_${turnierId}_matte_${matId}.json`;
-                document.body.appendChild(link);
-                link.click();
-                link.remove();
-                URL.revokeObjectURL(url);
-            } catch (err) {
-                zeigeNotification('Fehler beim Export: ' + err.message, 'error');
-            }
-        });
-    }
-
-    if (importInput) {
-        importInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = async (evt) => {
-                try {
-                    const data = JSON.parse(evt.target.result);
-                    
-                    if (parseInt(data.turnierId) !== parseInt(turnierId)) {
-                        throw new Error('Die geladene Datei gehört zu einem anderen Turnier.');
-                    }
-
-                    const response = await fetch('/api/offline/import', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            turnierId: data.turnierId,
-                            kampfflaecheId: data.kampfflaecheId,
-                            kaempfe: data.kaempfe
-                        })
-                    });
-
-                    const resData = await response.json();
-                    if (!response.ok) {
-                        throw new Error(resData.error || 'Fehler beim Hochladen der Ergebnisse.');
-                    }
-
-                    zeigeNotification(resData.message || 'Ergebnisse erfolgreich importiert!', 'success');
-                    
-                    const activeMatId = mattenSelect.value;
-                    if (activeMatId) {
-                        ladeKämpfe(activeMatId);
-                    }
-                } catch (err) {
-                    console.error(err);
-                    zeigeNotification('Fehler beim Einlesen: ' + err.message, 'error');
-                } finally {
-                    importInput.value = '';
-                }
-            };
-            reader.readAsText(file);
         });
     }
 

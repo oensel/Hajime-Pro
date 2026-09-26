@@ -1,18 +1,11 @@
-// End-to-End: analog zu steuerung-dk8-online-vs-offline.spec.js (siehe dortige ausführliche
-// Kommentare zur Begründung des Vergleichsaufbaus), hier für Gruppen-Überkreuz (6 Teilnehmer,
+// End-to-End: analog zu steuerung-dk8-komplett.spec.js (siehe dortige
+// Kommentare), hier für Gruppen-Überkreuz (6 Teilnehmer,
 // 10 Kämpfe: V_A_1-3/V_B_1-3, HF1/HF2, F1/F2 -- siehe GruppenUeberKreuzManager.js).
 //
-// Der Offline-Durchlauf dieses Tests ist der eigentliche Zweck der Datei: HF1/HF2 kommen aus
-// einer Ranglistenberechnung über die Vorrunde (nicht aus einem einzelnen Quellkampf) und wurden
-// bis vor Kurzem NUR serverseitig berechnet -- eine Matte, die während der Gruppenphase offline
-// ging, blieb bei HF1/HF2 für immer stecken. Inzwischen liegt diese Berechnung in
-// src/shared/gruppenUeberkreuzProgression.js, damit sowohl der Server
-// (GruppenUeberKreuzManager.js) als auch der Offline-Client (scoreboard.js,
-// aktualisiereTurnierOffline()) dieselbe Engine nutzen. Dieser Test spielt bewusst über die
-// normale steuerung.html-Bedienfolge, NICHT über direkte API-Aufrufe -- nur so durchläuft der
-// Offline-Zweig wirklich aktualisiereTurnierOffline() statt der Server-Route.
+// HF1/HF2 kommen aus einer Ranglistenberechnung über die Vorrunde (nicht aus einem einzelnen
+// Quellkampf, siehe src/shared/gruppenUeberkreuzProgression.js). Der Test spielt über die normale
+// steuerung.html-Bedienfolge, NICHT über direkte API-Aufrufe.
 import { test, expect } from '@playwright/test';
-import fs from 'node:fs';
 
 // 6 Teilnehmer, alle mit unterschiedlichem Verein, aufsteigendes Gewicht -- ergibt bei der
 // Gruppenzuteilung von GruppenUeberKreuzManager._teileTeilnehmerAuf() deterministisch Gruppe A =
@@ -56,8 +49,8 @@ async function richteTurnierEin(request, bezeichnung) {
         teilnehmerIds.push(teilnehmerId);
     }
 
-    // Reihenfolge identisch zur Fixtur -- Voraussetzung für eine deterministisch identische
-    // Gruppenzuteilung zwischen Online- und Offline-Turnier (siehe GruppenUeberKreuzManager.js:
+    // Reihenfolge identisch zur Fixtur -- Voraussetzung für eine deterministische
+    // Gruppenzuteilung (siehe GruppenUeberKreuzManager.js:
     // Teilnehmer werden ohne eigenes ORDER BY gelesen, SQLite liefert ohne Sortierung
     // Einfüge-/Rowid-Reihenfolge).
     for (const teilnehmerId of teilnehmerIds) {
@@ -71,16 +64,16 @@ async function richteTurnierEin(request, bezeichnung) {
     return { turnierId, matId, poolId };
 }
 
-// Identisch zu spieleKompletteBrackedDurch() in steuerung-dk8-online-vs-offline.spec.js: "W"
-// (kaempfer1) gewinnt jeden Kampf per Ippon. Im Offline-Zweig ist das hier der eigentliche Test:
-// HF1/HF2 werden erst NACH den 6 Vorrundenkämpfen überhaupt spielbar (Ranglistenberechnung, siehe
-// Kommentar am Dateianfang) -- bricht diese Berechnung offline nicht mehr durch, lädt
+// Identisch zu spieleKompletteBrackedDurch() in steuerung-dk8-komplett.spec.js: "W"
+// (kaempfer1) gewinnt jeden Kampf per Ippon. HF1/HF2 werden erst NACH den 6 Vorrundenkämpfen
+// überhaupt spielbar (Ranglistenberechnung, siehe Kommentar am Dateianfang) -- bricht diese
+// Berechnung nicht durch, lädt
 // "Nächster Kampf" hier nach der Vorrunde keinen weiteren Kampf mehr, und die Schleife bleibt bei
 // 6 (statt 10) Kämpfen stehen bzw. die spätere expect(...).toHaveLength(10)-Prüfung schlägt fehl.
 async function spieleKompletteBrackedDurch(page, anzahlKaempfe) {
     // Paarung (kaempfer1|kaempfer2) statt nur nameW beobachten: in der Vorrunde tritt dieselbe
     // Person mehrfach hintereinander als Kämpfer 1 gegen wechselnde Gruppenmitglieder an (siehe
-    // ausführlichen Kommentar in steuerung-dk8-online-vs-offline.spec.js) -- die Paarung selbst
+    // ausführlichen Kommentar in steuerung-dk8-komplett.spec.js) -- die Paarung selbst
     // wiederholt sich nie.
     let vorherigePaarung = 'Kämpfer 1|Kämpfer 2';
     for (let i = 0; i < anzahlKaempfe; i++) {
@@ -117,24 +110,18 @@ function normalisiereKaempfe(kaempfe) {
     return byNr;
 }
 
-test.describe.serial('Gruppen-Überkreuz komplett austragen: Online-Modus vs. Offline-Modus mit identischen Ausgangsdaten', () => {
+test.describe.serial('Gruppen-Überkreuz komplett austragen über den Hallen-Server', () => {
     let onlinePage;
-    let offlinePage;
     let onlineMatId;
-    let offlineMatId;
     let onlineErgebnis;
-    let offlineErgebnis;
 
     test.beforeAll(async ({ browser }) => {
         const onlineContext = await browser.newContext();
-        const offlineContext = await browser.newContext({ acceptDownloads: true });
         onlinePage = await onlineContext.newPage();
-        offlinePage = await offlineContext.newPage();
     });
 
     test.afterAll(async () => {
         await onlinePage.context().close();
-        await offlinePage.context().close();
     });
 
     test('Online: komplettes Gruppen-Überkreuz-Turnier über den echten Server austragen', async ({ request }) => {
@@ -155,43 +142,5 @@ test.describe.serial('Gruppen-Überkreuz komplett austragen: Online-Modus vs. Of
 
         expect(onlineErgebnis.F1.siegerSeite).toBe('kaempfer1');
         expect(onlineErgebnis.F1.kaempfer1).toBe('Adler, Anna');
-    });
-
-    test('Offline: identisches Gruppen-Überkreuz-Turnier exportieren, komplett offline austragen (inkl. Halbfinal-Ranglistenberechnung) und wieder exportieren', async ({ request }) => {
-        const { matId } = await richteTurnierEin(request, 'GÜ-Offline-Vergleich');
-        offlineMatId = matId;
-
-        const exportResp = await request.get(`/api/offline/export?kampfflaecheId=${matId}`);
-        expect(exportResp.ok(), await exportResp.text()).toBeTruthy();
-        const offlineDaten = await exportResp.json();
-        expect(offlineDaten.kaempfe).toHaveLength(10);
-
-        await offlinePage.goto('/steuerung.html?turnierId=999999999');
-        await offlinePage.locator('#offlineImportInput').setInputFiles({
-            name: `ergebnisse_matte_${matId}.json`,
-            mimeType: 'application/json',
-            buffer: Buffer.from(JSON.stringify(offlineDaten))
-        });
-        await expect(offlinePage.locator('#connectionModeText')).toHaveText('Offline (Lokal)');
-
-        await spieleKompletteBrackedDurch(offlinePage, 10);
-
-        const [download] = await Promise.all([
-            offlinePage.waitForEvent('download'),
-            offlinePage.locator('#btnOfflineExport').click()
-        ]);
-        const exportiert = JSON.parse(fs.readFileSync(await download.path(), 'utf-8'));
-        expect(exportiert.kaempfe).toHaveLength(10);
-        expect(exportiert.kaempfe.every(k => k.status === 'beendet')).toBe(true);
-
-        offlineErgebnis = normalisiereKaempfe(exportiert.kaempfe);
-
-        expect(offlineErgebnis.F1.siegerSeite).toBe('kaempfer1');
-        expect(offlineErgebnis.F1.kaempfer1).toBe('Adler, Anna');
-    });
-
-    test('Online- und Offline-Ergebnis stimmen für alle 10 Kämpfe exakt überein', () => {
-        expect(offlineMatId).not.toBe(onlineMatId);
-        expect(offlineErgebnis).toEqual(onlineErgebnis);
     });
 });

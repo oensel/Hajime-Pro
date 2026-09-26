@@ -1,9 +1,8 @@
-// End-to-End: analog zu steuerung-dk8-online-vs-offline.spec.js (siehe dortige ausführliche
-// Kommentare zur Begründung des Vergleichsaufbaus), hier für Doppel-KO-16 (16 Teilnehmer,
+// End-to-End: analog zu steuerung-dk8-komplett.spec.js (siehe dortige
+// Kommentare), hier für Doppel-KO-16 (16 Teilnehmer,
 // 27 Kämpfe: H1-H8, H9-H12, H13-H14, Trostrunde T1-T12, Finale F1 -- siehe
 // DoppelKo16Manager.js/DOPPEL_KO_16_TOPOLOGIE).
 import { test, expect } from '@playwright/test';
-import fs from 'node:fs';
 
 // 16 Teilnehmer, alle mit unterschiedlichem Verein (Vereinstrennung in
 // DoppelKo16Manager.initialisierePool() spielt damit keine Rolle) und streng aufsteigendem
@@ -57,8 +56,8 @@ async function richteTurnierEin(request, bezeichnung) {
         teilnehmerIds.push(teilnehmerId);
     }
 
-    // Reihenfolge identisch zur Fixtur -- Voraussetzung für ein deterministisch identisches
-    // Raster zwischen Online- und Offline-Turnier (siehe DoppelKo16Manager.js: Teilnehmer werden
+    // Reihenfolge identisch zur Fixtur -- Voraussetzung für ein deterministisches
+    // Raster (siehe DoppelKo16Manager.js: Teilnehmer werden
     // ohne eigenes ORDER BY gelesen, SQLite liefert ohne Sortierung Einfüge-/Rowid-Reihenfolge).
     for (const teilnehmerId of teilnehmerIds) {
         const moveResp = await request.post('/api/pools/verschieben', { data: { teilnehmerId, zielPoolId: poolId } });
@@ -71,12 +70,12 @@ async function richteTurnierEin(request, bezeichnung) {
     return { turnierId, matId, poolId };
 }
 
-// Identisch zu spieleKompletteBrackedDurch() in steuerung-dk8-online-vs-offline.spec.js: "W"
+// Identisch zu spieleKompletteBrackedDurch() in steuerung-dk8-komplett.spec.js: "W"
 // (kaempfer1) gewinnt jeden Kampf per Ippon, unabhängig von der Abspielreihenfolge steht das
 // Endergebnis jedes benannten Kampfes eindeutig fest.
 async function spieleKompletteBrackedDurch(page, anzahlKaempfe) {
     // Paarung (kaempfer1|kaempfer2) statt nur nameW beobachten -- siehe ausführlichen Kommentar
-    // in steuerung-dk8-online-vs-offline.spec.js: derselbe Kämpfer kann in zwei verschiedenen
+    // in steuerung-dk8-komplett.spec.js: derselbe Kämpfer kann in zwei verschiedenen
     // Kämpfen hintereinander als Kämpfer 1 antreten, die Paarung selbst nie.
     let vorherigePaarung = 'Kämpfer 1|Kämpfer 2';
     for (let i = 0; i < anzahlKaempfe; i++) {
@@ -113,24 +112,18 @@ function normalisiereKaempfe(kaempfe) {
     return byNr;
 }
 
-test.describe.serial('Doppel-KO-16 komplett austragen: Online-Modus vs. Offline-Modus mit identischen Ausgangsdaten', () => {
+test.describe.serial('Doppel-KO-16 komplett austragen über den Hallen-Server', () => {
     let onlinePage;
-    let offlinePage;
     let onlineMatId;
-    let offlineMatId;
     let onlineErgebnis;
-    let offlineErgebnis;
 
     test.beforeAll(async ({ browser }) => {
         const onlineContext = await browser.newContext();
-        const offlineContext = await browser.newContext({ acceptDownloads: true });
         onlinePage = await onlineContext.newPage();
-        offlinePage = await offlineContext.newPage();
     });
 
     test.afterAll(async () => {
         await onlinePage.context().close();
-        await offlinePage.context().close();
     });
 
     test('Online: komplettes Doppel-KO-16-Turnier über den echten Server austragen', async ({ request }) => {
@@ -152,44 +145,5 @@ test.describe.serial('Doppel-KO-16 komplett austragen: Online-Modus vs. Offline-
 
         expect(onlineErgebnis.F1.siegerSeite).toBe('kaempfer1');
         expect(onlineErgebnis.F1.kaempfer1).toBe('Adler, Anna');
-    });
-
-    test('Offline: identisches Doppel-KO-16-Turnier exportieren, komplett offline austragen und wieder exportieren', async ({ request }) => {
-        test.setTimeout(60_000);
-        const { matId } = await richteTurnierEin(request, 'DK16-Offline-Vergleich');
-        offlineMatId = matId;
-
-        const exportResp = await request.get(`/api/offline/export?kampfflaecheId=${matId}`);
-        expect(exportResp.ok(), await exportResp.text()).toBeTruthy();
-        const offlineDaten = await exportResp.json();
-        expect(offlineDaten.kaempfe).toHaveLength(27);
-
-        await offlinePage.goto('/steuerung.html?turnierId=999999999');
-        await offlinePage.locator('#offlineImportInput').setInputFiles({
-            name: `ergebnisse_matte_${matId}.json`,
-            mimeType: 'application/json',
-            buffer: Buffer.from(JSON.stringify(offlineDaten))
-        });
-        await expect(offlinePage.locator('#connectionModeText')).toHaveText('Offline (Lokal)');
-
-        await spieleKompletteBrackedDurch(offlinePage, 27);
-
-        const [download] = await Promise.all([
-            offlinePage.waitForEvent('download'),
-            offlinePage.locator('#btnOfflineExport').click()
-        ]);
-        const exportiert = JSON.parse(fs.readFileSync(await download.path(), 'utf-8'));
-        expect(exportiert.kaempfe).toHaveLength(27);
-        expect(exportiert.kaempfe.every(k => k.status === 'beendet')).toBe(true);
-
-        offlineErgebnis = normalisiereKaempfe(exportiert.kaempfe);
-
-        expect(offlineErgebnis.F1.siegerSeite).toBe('kaempfer1');
-        expect(offlineErgebnis.F1.kaempfer1).toBe('Adler, Anna');
-    });
-
-    test('Online- und Offline-Ergebnis stimmen für alle 27 Kämpfe exakt überein', () => {
-        expect(offlineMatId).not.toBe(onlineMatId);
-        expect(offlineErgebnis).toEqual(onlineErgebnis);
     });
 });

@@ -2,7 +2,7 @@
 // -- siehe MannschaftJederGegenJedenManager.js/MannschaftDoppelKo8Manager.js/
 // MannschaftDoppelKo16Manager.js) sowie der automatische Stichkampf bei vollständigem Gleichstand
 // (werteBegegnungAus() in mannschaftsBegegnungEngine.js, DJB-WKO Art. 3.12.13.1). Das direkte
-// Pendant zu den steuerung-*-online-vs-offline.spec.js-Dateien für den Einzelwettkampf: dort ist
+// Pendant zu den steuerung-*-komplett.spec.js-Dateien für den Einzelwettkampf: dort ist
 // die Bracket-/Paarungs-KASKADE (bracketTopologie.js/kampfProgression.js) bereits pro Modus
 // abgedeckt, hier geht es um die zusätzliche BEGEGNUNGS-Ebene, die es nur bei Mannschaften gibt --
 // mehrere Einzelkämpfe (einer pro gemeinsamer Gewichtsklasse) zu einer Begegnung zusammenfassen,

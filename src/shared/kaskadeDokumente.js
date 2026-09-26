@@ -1,8 +1,7 @@
 /**
  * Offline-Kaskade auf einer Liste von Kämpfen EINES Pools (Dokumente oder DB-Zeilen): wendet
  * Gruppen-Überkreuz-Halbfinale und die allgemeine Quellkampf-Kaskade so lange an, bis sich nichts
- * mehr ändert (gleiches Vorgehen wie der bisherige Browser-Offline-Modus in scoreboard.js,
- * aktualisiereTurnierOffline). Rein und knex-/DOM-frei — genutzt von src/sync/kaskadeLokal.js auf
+ * mehr ändert. Rein und knex-/DOM-frei — genutzt von src/sync/kaskadeLokal.js auf
  * Client-Geräten; der Server rechnet unabhängig davon mit seinen Managern nach und ist maßgeblich.
  *
  * @param {Array<Object>} kaempfe - alle Kämpfe eines Pools

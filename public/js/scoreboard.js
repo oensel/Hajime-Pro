@@ -1,7 +1,3 @@
-import { berechneKaempferPatches } from '/js/shared/kampfProgression.js';
-import { berechneGruppenUeberkreuzHalbfinalPatches } from '/js/shared/gruppenUeberkreuzProgression.js';
-import { letztesKampfEndeProTeilnehmer, pruefeKampfPause } from '/js/shared/pausenRegel.js';
-
 // Global fetch wrapper to append X-Steuerung-Password and Authorization headers if available in
 // localStorage. steuerung.html lädt bewusst kein menu.js (das würde die Sidebar-Navigation der
 // übrigen Verwaltungsseiten mitbringen), das ist aber die einzige Stelle, die sonst den
@@ -138,16 +134,12 @@ let selectedMatId = null;
 // Kiken-gachi (Verletzung) oder Hansoku-make (Disqualifikation).
 let kampfGestartet = false;
 
-let offlineState = null;
-let isOfflineMode = false;
+// Reste des früheren JSON-Offline-Modus (Matte als Datei im Browser durchspielen) entfernen —
+// abgelöst durch Client-Geräte mit lokaler Dokument-DB (SYNC_ROLLE=client).
 try {
-    if (localStorage.getItem('isOfflineMode') === 'true') {
-        isOfflineMode = true;
-        offlineState = JSON.parse(localStorage.getItem('offlineState') || 'null');
-    }
-} catch (e) {
-    console.error("Fehler beim Wiederherstellen des Offline-Status:", e);
-}
+    localStorage.removeItem('isOfflineMode');
+    localStorage.removeItem('offlineState');
+} catch (e) { /* localStorage nicht verfügbar */ }
 
 // Pausenwarnung: der als naechstes wartende Kampf und der Kampf danach (Tausch-Ziel), sobald
 // pruefeUndZeigePausenwarnung() ein Pausenproblem fuer den naechsten Kampf festgestellt hat.
@@ -232,9 +224,8 @@ function changeFighterColorSlider(isRot) {
     update();
 
     // Reine Live-Anzeige-Info für externe Anzeigetafeln (global.liveColors, nicht Teil des
-    // Kampfergebnisses) — im Offline-Modus gibt es keinen erreichbaren Server dafür, der
-    // fetch() würde nur einen Konsolenfehler erzeugen (siehe QA-Bericht F7).
-    if (currentFightId && !isOfflineMode) {
+    // Kampfergebnisses).
+    if (currentFightId) {
         window.Datenzugriff.setzeLiveFarbe(currentFightId, state.fighter2Color)
             .catch(err => console.error("Fehler beim Speichern der Kämpferfarbe im Backend:", err));
     }
@@ -922,40 +913,6 @@ if (document.getElementById('matchDuration')) {
             ladeMattenUebersicht();
         }, 20000);
 
-        const offlineImportInput = document.getElementById('offlineImportInput');
-        if (offlineImportInput) {
-            offlineImportInput.addEventListener('change', (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-
-                const reader = new FileReader();
-                reader.onload = (evt) => {
-                    try {
-                        const data = JSON.parse(evt.target.result);
-                        if (!data.turnierId || !data.kampfflaecheId || !Array.isArray(data.kaempfe)) {
-                            throw new Error('Ungültiges Dateiformat. Bitte exportierte Mattendatei verwenden.');
-                        }
-
-                        offlineState = data;
-                        isOfflineMode = true;
-                        localStorage.setItem('offlineState', JSON.stringify(offlineState));
-                        localStorage.setItem('isOfflineMode', 'true');
-
-                        updateConnectionModeUI();
-                        populateOfflineMats();
-                        pruefeUndZeigePausenwarnung();
-                        ladeMattenUebersicht();
-
-                        zeigeNotification(`Offline-Daten für ${data.kampfflaecheBezeichnung} geladen!`, 'success');
-                    } catch (err) {
-                        alert('Fehler beim Einlesen: ' + err.message);
-                    } finally {
-                        offlineImportInput.value = '';
-                    }
-                };
-                reader.readAsText(file);
-            });
-        }
     };
     channel.onmessage = function(event) {
         if (event.data && event.data.type === 'request_state') {
@@ -1482,13 +1439,6 @@ async function zeigeTurnierAuswahlModal() {
 
 async function ladeMatten() {
     try {
-        updateConnectionModeUI();
-
-        if (isOfflineMode && offlineState) {
-            populateOfflineMats();
-            return;
-        }
-
         const params = new URLSearchParams(window.location.search);
         let turnierId = params.get('turnierId') || localStorage.getItem('aktiveTurnierId');
         
@@ -1567,28 +1517,16 @@ async function naechstenKampfHolen() {
     }
     
     try {
-        let naechster;
+        const kaempfe = await window.Datenzugriff.ladeKaempfeDerMatte(selectedMatId);
 
-        if (isOfflineMode && offlineState) {
-            naechster = offlineState.kaempfe.find(k => k.status === 'gestartet');
-            if (!naechster) {
-                naechster = offlineState.kaempfe.find(k => k.status === 'bereit');
-            }
-            if (!naechster) {
-                naechster = offlineState.kaempfe.find(k => k.status === 'angelegt');
-            }
-        } else {
-            const kaempfe = await window.Datenzugriff.ladeKaempfeDerMatte(selectedMatId);
-
-            naechster = kaempfe.find(k => k.status === 'gestartet');
-            if (!naechster) {
-                naechster = kaempfe.find(k => k.status === 'bereit');
-            }
-            if (!naechster) {
-                naechster = kaempfe.find(k => k.status === 'angelegt');
-            }
+        let naechster = kaempfe.find(k => k.status === 'gestartet');
+        if (!naechster) {
+            naechster = kaempfe.find(k => k.status === 'bereit');
         }
-        
+        if (!naechster) {
+            naechster = kaempfe.find(k => k.status === 'angelegt');
+        }
+
         if (!naechster) {
             zeigeNotification("Keine anstehenden Kämpfe auf dieser Matte gefunden.", "error");
             return;
@@ -1659,15 +1597,10 @@ async function naechstenKampfHolen() {
         kampfGestartet = false;
 
         if (naechster.status === 'bereit') {
-            if (isOfflineMode && offlineState) {
-                naechster.status = 'gestartet';
-                localStorage.setItem('offlineState', JSON.stringify(offlineState));
-            } else {
-                // Wie bisher nicht blockierend: scheitert der Start (z.B. Matte pausiert), bleibt der
-                // Kampf trotzdem geladen.
-                const start = await window.Datenzugriff.aktualisiereKampf(naechster.id, { status: 'gestartet' });
-                if (!start.ok) console.warn('Kampf konnte nicht als gestartet markiert werden:', start.fehler);
-            }
+            // Wie bisher nicht blockierend: scheitert der Start (z.B. Matte pausiert), bleibt der
+            // Kampf trotzdem geladen.
+            const start = await window.Datenzugriff.aktualisiereKampf(naechster.id, { status: 'gestartet' });
+            if (!start.ok) console.warn('Kampf konnte nicht als gestartet markiert werden:', start.fehler);
         }
         
         currentSeconds = pool_kampfzeit;
@@ -1791,29 +1724,12 @@ async function ergebnisSenden() {
     };
 
     try {
-        if (isOfflineMode && offlineState) {
-            const fightIndex = offlineState.kaempfe.findIndex(k => k.id === currentFightId);
-            if (fightIndex !== -1) {
-                offlineState.kaempfe[fightIndex].status = 'beendet';
-                offlineState.kaempfe[fightIndex].sieger_id = payload.sieger_id;
-                offlineState.kaempfe[fightIndex].unterbewertung_kaempfer1 = payload.unterbewertung_kaempfer1;
-                offlineState.kaempfe[fightIndex].unterbewertung_kaempfer2 = payload.unterbewertung_kaempfer2;
-                offlineState.kaempfe[fightIndex].kampfzeit_in_sekunden = payload.kampfzeit_in_sekunden;
-                
-                // Run tree updates offline
-                aktualisiereTurnierOffline(offlineState.kaempfe[fightIndex].pool_id);
-                
-                localStorage.setItem('offlineState', JSON.stringify(offlineState));
-            }
-            zeigeNotification("Kampfergebnis lokal gespeichert (Offline-Modus)!", "success");
+        const ergebnis = await window.Datenzugriff.aktualisiereKampf(currentFightId, payload);
+        if (!ergebnis.ok) throw new Error(ergebnis.fehler || 'Fehler beim Aktualisieren des Kampfes auf dem Server.');
+        if (ergebnis.ausstehend) {
+            zeigeNotification(ergebnis.meldung, "info");
         } else {
-            const ergebnis = await window.Datenzugriff.aktualisiereKampf(currentFightId, payload);
-            if (!ergebnis.ok) throw new Error(ergebnis.fehler || 'Fehler beim Aktualisieren des Kampfes auf dem Server.');
-            if (ergebnis.ausstehend) {
-                zeigeNotification(ergebnis.meldung, "info");
-            } else {
-                zeigeNotification("Kampfergebnis erfolgreich übermittelt und gespeichert!", "success");
-            }
+            zeigeNotification("Kampfergebnis erfolgreich übermittelt und gespeichert!", "success");
         }
         
         currentFightId = null;
@@ -1836,14 +1752,10 @@ async function zeigeNaechsteKaempferVorschau() {
     if (!selectedMatId) return;
     try {
         let kaempfe;
-        if (isOfflineMode && offlineState) {
-            kaempfe = offlineState.kaempfe;
-        } else {
-            try {
-                kaempfe = await window.Datenzugriff.ladeKaempfeDerMatte(selectedMatId);
-            } catch (err) {
-                return;
-            }
+        try {
+            kaempfe = await window.Datenzugriff.ladeKaempfeDerMatte(selectedMatId);
+        } catch (err) {
+            return;
         }
 
         const anstehende = kaempfe.filter(k => k.status === 'bereit' || k.status === 'angelegt');
@@ -1890,16 +1802,10 @@ async function pruefeUndZeigePausenwarnung() {
 
     try {
         let kaempfe;
-        let pausenwarnungFuer = null; // im Online-Modus bereits vom Server berechnet
-
-        if (isOfflineMode && offlineState) {
-            kaempfe = offlineState.kaempfe;
-        } else {
-            try {
-                kaempfe = await window.Datenzugriff.ladeKaempfeDerMatte(selectedMatId);
-            } catch (err) {
-                return;
-            }
+        try {
+            kaempfe = await window.Datenzugriff.ladeKaempfeDerMatte(selectedMatId);
+        } catch (err) {
+            return;
         }
 
         const bereite = kaempfe
@@ -1915,14 +1821,9 @@ async function pruefeUndZeigePausenwarnung() {
             return;
         }
 
-        let pruefung;
-        if (isOfflineMode && offlineState) {
-            const letztesEnde = letztesKampfEndeProTeilnehmer(kaempfe);
-            pruefung = pruefeKampfPause(naechster, naechster.pool_altersklasse, letztesEnde, Date.now());
-        } else {
-            // Server liefert die Prüfung bereits mit (kampfflaecheId-Antwort von getKaempfe)
-            pruefung = naechster.pausenwarnung ? { ok: false, ...naechster.pausenwarnung } : { ok: true, kaempfer: [] };
-        }
+        // Die Prüfung kommt bereits mit der Mattenansicht (Server: getKaempfe, Client-Gerät:
+        // src/shared/mattenAnsicht.js)
+        const pruefung = naechster.pausenwarnung ? { ok: false, ...naechster.pausenwarnung } : { ok: true, kaempfer: [] };
 
         if (pruefung.ok) {
             banner.style.display = 'none';
@@ -1959,20 +1860,9 @@ async function pruefeUndZeigePausenwarnung() {
 async function tauscheMitNaechstemKampf() {
     if (!pausenWarnungKampf || !pausenWarnungDanach) return;
     try {
-        if (isOfflineMode && offlineState) {
-            const a = offlineState.kaempfe.find(k => k.id === pausenWarnungKampf.id);
-            const b = offlineState.kaempfe.find(k => k.id === pausenWarnungDanach.id);
-            if (a && b) {
-                const tmp = a.matten_reihenfolge;
-                a.matten_reihenfolge = b.matten_reihenfolge;
-                b.matten_reihenfolge = tmp;
-                localStorage.setItem('offlineState', JSON.stringify(offlineState));
-            }
-        } else {
-            const turnierId = localStorage.getItem('aktiveTurnierId');
-            const tausch = await window.Datenzugriff.tauscheReihenfolge(pausenWarnungKampf.id, pausenWarnungDanach.id, turnierId);
-            if (!tausch.ok) throw new Error(tausch.fehler || 'Tausch fehlgeschlagen.');
-        }
+        const turnierId = localStorage.getItem('aktiveTurnierId');
+        const tausch = await window.Datenzugriff.tauscheReihenfolge(pausenWarnungKampf.id, pausenWarnungDanach.id, turnierId);
+        if (!tausch.ok) throw new Error(tausch.fehler || 'Tausch fehlgeschlagen.');
         zeigeNotification('Reihenfolge getauscht.', 'success');
         await pruefeUndZeigePausenwarnung();
         await ladeMattenUebersicht();
@@ -2003,14 +1893,10 @@ async function ladeMattenUebersicht() {
 
     try {
         let kaempfe;
-        if (isOfflineMode && offlineState) {
-            kaempfe = offlineState.kaempfe;
-        } else {
-            try {
-                kaempfe = await window.Datenzugriff.ladeKaempfeDerMatte(selectedMatId);
-            } catch (err) {
-                return;
-            }
+        try {
+            kaempfe = await window.Datenzugriff.ladeKaempfeDerMatte(selectedMatId);
+        } catch (err) {
+            return;
         }
 
         const kommende = kaempfe.filter(k => k.status === 'bereit' || k.status === 'angelegt');
@@ -2145,16 +2031,8 @@ async function speichereSteuerungKorrektur() {
     };
 
     try {
-        if (isOfflineMode && offlineState) {
-            const fight = offlineState.kaempfe.find(k => k.id === kampfId);
-            if (fight) {
-                Object.assign(fight, payload);
-                localStorage.setItem('offlineState', JSON.stringify(offlineState));
-            }
-        } else {
-            const korrektur = await window.Datenzugriff.aktualisiereKampf(kampfId, payload);
-            if (!korrektur.ok) throw new Error(korrektur.fehler || 'Korrektur fehlgeschlagen.');
-        }
+        const korrektur = await window.Datenzugriff.aktualisiereKampf(kampfId, payload);
+        if (!korrektur.ok) throw new Error(korrektur.fehler || 'Korrektur fehlgeschlagen.');
 
         zeigeNotification('Kampfergebnis korrigiert.', 'success');
         modal.style.display = 'none';
@@ -2170,99 +2048,6 @@ window.addEventListener('beforeunload', (event) => {
     event.preventDefault();
     event.returnValue = ''; // Required standard for browser to display default warning dialog
 });
-
-function updateConnectionModeUI() {
-    const textEl = document.getElementById('connectionModeText');
-    const exportBtn = document.getElementById('btnOfflineExport');
-    
-    if (textEl) {
-        if (isOfflineMode) {
-            textEl.textContent = "Offline (Lokal)";
-            textEl.style.color = "#dc3545";
-            textEl.style.borderColor = "#dc3545";
-        } else {
-            textEl.textContent = "Online (WLAN)";
-            textEl.style.color = "#28a745";
-            textEl.style.borderColor = "#28a745";
-        }
-    }
-    
-    if (exportBtn) {
-        exportBtn.style.display = isOfflineMode ? "inline-flex" : "none";
-    }
-}
-
-function populateOfflineMats() {
-    if (!offlineState) return;
-    selectedMatId = offlineState.kampfflaecheId;
-    const matSelect = document.getElementById('matSelect');
-    if (matSelect) {
-        matSelect.innerHTML = `<option value="${offlineState.kampfflaecheId}">${offlineState.kampfflaecheBezeichnung}</option>`;
-        matSelect.value = offlineState.kampfflaecheId;
-    }
-}
-
-window.offlineExportRun = function() {
-    if (!offlineState) {
-        alert('Keine Offline-Daten vorhanden.');
-        return;
-    }
-    
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(offlineState, null, 2));
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute("href", dataStr);
-    downloadAnchor.setAttribute("download", `ergebnisse_matte_${offlineState.kampfflaecheId}.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
-};
-
-// Nutzt dieselbe reine Engine wie der Server (src/services/*.js), statt einer von Hand
-// synchron gehaltenen Kopie der Doppel-KO-8/16-Kaskadenlogik. Modus-unabhängig: die Engine
-// stützt sich ausschließlich auf die vom Server mitexportierten kaempfer1/2_quelle_kampf_id/
-// _typ-Felder (kaempfe.* im Export, siehe src/controllers/offlineController.js), nicht auf
-// Array-Position oder reihenfolge_nummer-Konventionen.
-function aktualisiereTurnierOffline(poolId) {
-    if (!offlineState) return;
-
-    const kaempfe = offlineState.kaempfe.filter(k => k.pool_id === poolId);
-    if (kaempfe.length === 0) return;
-
-    // Gruppen-Überkreuz-Halbfinale (HF1/HF2) zuerst: deren Kämpfer kommen aus einer
-    // Ranglistenberechnung über die Vorrunde, nicht aus einem einzelnen Quellkampf, und werden
-    // daher von berechneKaempferPatches() unten strukturell übersprungen (siehe
-    // gruppenUeberkreuzProgression.js). Ohne diesen Aufruf bliebe eine Matte, die während der
-    // Gruppenphase offline geht, für immer bei HF1/HF2 stecken.
-    const patches = [...berechneGruppenUeberkreuzHalbfinalPatches(kaempfe), ...berechneKaempferPatches(kaempfe)];
-    if (patches.length === 0) return;
-
-    for (const patch of patches) {
-        const kampf = kaempfe.find(k => k.id === patch.id);
-        if (!kampf) continue;
-
-        if (patch.kaempfer1_id !== undefined) {
-            kampf.kaempfer1_id = patch.kaempfer1_id;
-            const t1Obj = offlineState.teilnehmer.find(t => t.id === patch.kaempfer1_id);
-            kampf.kaempfer1_vorname = t1Obj ? t1Obj.vorname : '';
-            kampf.kaempfer1_nachname = t1Obj ? t1Obj.nachname : '';
-            kampf.kaempfer1_verein = t1Obj ? t1Obj.verein : '';
-        }
-        if (patch.kaempfer2_id !== undefined) {
-            kampf.kaempfer2_id = patch.kaempfer2_id;
-            const t2Obj = offlineState.teilnehmer.find(t => t.id === patch.kaempfer2_id);
-            kampf.kaempfer2_vorname = t2Obj ? t2Obj.vorname : '';
-            kampf.kaempfer2_nachname = t2Obj ? t2Obj.nachname : '';
-            kampf.kaempfer2_verein = t2Obj ? t2Obj.verein : '';
-        }
-        if (patch.status !== undefined) kampf.status = patch.status;
-        if (patch.sieger_id !== undefined) kampf.sieger_id = patch.sieger_id;
-        if (patch.unterbewertung_kaempfer1 !== undefined) kampf.unterbewertung_kaempfer1 = patch.unterbewertung_kaempfer1;
-        if (patch.unterbewertung_kaempfer2 !== undefined) kampf.unterbewertung_kaempfer2 = patch.unterbewertung_kaempfer2;
-    }
-
-    // Kaskade erneut prüfen, falls sich durch die Patches weitere Kämpfe ergeben haben
-    aktualisiereTurnierOffline(poolId);
-}
 
 // steuerung.html/anzeige.html rufen diese Funktionen über inline onclick/onchange/oninput-
 // Attribute auf. Als <script type="module"> landen Top-Level-Deklarationen nicht mehr

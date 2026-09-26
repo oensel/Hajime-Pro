@@ -1,6 +1,6 @@
 // Scoreboard (steuerung.html) im Sync-Modus: ein kompletter Doppel-KO-8-Pool läuft über die
 // Dokument-DB und die Brücke — mit demselben Endergebnis wie online (vgl.
-// tests/e2e/steuerung-dk8-online-vs-offline.spec.js, identische Bedienfolge).
+// tests/e2e/steuerung-dk8-komplett.spec.js, identische Bedienfolge).
 import { test, expect } from '@playwright/test';
 import { warteLeerlauf, richteDk8TurnierEin, syncStatus, alleDokumente } from './helpers.js';
 

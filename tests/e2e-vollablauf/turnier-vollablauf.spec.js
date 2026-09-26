@@ -19,7 +19,7 @@ import {
     importiereTurnierOffline, ermittleZielgewicht, waegeTeilnehmerEin, fuegeWalkInTeilnehmerHinzu,
     markiereAlleAlsGewogen, synchronisiereMannschaftsPositionen,
     generierePoolsUndPruefeKampflos, verteileMannschaftenAutomatisch, verteilePoolsAufMatten,
-    holeMatteDaten, spieleMatteKomplettDurch, importiereMatteErgebnisse, importiereErgebnisseOnline
+    spieleMatteAmServerDurch, importiereErgebnisseOnline
 } from './helpers.js';
 import { ONLINE_BASE_URL, OFFLINE_BASE_URL } from './test-env.js';
 
@@ -47,9 +47,8 @@ test.describe.serial('Kompletter Turnierablauf', () => {
         timPage = await (await browser.newContext()).newPage();
         tomPage = await (await browser.newContext()).newPage();
         offlinePage = await (await browser.newContext()).newPage();
-        // Eigener Kontext mit acceptDownloads für die Matten-Simulation (steuerung.html lädt am
-        // Ende jeder Matte ein Ergebnis-JSON herunter, siehe spieleMatteKomplettDurch).
-        mattePage = await (await browser.newContext({ acceptDownloads: true })).newPage();
+        // Eigener Kontext für das Scoreboard (steuerung.html), siehe spieleMatteAmServerDurch.
+        mattePage = await (await browser.newContext()).newPage();
     });
 
     test.afterAll(async () => {
@@ -247,11 +246,10 @@ test.describe.serial('Kompletter Turnierablauf', () => {
         expect(pfad).toBeTruthy();
     });
 
-    // --- PHASE 8: Matten 1 und 2 herunterladen, Scoreboard aufrufen, alle Kämpfe (Einzel +
-    // Mannschaft) abhandeln — komplett clientseitig offline, siehe spieleMatteKomplettDurch.
-    let matteErgebnisPfade = [];
+    // --- PHASE 8: an Matte 1 und 2 per Scoreboard alle Kämpfe (Einzel + Mannschaft) direkt am
+    // Hallen-Server abhandeln, siehe spieleMatteAmServerDurch.
 
-    test('Phase 8: Matten 1 und 2 werden heruntergeladen und alle Kämpfe im Scoreboard abgehandelt', async () => {
+    test('Phase 8: an Matte 1 und 2 werden alle Kämpfe im Scoreboard abgehandelt', async () => {
         test.setTimeout(10 * 60 * 1000);
 
         const kfResp = await offlinePage.request.get(`${OFFLINE_BASE_URL}/api/kampfflaechen?turnierId=${offlineTurnierId}`);
@@ -259,13 +257,9 @@ test.describe.serial('Kompletter Turnierablauf', () => {
         expect(kampfflaechen.length).toBe(2);
 
         for (const kf of kampfflaechen) {
-            const matteDaten = await holeMatteDaten(OFFLINE_BASE_URL, offlinePage.request, kf.id, offlineTurnierId);
-            matteDaten.kampfflaecheId = kf.id;
-            const ergebnisPfad = await spieleMatteKomplettDurch(mattePage, OFFLINE_BASE_URL, matteDaten);
-            matteErgebnisPfade.push({ kampfflaecheId: kf.id, pfad: ergebnisPfad });
+            const gespielt = await spieleMatteAmServerDurch(mattePage, OFFLINE_BASE_URL, offlineTurnierId, kf.id);
+            expect(gespielt, `Matte ${kf.id}: keine Kämpfe gespielt`).toBeGreaterThan(0);
         }
-
-        expect(matteErgebnisPfade).toHaveLength(2);
 
         const pfad = await exportiereTurnierDaten(offlinePage, OFFLINE_BASE_URL, offlineTurnierId, 'phase8-nach-matten-durchspielen');
         expect(pfad).toBeTruthy();
@@ -282,20 +276,16 @@ test.describe.serial('Kompletter Turnierablauf', () => {
         }
     });
 
-    // --- PHASE 9: die abgeschlossenen Kämpfe je Matte zurück in das Offline-Turnier einlesen —
-    // mannschaftskaempfe-Sieger werden dabei serverseitig automatisch neu berechnet
-    // (triggerPoolUpdate in kampfController.js, siehe CLAUDE.md).
-    test('Phase 9: die Ergebnisse je Matte werden zurück in das Offline-Turnier importiert', async () => {
-        for (const { pfad } of matteErgebnisPfade) {
-            await importiereMatteErgebnisse(offlinePage, OFFLINE_BASE_URL, offlineTurnierId, pfad);
-        }
-
+    // --- PHASE 9: alle Kämpfe im Offline-Turnier sind abgeschlossen — die Ergebnisse liefen in
+    // Phase 8 direkt beim Hallen-Server ein (mannschaftskaempfe-Sieger rechnet er dabei selbst,
+    // triggerPoolUpdate in kampfController.js).
+    test('Phase 9: alle Kämpfe des Offline-Turniers sind abgeschlossen', async () => {
         const kaempfeResp = await offlinePage.request.get(`${OFFLINE_BASE_URL}/api/pools/details?turnierId=${offlineTurnierId}`);
         const pools = await kaempfeResp.json();
         const unbeendet = pools.flatMap(p => p.kaempfe).filter(k => k.status !== 'beendet' && k.status !== 'freilos');
         expect(unbeendet, `${unbeendet.length} Kämpfe sind noch nicht abgeschlossen`).toEqual([]);
 
-        const pfad = await exportiereTurnierDaten(offlinePage, OFFLINE_BASE_URL, offlineTurnierId, 'phase9-nach-ergebnis-import');
+        const pfad = await exportiereTurnierDaten(offlinePage, OFFLINE_BASE_URL, offlineTurnierId, 'phase9-alle-kaempfe-beendet');
         expect(pfad).toBeTruthy();
     });
 

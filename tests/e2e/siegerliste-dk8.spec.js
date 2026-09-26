@@ -10,7 +10,7 @@
 // status 'beendet'/'freilos' der einzelnen Kämpfe verlangt, nicht den Pool-Gesamtstatus.
 //
 // Turnier-Aufbau und Bracket-Austragung sind identisch zu (und bewusst dupliziert aus)
-// steuerung-dk8-online-vs-offline.spec.js -- siehe dortige Kommentare zur Determinismus-Begründung
+// steuerung-dk8-komplett.spec.js -- siehe dortige Kommentare zur Determinismus-Begründung
 // (kein Math.random in DoppelKo8Manager.js/bracketTopologie.js; "W" (kaempfer1) gewinnt jeden
 // Kampf per Ippon" führt bei diesem Ausgangsraster deterministisch zu Anna als Champion, Clara als
 // Finalgegnerin und Elena+Greta als gemeinsame Bronze-Platzierte).
@@ -74,7 +74,7 @@ async function richteDk8TurnierEin(request, bezeichnung) {
 
 // Spielt alle 11 Doppel-KO-8-Kämpfe durch, "W" (kaempfer1) gewinnt dabei immer per Ippon -- siehe
 // Determinismus-Begründung oben. Identisch zum gleichnamigen Helper in
-// steuerung-dk8-online-vs-offline.spec.js.
+// steuerung-dk8-komplett.spec.js.
 async function spieleKompletteBrackedDurch(page, anzahlKaempfe = 11) {
     let vorherigerName = 'Kämpfer 1';
     for (let i = 0; i < anzahlKaempfe; i++) {

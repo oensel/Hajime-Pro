@@ -49,7 +49,7 @@ export const DK8_TEILNEHMER = [
 ];
 
 // Turnier + Matte + DK8-Pool mit 8 Teilnehmern, Pool der Matte zugeordnet (11 Kämpfe) — gleicher
-// Aufbau wie richteDk8TurnierEin in tests/e2e/steuerung-dk8-online-vs-offline.spec.js.
+// Aufbau wie richteDk8TurnierEin in tests/e2e/steuerung-dk8-komplett.spec.js.
 export async function richteDk8TurnierEin(request, bezeichnung) {
     const turnierId = await legeTurnierAn(request, bezeichnung);
     const [{ id: matId }] = await (await request.get(`/api/kampfflaechen?turnierId=${turnierId}`)).json();
