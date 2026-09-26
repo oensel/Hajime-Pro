@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hajime Pro - Gerät</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <script src="/js/menu.js"></script>
+</head>
+<body>
+
+<div class="kanji-left">柔</div>
+<div class="kanji-right">道</div>
+
+<!-- Startseite eines Client-Geräts (SYNC_ROLLE=client): Notebook/Tablet an Matte oder Waage.
+     Mattenwahl gilt für Scoreboard und Mattenleitung dieses Geräts (siehe public/js/client.js). -->
+<div class="mdc-card" style="margin-bottom: 24px; padding: 16px 24px;">
+    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+        <span class="material-icons" style="font-size: 24px; color: var(--primary);">devices</span>
+        <h1 style="font-size: 20px; margin: 0; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-main);">Dieses Gerät</h1>
+    </div>
+    <p id="clientTurnier" style="margin: 0 0 12px; color: var(--text-muted);">Turnier wird geladen …</p>
+
+    <label for="clientMatteSelect" style="font-weight: 700; font-size: 13px;">Matte dieses Geräts</label>
+    <div style="display: flex; gap: 10px; align-items: center; max-width: 450px; margin-top: 6px;">
+        <select id="clientMatteSelect" class="form-control" style="margin: 0; height: 40px;">
+            <option value="" disabled selected hidden>Bitte wählen...</option>
+        </select>
+    </div>
+</div>
+
+<div class="mdc-card" style="padding: 16px 24px; display: flex; gap: 12px; flex-wrap: wrap;">
+    <a class="btn btn-raised" id="linkWaage" href="/teilnehmer.html">
+        <span class="material-icons" style="font-size: 18px; vertical-align: middle;">scale</span> Waage
+    </a>
+    <a class="btn btn-raised" id="linkScoreboard" href="/steuerung.html">
+        <span class="material-icons" style="font-size: 18px; vertical-align: middle;">scoreboard</span> Scoreboard
+    </a>
+    <a class="btn btn-raised" id="linkMattenleitung" href="/kampf.html">
+        <span class="material-icons" style="font-size: 18px; vertical-align: middle;">sports_kabaddi</span> Mattenleitung
+    </a>
+</div>
+
+<script src="/js/syncStatus.js"></script>
+<script src="/js/client.js"></script>
+</body>
+</html>

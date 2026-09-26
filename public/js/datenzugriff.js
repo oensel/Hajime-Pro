@@ -15,6 +15,7 @@
     let db = null;
     let baueMattenAnsicht = null;
     let bereit = null;
+    let knoten = { rolle: null, client_id: null };
 
     function init() {
         if (!bereit) {
@@ -23,6 +24,7 @@
                     const resp = await fetch('/api/sync/status');
                     const status = resp.ok ? await resp.json() : null;
                     if (status && status.db_name && window.PouchDB) {
+                        knoten = status;
                         db = new window.PouchDB(`${window.location.origin}/db/${status.db_name}`, { skip_setup: true });
                         ({ baueMattenAnsicht } = await import('/js/shared/mattenAnsicht.js'));
                         modus = 'dokumente';
@@ -49,9 +51,31 @@
         return parseInt(String(rev).split('-')[0], 10) || 0;
     }
 
+    const LOKAL_GESPEICHERT = { ok: true, ausstehend: true, meldung: 'Lokal gespeichert, Server-Bestätigung steht noch aus.' };
+
+    // Client-Gerät ohne Verbindung zum Hallen-Server? Dann gar nicht erst auf dessen Bestätigung
+    // warten — die Replikation überträgt die Änderung später automatisch.
+    async function istOfflineClient() {
+        if (knoten.rolle !== 'client') return false;
+        try {
+            const status = await fetch('/api/sync/status', { cache: 'no-store' }).then(r => r.json());
+            knoten = { ...knoten, ...status };
+            return !status.verbunden;
+        } catch (err) {
+            return true;
+        }
+    }
+
+    // Serverzeit (Client-Uhr + beim Verbinden ermittelter Offset) — Grundlage für "letzte Wiegung
+    // gewinnt" bei Konflikten zwischen zwei Waagen.
+    function jetztIso() {
+        return new Date(Date.now() + (knoten.uhr_offset_ms || 0)).toISOString();
+    }
+
     // Wartet, bis der Server die eigene Revision verarbeitet hat (bearbeitet_von: 'server' mit
     // höherer Revision). Nach WARTE_MS gilt die Änderung als lokal gespeichert, aber unbestätigt.
     async function warteAufServer(docId, eigeneRev) {
+        if (await istOfflineClient()) return LOKAL_GESPEICHERT;
         const ende = Date.now() + WARTE_MS;
         while (Date.now() < ende) {
             await new Promise(r => setTimeout(r, 150));
@@ -69,12 +93,18 @@
                 return { ok: true, doc };
             }
         }
-        return { ok: true, ausstehend: true, meldung: 'Lokal gespeichert, Server-Bestätigung steht noch aus.' };
+        return LOKAL_GESPEICHERT;
+    }
+
+    // Kennzeichnet Schreibvorgänge dieses Geräts (Client: zählt als "ausstehend", bis übertragen;
+    // kaskadeLokal rechnet nur nach eigenen Ergebnissen).
+    function absender() {
+        return { bearbeitet_von: 'browser', ...(knoten.client_id ? { geschrieben_von_knoten: knoten.client_id } : {}) };
     }
 
     async function aendereDokument(docId, aenderung) {
         const doc = await db.get(docId);
-        Object.assign(doc, aenderung, { bearbeitet_von: 'browser' });
+        Object.assign(doc, aenderung, absender());
         const { rev } = await db.put(doc);
         return warteAufServer(docId, rev);
     }
@@ -153,8 +183,8 @@
         const ra = a.matten_reihenfolge;
         a.matten_reihenfolge = b.matten_reihenfolge;
         b.matten_reihenfolge = ra;
-        a.bearbeitet_von = 'browser';
-        b.bearbeitet_von = 'browser';
+        Object.assign(a, absender());
+        Object.assign(b, absender());
         const [resA, resB] = await db.bulkDocs([a, b]);
         if (resA.error || resB.error) return { ok: false, fehler: 'Tausch fehlgeschlagen, bitte erneut versuchen.' };
         const e1 = await warteAufServer(a._id, resA.rev);
@@ -171,7 +201,7 @@
         }
         const doc = await db.get(`kampf:${kampfId}`);
         doc.live_farbe = farbe;
-        doc.bearbeitet_von = 'browser';
+        Object.assign(doc, absender());
         await db.put(doc);
         return { ok: true };
     }
@@ -195,9 +225,19 @@
             });
             return r.ok ? { ok: true } : { ok: false, fehler: r.fehler || 'Aktion fehlgeschlagen.' };
         }
+        // Ergebnis gleich mit ins Dokument schreiben (wie loeseKampfAlsForfeitAuf am Server: 10 Punkte
+        // für den Gegner) — damit Anzeige und Offline-Kaskade des Client-Geräts es sofort sehen.
+        // Maßgeblich bleibt die Server-Wertung über forfeit_teilnehmer_id/forfeit_art.
+        const kampf = await db.get(`kampf:${kampfId}`);
+        const istKaempfer1 = Number(kampf.kaempfer1_id) === Number(teilnehmerId);
+        const gegnerId = istKaempfer1 ? kampf.kaempfer2_id : kampf.kaempfer1_id;
         return ohneDoc(await aendereDokument(`kampf:${kampfId}`, {
             forfeit_teilnehmer_id: Number(teilnehmerId),
-            forfeit_art: aktion === 'disqualifizieren' ? 'disqualifiziert' : 'nicht_angetreten'
+            forfeit_art: aktion === 'disqualifizieren' ? 'disqualifiziert' : 'nicht_angetreten',
+            status: 'beendet',
+            sieger_id: gegnerId,
+            unterbewertung_kaempfer1: istKaempfer1 ? 0 : 10,
+            unterbewertung_kaempfer2: istKaempfer1 ? 10 : 0
         }));
     }
 
@@ -209,7 +249,7 @@
             });
             return r.ok ? { ok: true, teilnehmerId: id || r.daten.teilnehmerId } : { ok: false, fehler: r.fehler || 'Fehler beim Speichern' };
         }
-        const jetzt = new Date().toISOString();
+        const jetzt = jetztIso();
         if (id) {
             const doc = await teilnehmerDokumentZuId(id);
             if (!doc) return { ok: false, fehler: 'Teilnehmer nicht gefunden.' };
@@ -218,12 +258,13 @@
         }
         // Nachmeldung: Dokument mit Client-UUID, die Brücke legt die SQL-Zeile an (sql_id).
         const neu = {
-            _id: `teilnehmer:u-${crypto.randomUUID()}`, dokumenttyp: 'teilnehmer', sql_id: null, bearbeitet_von: 'browser',
+            _id: `teilnehmer:u-${crypto.randomUUID()}`, dokumenttyp: 'teilnehmer', sql_id: null, ...absender(),
             ...payload, turnier_id: parseInt(payload.turnier_id, 10), ...(payload.gewogen ? { gewogen_am: jetzt } : {})
         };
         const { rev } = await db.put(neu);
         const ergebnis = await warteAufServer(neu._id, rev);
-        return { ...ohneDoc(ergebnis), teilnehmerId: ergebnis.doc ? ergebnis.doc.sql_id : null };
+        // Offline noch ohne SQL-ID: die UUID-Kennung des Dokuments dient bis zum Sync als Bezug.
+        return { ...ohneDoc(ergebnis), teilnehmerId: ergebnis.doc ? ergebnis.doc.sql_id : null, dokumentId: neu._id };
     }
 
     async function bestaetigeKampfbereit(teilnehmerId) {
@@ -240,6 +281,7 @@
     window.Datenzugriff = {
         init,
         modus: () => modus,
+        rolle: () => knoten.rolle,
         ladeKampfflaechen,
         ladeKaempfeDerMatte,
         aktualisiereKampf,

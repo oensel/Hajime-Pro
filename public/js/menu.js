@@ -587,13 +587,51 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Im Offline-Modus (lokaler Kiosk-Betrieb) gelten keine Vereins-Einschränkungen,
     // analog zur Server-Middleware.
     let istOffline = false;
+    let syncRolle = null;
     try {
         const configResp = await fetch('/api/config');
         if (configResp.ok) {
-            istOffline = !!(await configResp.json()).isOffline;
+            const config = await configResp.json();
+            istOffline = !!config.isOffline;
+            syncRolle = config.syncRolle || null;
         }
     } catch (error) {
         console.error('Fehler beim Laden der System-Konfiguration:', error);
+    }
+
+    // --- CLIENT-GERÄT (SYNC_ROLLE=client, Notebook/Tablet an Matte oder Waage) ---
+    // Es gibt nur Waage, Scoreboard und Mattenleitung (die Verwaltung liegt am Hallen-Server,
+    // siehe src/sync/clientApi.js). Die Menü-Sperren-Prüfungen des Servers entfallen.
+    if (syncRolle === 'client') {
+        const clientTurnierId = turnierId || localStorage.getItem('aktiveTurnierId');
+        versteckeMenuePunkte(['nav-turniere', 'nav-turnier', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-siegerliste', 'nav-dashboard', 'nav-uebersicht']);
+        const nav = document.getElementById('sidebarNavPrimary');
+        const suffix = clientTurnierId ? `?turnierId=${clientTurnierId}` : '';
+        const teilnehmerLink = document.getElementById('nav-teilnehmer');
+        if (teilnehmerLink) {
+            teilnehmerLink.setAttribute('href', `/teilnehmer.html${suffix}`);
+            teilnehmerLink.querySelector('.menu-text').textContent = 'Waage';
+        }
+        const kampfLink = document.getElementById('nav-kampf');
+        if (kampfLink) kampfLink.setAttribute('href', `/kampf.html${suffix}`);
+        if (nav) {
+            const zusatz = (id, href, icon, text) => {
+                const a = document.createElement('a');
+                a.href = href;
+                a.className = 'menu-item';
+                a.id = id;
+                a.innerHTML = `<span class="material-icons">${icon}</span><span class="menu-text">${text}</span>`;
+                return a;
+            };
+            nav.insertBefore(zusatz('nav-geraet', '/client.html', 'devices', 'Gerät'), nav.firstChild);
+            nav.appendChild(zusatz('nav-scoreboard', `/steuerung.html${suffix}`, 'scoreboard', 'Scoreboard'));
+            if (currentPath.includes('client.html')) document.getElementById('nav-geraet').classList.add('active');
+        }
+        if (currentPath.includes('teilnehmer.html')) document.getElementById('nav-teilnehmer')?.classList.add('active');
+        if (currentPath.includes('kampf.html')) document.getElementById('nav-kampf')?.classList.add('active');
+        document.getElementById('sidebarNavPrimary')?.style.removeProperty('visibility');
+        document.getElementById('sidebarNavSecondary')?.style.removeProperty('visibility');
+        return;
     }
 
     // Verein gewählt, aber Beitritt noch nicht freigegeben: Vereinsverwaltung (eigenes Turnier
