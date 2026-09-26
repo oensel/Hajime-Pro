@@ -416,6 +416,26 @@ Dazu der Verlauf der letzten Rollenwechsel (mit `grund`), die Liste der Clients 
 Heartbeat-Dokumenten (Gerät, Matte, letzter Kontakt, ausstehende Änderungen) und auf dem Master der
 Knopf für die geplante Übergabe.
 
+### Umsetzung (Plan C)
+
+- **Kein replizierter `hajime_cluster`:** Rollenzustand (`epoche`, `master`, `grund`,
+  `rueckstufung_erforderlich`) und Verlauf liegen je Server lokal in
+  `<SYNC_DATENVERZEICHNIS>/cluster-zustand.json`; die Epoche des Partners kommt über
+  `GET /api/cluster/status`. Die Cluster-Seite führt beide Verläufe zusammen.
+- **VIP-Verlust ohne sofortigen PostgreSQL-Umbau:** `/zurueckstufen` stoppt nur Brücke, Abgleich und
+  Schreibzugriffe. Umgebaut wird PostgreSQL erst, wenn der Partner tatsächlich mit höherer Epoche
+  Master ist. Damit bleibt ein Master nach einem kurzen Router-Ausfall ohne Partner übernahmefähig
+  (keepalived gibt ihm die VIP zurück, `master_fortgesetzt` ohne neue Epoche).
+- **Gleichstand der Epochen** (beide nach einer Netztrennung befördert): server1 gewinnt.
+- **Rückstufung:** Die App führt `CLUSTER_RUECKSTUFEN_BEFEHL` aus
+  (`deploy/linux/hajime-rueckstufen.sh`: `pg_rewind`, notfalls `pg_basebackup`).
+- **Idempotenz nach Übernahme:** `sync_angewendet` liegt in PostgreSQL und wird mitrepliziert; die
+  Brücke des neuen Masters liest den Feed ab 0 und überspringt Verarbeitetes.
+- **Übergabe:** Der Master sperrt Schreibzugriffe, wartet, bis der Partner alle Dokumente gezogen
+  hat (`partner_pull.last_seq` ≥ eigene `update_seq`), kündigt die Übergabe an
+  (`/api/cluster/uebergabe-ankuendigen`, der Partner trägt `grund: 'uebergabe'` ein) und meldet sich
+  ungesund, damit keepalived die VIP verschiebt.
+
 ## 10. Konflikte und Fehlerbehandlung
 
 **Grundsatz:** Der Master ist maßgeblich. Jede fachlich relevante automatische Auflösung wird als
@@ -517,6 +537,12 @@ Playwright bleibt die einzige automatisierte Suite.
   5. Standby stoppen → Master schaltet auf asynchron, Anzeige „ohne Absicherung“; Standby zurück →
      synchron.
   6. Geplante Übergabe per Knopf → Rollen getauscht, keine Daten verloren.
+- **Umsetzung (Plan C): ohne Docker.** Auf dem Entwicklungsrechner gibt es weder Docker noch WSL.
+  Die Suite (`npm run test:e2e:cluster`) nutzt deshalb zwei lokale PostgreSQL-Instanzen aus dem
+  npm-Paket `embedded-postgres` (Standby-Aufbau über die Low-Level-Backup-API, weil das Paket kein
+  `pg_basebackup`/`pg_rewind` enthält) und einen Leitstand-Prozess, der keepalived (Gesundheit,
+  `nopreempt`), die VIP (HTTP-Proxy) und den Zeugen (HTTP) simuliert. Echtes VRRP und die Skripte in
+  `deploy/linux/` werden per Checkliste abgenommen.
 - Der Aufbau mit echter Hardware in der Halle wird per Checkliste in `deploy/linux/README.md`
   abgenommen.
 

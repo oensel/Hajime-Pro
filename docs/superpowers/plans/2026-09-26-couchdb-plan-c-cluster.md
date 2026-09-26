@@ -32,7 +32,7 @@ in beide Richtungen. Die Rollenlogik liegt DB- und prozessfrei in `src/cluster/r
 ## Abweichungen von der Spec (werden in der Spec nachgezogen)
 
 1. **Kein replizierter `hajime_cluster`:** Jeder Server hält seinen Rollenzustand
-   (`epoche`, `master`, `verlauf`) lokal in einer nicht replizierten PouchDB `hajime_cluster`.
+   (`epoche`, `master`, `verlauf`) lokal in `<SYNC_DATENVERZEICHNIS>/cluster-zustand.json` (nicht repliziert).
    Die Epoche des Partners wird über `GET /api/cluster/status` abgefragt. Das vermeidet
    Replikationskonflikte auf dem Zustandsdokument selbst; die Cluster-Seite zeigt beide Verläufe.
 2. **Rückstufung der App bei VIP-Verlust ohne sofortigen PostgreSQL-Umbau:** Verliert der Master die

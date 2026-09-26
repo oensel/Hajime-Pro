@@ -1,0 +1,3 @@
+# /etc/sudoers.d/hajime (Rechte 0440, prüfen mit: visudo -cf /etc/sudoers.d/hajime)
+# Die App (Systemnutzer hajime) darf genau das Rückstufungs-Skript als root ausführen.
+hajime ALL=(root) NOPASSWD: /usr/local/bin/hajime-rueckstufen.sh
