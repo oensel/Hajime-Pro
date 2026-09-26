@@ -51,7 +51,17 @@ export async function starteClientDienst({ konfig }) {
         }
     }
 
+    // ALLE Serverprüfungen (Intervall, Wiederverbinden, Test-Leerlauf) laufen strikt nacheinander:
+    // zwei gleichzeitig erkannte Turnierwechsel würden sonst die lokale DB parallel löschen und neu
+    // öffnen (Zustand kaputt, Client hinge auf der alten Instanz fest).
     let pruefung = Promise.resolve();
+    function pruefeSeriell() {
+        pruefung = pruefung
+            .then(pruefeServer)
+            .catch(err => console.error('[Client-Sync] Prüfung fehlgeschlagen:', err));
+        return pruefung;
+    }
+
     async function pruefeServer() {
         if (replikation.status().getrennt) {
             zustand.serverErreichbar = false;
@@ -196,13 +206,13 @@ export async function starteClientDienst({ konfig }) {
         },
         async verbinden() {
             replikation.verbinden();
-            await pruefeServer();
+            await pruefeSeriell();
         },
         // Test-Hilfe: wartet, bis alle eigenen Änderungen übertragen sind und die Replikation ruht.
         async leerlauf(maxMs = 15000) {
             const ende = Date.now() + maxMs;
             await kaskade.leerlauf();
-            await pruefeServer();
+            await pruefeSeriell();
             while (Date.now() < ende) {
                 const r = replikation.status();
                 if (r.getrennt) {
@@ -224,11 +234,8 @@ export async function starteClientDienst({ konfig }) {
     // Start: zuletzt bekannte Instanz sofort öffnen (offline-fähig), danach den Server fragen.
     const letzte = await clientKonfig.letzteInstanz();
     if (letzte) await oeffneInstanz(letzte);
-    pruefung = pruefeServer();
-    await pruefung.catch(() => {});
-    setInterval(() => {
-        pruefung = pruefung.then(pruefeServer).catch(err => console.error('[Client-Sync] Prüfung fehlgeschlagen:', err));
-    }, PRUEF_INTERVALL_MS).unref();
+    await pruefeSeriell();
+    setInterval(pruefeSeriell, PRUEF_INTERVALL_MS).unref();
     setInterval(() => { schreibeHeartbeat(); }, HEARTBEAT_INTERVALL_MS).unref();
     schreibeHeartbeat();
 

@@ -1,7 +1,14 @@
 // Brücke Dokument-DB -> relationale DB (nur Hallen-Server). Liest den _changes-Feed und wendet
 // jede Änderung, die NICHT vom Server selbst stammt (bearbeitet_von !== 'server'), über die
-// bestehende Fachlogik an. Was angewendet werden soll, ergibt sich aus dem Feld-Vergleich mit der
-// SQL-Zeile — dadurch ist erneutes Anwenden wirkungslos (idempotent), auch nach einem Neustart.
+// bestehende Fachlogik an.
+//
+// Was ein Gerät ändern WOLLTE (seine Absicht), ergibt sich aus dem Vergleich mit der letzten
+// Server-Version, die das Gerät kannte (jüngster Vorfahr in der Revisionsgeschichte mit
+// bearbeitet_von: 'server') — NICHT aus dem Vergleich mit dem aktuellen SQL-Stand. Sonst würden
+// veraltete Felder eines Geräts (z.B. eine inzwischen vom Server neu geplante Reihenfolge oder ein
+// von der Turnierleitung korrigiertes Ergebnis) als "Änderung" zurückgeschrieben. Angewendet wird
+// nur, was sich zusätzlich noch vom SQL-Stand unterscheidet — dadurch bleibt erneutes Anwenden
+// wirkungslos (idempotent), auch nach einem Neustart.
 //
 // Lehnt die Fachlogik ab (FachFehler) oder scheitert sie technisch, bekommt das Dokument den
 // Server-Stand zurück plus letzte_ablehnung (Rückmeldung an Matte/Waage), und ein
@@ -39,7 +46,29 @@ function waageDaten(doc) {
     return daten;
 }
 
-async function wendeKampfAn(knex, doc) {
+const META_FELDER = new Set(['_id', '_rev', '_revisions', '_conflicts', 'bearbeitet_von', 'geschrieben_von_knoten', 'letzte_ablehnung']);
+
+// Jüngster Vorfahr des Dokuments, den der Server selbst geschrieben hat (die Version, auf der die
+// Geräte-Änderung aufsetzt). Zwischenstände, die nur auf dem Gerät existierten, hat die Replikation
+// ohne Inhalt übertragen — sie werden übersprungen. null: keine Server-Version bekannt.
+async function ladeServerBasis(db, doc) {
+    const mitRevs = await db.get(doc._id, { rev: doc._rev, revs: true }).catch(() => null);
+    if (!mitRevs || !mitRevs._revisions) return null;
+    const { start, ids } = mitRevs._revisions;
+    for (let i = 1; i < ids.length; i++) {
+        const version = await db.get(doc._id, { rev: `${start - i}-${ids[i]}` }).catch(() => null);
+        if (version && version.bearbeitet_von === 'server') return version;
+    }
+    return null;
+}
+
+// Felder, die das Gerät gegenüber der Basis geändert hat (Feld -> neuer Wert). Ohne Basis gilt der
+// Vergleich mit dem SQL-Stand (vergleichszeile) als Rückfall.
+function absichtGegenueber(doc, basis, vergleichszeile, felder) {
+    return geaenderteFelder(doc, basis || vergleichszeile, felder);
+}
+
+async function wendeKampfAn(knex, doc, basis) {
     const id = doc.sql_id;
     const zeile = await knex('kaempfe').where({ id }).first();
     if (!zeile) return;
@@ -49,9 +78,14 @@ async function wendeKampfAn(knex, doc) {
         global.liveColors = global.liveColors || {};
         global.liveColors[id] = doc.live_farbe;
     }
-    const willErgebnis = !!doc.forfeit_teilnehmer_id
-        || (['beendet', 'freilos'].includes(doc.status) && !gleicheWerte(doc.status, zeile.status))
-        || (doc.sieger_id != null && !gleicheWerte(doc.sieger_id, zeile.sieger_id));
+    const absicht = absichtGegenueber(doc, basis, zeile, [...KAMPF_ERGEBNIS_FELDER, 'matten_reihenfolge']);
+    const ergebnisAbsicht = {};
+    for (const feld of KAMPF_ERGEBNIS_FELDER) {
+        if (feld in absicht && !gleicheWerte(absicht[feld], zeile[feld])) ergebnisAbsicht[feld] = absicht[feld];
+    }
+    const willErgebnis = (!!doc.forfeit_teilnehmer_id && !['beendet', 'freilos'].includes(zeile.status))
+        || ['beendet', 'freilos'].includes(ergebnisAbsicht.status)
+        || 'sieger_id' in ergebnisAbsicht;
     const paarungGleich = gleicheWerte(doc.kaempfer1_id, zeile.kaempfer1_id) && gleicheWerte(doc.kaempfer2_id, zeile.kaempfer2_id);
     if (willErgebnis && !paarungGleich && !['beendet', 'freilos'].includes(zeile.status)) {
         throw new PaarungWeichtAb(`Paarung von ${doc._id} weicht vom Server-Stand ab`);
@@ -60,27 +94,29 @@ async function wendeKampfAn(knex, doc) {
     if (doc.forfeit_teilnehmer_id && !['beendet', 'freilos'].includes(zeile.status)) {
         const art = doc.forfeit_art === 'disqualifiziert' ? 'disqualifiziert' : 'nicht_angetreten';
         await werteForfeit(knex, Number(doc.forfeit_teilnehmer_id), id, art, HALLEN_KONTEXT);
-    } else {
-        const ergebnis = geaenderteFelder(doc, zeile, KAMPF_ERGEBNIS_FELDER);
-        if (Object.keys(ergebnis).length) await aktualisiereKampf(knex, id, ergebnis);
+    } else if (Object.keys(ergebnisAbsicht).length) {
+        await aktualisiereKampf(knex, id, ergebnisAbsicht);
     }
-    // Reihenfolge erst NACH dem Ergebnis vergleichen — die Neuplanung kann sie verändert haben.
-    const nachErgebnis = await knex('kaempfe').where({ id }).first();
-    const reihenfolge = geaenderteFelder(doc, nachErgebnis, ['matten_reihenfolge']);
-    if ('matten_reihenfolge' in reihenfolge && zeile.matten_reihenfolge === nachErgebnis.matten_reihenfolge) {
-        await setzeMattenReihenfolge(knex, id, reihenfolge.matten_reihenfolge);
+    // Reihenfolge nur, wenn das Gerät sie selbst geändert hat (Tausch am Scoreboard).
+    if ('matten_reihenfolge' in absicht) {
+        const aktuell = await knex('kaempfe').where({ id }).first();
+        if (!gleicheWerte(absicht.matten_reihenfolge, aktuell.matten_reihenfolge)) {
+            await setzeMattenReihenfolge(knex, id, absicht.matten_reihenfolge);
+        }
     }
 }
 
-async function wendeKampfflaecheAn(knex, doc) {
+async function wendeKampfflaecheAn(knex, doc, basis) {
     const id = doc.sql_id;
     const zeile = await knex('kampfflaechen').where({ id }).first();
     if (!zeile) return;
-    if (doc.status === 'pausiert' && zeile.status !== 'pausiert') await pausiereMatte(knex, id);
-    else if (doc.status !== 'pausiert' && zeile.status === 'pausiert') await setzeMatteFort(knex, id);
+    const absicht = absichtGegenueber(doc, basis, zeile, ['status']);
+    if (!('status' in absicht)) return;
+    if (absicht.status === 'pausiert' && zeile.status !== 'pausiert') await pausiereMatte(knex, id);
+    else if (absicht.status !== 'pausiert' && zeile.status === 'pausiert') await setzeMatteFort(knex, id);
 }
 
-async function wendeTeilnehmerAn(knex, db, doc, legeKonfliktAn) {
+async function wendeTeilnehmerAn(knex, db, doc, basis, legeKonfliktAn) {
     let id = doc.sql_id;
     if (id == null) {
         // Nachmeldung — bereits angelegt (z.B. vor einem Neustart)? Dann nur zuordnen.
@@ -108,12 +144,14 @@ async function wendeTeilnehmerAn(knex, db, doc, legeKonfliktAn) {
     } else {
         const zeile = await knex('turnier_teilnehmer').where({ id }).first();
         if (!zeile) return;
-        if (Object.keys(geaenderteFelder(doc, zeile, TEILNEHMER_WAAGE_FELDER)).length) {
-            await aktualisiereTeilnehmerDaten(knex, id, waageDaten(doc), HALLEN_KONTEXT);
-        }
+        const absicht = absichtGegenueber(doc, basis, zeile, TEILNEHMER_WAAGE_FELDER);
+        const neu = {};
+        for (const [feld, wert] of Object.entries(absicht)) if (!gleicheWerte(wert, zeile[feld])) neu[feld] = wert;
+        if (Object.keys(neu).length) await aktualisiereTeilnehmerDaten(knex, id, neu, HALLEN_KONTEXT);
     }
     const nachher = await knex('turnier_teilnehmer').where({ id }).first();
-    if (doc.status === 'kampfbereit' && ['angemeldet', 'nicht_erschienen'].includes(nachher.status)) {
+    const wollteKampfbereit = doc.status === 'kampfbereit' && (!basis || basis.status !== 'kampfbereit');
+    if (wollteKampfbereit && ['angemeldet', 'nicht_erschienen'].includes(nachher.status)) {
         await bestaetigeKampfbereitschaft(knex, id, HALLEN_KONTEXT);
     }
 }
@@ -225,8 +263,14 @@ export function erzeugeBruecke({ knex, zustand, abgleich }) {
         const verlierer = versionen.filter(v => v._rev !== doc._rev);
         await db.bulkDocs(verlierer.map(v => ({ _id: v._id, _rev: v._rev, _deleted: true })));
         if (gewinner._rev !== doc._rev) {
-            const { _rev, _conflicts, ...inhalt } = gewinner;
-            await db.put({ ...inhalt, _id: doc._id, _rev: doc._rev });
+            // Nur die ABSICHT des Gewinners (seine Änderungen gegenüber seiner Server-Basis) auf die
+            // aktuelle Version übertragen — sein übriger, evtl. veralteter Inhalt würde sonst neuere
+            // Server-Änderungen zurückdrehen.
+            const basis = await ladeServerBasis(db, gewinner);
+            const felder = [...new Set([...Object.keys(gewinner), ...Object.keys(basis || {})])].filter(f => !META_FELDER.has(f));
+            const absicht = basis ? geaenderteFelder(gewinner, basis, felder) : Object.fromEntries(felder.map(f => [f, gewinner[f]]));
+            const { _conflicts, ...aktuell } = doc;
+            await db.put({ ...aktuell, ...absicht, bearbeitet_von: gewinner.bearbeitet_von, _rev: doc._rev });
             return true;
         }
         return false;
@@ -260,9 +304,10 @@ export function erzeugeBruecke({ knex, zustand, abgleich }) {
         }
 
         try {
-            if (typ === 'kampf') await wendeKampfAn(knex, doc);
-            else if (typ === 'kampfflaeche') await wendeKampfflaecheAn(knex, doc);
-            else await wendeTeilnehmerAn(knex, db, doc, (t, d, g) => legeKonfliktAnIn(db, t, d, g));
+            const basis = await ladeServerBasis(db, doc);
+            if (typ === 'kampf') await wendeKampfAn(knex, doc, basis);
+            else if (typ === 'kampfflaeche') await wendeKampfflaecheAn(knex, doc, basis);
+            else await wendeTeilnehmerAn(knex, db, doc, basis, (t, d, g) => legeKonfliktAnIn(db, t, d, g));
         } catch (fehler) {
             if (fehler instanceof PaarungWeichtAb) {
                 zurueckgestellt.add(doc._id);

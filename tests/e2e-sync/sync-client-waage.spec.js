@@ -16,6 +16,9 @@ test('Waage offline: 5 Wiegungen und 1 Nachmeldung, danach vollständig am Serve
     await clientTrennen(request);
 
     await page.goto(`${CLIENT_BASE_URL}/teilnehmer.html?turnierId=${turnierId}`);
+    // Erst nach der asynchronen Initialisierung (Gastgeber-Status, Konfiguration) öffnen — sonst
+    // bewertet die Lizenzprüfung das Formular gelegentlich vor dem Gastgeber-Status.
+    await page.waitForLoadState('networkidle');
     await page.waitForFunction(() => typeof window.oeffneWaageModal === 'function' && !!window.Datenzugriff);
 
     // 1 Wiegung über das Formular.

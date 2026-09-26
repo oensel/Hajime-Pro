@@ -17,6 +17,9 @@ test('Waage im Sync-Modus: Gewicht ändern läuft über die Dokument-DB in die r
     const revVorher = (await ladeDokument(request, db_name, docId))._rev;
 
     await page.goto(`/teilnehmer.html?turnierId=${turnierId}`);
+    // Erst nach der asynchronen Initialisierung (Gastgeber-Status, Konfiguration) öffnen — sonst
+    // bewertet die Lizenzprüfung das Formular gelegentlich vor dem Gastgeber-Status.
+    await page.waitForLoadState('networkidle');
     await page.waitForFunction(() => typeof window.oeffneWaageModal === 'function');
     await page.evaluate((id) => window.oeffneWaageModal(id), teilnehmerIds[0]);
     await expect(page.locator('#vorname')).toHaveValue('Anna');

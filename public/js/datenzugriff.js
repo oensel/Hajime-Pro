@@ -102,10 +102,27 @@
         return { bearbeitet_von: 'browser', ...(knoten.client_id ? { geschrieben_von_knoten: knoten.client_id } : {}) };
     }
 
+    // Liest das Dokument, wendet aendere(doc) an und schreibt es. Schreibt der Server (Abgleich,
+    // Brücke) zwischen Lesen und Schreiben, lehnt die DB mit 409 ab — dann neu lesen und die
+    // Änderung erneut anwenden. aendere darf ein Fehlerobjekt zurückgeben, um abzubrechen.
+    async function schreibeMitWiederholung(docId, aendere) {
+        for (let versuch = 1; ; versuch++) {
+            const doc = await db.get(docId);
+            const abbruch = aendere(doc);
+            if (abbruch) return { abbruch };
+            Object.assign(doc, absender());
+            try {
+                const { rev } = await db.put(doc);
+                return { rev, doc };
+            } catch (err) {
+                if (err.status !== 409 || versuch >= 8) throw err;
+                await new Promise(r => setTimeout(r, 50 * versuch));
+            }
+        }
+    }
+
     async function aendereDokument(docId, aenderung) {
-        const doc = await db.get(docId);
-        Object.assign(doc, aenderung, absender());
-        const { rev } = await db.put(doc);
+        const { rev } = await schreibeMitWiederholung(docId, (doc) => { Object.assign(doc, aenderung); });
         return warteAufServer(docId, rev);
     }
 
@@ -180,15 +197,24 @@
         if (a.status !== 'bereit' || b.status !== 'bereit') {
             return { ok: false, fehler: 'Es können nur noch nicht gestartete Kämpfe (Status "bereit") getauscht werden.' };
         }
-        const ra = a.matten_reihenfolge;
-        a.matten_reihenfolge = b.matten_reihenfolge;
-        b.matten_reihenfolge = ra;
+        const ziel = { [a._id]: b.matten_reihenfolge, [b._id]: a.matten_reihenfolge };
+        a.matten_reihenfolge = ziel[a._id];
+        b.matten_reihenfolge = ziel[b._id];
         Object.assign(a, absender());
         Object.assign(b, absender());
-        const [resA, resB] = await db.bulkDocs([a, b]);
-        if (resA.error || resB.error) return { ok: false, fehler: 'Tausch fehlgeschlagen, bitte erneut versuchen.' };
-        const e1 = await warteAufServer(a._id, resA.rev);
-        const e2 = await warteAufServer(b._id, resB.rev);
+        const ergebnisse = await db.bulkDocs([a, b]);
+        // Revisionskonflikt (Server hat parallel geschrieben): das betroffene Dokument einzeln neu
+        // lesen und die Zielreihenfolge erneut setzen.
+        const revs = [];
+        for (const [i, res] of ergebnisse.entries()) {
+            const docId = [a._id, b._id][i];
+            if (!res.error) { revs.push(res.rev); continue; }
+            if (res.status !== 409) return { ok: false, fehler: 'Tausch fehlgeschlagen, bitte erneut versuchen.' };
+            const { rev } = await schreibeMitWiederholung(docId, (doc) => { doc.matten_reihenfolge = ziel[docId]; });
+            revs.push(rev);
+        }
+        const e1 = await warteAufServer(a._id, revs[0]);
+        const e2 = await warteAufServer(b._id, revs[1]);
         if (!e1.ok) return ohneDoc(e1);
         return ohneDoc(e2);
     }
@@ -199,10 +225,7 @@
             const r = await restJson(`/api/kaempfe/${kampfId}/color`, { method: 'PUT', headers: JSON_HEADER, body: JSON.stringify({ color: farbe }) });
             return r.ok ? { ok: true } : { ok: false, fehler: r.fehler };
         }
-        const doc = await db.get(`kampf:${kampfId}`);
-        doc.live_farbe = farbe;
-        Object.assign(doc, absender());
-        await db.put(doc);
+        await schreibeMitWiederholung(`kampf:${kampfId}`, (doc) => { doc.live_farbe = farbe; });
         return { ok: true };
     }
 

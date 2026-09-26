@@ -38,6 +38,10 @@ test.describe.serial('Client-Frontend', () => {
         await page.goto(`${CLIENT_BASE_URL}/client.html`);
         await expect(page.locator('#clientTurnier')).toContainText('Sync Client Frontend');
         await page.locator('#clientMatteSelect').selectOption(String(matId));
+        // Hatte das Gerät (aus einem früheren Test) schon eine Matte, fragt der Wechsel nach.
+        await page.locator('#customConfirmModal').waitFor({ state: 'visible', timeout: 2000 })
+            .then(() => page.locator('#modalConfirmBtn').click())
+            .catch(() => {});
         await expect.poll(async () => (await (await page.request.get(`${CLIENT_BASE_URL}/api/sync/client/matte`)).json()).matte_id).toBe(matId);
         await expect(page.locator('#nav-geraet')).toBeVisible();
         await expect(page.locator('#nav-scoreboard')).toBeVisible();
