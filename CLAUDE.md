@@ -14,7 +14,8 @@ Turnierverwaltungssoftware für Judo-Wettkämpfe nach den Regeln des Deutschen J
 
 ## Commands
 - **Dev-Server starten:** `npm start` (= `node src/app.js`), liest `.env` (`IS_OFFLINE`, `PORT`, DB-Zugangsdaten); Standardport 3000
-- **DB-Umschaltung:** `IS_OFFLINE=true` in `.env` → SQLite (`data/turnier.sqlite`, Pfad über `DB_SQLITE_PATH` überschreibbar); sonst PostgreSQL über `DB_HOST`/`DB_USER`/`DB_PASSWORD`/`DB_NAME`/`DB_PORT`
+- **DB-Umschaltung:** `IS_OFFLINE=true` in `.env` → SQLite (`data/turnier.sqlite`, Pfad über `DB_SQLITE_PATH` überschreibbar); sonst PostgreSQL über `DB_HOST`/`DB_USER`/`DB_PASSWORD`/`DB_NAME`/`DB_PORT`. Im Hallenbetrieb (`IS_OFFLINE=true`) wählt `DB_CLIENT=pg` PostgreSQL statt SQLite (`src/utils/dbUmgebung.js`, Pflicht im Server-Cluster)
+- **Sync-Modus (Hallen-Server):** `SYNC_ROLLE=server` (+ optional `SYNC_DATENVERZEICHNIS`, Standard `./data/dokumente`) aktiviert die eingebettete Dokument-DB unter `/db`; genau ein Turnier pro Server, Anlegen/Import eines Turniers löscht das bisherige
 - **Migrationen:** kein npm-Script dafür — direkt über knex ausführen, z.B. `npx knex migrate:latest --env offline` (oder `--env online`); Konfiguration in `knexfile.cjs`, Dateien in `migrations/`
 - **DB komplett zurücksetzen:** `node setup_db.js` — löscht und erstellt alle Tabellen neu für das über `IS_OFFLINE` gewählte Environment; verweigert den Lauf im Online-Modus, außer `CONFIRM_ONLINE_RESET=JA_WIRKLICH_LOESCHEN` ist zusätzlich gesetzt (Schutz gegen versehentliches Löschen der gemeinsamen Cloud-DB)
 - **E2E-Tests (Playwright):**
@@ -27,7 +28,9 @@ Turnierverwaltungssoftware für Judo-Wettkämpfe nach den Regeln des Deutschen J
   - `test/` (Singular, Repo-Root) enthält CSV-Fixtures für Import-Tests — nicht zu verwechseln mit `tests/e2e/`
   - `tests/e2e/fixtures/` (Pool-JSON-Fixturen) und `tests/e2e/helpers/` (z.B. `pool-fixture-turnier.js` — gemeinsames Turnier-Aufbau-/Bracket-Durchspiel-Gerüst) bündeln Aufbau-Logik, die mehrere Spec-Dateien identisch brauchen, damit eine Anpassung nicht in jeder Datei einzeln nachgezogen werden muss
   - `npm run test:e2e:vollablauf` — separate Suite `tests/e2e-vollablauf/` (eigenes `playwright.vollablauf.config.js`) für den kompletten Online/Offline-Turnierablauf: startet zwei echte Serverprozesse parallel (Online gegen die echte Cloud-Postgres-DB, Offline gegen eine frische SQLite) und simuliert den realen Datenaustausch per Datei-Download/-Upload; bewusst nicht Teil von `npm run test:e2e`, da sie in die echte Cloud-DB schreibt und deutlich langsamer läuft
-- Kein Lint- oder Unit-Test-Script konfiguriert (Playwright-E2E ist die einzige automatisierte Testsuite)
+- **Unit-Tests (reine Module):** `npm run test:unit` — `node:test` für `src/shared/`- und Sync-Hilfsmodule (`tests/unit/`)
+- **Sync-Suite:** `npm run test:e2e:sync` — Hallen-Server mit `SYNC_ROLLE=server` (Port 3200, `data/test-sync.sqlite`, Dokument-DB unter `data/test-sync-dokumente/`); `POST /api/sync/test/leerlauf` wartet in Tests, bis Brücke und Abgleich fertig sind (Test-Endpunkte nur bei `NODE_ENV=test`)
+- Kein Lint-Script konfiguriert
 
 ## Domänenmodell (Kernentitäten)
 - **`vereine`** — Judo-Vereine; jeder Nutzer (`benutzer`) gehört zu genau einem Verein (`verein_freigegeben`-Flag für Mitgliedschafts-Freigabe)
@@ -50,6 +53,7 @@ Turnierverwaltungssoftware für Judo-Wettkämpfe nach den Regeln des Deutschen J
 - **`src/services/*Manager.js`** — Turniermodus-Implementierungen (DoppelKo8/16/32Manager, GruppenUeberKreuzManager, JederGegenJedenManager), erzeugen die Kämpfe eines Pools beim Anlegen; für Mannschafts-Pools die entsprechenden `Mannschaft*Manager.js` (Jeder-gegen-Jeden, Doppel-KO-8/16), die Begegnungen statt Einzelkämpfe erzeugen
 - **`src/services/mannschaftsBegegnungEngine.js`** — erzeugt pro Begegnung die Einzelkämpfe je gemeinsam besetzter Gewichtsklasse, wertet Sieg-/Wertungspunkte aus und lost bei vollständigem Gleichstand automatisch einen Stichkampf aus (DJB-WKO Art. 3.12.13.1); das Abschenken-Verbot (Art. 3.12.13.3) hängt in `teilnehmerController.js` an den bestehenden „nicht angetreten“/„disqualifizieren“-Aktionen
 - **Offline-Modus pro Matte:** `offlineController.js` exportiert die Kämpfe/Teilnehmer einer einzelnen Kampffläche, sodass eine Matte ohne Internetverbindung weiterlaufen kann; Ergebnisse werden später zurücksynchronisiert
+- **Sync-Schicht (CouchDB-Umbau, `src/sync/`):** mit `SYNC_ROLLE=server` betreibt der Hallen-Server eine eingebettete Dokument-DB (PouchDB/LevelDB, `express-pouchdb` unter `/db`, eine DB `turnier_<instanz_id>` für das einzige Turnier; das vorhandene Turnier wird verzögert beim ersten `/api`-/`/db`-Request aktiviert). `abgleich.js` spiegelt die Live-Tabellen nach jedem Schreibzugriff als Dokumente (`bearbeitet_von: 'server'`, Typ in `dokumenttyp`), `bruecke.js` wendet Dokument-Änderungen von Waage/Scoreboard/Mattenleitung über die Service-Funktionen der Controller an (`aktualisiereKampf`, `werteForfeit`, `legeTeilnehmerAn`, …; werfen `FachFehler`) und meldet Ablehnungen per `letzte_ablehnung` + `konflikt:`-Dokument zurück. Das Frontend spricht über `public/js/datenzugriff.js` (REST ohne Sync, Dokument-DB mit Sync). Die relationale DB bleibt führend. Design/Plan: `docs/superpowers/specs/2026-09-25-couchdb-umbau-design.md`, `docs/superpowers/plans/`
 - **Regelkonformität DJB-WKO:** Alters-/Gewichtsklassen (`src/config/altersklassen.json`), Kampf-/Pausenzeiten und die dreistufige Golden-Score-Regel (kein Golden Score bis U13, 3 Min. begrenzt bei U15, unbegrenzt ab U18) sind explizit im Code nachgebildet und kommentiert (`poolController.js`, `pausenRegel.js`)
 
 ## Mannschaftskämpfe

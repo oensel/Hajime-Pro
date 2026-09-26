@@ -30,4 +30,34 @@ test.describe.serial('Sync-Grundlagen: Dokument-DB und Turnier-Instanz', () => {
         const turniere = await (await request.get('/api/turniere')).json();
         expect(turniere.map(t => t.bezeichnung)).toEqual(['Sync Grundlagen 2']);
     });
+
+    test('Neuanlage über turnier.html fragt vorher nach; Abbrechen behält das bisherige Turnier', async ({ page, request }) => {
+        const vorher = await syncStatus(request);
+
+        await page.goto('/turnier.html');
+        await page.locator('#bezeichnung').fill('Sync Grundlagen 3');
+        await page.locator('#datum').fill('2027-05-15');
+        await page.locator('#ort').fill('Senden');
+        await page.locator('#plz').fill('48308');
+        await page.locator('#ausrichter').fill('JC Senden');
+        await page.locator('#anzahl_kampfflaechen').fill('1');
+        await page.locator('#bundesland').selectOption('Nordrhein-Westfalen');
+        await page.locator('#submitBtn').click();
+
+        const dialog = page.locator('#customConfirmModal');
+        await expect(dialog).toBeVisible();
+        await expect(page.locator('#modalMessage')).toContainText('nur ein Turnier');
+        await page.locator('#modalCancelBtn').click();
+        await expect(dialog).toBeHidden();
+        expect((await syncStatus(request)).instanz_id).toBe(vorher.instanz_id);
+
+        await page.locator('#submitBtn').click();
+        await expect(dialog).toBeVisible();
+        await page.locator('#modalConfirmBtn').click();
+        await expect(page.locator('#snackbarText')).toHaveText('Turnier erfolgreich angelegt!');
+        const nachher = await syncStatus(request);
+        expect(nachher.instanz_id).not.toBe(vorher.instanz_id);
+        const turniere = await (await request.get('/api/turniere')).json();
+        expect(turniere.map(t => t.bezeichnung)).toEqual(['Sync Grundlagen 3']);
+    });
 });

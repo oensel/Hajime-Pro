@@ -142,7 +142,7 @@ Einzelrechner ohne Cluster; im Cluster zwingend `pg`, weil SQLite keine Server-R
 | `src/sync/turnierInstanz.js` | server + client | Server: Zurücksetzen und neue `instanz_id`. Client: Instanzwechsel erkennen und lokale DB neu aufbauen |
 | `src/sync/bruecke/index.js` | server (nur Master aktiv) | `_changes`-Feed lesen, nach Dokumenttyp verteilen, Idempotenz über `sync_angewendet` |
 | `src/sync/bruecke/teilnehmer.js`, `kampf.js`, `kampfflaeche.js` | server | Je Dokumenttyp: Dokument → Service-Funktion (Fachlogik, PostgreSQL) |
-| `src/sync/spiegeln.js` | server | `spiegleNachDokumentDb(tabelle, ids)`: PostgreSQL-Zeilen der Live-Tabellen → Dokumente; No-op ohne `SYNC_ROLLE=server` |
+| `src/sync/abgleich.js` | server | Abgleich relationale DB → Dokumente: vergleicht nach jedem schreibenden `/api`-Request (Middleware, entprellt) und nach jeder Brücken-Anwendung **alle** Live-Zeilen des Turniers mit den Dokumenten und schreibt Abweichungen (`bearbeitet_von: 'server'`). Überschreibt keine Dokumente, deren Änderung die Brücke noch nicht verarbeitet hat |
 | `src/sync/konflikte.js` | server | `konflikt:`-Dokumente, Auflösung von CouchDB-`_conflicts` |
 | `src/sync/kaskadeLokal.js` | client | Offline-Kaskade und Einreihung auf die Kampf-Dokumente der aktuell gewählten Matte anwenden |
 | `src/sync/clientKonfig.js` | client | `clientId` (einmalig erzeugt), gewählte Matte in `_local/client-konfig`, Heartbeat-Dokument |
@@ -160,21 +160,30 @@ Einzelrechner ohne Cluster; im Cluster zwingend `pg`, weil SQLite keine Server-R
 | `deploy/linux/` | Betrieb | PostgreSQL-Replikationskonfiguration, keepalived-Vorlage, Skripte, systemd-Units, Anleitung |
 
 Die REST-Controller (`teilnehmerController.js`, `kampfController.js`, `kampfflaecheController.js`)
-werden so umgebaut, dass die fachliche Schreiblogik in Service-Funktionen ohne `req`/`res` liegt.
+werden so umgebaut, dass die fachliche Schreiblogik in Service-Funktionen ohne `req`/`res` liegt
+(`aktualisiereKampf`, `setzeMattenReihenfolge`, `pausiereMatte`, `setzeMatteFort`, `legeTeilnehmerAn`,
+`aktualisiereTeilnehmerDaten`, `bestaetigeKampfbereitschaft`, `werteForfeit`; sie bleiben in den
+Controller-Dateien, weil dort die Hilfsfunktionen liegen, und werfen `FachFehler` mit HTTP-Status).
 REST-Route und Brücke rufen dieselbe Funktion auf; die Knex-Logik wird nicht dupliziert.
 
 ## 6. Dokumentmodell (Live-Daten)
 
 Genau eine Turnier-DB `turnier_<instanz_id>`; volle Replikation ohne Filter (wenige hundert
 Dokumente). Jedes Dokument spiegelt eine Tabellenzeile; **Feldnamen identisch zu den Spalten**, damit
-`src/shared/`-Logik Dokumente und Zeilen gleich verarbeiten kann.
+`src/shared/`-Logik Dokumente und Zeilen gleich verarbeiten kann. Der Dokumenttyp steht in
+`dokumenttyp` (nicht `typ` — das ist eine echte Spalte von `pools`), dazu `sql_id`.
+
+**Nur-Dokument-Felder** (überleben jeden Abgleich): `live_farbe` (bisher `global.liveColors`),
+`forfeit_teilnehmer_id` + `forfeit_art` (Absicht „nicht angetreten“/„disqualifiziert“, nach der
+Übernahme entfernt), `letzte_ablehnung = { rev, art, grund, zeit }` (Rückmeldung der Brücke),
+`dublette_von`, `gewogen_am`, `gewogen_station`.
 
 | `_id` | Inhalt | Schreibberechtigt |
 |---|---|---|
 | `teilnehmer:<schluessel>` | Stammdaten, die Waage/Scoreboard brauchen (Name, Verein, Judopass-ID, Geburtsjahr, Geschlecht, Altersklasse, `pool_id`) + `gewicht`, `gewogen`, `kampfbereit`, `gewogen_am`, `gewogen_station`, `sql_id`, ggf. `dublette_von`, `bruecke_fehler` | Master (Stammdaten), Waage (Wiegefelder, Nachmeldung) |
 | `pool:<id>` | Bezeichnung, Modus, Kampfzeit, Golden-Score-Einstellungen, `kampfflaeche_id`, `typ`, Altersklasse | nur Master |
 | `kampfflaeche:<id>` | Bezeichnung, Status (pausiert) | Master, Mattenleitung (Pause) |
-| `kampf:<id>` | `pool_id`, `kampfflaeche_id`, Slots `kaempfer1_id`/`kaempfer2_id` + `..._quelle_kampf_id`/`..._quelle_typ`, `status`, `sieger_id`, `unterbewertung_kaempfer1/2`, Farbzuordnung, `matte_reihenfolge`, `mannschaftskampf_id`, `mannschaft_gewichtsklasse`, `bearbeitet_von`, ggf. `bruecke_fehler` | Scoreboard/Mattenleitung (Ergebnis, Farbe, Reihenfolge, Status), `kaskadeLokal` (Slots, Reihenfolge), Master (maßgeblich) |
+| `kampf:<id>` | `pool_id`, `kampfflaeche_id`, Slots `kaempfer1_id`/`kaempfer2_id` + `..._quelle_kampf_id`/`..._quelle_typ`, `status`, `sieger_id`, `unterbewertung_kaempfer1/2`, Farbzuordnung, `matten_reihenfolge`, `mannschaftskampf_id`, `mannschaft_gewichtsklasse`, `bearbeitet_von`, ggf. `bruecke_fehler` | Scoreboard/Mattenleitung (Ergebnis, Farbe, Reihenfolge, Status), `kaskadeLokal` (Slots, Reihenfolge), Master (maßgeblich) |
 | `mannschaft:<id>`, `mannschaftskampf:<id>` | wie Tabellenzeile | nur Master (Stufe 1) |
 | `client:<clientId>` | Heartbeat: Gerätename, gewählte Matte, `letzter_kontakt`, Zahl ausstehender Änderungen | der jeweilige Client (alle 30 s, nur wenn verbunden) |
 | `konfig:steuerung` | Hash des Steuerungs-Passworts, Turnierbezeichnung und -datum | nur Master |
@@ -187,18 +196,19 @@ Clients, und enthält ein Dokument `cluster:zustand` (siehe Abschnitt 9).
 
 - Bestehende Datensätze: PostgreSQL-ID als Schlüssel (`teilnehmer:123`, `kampf:456`).
 - Offline-Nachmeldungen: `teilnehmer:u-<uuid>` mit `sql_id: null`. Die Brücke legt den Teilnehmer an
-  und trägt `sql_id` nach; die `_id` bleibt unverändert. Verweise (`kaempfer1_id`, `sieger_id`) nutzen
+  (Spalte `turnier_teilnehmer.dokument_id` hält die Zuordnung) und trägt `sql_id` nach; die `_id`
+  bleibt unverändert. Verweise (`kaempfer1_id`, `sieger_id`) nutzen
   immer die PostgreSQL-ID; nachgemeldete Teilnehmer werden erst nach dem Sync einem Pool zugelost.
 - **Kämpfe entstehen nie auf dem Client.** Die Manager erzeugen beim Anlegen eines Pools alle Kämpfe
   samt Quell-Verknüpfungen; die Offline-Kaskade füllt nur Slots bestehender Dokumente.
 
 ### Reihenfolge
 
-Die Reihenfolge steht in `kampf.matte_reihenfolge`; keine eigenen Reihenfolge-Dokumente. Sortierung
-per Mango-Index über (`kampfflaeche_id`, `status`, `matte_reihenfolge`). Offline behält die Matte
+Die Reihenfolge steht in `kampf.matten_reihenfolge`; keine eigenen Reihenfolge-Dokumente. Sortierung
+per Mango-Index über (`kampfflaeche_id`, `status`, `matten_reihenfolge`). Offline behält die Matte
 die zuletzt verteilte Reihenfolge; neu spielbar gewordene Kämpfe hängt `kaskadeLokal` unter
 Beachtung von `pausenRegel.js` hinten an. Manuelles Tauschen am Scoreboard ändert
-`matte_reihenfolge` der beiden Kampf-Dokumente.
+`matten_reihenfolge` der beiden Kampf-Dokumente.
 
 ## 7. Datenfluss
 
@@ -229,18 +239,21 @@ Beachtung von `pausenRegel.js` hinten an. Manuelles Tauschen am Scoreboard ände
 
 ### Turnierleitung (REST am Master)
 
-Schreiboperationen laufen wie bisher über die Controller nach PostgreSQL. Betrifft eine Operation
-Live-Tabellen, ruft der Controller danach `spiegleNachDokumentDb(tabelle, ids)` auf. Die REST-Antwort
-wird erst gesendet, wenn der PostgreSQL-Commit bestätigt (siehe Abschnitt 9) und die Dokumente
-geschrieben sind.
+Schreiboperationen laufen wie bisher über die Controller nach PostgreSQL. Eine Middleware stößt nach
+jedem erfolgreichen schreibenden `/api`-Request den Abgleich an (`src/sync/abgleich.js`), der die
+Dokumente aus dem SQL-Stand nachzieht. Die REST-Antwort wartet nicht darauf: bestätigt ist die
+Änderung mit dem PostgreSQL-Commit (im Cluster synchron repliziert, Abschnitt 9); die Dokumente sind
+jederzeit aus SQL ableitbar, ein neuer Master führt beim Start einen vollständigen Abgleich aus.
 
 ### Idempotenz und Schleifenvermeidung
 
 - Die Brücke ignoriert Änderungen mit `bearbeitet_von: server`.
-- Verarbeitete Änderungen stehen in der PostgreSQL-Tabelle `sync_angewendet (doc_id, rev,
-  angewendet_am)`, geschrieben in derselben Transaktion wie die fachliche Änderung. Die Tabelle wird
-  mit dem Turnier nach Server 2 repliziert. Beim Start und nach einer Übernahme liest die Brücke den
-  Feed ab Sequenz 0 und überspringt alles, was mit gleicher `rev` bereits angewendet wurde.
+- Die Brücke wendet nur Felder an, die sich von der SQL-Zeile unterscheiden (Ergebnisfelder, Reihenfolge,
+  Waage-Felder, Pause, Forfeit-Absicht). Erneutes Anwenden ist dadurch wirkungslos (idempotent).
+- Verarbeitete Revisionen stehen zusätzlich in der Tabelle `sync_angewendet (doc_id, rev,
+  angewendet_am)` — geschrieben nach der Anwendung, nicht in derselben Transaktion (die Idempotenz
+  trägt der Feld-Vergleich). Die Tabelle wird mit dem Turnier nach Server 2 repliziert. Beim Start und
+  nach einer Übernahme liest die Brücke den Feed ab Sequenz 0 und überspringt Bekanntes schnell.
 - Beim Anlegen/Einlesen eines Turniers wird die Dokument-DB einmalig vollständig aus PostgreSQL
   befüllt.
 
