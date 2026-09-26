@@ -7,6 +7,8 @@
 // verarbeitet hat (sonst würde der Abgleich sie überschreiben, bevor sie in SQL angekommen ist).
 import { createHash } from 'crypto';
 import { LIVE_PRAEFIXE, dokumentIdFuer, mitServerStand, unterscheidetSichVomServerStand } from '../shared/dokumentAbbildung.js';
+import { TURNIER_SPALTEN_OHNE_PDF, ermittleEffektivenStatus } from '../controllers/turnierController.js';
+import { turnierHatEchteKaempfe } from '../controllers/poolController.js';
 
 async function ladeLiveZeilen(knex, turnierId) {
     const pools = await knex('pools').where({ turnier_id: turnierId });
@@ -23,6 +25,24 @@ async function ladeLiveZeilen(knex, turnierId) {
 
 // Turnier-Basisdaten + Hash des Steuerungs-Passworts, damit ein Client das Scoreboard auch offline
 // entsperren kann (Plan B).
+// Turnierzeile ohne PDF (Waage, Menü und Scoreboard am Client lesen /api/turniere/:id daraus),
+// ergänzt um die abgeleiteten Felder, die GET /api/turniere/:id zusätzlich liefert.
+async function baueTurnierDokument(knex, turnierId, bestehend) {
+    const zeile = await knex('turniere').where({ id: turnierId }).select([...TURNIER_SPALTEN_OHNE_PDF, 'instanz_id']).first();
+    const mitPdf = await knex('turniere').where({ id: turnierId }).whereNotNull('ausschreibung_pdf').first('id');
+    const hatEchteKaempfe = await turnierHatEchteKaempfe(knex, turnierId);
+    const soll = {
+        ...mitServerStand(bestehend, 'turniere', zeile),
+        status_effektiv: ermittleEffektivenStatus(zeile, { hatEchteKaempfe }),
+        hat_ausschreibung: !!mitPdf
+    };
+    if (bestehend && !unterscheidetSichVomServerStand(bestehend, 'turniere', zeile)
+        && bestehend.status_effektiv === soll.status_effektiv && bestehend.hat_ausschreibung === soll.hat_ausschreibung) {
+        return null;
+    }
+    return soll;
+}
+
 function baueKonfigDokument(turnier, bestehend) {
     const passwort = process.env.STEUERUNG_PASSWORD || '';
     const soll = {
@@ -82,6 +102,8 @@ export function erzeugeAbgleich({ knex, zustand }) {
 
         const konfig = baueKonfigDokument(turnier, docs.get('konfig:steuerung'));
         if (konfig) schreiben.push(konfig);
+        const turnierDoc = await baueTurnierDokument(knex, turnierId, docs.get(`turnier:${turnierId}`));
+        if (turnierDoc) schreiben.push(turnierDoc);
 
         // Konflikte (409) entstehen, wenn eine Matte das Dokument gleichzeitig ändert — dann
         // verarbeitet die Brücke deren Änderung und stößt danach einen neuen Abgleich an.

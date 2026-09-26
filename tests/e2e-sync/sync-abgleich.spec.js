@@ -20,6 +20,13 @@ test.describe.serial('Abgleich: relationale DB -> Dokumente', () => {
         expect(docs.every(d => d.bearbeitet_von === 'server')).toBe(true);
         const konfig = await ladeDokument(request, dbName, 'konfig:steuerung');
         expect(konfig.bezeichnung).toBe('Sync Abgleich');
+
+        // Turnierzeile ohne PDF (Waage/Menü am Client lesen /api/turniere/:id daraus).
+        const turnierDocs = docs.filter(d => d.dokumenttyp === 'turnier');
+        expect(turnierDocs).toHaveLength(1);
+        expect(turnierDocs[0].bezeichnung).toBe('Sync Abgleich');
+        expect('ausschreibung_pdf' in turnierDocs[0]).toBe(false);
+        expect(turnierDocs[0].status_effektiv).toBeTruthy();
     });
 
     test('REST-Ergebnis erscheint samt Kaskade in den Dokumenten', async ({ request }) => {

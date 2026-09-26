@@ -26,7 +26,7 @@ function istAnmeldefristAbgelaufen(turnier) {
 // "Keine Online-Aktionen" während der Durchführung betrifft die vereinsübergreifende Anmeldung/
 // Stammdaten-Bearbeitung (bereits durch dieselbe Prüfung gesperrt) — Pools/Matten/Kampf-Seiten
 // sind ohnehin schon auf den ausrichtenden Verein beschränkt und bleiben davon unberührt.
-function ermittleEffektivenStatus(turnier, { hatEchteKaempfe = false } = {}) {
+export function ermittleEffektivenStatus(turnier, { hatEchteKaempfe = false } = {}) {
     if (turnier.status !== 'veroeffentlicht') return turnier.status;
 
     const heuteStr = new Date().toISOString().slice(0, 10);
@@ -41,7 +41,7 @@ const GUELTIGE_STATUS_WERTE = ['entwurf', 'veroeffentlicht', 'abgeschlossen', 'a
 // Alle Spalten außer der PDF-Binärdatei selbst — für Listen-/Auswahl-Abfragen, die die
 // Ausschreibung nur als "vorhanden ja/nein" (siehe hat_ausschreibung) benötigen und die
 // potenziell mehrere MB große Binärspalte nicht aus der DB laden sollen.
-const TURNIER_SPALTEN_OHNE_PDF = [
+export const TURNIER_SPALTEN_OHNE_PDF = [
     'id', 'bezeichnung', 'ort', 'plz', 'bundesland', 'datum', 'ausrichter',
     'nutze_gewichtsklassen', 'anzahl_kampfflaechen', 'verein_id', 'altersklassen',
     'mannschafts_altersklassen', 'status', 'anmeldeschluss', 'startgeld', 'iban',

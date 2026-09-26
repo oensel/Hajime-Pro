@@ -21,6 +21,11 @@ export const LIVE_TABELLEN = {
     mannschaftskaempfe: 'mannschaftskampf'
 };
 
+// Die Turnierzeile wird zusätzlich gespiegelt (ohne PDF), aber gesondert geladen — sie gehört
+// nicht zu den Live-Tabellen, die per Turnier-ID gefiltert werden.
+const WEITERE_TYPEN = { turniere: 'turnier' };
+const ALLE_TYPEN = { ...LIVE_TABELLEN, ...WEITERE_TYPEN };
+
 export const LIVE_PRAEFIXE = Object.values(LIVE_TABELLEN).map(typ => `${typ}:`);
 
 // Absichten, die mit der Übernahme durch den Server erledigt sind und danach entfernt werden.
@@ -28,7 +33,7 @@ const ERLEDIGTE_ABSICHTEN = ['forfeit_teilnehmer_id', 'forfeit_art'];
 
 export function dokumentIdFuer(tabelle, zeile) {
     if (tabelle === 'turnier_teilnehmer' && zeile.dokument_id) return zeile.dokument_id;
-    return `${LIVE_TABELLEN[tabelle]}:${zeile.id}`;
+    return `${ALLE_TYPEN[tabelle]}:${zeile.id}`;
 }
 
 function normalisiere(wert) {
@@ -56,7 +61,7 @@ function spaltenFelder(tabelle, zeile) {
     for (const [spalte, wert] of Object.entries(zeile)) felder[spalte] = normalisiere(wert);
     // Nach den Spalten setzen: der Dokumenttyp heißt bewusst NICHT "typ", weil pools eine
     // gleichnamige Spalte (einzel/mannschaft) hat.
-    felder.dokumenttyp = LIVE_TABELLEN[tabelle];
+    felder.dokumenttyp = ALLE_TYPEN[tabelle];
     felder.sql_id = zeile.id;
     return felder;
 }
