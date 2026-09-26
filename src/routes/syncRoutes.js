@@ -91,6 +91,12 @@ export function getSyncRoutes(holeSync) {
             res.json({ success: true });
         });
 
+        router.get('/test/verworfen', (req, res) => {
+            const sync = holeSync();
+            if (!sync || sync.rolle !== 'client') return res.status(400).json([]);
+            res.json(sync.verworfeneDateien());
+        });
+
         router.post('/test/verbinden', async (req, res) => {
             const sync = holeSync();
             if (!sync || sync.rolle !== 'client') return res.status(400).json({ success: false });

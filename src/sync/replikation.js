@@ -104,9 +104,11 @@ export function erzeugeReplikation({ PouchDB, konfig, clientId }) {
             getrennt = true;
             stoppeSync();
         },
+        // Hebt die (Test-)Trennung auf; die Replikation startet erst über sicherstellen(), nachdem der
+        // Client-Dienst die Turnier-Instanz beim Server geprüft hat (sonst liefe sie nach einem
+        // Turnierwechsel kurz gegen die gelöschte alte DB).
         verbinden() {
             getrennt = false;
-            starteSync();
         },
         // Nach einem Replikationsfehler (z.B. Server-DB kurzzeitig nicht vorhanden) neu versuchen.
         sicherstellen() {

@@ -60,7 +60,6 @@ export async function starteSyncDienst({ knex, konfig }) {
             await knex('turniere').where({ id: turnierId }).update({ instanz_id: instanzId });
         }
         zustand.db = await dokumentDb.oeffneSicher(turnierDbName(instanzId));
-        await zustand.db.createIndex({ index: { fields: ['dokumenttyp'] } });
         zustand.instanzId = instanzId;
         zustand.turnierId = turnier.id;
         await dienst.nachAktivierung();

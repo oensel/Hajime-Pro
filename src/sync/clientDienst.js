@@ -2,6 +2,8 @@
 // nur eine lokale PouchDB, die per Live-Replikation mit der Turnier-DB des Hallen-Servers
 // abgeglichen wird. Der Browser arbeitet ausschließlich gegen http://localhost — fällt das WLAN
 // aus, läuft alles lokal weiter (Spec CouchDB-Umbau, Abschnitte 3, 4, 8).
+import { mkdirSync, writeFileSync, readdirSync, readFileSync } from 'fs';
+import path from 'path';
 import { erzeugeDokumentDb, turnierDbName } from './dokumentDb.js';
 import { erzeugeReplikation } from './replikation.js';
 import { erzeugeClientKonfig } from './clientKonfig.js';
@@ -16,6 +18,7 @@ export async function starteClientDienst({ konfig }) {
     const clientKonfig = await erzeugeClientKonfig(dokumentDb.PouchDB);
     const replikation = erzeugeReplikation({ PouchDB: dokumentDb.PouchDB, konfig, clientId: clientKonfig.clientId });
 
+    const verworfenVerzeichnis = path.join(path.resolve(konfig.datenverzeichnis), 'verworfen');
     const zustand = {
         instanzId: null,
         db: null,
@@ -28,7 +31,6 @@ export async function starteClientDienst({ konfig }) {
     async function oeffneInstanz(instanzId) {
         zustand.instanzId = instanzId;
         zustand.db = await dokumentDb.oeffneSicher(turnierDbName(instanzId));
-        await zustand.db.createIndex({ index: { fields: ['dokumenttyp'] } });
         await clientKonfig.merkeInstanz(instanzId);
         await replikation.starte(zustand.db);
         for (const rueckruf of beiNeuerDb) await rueckruf(zustand.db);
@@ -132,15 +134,38 @@ export async function starteClientDienst({ konfig }) {
                 matte_id: await clientKonfig.matteId()
             };
         },
-        // Wird in Task B8 (Instanzwechsel) ausgebaut.
+        // Turnierwechsel am Server (Spec Abschnitt 8): noch nicht übertragene eigene Änderungen des
+        // alten Turniers gehören zu keinem Turnier mehr — sie werden als JSON gesichert
+        // (<SYNC_DATENVERZEICHNIS>/verworfen/<alte_instanz>_<zeitstempel>.json) statt still zu
+        // verschwinden, danach wird die lokale DB durch die neue Instanz ersetzt.
         async wechsleInstanz(neueInstanzId) {
             zustand.instanzwechselLaeuft = true;
             try {
                 await replikation.stoppe();
-                if (zustand.db) await zustand.db.destroy();
+                if (zustand.db) {
+                    const ids = replikation.ausstehendeIds();
+                    if (ids.length) {
+                        const res = await zustand.db.allDocs({ keys: ids, include_docs: true });
+                        const dokumente = res.rows.map(r => r.doc).filter(Boolean);
+                        mkdirSync(verworfenVerzeichnis, { recursive: true });
+                        const datei = path.join(verworfenVerzeichnis, `${zustand.instanzId}_${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
+                        writeFileSync(datei, JSON.stringify({ alte_instanz_id: zustand.instanzId, neue_instanz_id: neueInstanzId, dokumente }, null, 2));
+                        console.warn(`[Client-Sync] Turnierwechsel: ${dokumente.length} nicht übertragene Änderung(en) gesichert in ${datei}`);
+                    }
+                    await zustand.db.destroy();
+                }
                 await oeffneInstanz(neueInstanzId);
             } finally {
                 zustand.instanzwechselLaeuft = false;
+            }
+        },
+        verworfeneDateien() {
+            try {
+                return readdirSync(verworfenVerzeichnis)
+                    .filter(n => n.endsWith('.json'))
+                    .map(n => ({ datei: n, ...JSON.parse(readFileSync(path.join(verworfenVerzeichnis, n), 'utf-8')) }));
+            } catch (err) {
+                return [];
             }
         },
         async setzeMatte(matteId) {
