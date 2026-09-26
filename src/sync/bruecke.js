@@ -7,7 +7,7 @@
 // Server-Stand zurück plus letzte_ablehnung (Rückmeldung an Matte/Waage), und ein
 // konflikt:-Dokument hält beide Versionen für die Turnierleitung fest (Spec Abschnitt 10).
 import { randomUUID } from 'crypto';
-import { geaenderteFelder, mitServerStand } from '../shared/dokumentAbbildung.js';
+import { geaenderteFelder, gleicheWerte, mitServerStand } from '../shared/dokumentAbbildung.js';
 import { aktualisiereKampf, setzeMattenReihenfolge } from '../controllers/kampfController.js';
 import { pausiereMatte, setzeMatteFort } from '../controllers/kampfflaecheController.js';
 import {
@@ -20,6 +20,18 @@ const TEILNEHMER_WAAGE_FELDER = [
     'gewicht', 'altersklasse', 'gewichtsklasse', 'graduierung', 'startgeld_bezahlt', 'gewogen'
 ];
 const TABELLE_ZU_TYP = { kampf: 'kaempfe', kampfflaeche: 'kampfflaechen', teilnehmer: 'turnier_teilnehmer' };
+
+// Wie lange die Brücke nach dem letzten eingegangenen Dokument wartet, bevor ein zurückgestelltes
+// Ergebnis mit abweichender Paarung als echter Klärungsfall gilt (weitere Replikations-Batches
+// könnten die fehlenden Vorkampf-Ergebnisse noch nachliefern).
+const KLAERUNG_WARTEZEIT_MS = 2000;
+
+// Ein Ergebnis (oder Forfeit) für einen Kampf, dessen Paarung laut Dokument von der SQL-Zeile
+// abweicht: meist sind die Vorkampf-Ergebnisse, aus denen der Server die Paarung ableitet, nur noch
+// nicht verarbeitet (die Replikation liefert nicht in Spielreihenfolge). Solche Dokumente werden
+// zurückgestellt statt angewendet — sonst stünde ein "beendet"er Kampf ohne Kämpfer in SQL, den die
+// Kaskade nie mehr anfasst.
+class PaarungWeichtAb extends Error {}
 
 function waageDaten(doc) {
     const daten = {};
@@ -37,6 +49,14 @@ async function wendeKampfAn(knex, doc) {
         global.liveColors = global.liveColors || {};
         global.liveColors[id] = doc.live_farbe;
     }
+    const willErgebnis = !!doc.forfeit_teilnehmer_id
+        || (['beendet', 'freilos'].includes(doc.status) && !gleicheWerte(doc.status, zeile.status))
+        || (doc.sieger_id != null && !gleicheWerte(doc.sieger_id, zeile.sieger_id));
+    const paarungGleich = gleicheWerte(doc.kaempfer1_id, zeile.kaempfer1_id) && gleicheWerte(doc.kaempfer2_id, zeile.kaempfer2_id);
+    if (willErgebnis && !paarungGleich && !['beendet', 'freilos'].includes(zeile.status)) {
+        throw new PaarungWeichtAb(`Paarung von ${doc._id} weicht vom Server-Stand ab`);
+    }
+
     if (doc.forfeit_teilnehmer_id && !['beendet', 'freilos'].includes(zeile.status)) {
         const art = doc.forfeit_art === 'disqualifiziert' ? 'disqualifiziert' : 'nicht_angetreten';
         await werteForfeit(knex, Number(doc.forfeit_teilnehmer_id), id, art, HALLEN_KONTEXT);
@@ -102,11 +122,66 @@ export function erzeugeBruecke({ knex, zustand, abgleich }) {
     let feed = null;
     let kette = Promise.resolve();
 
-    async function legeKonfliktAnIn(db, konfliktTyp, doc, grund) {
+    let offen = 0; // gemeldete, noch nicht verarbeitete Änderungen
+    const zurueckgestellt = new Set(); // Dokument-IDs mit abweichender Paarung (siehe PaarungWeichtAb)
+    let klaerungsTimer = null;
+    let klaerungsLauf = Promise.resolve();
+
+    async function legeKonfliktAnIn(db, konfliktTyp, doc, grund, { prioritaet = 'normal', versionServer = null } = {}) {
         await db.put({
-            _id: `konflikt:${randomUUID()}`, dokumenttyp: 'konflikt', konflikt_typ: konfliktTyp, prioritaet: 'normal',
-            bezug_id: doc._id, grund, version_lokal: doc, erstellt_am: new Date().toISOString(), erledigt: false,
-            bearbeitet_von: 'server'
+            _id: `konflikt:${randomUUID()}`, dokumenttyp: 'konflikt', konflikt_typ: konfliktTyp, prioritaet,
+            bezug_id: doc._id, grund, version_lokal: doc, version_server: versionServer,
+            erstellt_am: new Date().toISOString(), erledigt: false, bearbeitet_von: 'server'
+        });
+    }
+
+    // Echter Klärungsfall (Spec Abschnitt 10): Ergebnis wurde offline mit einer anderen Paarung
+    // gespielt, als der Server sie berechnet. Nicht automatisch lösen — Kampf auf 'klaerung',
+    // Konflikt mit hoher Priorität, die Turnierleitung entscheidet.
+    async function markiereKlaerung(db, doc) {
+        const zeile = await knex('kaempfe').where({ id: doc.sql_id }).first();
+        if (!zeile || ['beendet', 'freilos'].includes(zeile.status)) return;
+        await knex('kaempfe').where({ id: doc.sql_id }).update({ status: 'klaerung', updated_at: knex.fn.now() });
+        await legeKonfliktAnIn(db, 'klaerung', doc,
+            'Der Kampf wurde an der Matte mit einer anderen Paarung gewertet, als der Server sie berechnet hat. Bitte manuell klären.',
+            { prioritaet: 'hoch', versionServer: zeile });
+        await markiereAngewendet(doc);
+        await abgleich.fuehreAus();
+    }
+
+    // Zurückgestellte Dokumente erneut versuchen (neuester Stand). final=true: was dann immer noch
+    // abweicht, wird zum Klärungsfall.
+    async function holeZurueckgestellteNach(db, final) {
+        let fortschritt = true;
+        while (fortschritt && zurueckgestellt.size) {
+            fortschritt = false;
+            for (const id of [...zurueckgestellt]) {
+                const doc = await db.get(id).catch(() => null);
+                zurueckgestellt.delete(id);
+                if (!doc || doc.bearbeitet_von === 'server') continue;
+                await verarbeite(db, doc);
+                if (!zurueckgestellt.has(id)) fortschritt = true;
+            }
+        }
+        if (final) {
+            for (const id of [...zurueckgestellt]) {
+                zurueckgestellt.delete(id);
+                const doc = await db.get(id).catch(() => null);
+                if (doc && doc.bearbeitet_von !== 'server') await markiereKlaerung(db, doc);
+            }
+        }
+    }
+
+    function planeNachholen(db) {
+        if (offen > 0 || !zurueckgestellt.size) return;
+        kette = kette.then(() => holeZurueckgestellteNach(db, false)).catch(err => console.error('[Brücke] Nachholen:', err));
+        if (klaerungsTimer) clearTimeout(klaerungsTimer);
+        klaerungsLauf = new Promise((fertig) => {
+            klaerungsTimer = setTimeout(() => {
+                klaerungsTimer = null;
+                kette = kette.then(() => holeZurueckgestellteNach(db, true)).catch(err => console.error('[Brücke] Klärung:', err));
+                kette.then(fertig, fertig);
+            }, KLAERUNG_WARTEZEIT_MS);
         });
     }
 
@@ -125,6 +200,10 @@ export function erzeugeBruecke({ knex, zustand, abgleich }) {
         await legeKonfliktAnIn(db, fachlich ? 'abgelehnt' : 'bruecke_fehler', doc, fehler.message);
     }
 
+    async function markiereAngewendet(doc) {
+        await knex('sync_angewendet').insert({ doc_id: doc._id, rev: doc._rev }).onConflict(['doc_id', 'rev']).ignore();
+    }
+
     async function verarbeite(db, doc) {
         if (!doc || doc._deleted || doc.bearbeitet_von === 'server') return;
         const typ = doc._id.split(':')[0];
@@ -134,14 +213,28 @@ export function erzeugeBruecke({ knex, zustand, abgleich }) {
         const schonAngewendet = await knex('sync_angewendet').where({ doc_id: doc._id, rev: doc._rev }).first();
         if (schonAngewendet) return;
 
+        // Offline-Kaskade eines Client-Geräts (src/sync/kaskadeLokal.js): nicht anwenden — der Server
+        // rechnet nach dem zugrunde liegenden Ergebnis selbst nach. Als verarbeitet markieren, damit
+        // der Abgleich das Dokument mit dem maßgeblichen Server-Stand überschreiben darf.
+        if (String(doc.bearbeitet_von || '').startsWith('kaskade:')) {
+            await markiereAngewendet(doc);
+            await abgleich.fuehreAus();
+            return;
+        }
+
         try {
             if (typ === 'kampf') await wendeKampfAn(knex, doc);
             else if (typ === 'kampfflaeche') await wendeKampfflaecheAn(knex, doc);
             else await wendeTeilnehmerAn(knex, db, doc, (t, d, g) => legeKonfliktAnIn(db, t, d, g));
         } catch (fehler) {
+            if (fehler instanceof PaarungWeichtAb) {
+                zurueckgestellt.add(doc._id);
+                return;
+            }
             await lehneAb(db, doc, tabelle, fehler);
         }
-        await knex('sync_angewendet').insert({ doc_id: doc._id, rev: doc._rev }).onConflict(['doc_id', 'rev']).ignore();
+        zurueckgestellt.delete(doc._id);
+        await markiereAngewendet(doc);
         await abgleich.fuehreAus();
     }
 
@@ -150,7 +243,18 @@ export function erzeugeBruecke({ knex, zustand, abgleich }) {
         if (!db || feed) return;
         feed = db.changes({ since: 0, live: true, include_docs: true });
         feed.on('change', (change) => {
-            kette = kette.then(() => verarbeite(db, change.doc)).catch(err => console.error('[Brücke] Fehler:', err));
+            offen++;
+            if (klaerungsTimer) {
+                clearTimeout(klaerungsTimer);
+                klaerungsTimer = null;
+            }
+            kette = kette
+                .then(() => verarbeite(db, change.doc))
+                .catch(err => console.error('[Brücke] Fehler:', err))
+                .finally(() => {
+                    offen--;
+                    planeNachholen(db);
+                });
         });
         feed.on('error', (err) => console.error('[Brücke] Feed-Fehler:', err));
     }
@@ -169,6 +273,7 @@ export function erzeugeBruecke({ knex, zustand, abgleich }) {
         for (let i = 0; i < 3; i++) {
             await new Promise(r => setTimeout(r, 150));
             await kette;
+            if (klaerungsTimer) await klaerungsLauf;
             await abgleich.leerlauf();
         }
     }
