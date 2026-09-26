@@ -26,6 +26,8 @@ import { waehleKnexUmgebung } from './utils/dbUmgebung.js';
 import { liesSyncKonfig } from './sync/konfig.js';
 import { starteSyncDienst } from './sync/syncDienst.js';
 import { getSyncRoutes } from './routes/syncRoutes.js';
+import { starteClientDienst } from './sync/clientDienst.js';
+import { getClientApiRoutes, clientStatischeSeiten } from './sync/clientApi.js';
 
 dotenv.config();
 
@@ -34,24 +36,8 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const knexConfig = require('../knexfile.cjs');
 
-const environment = waehleKnexUmgebung();
-const knex = knexLib(knexConfig[environment]);
-
-// Der Super-Admin-Bootstrap betrifft nur den Online-Mehrbenutzerbetrieb (Vereins-Erstfreigabe) —
-// der Hallenbetrieb (IS_OFFLINE=true, auch mit DB_CLIENT=pg) arbeitet mit seinem eigenen
-// isolierten Mock-User, siehe requireAuth.
-if (process.env.IS_OFFLINE !== 'true') {
-    ensureSuperAdmin(knex);
-}
-
-const app = express();
-app.set('knex', knex);
-
-// Sync-Dienst (nur SYNC_ROLLE=server, siehe src/sync/). Das vorhandene Turnier aktiviert er erst
-// beim ersten Request (sync.bereit(), siehe dort).
 const syncKonfig = liesSyncKonfig();
-const sync = await starteSyncDienst({ knex, konfig: syncKonfig });
-app.set('sync', sync);
+const app = express();
 const PORT = process.env.PORT || 3000;
 
 const __filename = fileURLToPath(import.meta.url);
@@ -59,46 +45,78 @@ const __dirname = path.dirname(__filename);
 
 import { requireWriteAuth } from './middleware/auth.js';
 
-// /db (Dokument-DB) MUSS vor express.json() hängen — sonst konsumiert der JSON-Parser die
-// Request-Bodies, die express-pouchdb selbst lesen muss.
-if (sync) {
-    // Nur Datenzugriffe lösen die verzögerte Initialisierung aus — NICHT der Abruf statischer
-    // Seiten wie "/" (die Erreichbarkeitsprüfung der Test-Suites läuft vor deren DB-Setup).
-    const nachInitialisierung = (req, res, next) => sync.bereit().then(() => next(), next);
-    app.use('/api', nachInitialisierung);
-    app.use('/db', nachInitialisierung);
-    app.use('/db', sync.middleware);
+if (syncKonfig.istClient) {
+    // ---------------------------------------------------------------------------------------
+    // Client-Knoten (Notebook/Tablet): KEINE relationale DB. Lokale PouchDB unter /db, eine
+    // Client-API beantwortet die Lese-Endpunkte der Seiten aus den lokalen Dokumenten, Schreib-
+    // vorgänge laufen über public/js/datenzugriff.js direkt in /db (siehe src/sync/clientApi.js).
+    // ---------------------------------------------------------------------------------------
+    const client = await starteClientDienst({ konfig: syncKonfig });
+    app.set('sync', client);
+    app.use('/db', client.middleware); // vor express.json(), siehe Server-Zweig
+    app.use(express.json({ limit: '15mb' }));
+    app.use(clientStatischeSeiten(path.join(__dirname, '../public')));
+    app.use(express.static(path.join(__dirname, '../public')));
+    app.use('/api/sync', getSyncRoutes(() => app.get('sync')));
+} else {
+    const environment = waehleKnexUmgebung();
+    const knex = knexLib(knexConfig[environment]);
+
+    // Der Super-Admin-Bootstrap betrifft nur den Online-Mehrbenutzerbetrieb (Vereins-Erstfreigabe) —
+    // der Hallenbetrieb (IS_OFFLINE=true, auch mit DB_CLIENT=pg) arbeitet mit seinem eigenen
+    // isolierten Mock-User, siehe requireAuth.
+    if (process.env.IS_OFFLINE !== 'true') {
+        ensureSuperAdmin(knex);
+    }
+
+    app.set('knex', knex);
+
+    // Sync-Dienst (nur SYNC_ROLLE=server, siehe src/sync/). Das vorhandene Turnier aktiviert er erst
+    // beim ersten Request (sync.bereit(), siehe dort).
+    const sync = await starteSyncDienst({ knex, konfig: syncKonfig });
+    app.set('sync', sync);
+
+    // /db (Dokument-DB) MUSS vor express.json() hängen — sonst konsumiert der JSON-Parser die
+    // Request-Bodies, die express-pouchdb selbst lesen muss.
+    if (sync) {
+        // Nur Datenzugriffe lösen die verzögerte Initialisierung aus — NICHT der Abruf statischer
+        // Seiten wie "/" (die Erreichbarkeitsprüfung der Test-Suites läuft vor deren DB-Setup).
+        const nachInitialisierung = (req, res, next) => sync.bereit().then(() => next(), next);
+        app.use('/api', nachInitialisierung);
+        app.use('/db', nachInitialisierung);
+        app.use('/db', sync.middleware);
+    }
+
+    app.use(express.json({ limit: '15mb' }));
+    app.use(express.static(path.join(__dirname, '../public')));
+
+    // Nach jedem erfolgreichen schreibenden API-Request den Abgleich SQL -> Dokumente anstoßen
+    // (entprellt). So erreichen Änderungen der Turnierleitung die Matten/Waagen, ohne dass jeder
+    // Controller einzeln daran denken muss.
+    if (sync) {
+        app.use('/api', (req, res, next) => {
+            if (req.method !== 'GET') {
+                res.on('finish', () => {
+                    if (res.statusCode < 400) sync.planeAbgleich();
+                });
+            }
+            next();
+        });
+    }
+
+    // Mount routes with Knex instance dependency injection
+    app.use('/api/auth', getAuthRoutes(knex));
+    app.use('/api/vereine', getVereinRoutes(knex));
+    app.use('/api/turniere', requireWriteAuth, getTurnierRoutes(knex));
+    app.use('/api/teilnehmer', requireWriteAuth, getTeilnehmerRoutes(knex));
+    app.use('/api/pools', requireWriteAuth, getPoolRoutes(knex));
+    app.use('/api/kampfflaechen', requireWriteAuth, getKampfflaecheRoutes(knex));
+    app.use('/api/kaempfe', requireWriteAuth, getKampfRoutes(knex));
+    app.use('/api/mannschaften', requireWriteAuth, getMannschaftRoutes(knex));
+    app.use('/api/mannschaftskaempfe', requireWriteAuth, getMannschaftskampfRoutes(knex));
+    app.use('/api/offline', requireWriteAuth, setupOfflineRoutes(knex));
+    app.use('/api/sync', getSyncRoutes(() => app.get('sync')));
 }
-
-app.use(express.json({ limit: '15mb' }));
-app.use(express.static(path.join(__dirname, '../public')));
-
-// Mount routes with Knex instance dependency injection
-// Nach jedem erfolgreichen schreibenden API-Request den Abgleich SQL -> Dokumente anstoßen
-// (entprellt). So erreichen Änderungen der Turnierleitung die Matten/Waagen, ohne dass jeder
-// Controller einzeln daran denken muss.
-if (sync) {
-    app.use('/api', (req, res, next) => {
-        if (req.method !== 'GET') {
-            res.on('finish', () => {
-                if (res.statusCode < 400) sync.planeAbgleich();
-            });
-        }
-        next();
-    });
-}
-
-app.use('/api/auth', getAuthRoutes(knex));
-app.use('/api/vereine', getVereinRoutes(knex));
-app.use('/api/turniere', requireWriteAuth, getTurnierRoutes(knex));
-app.use('/api/teilnehmer', requireWriteAuth, getTeilnehmerRoutes(knex));
-app.use('/api/pools', requireWriteAuth, getPoolRoutes(knex));
-app.use('/api/kampfflaechen', requireWriteAuth, getKampfflaecheRoutes(knex));
-app.use('/api/kaempfe', requireWriteAuth, getKampfRoutes(knex));
-app.use('/api/mannschaften', requireWriteAuth, getMannschaftRoutes(knex));
-app.use('/api/mannschaftskaempfe', requireWriteAuth, getMannschaftskampfRoutes(knex));
-app.use('/api/offline', requireWriteAuth, setupOfflineRoutes(knex));
-app.use('/api/sync', getSyncRoutes(() => app.get('sync')));
 
 app.use('/js/qr', express.static(path.join(__dirname, '../node_modules/jsqr/dist')));
 app.use('/js/qrgen', express.static(path.join(__dirname, '../node_modules/qrcode-generator/dist')));
@@ -128,11 +146,16 @@ app.get('/api/graduierungen', (req, res) => {
 });
 
 app.get('/api/config', (req, res) => {
-    res.json({ isOffline: process.env.IS_OFFLINE === 'true' });
+    res.json({ isOffline: process.env.IS_OFFLINE === 'true' || syncKonfig.istClient, syncRolle: syncKonfig.rolle });
 });
 
+if (syncKonfig.istClient) {
+    // Alle übrigen /api-Lesezugriffe beantwortet der Client aus seinen lokalen Dokumenten.
+    app.use('/api', getClientApiRoutes(() => app.get('sync')));
+}
+
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, '../public/turniere.html'));
+    res.sendFile(path.join(__dirname, syncKonfig.istClient ? '../public/client.html' : '../public/turniere.html'));
 });
 
 app.listen(PORT, () => {

@@ -1,17 +1,45 @@
 import express from 'express';
 
 // /api/sync/status ist IMMER gemountet (auch ohne Sync, dann rolle: null) — das Frontend
-// (datenzugriff.js) entscheidet anhand der Antwort zwischen REST- und Dokument-Backend.
+// (datenzugriff.js, syncStatus.js) entscheidet anhand der Antwort zwischen REST- und
+// Dokument-Backend bzw. zeigt den Verbindungszustand. Server und Client liefern ihren eigenen
+// Status (Client zusätzlich verbunden/ausstehend/matte_id).
 export function getSyncRoutes(holeSync) {
     const router = express.Router();
 
-    router.get('/status', (req, res) => {
+    router.get('/status', async (req, res) => {
         const sync = holeSync();
         if (!sync) return res.json({ rolle: null, instanz_id: null, turnier_id: null, db_name: null });
-        return res.json(sync.status());
+        return res.json(await sync.status());
     });
 
-    // Nur für die automatisierten Tests (NODE_ENV=test): deterministisch warten statt zu schlafen.
+    // --- Mattenwahl eines Client-Geräts (Spec Abschnitt 4) ---
+    const nurClient = (req, res, next) => {
+        const sync = holeSync();
+        if (!sync || sync.rolle !== 'client') return res.status(404).json({ success: false, error: 'Nur auf Client-Geräten.' });
+        req.client = sync;
+        next();
+    };
+
+    router.get('/client/matte', nurClient, async (req, res) => {
+        res.json({ matte_id: await req.client.clientKonfig.matteId() });
+    });
+
+    // Vor einem Mattenwechsel: ausstehende Änderungen, laufender Kampf auf der bisherigen Matte,
+    // anderer Client (Heartbeat jünger als 2 Minuten) auf der Ziel-Matte.
+    router.get('/client/matte/pruefen', nurClient, async (req, res) => {
+        res.json(await req.client.pruefeMattenwechsel(Number(req.query.matte_id)));
+    });
+
+    router.put('/client/matte', nurClient, async (req, res) => {
+        const matteId = req.body && req.body.matte_id;
+        if (!matteId) return res.status(400).json({ success: false, error: 'matte_id fehlt.' });
+        await req.client.setzeMatte(Number(matteId));
+        res.json({ success: true, matte_id: Number(matteId) });
+    });
+
+    // Nur für die automatisierten Tests (NODE_ENV=test): deterministisch warten statt zu schlafen,
+    // Verbindungsabbruch eines Clients simulieren.
     if (process.env.NODE_ENV === 'test') {
         router.post('/test/leerlauf', async (req, res) => {
             const sync = holeSync();
@@ -22,7 +50,21 @@ export function getSyncRoutes(holeSync) {
         // Simuliert einen Server-Neustart der Brücke: Feed wieder ab Sequenz 0 lesen.
         router.post('/test/bruecke-neustart', async (req, res) => {
             const sync = holeSync();
-            if (sync) await sync.brueckeNeuStarten();
+            if (sync && sync.brueckeNeuStarten) await sync.brueckeNeuStarten();
+            res.json({ success: true });
+        });
+
+        router.post('/test/trennen', (req, res) => {
+            const sync = holeSync();
+            if (!sync || sync.rolle !== 'client') return res.status(400).json({ success: false });
+            sync.trennen();
+            res.json({ success: true });
+        });
+
+        router.post('/test/verbinden', async (req, res) => {
+            const sync = holeSync();
+            if (!sync || sync.rolle !== 'client') return res.status(400).json({ success: false });
+            await sync.verbinden();
             res.json({ success: true });
         });
     }

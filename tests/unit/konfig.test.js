@@ -17,6 +17,13 @@ test('SYNC_ROLLE=server wird erkannt, unbekannte Werte nicht', () => {
     assert.equal(liesSyncKonfig({ SYNC_DATENVERZEICHNIS: './x' }).datenverzeichnis, './x');
 });
 
+test('Client-Einstellungen: Server-URL wird normalisiert', () => {
+    const k = liesSyncKonfig({ SYNC_ROLLE: 'client', SYNC_SERVER_URL: 'http://halle:3000/db/', SYNC_SECRET: 'geheim' });
+    assert.equal(k.istClient, true);
+    assert.equal(k.serverUrl, 'http://halle:3000');
+    assert.equal(k.secret, 'geheim');
+});
+
 test('knex-Umgebung: Cloud, Halle mit SQLite, Halle mit PostgreSQL', () => {
     assert.equal(waehleKnexUmgebung({ IS_OFFLINE: 'false' }), 'online');
     assert.equal(waehleKnexUmgebung({}), 'online');

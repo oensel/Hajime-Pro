@@ -1,20 +1,17 @@
-// Setzt SQLite-Datei und Dokument-Verzeichnis der Sync-Suite vor jedem Lauf zurück.
-import { existsSync, unlinkSync, rmSync } from 'fs';
+// Migriert die (in playwright.sync.config.js vor dem Serverstart gelöschte) SQLite-Datei der
+// Sync-Suite. Ein vorher fehlgeschlagener Initialisierungsversuch des Servers (Client fragt beim
+// Start sofort den Status ab) wird beim nächsten Request automatisch wiederholt.
 import path from 'path';
 import { fileURLToPath } from 'url';
 import knexLib from 'knex';
-import { SYNC_TEST_SQLITE_PATH, SYNC_TEST_DOKUMENTE } from './test-env.js';
+import { SYNC_TEST_SQLITE_PATH } from './test-env.js';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 export default async function globalSetup() {
-    const dbPath = path.resolve(projectRoot, SYNC_TEST_SQLITE_PATH);
-    if (existsSync(dbPath)) unlinkSync(dbPath);
-    rmSync(path.resolve(projectRoot, SYNC_TEST_DOKUMENTE), { recursive: true, force: true });
-
     const knex = knexLib({
         client: 'sqlite3',
-        connection: { filename: dbPath },
+        connection: { filename: path.resolve(projectRoot, SYNC_TEST_SQLITE_PATH) },
         useNullAsDefault: true,
         migrations: { directory: path.resolve(projectRoot, 'migrations') }
     });

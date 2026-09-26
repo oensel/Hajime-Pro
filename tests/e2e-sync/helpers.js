@@ -77,3 +77,48 @@ export async function richteDk8TurnierEin(request, bezeichnung) {
     expect(z.ok(), await z.text()).toBeTruthy();
     return { turnierId, matId, poolId, teilnehmerIds };
 }
+
+// ---------- Client-Knoten (Port 3201) ----------
+import { CLIENT_BASE_URL } from './test-env.js';
+export { CLIENT_BASE_URL };
+
+export async function clientStatus(request) {
+    const resp = await request.get(`${CLIENT_BASE_URL}/api/sync/status`);
+    expect(resp.ok()).toBeTruthy();
+    return resp.json();
+}
+
+// Wartet, bis der Client die aktuelle Server-Instanz geöffnet und alles übertragen hat, und
+// danach, bis der Server alles verarbeitet hat — und holt die Folgeänderungen des Servers zurück.
+export async function syncLeerlauf(request) {
+    const server = await syncStatus(request);
+    await expect.poll(async () => (await clientStatus(request)).instanz_id, { timeout: 15000 }).toBe(server.instanz_id);
+    for (let i = 0; i < 2; i++) {
+        const c = await request.post(`${CLIENT_BASE_URL}/api/sync/test/leerlauf`);
+        expect(c.ok()).toBeTruthy();
+        await warteLeerlauf(request);
+    }
+    const c = await request.post(`${CLIENT_BASE_URL}/api/sync/test/leerlauf`);
+    expect(c.ok()).toBeTruthy();
+}
+
+export async function clientTrennen(request) {
+    const r = await request.post(`${CLIENT_BASE_URL}/api/sync/test/trennen`);
+    expect(r.ok()).toBeTruthy();
+}
+
+export async function clientVerbinden(request) {
+    const r = await request.post(`${CLIENT_BASE_URL}/api/sync/test/verbinden`);
+    expect(r.ok()).toBeTruthy();
+}
+
+export async function ladeClientDokument(request, dbName, id) {
+    const resp = await request.get(`${CLIENT_BASE_URL}/db/${dbName}/${encodeURIComponent(id)}`);
+    return resp.ok() ? resp.json() : null;
+}
+
+export async function schreibeClientDokument(request, dbName, dokument) {
+    const resp = await request.put(`${CLIENT_BASE_URL}/db/${dbName}/${encodeURIComponent(dokument._id)}`, { data: dokument });
+    expect(resp.ok(), await resp.text()).toBeTruthy();
+    return resp.json();
+}

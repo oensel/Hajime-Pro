@@ -31,6 +31,15 @@ export async function starteSyncDienst({ knex, konfig }) {
     // Instanzen, Tippfehler) liefern 404, damit niemand eine gelöschte DB versehentlich per
     // Replikation wieder anlegt. GET /db/ (Server-Info) bleibt erlaubt, PouchDB-Clients brauchen es.
     function middleware(req, res, next) {
+        // SYNC_SECRET (optional): Replikationsanfragen von Client-Knoten müssen es mitsenden.
+        // Browser des Server-Frontends (erkennbar an Sec-Fetch-Site: same-origin, das nur ein
+        // Browser für Anfragen seiner eigenen Seite setzt) sind ausgenommen — die Hallen-REST-API
+        // ist ohnehin offen (Offline-Mock-User). Schutz gegen versehentliche fremde Replikation,
+        // nicht gegen Angreifer im Hallennetz.
+        const browserDerEigenenSeite = req.headers['sec-fetch-site'] === 'same-origin';
+        if (konfig.secret && !browserDerEigenenSeite && req.headers['x-hajime-sync-secret'] !== konfig.secret) {
+            return res.status(401).json({ error: 'unauthorized', reason: 'SYNC_SECRET fehlt oder ist falsch' });
+        }
         const erstesSegment = decodeURIComponent(req.path.split('/')[1] || '');
         if (erstesSegment === '' || erstesSegment.startsWith('_')) {
             if (erstesSegment === '' && req.method === 'GET') return dokumentDb.middleware(req, res, next);
@@ -50,7 +59,7 @@ export async function starteSyncDienst({ knex, konfig }) {
             instanzId = randomUUID();
             await knex('turniere').where({ id: turnierId }).update({ instanz_id: instanzId });
         }
-        zustand.db = dokumentDb.oeffne(turnierDbName(instanzId));
+        zustand.db = await dokumentDb.oeffneSicher(turnierDbName(instanzId));
         await zustand.db.createIndex({ index: { fields: ['dokumenttyp'] } });
         zustand.instanzId = instanzId;
         zustand.turnierId = turnier.id;
@@ -67,6 +76,7 @@ export async function starteSyncDienst({ knex, konfig }) {
     }
 
     const dienst = {
+        rolle: 'server',
         zustand,
         middleware,
         aktiviereTurnier,
