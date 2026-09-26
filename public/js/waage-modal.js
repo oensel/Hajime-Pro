@@ -900,7 +900,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (result.ok) {
                     const gespeicherteId = effektiveId || result.teilnehmerId;
 
-                    if (turnierHatMannschaftKlassen && gespeicherteId) {
+                    // Mannschaftszuordnung gibt es nur mit Verbindung zum Hallen-Server (REST, siehe
+                    // Spec CouchDB-Umbau Abschnitt 4) — offline am Client-Gerät nur ein Hinweis.
+                    if (turnierHatMannschaftKlassen && mannschaftNameEingabe && window.Datenzugriff.rolle() === 'client') {
+                        window.zeigeNotification('Mannschaftszuordnung ist an diesem Gerät nicht möglich — bitte am Hallen-Server nachtragen.', 'info');
+                    } else if (turnierHatMannschaftKlassen && gespeicherteId) {
                         await synchronisiereMannschaftsZuordnung(gespeicherteId, payload.verein, mannschaftNameEingabe);
                         if (window.ladeMannschaftsZuordnung) await window.ladeMannschaftsZuordnung();
                     }
