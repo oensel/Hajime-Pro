@@ -634,6 +634,35 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
     }
 
+    // --- SERVER-CLUSTER (Hallen-Server mit CLUSTER_KNOTEN, siehe src/cluster/) ---
+    // Menüpunkt "Cluster"; auf dem Secondary zusätzlich ein Hinweis, dass nur gelesen werden kann.
+    if (syncRolle === 'server') {
+        try {
+            const cluster = await fetch('/api/cluster/status?nurEigen=1').then(r => r.json());
+            if (cluster.aktiv) {
+                const nav = document.getElementById('sidebarNavSecondary');
+                if (nav && !document.getElementById('nav-cluster')) {
+                    const a = document.createElement('a');
+                    a.href = '/cluster.html';
+                    a.className = 'menu-item';
+                    a.id = 'nav-cluster';
+                    a.innerHTML = '<span class="material-icons">dns</span><span class="menu-text">Cluster</span>';
+                    nav.appendChild(a);
+                    if (currentPath.includes('cluster.html')) a.classList.add('active');
+                }
+                if (cluster.rolle !== 'master' && !document.getElementById('secondaryBanner')) {
+                    const banner = document.createElement('div');
+                    banner.id = 'secondaryBanner';
+                    banner.textContent = `Secondary (${cluster.knoten}) – nur lesend. Schreibzugriffe nur am Master über die VIP.`;
+                    banner.style.cssText = 'position: fixed; top: 0; left: 50%; transform: translateX(-50%); z-index: 100000; background: #f9a825; color: #000; font-weight: bold; font-size: 13px; padding: 6px 16px; border-radius: 0 0 6px 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.25);';
+                    document.body.appendChild(banner);
+                }
+            }
+        } catch (error) {
+            console.warn('Cluster-Status nicht lesbar:', error);
+        }
+    }
+
     // Verein gewählt, aber Beitritt noch nicht freigegeben: Vereinsverwaltung (eigenes Turnier
     // anlegen/bearbeiten, Pools, Matten, ...) bleibt gesperrt. teilnehmer.html ist trotzdem
     // erreichbar — das deckt den Gastverein-Fall ab (eigene Athlet:innen bei EINEM FREMDEN,

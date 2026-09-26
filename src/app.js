@@ -27,6 +27,10 @@ import { liesSyncKonfig } from './sync/konfig.js';
 import { starteSyncDienst } from './sync/syncDienst.js';
 import { getSyncRoutes } from './routes/syncRoutes.js';
 import { starteClientDienst } from './sync/clientDienst.js';
+import { liesClusterKonfig } from './cluster/konfig.js';
+import { starteClusterDienst } from './cluster/clusterDienst.js';
+import { getClusterRoutes } from './routes/clusterRoutes.js';
+import { nurMaster } from './middleware/nurMaster.js';
 import { getClientApiRoutes, clientStatischeSeiten } from './sync/clientApi.js';
 
 dotenv.config();
@@ -37,6 +41,8 @@ const require = createRequire(import.meta.url);
 const knexConfig = require('../knexfile.cjs');
 
 const syncKonfig = liesSyncKonfig();
+// Server-Cluster nur für Hallen-Server (SYNC_ROLLE=server) mit CLUSTER_KNOTEN.
+const clusterKonfig = syncKonfig.istServer ? liesClusterKonfig() : { aktiv: false };
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -58,6 +64,7 @@ if (syncKonfig.istClient) {
     app.use(clientStatischeSeiten(path.join(__dirname, '../public')));
     app.use(express.static(path.join(__dirname, '../public')));
     app.use('/api/sync', getSyncRoutes(() => app.get('sync')));
+    app.use('/api/cluster', getClusterRoutes(() => null, { secret: syncKonfig.secret }));
 } else {
     const environment = waehleKnexUmgebung();
     const knex = knexLib(knexConfig[environment]);
@@ -73,8 +80,16 @@ if (syncKonfig.istClient) {
 
     // Sync-Dienst (nur SYNC_ROLLE=server, siehe src/sync/). Das vorhandene Turnier aktiviert er erst
     // beim ersten Request (sync.bereit(), siehe dort).
-    const sync = await starteSyncDienst({ knex, konfig: syncKonfig });
+    const sync = await starteSyncDienst({
+        knex,
+        konfig: syncKonfig,
+        partnerUrl: clusterKonfig.aktiv ? clusterKonfig.partnerUrl : null,
+        // Im Cluster startet jeder Server als Secondary; Master wird er erst über keepalived.
+        startModus: clusterKonfig.aktiv ? 'secondary' : 'master'
+    });
     app.set('sync', sync);
+    const cluster = clusterKonfig.aktiv ? starteClusterDienst({ knex, clusterKonfig, syncKonfig, sync }) : null;
+    app.set('cluster', cluster);
 
     // /db (Dokument-DB) MUSS vor express.json() hängen — sonst konsumiert der JSON-Parser die
     // Request-Bodies, die express-pouchdb selbst lesen muss.
@@ -103,6 +118,9 @@ if (syncKonfig.istClient) {
             next();
         });
     }
+
+    app.use('/api/cluster', getClusterRoutes(() => app.get('cluster'), { secret: syncKonfig.secret }));
+    if (cluster) app.use('/api', nurMaster(() => app.get('cluster')));
 
     // Mount routes with Knex instance dependency injection
     app.use('/api/auth', getAuthRoutes(knex));

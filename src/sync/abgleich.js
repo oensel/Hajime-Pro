@@ -107,6 +107,9 @@ export function erzeugeAbgleich({ knex, zustand }) {
 
         // Konflikte (409) entstehen, wenn eine Matte das Dokument gleichzeitig ändert — dann
         // verarbeitet die Brücke deren Änderung und stößt danach einen neuen Abgleich an.
+        // Epoche des Masters (Cluster): nach einer Netztrennung mit zwei Mastern gewinnt bei
+        // CouchDB-Konflikten die Server-Revision der höheren Epoche (siehe bruecke.js).
+        if (zustand.epoche) for (const doc of schreiben) if (!doc._deleted) doc.epoche = zustand.epoche;
         if (schreiben.length) await db.bulkDocs(schreiben);
     }
 

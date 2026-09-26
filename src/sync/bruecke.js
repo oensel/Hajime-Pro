@@ -255,6 +255,10 @@ export function erzeugeBruecke({ knex, zustand, abgleich }) {
         const geraete = versionen.filter(v => v.bearbeitet_von !== 'server');
         const kandidaten = geraete.length ? geraete : versionen;
         let gewinner = kandidaten.find(v => v._rev === doc._rev) || kandidaten[0];
+        // Nur Server-Revisionen (zwei Master nach einer Netztrennung): die höhere Epoche gewinnt.
+        if (!geraete.length) {
+            for (const v of kandidaten) if ((v.epoche || 0) > (gewinner.epoche || 0)) gewinner = v;
+        }
         if (doc._id.startsWith('teilnehmer:')) {
             for (const v of kandidaten) {
                 if (String(v.gewogen_am || '') > String(gewinner.gewogen_am || '')) gewinner = v;
