@@ -9,7 +9,9 @@
         #status { margin-top: 24px; color: #555; min-height: 1.2em; }
         #kopplung { display: none; margin-top: 24px; text-align: center; }
         #code { font-size: 28px; width: 8em; text-align: center; letter-spacing: 4px; }
-        #fehler { color: #c62828; min-height: 1.2em; }
+        #fehler, #adresseFehler { color: #c62828; min-height: 1.2em; }
+        #manuell { display: none; margin-top: 16px; text-align: center; }
+        #adresse { font-size: 16px; width: 14em; }
     </style>
 </head>
 <body>
@@ -20,6 +22,12 @@
         <input id="code" inputmode="numeric" autocomplete="off" autofocus>
         <button type="submit">Koppeln</button>
         <p id="fehler"></p>
+    </form>
+    <form id="manuell">
+        <p>Server nicht automatisch gefunden? Adresse von der Turnierleitung eingeben<br>(z.B. 192.168.1.10 oder turnier.local):</p>
+        <input id="adresse" autocomplete="off" spellcheck="false">
+        <button type="submit">Verbinden</button>
+        <p id="adresseFehler"></p>
     </form>
     <script src="start.js"></script>
 </body>

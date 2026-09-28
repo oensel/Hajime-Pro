@@ -1,8 +1,9 @@
 // Findet den Hallen-Server per mDNS (Dienst _hajime._tcp, angekündigt von src/sync/ankuendigung.js)
 // — unabhängig davon, ob das Betriebssystem .local-Namen auflöst. Gibt die URL mit IPv4-Adresse
-// zurück. Ein Master beendet die Suche sofort, sonst entscheidet waehleServer nach Ablauf.
+// zurück (bevorzugt die Absenderadresse der Antwort, siehe adresseAusDienst). Ein Master beendet
+// die Suche sofort, sonst entscheidet waehleServer nach Ablauf.
 import { Bonjour } from 'bonjour-service';
-import { waehleServer } from './updateLogik.js';
+import { waehleServer, adresseAusDienst } from './updateLogik.js';
 
 export function sucheServer({ timeoutMs = 5000 } = {}) {
     return new Promise((resolve) => {
@@ -20,7 +21,7 @@ export function sucheServer({ timeoutMs = 5000 } = {}) {
             resolve(ergebnis);
         };
         const browser = bonjour.find({ type: 'hajime' }, (dienst) => {
-            const ipv4 = (dienst.addresses || []).find(a => /^\d+\.\d+\.\d+\.\d+$/.test(a)) || (dienst.referer && dienst.referer.address);
+            const ipv4 = adresseAusDienst(dienst);
             if (!ipv4) return;
             const kandidat = { url: `http://${ipv4}:${dienst.port}`, rolle: dienst.txt && dienst.txt.rolle, version: dienst.txt && dienst.txt.version };
             kandidaten.push(kandidat);

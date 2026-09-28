@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign } from 'crypto';
-import { plattformSchluessel, signaturNachricht, sha256Hex, pruefeDatei, entscheideUpdate, waehleServer } from '../../desktop/updateLogik.js';
+import { plattformSchluessel, signaturNachricht, sha256Hex, pruefeDatei, entscheideUpdate, waehleServer, adresseAusDienst, normalisiereServerAdresse } from '../../desktop/updateLogik.js';
 
 const { publicKey, privateKey } = generateKeyPairSync('ed25519');
 const pub = publicKey.export({ type: 'spki', format: 'pem' });
@@ -63,4 +63,24 @@ test('waehleServer bevorzugt rolle=master, sonst den ersten, leer -> null', () =
     assert.equal(waehleServer([]), null);
     assert.deepEqual(waehleServer([{ url: 'http://a' }, { url: 'http://b', rolle: 'master' }]), { url: 'http://b', rolle: 'master' });
     assert.deepEqual(waehleServer([{ url: 'http://a' }, { url: 'http://b' }]), { url: 'http://a' });
+});
+
+test('adresseAusDienst bevorzugt die Absenderadresse der mDNS-Antwort', () => {
+    assert.equal(adresseAusDienst({ addresses: ['172.17.0.1', '192.168.1.10'], referer: { address: '192.168.1.10' } }), '192.168.1.10');
+    assert.equal(adresseAusDienst({ addresses: ['fe80::1', '192.168.1.10'] }), '192.168.1.10');
+    assert.equal(adresseAusDienst({ addresses: ['192.168.1.10'], referer: { address: 'fe80::1' } }), '192.168.1.10');
+    assert.equal(adresseAusDienst({ addresses: [] }), null);
+});
+
+test('normalisiereServerAdresse', () => {
+    assert.equal(normalisiereServerAdresse('192.168.1.10'), 'http://192.168.1.10:3000');
+    assert.equal(normalisiereServerAdresse(' 192.168.1.10:3100 '), 'http://192.168.1.10:3100');
+    assert.equal(normalisiereServerAdresse('turnier.local'), 'http://turnier.local:3000');
+    assert.equal(normalisiereServerAdresse('http://turnier.local/download'), 'http://turnier.local:3000');
+    assert.equal(normalisiereServerAdresse('http://192.168.1.10:3000/'), 'http://192.168.1.10:3000');
+    assert.equal(normalisiereServerAdresse('HTTP://Turnier.Local:4000'), 'http://turnier.local:4000');
+    assert.equal(normalisiereServerAdresse(''), null);
+    assert.equal(normalisiereServerAdresse('ftp://x'), null);
+    assert.equal(normalisiereServerAdresse('192.168.1.10:abc'), null);
+    assert.equal(normalisiereServerAdresse('a b'), null);
 });

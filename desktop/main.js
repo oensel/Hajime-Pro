@@ -9,6 +9,7 @@ import { erzeugeEinstellungen } from './einstellungen.js';
 import { sucheServer } from './serverSuche.js';
 import { pruefeUndAktualisiere } from './updater.js';
 import { richteLinuxIntegrationEin } from './linuxIntegration.js';
+import { normalisiereServerAdresse } from './updateLogik.js';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const VERBINDUNG_WEG_MS = 10000;
@@ -53,13 +54,53 @@ async function warteAufServer(url, maxMs = 30000) {
     throw new Error('Lokaler Client-Dienst startet nicht.');
 }
 
+// Manuelle Server-Adresse (Start-Fenster, Fallback wenn mDNS blockiert ist — WLAN-Client-Isolation,
+// abgelehnte Firewall-Freigabe für UDP 5353): prüft die Adresse per /api/sync/status, speichert sie
+// und weckt eine laufende Suche (sucheOderManuell) auf. Eine laufende Kopplung nimmt die neue Adresse
+// beim nächsten Versuch, weil koppeln() die gespeicherte serverUrl liest.
+let manuellWarten = null;
+let manuellMelden = null;
+function naechsteManuelleAdresse() {
+    if (!manuellWarten) manuellWarten = new Promise(r => { manuellMelden = r; });
+    return manuellWarten;
+}
+
+async function pruefeManuelleAdresse(eingabe) {
+    const url = normalisiereServerAdresse(eingabe);
+    if (!url) return { ok: false, fehler: 'Ungültige Adresse – z.B. 192.168.1.10 oder turnier.local eingeben.' };
+    let daten;
+    try {
+        const r = await fetch(`${url}/api/sync/status`, { signal: AbortSignal.timeout(4000) });
+        daten = r.ok ? await r.json().catch(() => null) : null;
+    } catch {
+        return { ok: false, fehler: `${url} ist nicht erreichbar.` };
+    }
+    if (!daten || daten.rolle !== 'server') return { ok: false, fehler: `Unter ${url} läuft kein Hajime-Hallen-Server.` };
+    if (daten.modus === 'secondary') return { ok: false, fehler: `${url} ist der Reserve-Server – bitte die Adresse des aktiven Servers eingeben.` };
+    einstellungen.speichere({ serverUrl: url });
+    status(`Server: ${url}`);
+    if (manuellMelden) {
+        const melden = manuellMelden;
+        manuellWarten = manuellMelden = null;
+        melden({ url, rolle: 'manuell' });
+    }
+    return { ok: true, url };
+}
+
+// mDNS-Suche, die eine im Start-Fenster eingegebene Adresse vorzeitig beendet.
+function sucheOderManuell(timeoutMs) {
+    return Promise.race([sucheServer({ timeoutMs }), naechsteManuelleAdresse()]);
+}
+
 // Kopplung: zeigt das Formular im Start-Fenster und löst mit dem Geheimnis auf, sobald der Server
 // einen Code akzeptiert — oder mit null, wenn der Nutzer das Start-Fenster vorher schließt.
-function koppeln(serverUrl, grund) {
+function koppeln(serverUrlStart, grund) {
     return new Promise((resolve) => {
         startFenster.once('closed', () => { ipcMain.removeHandler('koppeln'); resolve(null); });
         ipcMain.removeHandler('koppeln');
         ipcMain.handle('koppeln', async (_e, code) => {
+            // Eine zwischendurch manuell eingegebene Adresse gilt sofort.
+            const serverUrl = einstellungen.lade().serverUrl || serverUrlStart;
             try {
                 const r = await fetch(`${serverUrl}/api/client/koppeln`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -74,7 +115,7 @@ function koppeln(serverUrl, grund) {
                 resolve(daten.secret);
                 return { ok: true };
             } catch {
-                return { ok: false, fehler: 'Server nicht erreichbar.' };
+                return { ok: false, unerreichbar: true, fehler: `Server ${serverUrl} nicht erreichbar – ggf. Adresse unten eingeben.` };
             }
         });
         startFenster.webContents.send('kopplung-noetig', grund || '');
@@ -97,8 +138,8 @@ async function starteClientKnoten({ serverUrl, secret }) {
     return { basis, clientDienst: () => expressApp.get('sync') };
 }
 
-// Im Betrieb: fehlt der Server > 10 s, neu suchen (Master-Wechsel); lehnt er das Geheimnis ab,
-// einmalig neu koppeln.
+// Im Betrieb: fehlt der Server > 10 s oder meldet er sich als Secondary (nach einer Übergabe im
+// Cluster), neu suchen (Master-Wechsel); lehnt er das Geheimnis ab, einmalig neu koppeln.
 function ueberwache(clientDienst) {
     let wegSeit = null;
     let laeuft = false; // vorheriger Durchlauf (Suche/Kopplung) noch nicht fertig -> Tick auslassen
@@ -113,7 +154,7 @@ function ueberwache(clientDienst) {
             return;
         }
         if (startFenster && !startFenster.isDestroyed()) startFenster.close();
-        await dienst.setzeVerbindung({ secret });
+        await dienst.setzeVerbindung({ secret, serverUrl: einstellungen.lade().serverUrl });
     }
 
     async function durchlauf() {
@@ -123,7 +164,7 @@ function ueberwache(clientDienst) {
             if (Date.now() >= kopplungPauseBis) await neuKoppeln(dienst);
             return;
         }
-        if (dienst.zustand.serverErreichbar) { wegSeit = null; return; }
+        if (dienst.zustand.serverErreichbar && dienst.zustand.serverModus !== 'secondary') { wegSeit = null; return; }
         wegSeit = wegSeit || Date.now();
         if (Date.now() - wegSeit < VERBINDUNG_WEG_MS) return;
         const gefunden = await sucheServer({ timeoutMs: 3000 });
@@ -183,7 +224,7 @@ function sichereFenster() {
 
 function zeigeStartFenster() {
     startFenster = new BrowserWindow({
-        width: 480, height: 420, resizable: false, title: 'Hajime Pro',
+        width: 480, height: 520, resizable: false, title: 'Hajime Pro',
         webPreferences: { preload: path.join(hier, 'fenster/preload.cjs') }
     });
     startFenster.setMenuBarVisibility(false);
@@ -196,23 +237,31 @@ async function start() {
     if (process.platform === 'linux' && process.env.APPIMAGE) {
         richteLinuxIntegrationEin({ appImage: process.env.APPIMAGE, iconQuelle: path.join(hier, 'build/icon.png') });
     }
+    ipcMain.handle('server-adresse', (_e, eingabe) => pruefeManuelleAdresse(eingabe));
     await zeigeStartFenster();
 
     status('Suche Turnier-Server …');
-    let gefunden = await sucheServer({ timeoutMs: 5000 });
+    let gefunden = await sucheOderManuell(5000);
     let werte = einstellungen.lade();
     if (gefunden) werte = einstellungen.speichere({ serverUrl: gefunden.url });
 
-    if (gefunden) {
-        const ergebnis = await pruefeUndAktualisiere({ serverUrl: gefunden.url, einstellungen, status });
-        if (ergebnis === 'neustart') return; // der Updater beendet die App
+    // Update-Prüfung einmal, sobald ein Server bekannt ist ('neustart': der Updater beendet die App).
+    let updateGeprueft = false;
+    async function neustartNachUpdate(serverUrl) {
+        if (updateGeprueft) return false;
+        updateGeprueft = true;
+        return (await pruefeUndAktualisiere({ serverUrl, einstellungen, status })) === 'neustart';
     }
+    if (gefunden && await neustartNachUpdate(gefunden.url)) return;
 
     while (!werte.secret) {
         if (!gefunden) {
             status('Kein Turnier-Server gefunden – WLAN prüfen. Suche weiter …');
-            gefunden = await sucheServer({ timeoutMs: 5000 });
-            if (gefunden) werte = einstellungen.speichere({ serverUrl: gefunden.url });
+            gefunden = await sucheOderManuell(5000);
+            if (gefunden) {
+                werte = einstellungen.speichere({ serverUrl: gefunden.url });
+                if (await neustartNachUpdate(gefunden.url)) return;
+            }
             continue;
         }
         status(`Server gefunden: ${gefunden.url}`);
