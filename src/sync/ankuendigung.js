@@ -25,7 +25,11 @@ export function beantworteAnfrage(fragen, { hostname, adressen }) {
 
 export function starteAnkuendigung({ name, port, version, knoten, modus }) {
     const hostname = `${name}.local`;
-    const bonjour = new Bonjour();
+    // Ohne errorCallback wirft bonjour-service intern (Server.errorCallback = err => { throw err })
+    // und reißt bei einem Bindungsfehler (EACCES/EADDRINUSE auf UDP 5353, z.B. weil bereits ein
+    // anderer mDNS-Responder läuft) den ganzen Prozess mit. Wie beim eigenen mdns-Handler unten nur
+    // loggen — die Ankündigung bleibt dann inaktiv, der Server läuft weiter.
+    const bonjour = new Bonjour({}, (err) => console.warn('[mDNS] Fehler:', err.message));
     const mdns = multicastDns();
     let dienst = null;
     let aktiv = false;
