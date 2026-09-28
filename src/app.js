@@ -26,7 +26,7 @@ import { liesSyncKonfig } from './sync/konfig.js';
 import { starteSyncDienst } from './sync/syncDienst.js';
 import { getSyncRoutes } from './routes/syncRoutes.js';
 import { starteClientDienst } from './sync/clientDienst.js';
-import { liesClusterKonfig } from './cluster/konfig.js';
+import { liesClusterKonfig, clusterSecretFehler } from './cluster/konfig.js';
 import { starteClusterDienst } from './cluster/clusterDienst.js';
 import { getClusterRoutes } from './routes/clusterRoutes.js';
 import { nurMaster } from './middleware/nurMaster.js';
@@ -46,6 +46,13 @@ const knexConfig = require('../knexfile.cjs');
 const syncKonfig = liesSyncKonfig();
 // Server-Cluster nur für Hallen-Server (SYNC_ROLLE=server) mit CLUSTER_KNOTEN.
 const clusterKonfig = syncKonfig.istServer ? liesClusterKonfig() : { aktiv: false };
+const clusterFehler = clusterSecretFehler(clusterKonfig, syncKonfig.secret);
+if (clusterFehler) {
+    // Kein automatisch erzeugtes Geheimnis im Cluster (siehe clusterSecretFehler) — lieber gar nicht
+    // starten als still mit 401 zwischen den Servern laufen.
+    console.error(clusterFehler);
+    process.exit(1);
+}
 const app = express();
 const PORT = process.env.PORT || 3000;
 

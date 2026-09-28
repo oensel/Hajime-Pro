@@ -17,3 +17,13 @@ export function liesClusterKonfig(env = process.env) {
         rueckstufenBefehl: env.CLUSTER_RUECKSTUFEN_BEFEHL || 'sudo -n /usr/local/bin/hajime-rueckstufen.sh'
     };
 }
+
+// Im Cluster MUSS SYNC_SECRET gesetzt (und auf beiden Servern gleich) sein: ohne erzeugt jeder
+// Server in kopplung.json sein eigenes Geheimnis — Partner-Replikation, Übergabe-Ankündigung und
+// die Client-Geräte (nach einem Failover) scheitern dann still mit 401. Liefert die Fehlermeldung
+// für den Startabbruch oder null.
+export function clusterSecretFehler(clusterKonfig, secret) {
+    if (!clusterKonfig || !clusterKonfig.aktiv) return null;
+    if (String(secret || '').trim()) return null;
+    return `[Cluster] SYNC_SECRET fehlt: Im Server-Cluster (CLUSTER_KNOTEN=${clusterKonfig.knoten}) muss SYNC_SECRET in der .env gesetzt und auf beiden Servern gleich sein. Server wird nicht gestartet.`;
+}

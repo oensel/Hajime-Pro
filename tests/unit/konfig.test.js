@@ -31,3 +31,13 @@ test('knex-Umgebung: Cloud, Halle mit SQLite, Halle mit PostgreSQL', () => {
     assert.equal(waehleKnexUmgebung({ IS_OFFLINE: 'true', DB_CLIENT: 'sqlite' }), 'offline');
     assert.equal(waehleKnexUmgebung({ IS_OFFLINE: 'true', DB_CLIENT: 'pg' }), 'online');
 });
+
+test('Cluster ohne SYNC_SECRET: Startabbruch, sonst kein Fehler', async () => {
+    const { liesClusterKonfig, clusterSecretFehler } = await import('../../src/cluster/konfig.js');
+    const cluster = liesClusterKonfig({ CLUSTER_KNOTEN: 'server1' });
+    assert.match(clusterSecretFehler(cluster, ''), /SYNC_SECRET fehlt/);
+    assert.match(clusterSecretFehler(cluster, '   '), /SYNC_SECRET fehlt/);
+    assert.equal(clusterSecretFehler(cluster, 'geheim'), null);
+    assert.equal(clusterSecretFehler(liesClusterKonfig({}), ''), null);
+    assert.equal(clusterSecretFehler({ aktiv: false }, ''), null);
+});

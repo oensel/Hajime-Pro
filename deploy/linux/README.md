@@ -64,7 +64,7 @@ sobald der Standby streamt, und nach 5 s ohne Standby auf **asynchron** („ohne
 | `DB_HOST` / `DB_PORT` / `DB_NAME` | `127.0.0.1` / `5432` / `hajime` | gleich |
 | `DB_USER` / `DB_PASSWORD` | `hajime` / … | gleich |
 | `SYNC_ROLLE` | `server` | `server` |
-| `SYNC_SECRET` | gemeinsames Geheimnis (auch auf allen Clients) | gleich |
+| `SYNC_SECRET` | **Pflicht im Cluster (auf beiden Servern gleich)** — gemeinsames Geheimnis, auch für die Desktop-Clients; fehlt es, startet der Server nicht | gleich |
 | `SYNC_DATENVERZEICHNIS` | `/opt/hajime-pro/data/dokumente` | gleich |
 | `CLUSTER_KNOTEN` | `server1` | `server2` |
 | `CLUSTER_PARTNER_URL` | `http://192.168.10.12:3000` | `http://192.168.10.11:3000` |
