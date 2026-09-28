@@ -120,7 +120,9 @@ test('Cluster-Seite: beide Server mit Rolle und Absicherung, Secondary mit Hinwe
     await expect(page.locator('.knoten-karte[data-knoten="server1"] [data-feld="rolle"]')).toHaveText('Master');
     await expect(page.locator('.knoten-karte[data-knoten="server2"] [data-feld="rolle"]')).toHaveText('Secondary');
     await expect(page.locator('.knoten-karte[data-knoten="server1"] [data-feld="absicherung"]')).toHaveText('synchron');
-    await expect(page.locator('#clusterClients')).toContainText('Matte');
+    // Der Client schreibt seinen Heartbeat alle 30 s (HEARTBEAT_INTERVALL_MS) — nach Neustarts und
+    // Übergaben kann der aktuelle Master ihn erst mit dem nächsten Heartbeat haben.
+    await expect(page.locator('#clusterClients')).toContainText('Matte', { timeout: 40_000 });
     await expect(page.locator('#clusterVerlauf')).toContainText('Zurückgestuft');
     await expect(page.locator('#secondaryBanner')).toHaveCount(0);
 
