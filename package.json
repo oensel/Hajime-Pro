@@ -12,7 +12,10 @@
     "test:e2e:cluster": "playwright test -c playwright.cluster.config.js",
     "pg:start": "node scripts/lokale-pg.mjs start",
     "pg:stopp": "node scripts/lokale-pg.mjs stopp",
-    "pg:status": "node scripts/lokale-pg.mjs status"
+    "pg:status": "node scripts/lokale-pg.mjs status",
+    "client:schluessel": "node scripts/client-schluessel.mjs",
+    "client:signieren": "node scripts/signiere-client.mjs",
+    "client:holen": "node scripts/hole-client-release.mjs"
   },
   "dependencies": {
     "@material-design-icons/font": "^0.14.15",
