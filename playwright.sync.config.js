@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 import {
     SYNC_BASE_URL, syncServerEnv, CLIENT_BASE_URL, clientEnv, SYNC_TEST_SECRET,
-    SYNC_TEST_SQLITE_PATH, SYNC_TEST_DOKUMENTE, CLIENT_TEST_DOKUMENTE
+    SYNC_TEST_SQLITE_PATH, SYNC_TEST_DOKUMENTE, CLIENT_TEST_DOKUMENTE, SYNC_TEST_DOWNLOADS
 } from './tests/e2e-sync/test-env.js';
 import { rmSync } from 'fs';
 
@@ -14,7 +14,7 @@ import { rmSync } from 'fs';
 // während die Server ihre Dateien schon geöffnet haben.
 if (!process.env.HAJIME_SYNC_TESTDATEN_BEREINIGT) {
     process.env.HAJIME_SYNC_TESTDATEN_BEREINIGT = '1';
-    for (const pfad of [SYNC_TEST_SQLITE_PATH, SYNC_TEST_DOKUMENTE, CLIENT_TEST_DOKUMENTE]) {
+    for (const pfad of [SYNC_TEST_SQLITE_PATH, SYNC_TEST_DOKUMENTE, CLIENT_TEST_DOKUMENTE, SYNC_TEST_DOWNLOADS]) {
         rmSync(pfad, { recursive: true, force: true });
     }
 }

@@ -164,7 +164,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function renderPlatzierungen(pools, alleStandings) {
         if (pools.length === 0) {
-            platzierungenBody.innerHTML = '<tr><td colspan="5" class="no-data">Noch keine Pools abgeschlosen</td></tr>';
+            platzierungenBody.innerHTML = '<tr><td colspan="5" class="no-data">Noch keine Pools abgeschlossen.</td></tr>';
             return;
         }
 

@@ -26,11 +26,15 @@ import { liesSyncKonfig } from './sync/konfig.js';
 import { starteSyncDienst } from './sync/syncDienst.js';
 import { getSyncRoutes } from './routes/syncRoutes.js';
 import { starteClientDienst } from './sync/clientDienst.js';
-import { liesClusterKonfig } from './cluster/konfig.js';
+import { liesClusterKonfig, clusterSecretFehler } from './cluster/konfig.js';
 import { starteClusterDienst } from './cluster/clusterDienst.js';
 import { getClusterRoutes } from './routes/clusterRoutes.js';
 import { nurMaster } from './middleware/nurMaster.js';
 import { getClientApiRoutes, clientStatischeSeiten } from './sync/clientApi.js';
+import { ladeKopplung } from './sync/kopplung.js';
+import { getClientVerteilungRoutes } from './routes/clientVerteilungRoutes.js';
+import { starteAnkuendigung } from './sync/ankuendigung.js';
+import { starteWeiterleitung } from './sync/port80.js';
 
 dotenv.config();
 
@@ -42,6 +46,13 @@ const knexConfig = require('../knexfile.cjs');
 const syncKonfig = liesSyncKonfig();
 // Server-Cluster nur für Hallen-Server (SYNC_ROLLE=server) mit CLUSTER_KNOTEN.
 const clusterKonfig = syncKonfig.istServer ? liesClusterKonfig() : { aktiv: false };
+const clusterFehler = clusterSecretFehler(clusterKonfig, syncKonfig.secret);
+if (clusterFehler) {
+    // Kein automatisch erzeugtes Geheimnis im Cluster (siehe clusterSecretFehler) — lieber gar nicht
+    // starten als still mit 401 zwischen den Servern laufen.
+    console.error(clusterFehler);
+    process.exit(1);
+}
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -77,6 +88,16 @@ if (syncKonfig.istClient) {
 
     app.set('knex', knex);
 
+    // Kopplung neuer Desktop-Clients: ohne SYNC_SECRET in der .env erzeugt der Hallen-Server das
+    // Geheimnis selbst (zero-config). Es muss VOR dem Sync-Dienst feststehen, der es prüft.
+    const kopplung = syncKonfig.istServer ? ladeKopplung({ datenverzeichnis: syncKonfig.datenverzeichnis, envSecret: syncKonfig.secret }) : null;
+    if (kopplung) {
+        syncKonfig.secret = kopplung.secret;
+        if (kopplung.secretErzeugt) {
+            console.warn('[Kopplung] SYNC_SECRET automatisch erzeugt – Client-Geräte mit .env neu koppeln oder SYNC_SECRET aus kopplung.json übernehmen.');
+        }
+    }
+
     // Sync-Dienst (nur SYNC_ROLLE=server, siehe src/sync/). Das vorhandene Turnier aktiviert er erst
     // beim ersten Request (sync.bereit(), siehe dort).
     const sync = await starteSyncDienst({
@@ -103,6 +124,34 @@ if (syncKonfig.istClient) {
 
     app.use(express.json({ limit: '15mb' }));
     app.use(express.static(path.join(__dirname, '../public')));
+
+    if (kopplung) {
+        const downloadsVerzeichnis = process.env.CLIENT_DOWNLOADS_VERZEICHNIS || './data/client-downloads';
+        const serverVersion = require('../package.json').version;
+        // Nur der Ordner der eigenen Version ist abrufbar (download.js/updater.js bauen
+        // /downloads/<version>/<datei>) — ältere Stände im Verzeichnis bleiben unerreichbar.
+        app.use(`/downloads/${encodeURIComponent(serverVersion)}`, express.static(path.join(path.resolve(downloadsVerzeichnis), serverVersion)));
+        app.get('/download', (req, res) => res.sendFile(path.join(__dirname, '../public/download.html')));
+        app.use('/api/client', getClientVerteilungRoutes({
+            datenverzeichnis: syncKonfig.datenverzeichnis,
+            downloadsVerzeichnis,
+            version: serverVersion,
+            kopplung
+        }));
+    }
+
+    if (sync && process.env.MDNS_AKTIV !== 'false') {
+        starteAnkuendigung({
+            name: process.env.MDNS_NAME || 'turnier',
+            port: Number(PORT),
+            version: require('../package.json').version,
+            knoten: clusterKonfig.aktiv ? clusterKonfig.knoten : '',
+            modus: () => sync.modus()
+        });
+    }
+    if (sync && process.env.PORT80_WEITERLEITUNG !== 'false' && Number(PORT) !== 80) {
+        starteWeiterleitung({ zielPort: Number(PORT) });
+    }
 
     // Nach jedem erfolgreichen schreibenden API-Request den Abgleich SQL -> Dokumente anstoßen
     // (entprellt). So erreichen Änderungen der Turnierleitung die Matten/Waagen, ohne dass jeder
@@ -174,6 +223,12 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, syncKonfig.istClient ? '../public/client.html' : '../public/turniere.html'));
 });
 
-app.listen(PORT, () => {
-    console.log(`🚀 Hajime Pro läuft auf http://localhost:${PORT}`);
+// LISTEN_HOST (optional): nur an diese Adresse binden. Der Desktop-Client (desktop/main.js) setzt
+// 127.0.0.1, damit der Client-Knoten nicht im Hallen-WLAN erreichbar ist (und keine Firewall-
+// Abfrage auslöst). Ohne Variable wie bisher auf allen Schnittstellen.
+const LISTEN_HOST = process.env.LISTEN_HOST || undefined;
+app.listen(PORT, LISTEN_HOST, () => {
+    console.log(`🚀 Hajime Pro läuft auf http://${LISTEN_HOST || 'localhost'}:${PORT}`);
 });
+
+export { app };

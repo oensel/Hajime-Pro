@@ -64,7 +64,12 @@ berührt.
 
 ## 4. Startablauf
 
-1. Startfenster „Suche Server …“, mDNS-Suche höchstens ca. 5 s.
+1. Startfenster „Suche Server …“, mDNS-Suche höchstens ca. 5 s. Als Adresse gilt bevorzugt die
+   Absenderadresse der mDNS-Antwort (der Server kündigt A-Records aller Netzwerkkarten an, auch
+   docker0/VM-Adapter). Findet die Suche nach ~15 s nichts oder ist der Server beim Koppeln nicht
+   erreichbar, bietet das Startfenster die **manuelle Server-Adresse** an (`192.168.1.10`,
+   `192.168.1.10:3000`, `turnier.local` oder volle http-URL; ohne Port gilt 3000), geprüft über
+   `GET /api/sync/status` (`rolle: 'server'`, nicht `modus: 'secondary'`).
 2. **Server gefunden** → `GET <server>/api/client/version` (Zeitlimit 3 s). Version ≠
    `app.getVersion()` → Update (Abschnitt 6), danach Neustart; sonst weiter.
 3. **Nicht gekoppelt** (kein `secret` gespeichert) → Kopplungsdialog (Abschnitt 5.4).
@@ -102,14 +107,17 @@ nichts.
 
 ### 5.2 Client-Dateien
 
-- Ablage `data/client-downloads/<version>/` (in `.gitignore`):
-  - `Hajime-Pro-Setup-<v>.exe` (Windows, NSIS)
-  - `Hajime-Pro-<v>-universal.dmg` (macOS, Erstinstallation)
-  - `Hajime-Pro-<v>-universal-mac.zip` (macOS, Update)
-  - `Hajime-Pro-<v>.AppImage` (Linux)
-  - `version.json`: `{ version, dateien: { "win32-x64": { datei, sha256, signatur }, "darwin-universal": { install, update: { datei, sha256, signatur } }, "linux-x64": {…} } }`
+- Ablage `data/client-downloads/<version>/` (in `.gitignore`; umgesetzt: Namen nach
+  `artifactName` `Hajime-Pro-<v>-<os>-<arch>.<ext>` in `desktop/electron-builder.yml`):
+  - `Hajime-Pro-<v>-win-x64.exe` (Windows, NSIS)
+  - `Hajime-Pro-<v>-mac-universal.dmg` (macOS, Erstinstallation)
+  - `Hajime-Pro-<v>-mac-universal.zip` (macOS, Update)
+  - `Hajime-Pro-<v>-linux-x86_64.AppImage` (Linux)
+  - `version.json`: `{ version, dateien: { "<plattform>": { installieren: { datei, sha256, signatur }, aktualisieren: { datei, sha256, signatur } } } }`
+    für `win32-x64`, `darwin-universal`, `linux-x64` (Windows/Linux: beide Rollen dieselbe Datei;
+    `scripts/signiere-client.mjs` bricht ab, wenn eine Plattform/Rolle doppelt belegt wäre).
 - Statisch unter `/downloads/<version>/…`; es wird nur der Ordner zur aktuellen
-  `package.json`-Version angeboten.
+  `package.json`-Version angeboten (nur dieser Ordner ist gemountet).
 - `npm run client:holen` (`scripts/hole-client-release.mjs`): lädt das GitHub-Release zur
   `package.json`-Version, prüft Signaturen, legt die Dateien ab. Später ruft Teilprojekt C das beim
   Server-Auto-Update auf.
@@ -129,6 +137,8 @@ Alle neuen Routen im Factory-Muster (`src/routes/clientRoutes.js`, `getClientRou
 
 ### 5.4 Kopplung und Geheimnis (`src/sync/kopplung.js`)
 
+- Im Server-Cluster (`CLUSTER_KNOTEN`) ist `SYNC_SECRET` Pflicht (auf beiden Servern gleich),
+  sonst startet der Server nicht.
 - `SYNC_SECRET` gesetzt → wird verwendet. Nicht gesetzt → beim ersten Start erzeugt (32 Byte,
   zufällig) und in `<SYNC_DATENVERZEICHNIS>/kopplung.json` gespeichert; `liesSyncKonfig` bzw. der
   Sync-Dienst verwenden dann dieses.
@@ -212,7 +222,9 @@ Release-Ablauf für den Entwickler: `npm version <patch|minor|major>`, `git push
 | Replikation meldet 401 (anderer Server/anderes Geheimnis) | einmalig erneut Kopplungscode abfragen statt stumm zu scheitern |
 | Download/Signatur fehlerhaft | verwerfen, alte Version starten (Schleifenschutz) |
 | Mehrere Ankündigungen | TXT `rolle=master` bevorzugen, Gegenprobe `/api/cluster/status` |
-| Master-Wechsel im Betrieb | nach 10 s ohne Verbindung neue Suche, `setzeServerUrl()` |
+| Master-Wechsel im Betrieb | nach 10 s ohne Verbindung — oder wenn der Server in `/api/sync/status` `modus: 'secondary'` meldet — neue Suche, `setzeVerbindung()` |
+| mDNS blockiert (WLAN-Client-Isolation, Firewall) | Startfenster bietet nach ~15 s die manuelle Server-Adresse an |
+| Cluster ohne `SYNC_SECRET` | Server verweigert den Start (jeder Knoten erzeugte sonst sein eigenes Geheimnis → 401 zwischen den Servern und für Clients nach Failover); `SYNC_SECRET` ist im Cluster Pflicht und auf beiden Servern gleich |
 | Server hat keine Client-Dateien für seine Version | `/api/client/version` 404 → Client startet ohne Update; Download-Seite zeigt Hinweis |
 
 ## 9. Tests

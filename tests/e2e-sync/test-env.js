@@ -5,6 +5,7 @@ export const SYNC_TEST_PORT = 3200;
 export const SYNC_BASE_URL = `http://localhost:${SYNC_TEST_PORT}`;
 export const SYNC_TEST_SQLITE_PATH = './data/test-sync.sqlite';
 export const SYNC_TEST_DOKUMENTE = './data/test-sync-dokumente';
+export const SYNC_TEST_DOWNLOADS = './data/test-sync-downloads';
 export const SYNC_TEST_SECRET = 'test-geheimnis';
 
 // Client-Knoten (Notebook an der Matte/Waage) für die Offline-Szenarien.
@@ -21,6 +22,9 @@ export const syncServerEnv = {
     SYNC_ROLLE: 'server',
     SYNC_DATENVERZEICHNIS: SYNC_TEST_DOKUMENTE,
     SYNC_SECRET: SYNC_TEST_SECRET,
+    MDNS_AKTIV: 'false',
+    PORT80_WEITERLEITUNG: 'false',
+    CLIENT_DOWNLOADS_VERZEICHNIS: SYNC_TEST_DOWNLOADS,
     NODE_ENV: 'test',
     // Leer statt undefined, siehe tests/e2e/test-env.js (dotenv überschreibt gesetzte Werte nicht).
     STEUERUNG_PASSWORD: '',

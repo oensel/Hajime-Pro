@@ -23,6 +23,7 @@ export async function starteClientDienst({ konfig }) {
         instanzId: null,
         db: null,
         serverErreichbar: false,
+        serverModus: null, // 'master' | 'secondary' laut /api/sync/status des Servers
         uhrOffsetMs: 0,
         instanzwechselLaeuft: false
     };
@@ -44,9 +45,11 @@ export async function starteClientDienst({ konfig }) {
             const serverZeit = Date.parse(resp.headers.get('date'));
             if (!Number.isNaN(serverZeit)) zustand.uhrOffsetMs = serverZeit - Date.now();
             zustand.serverErreichbar = true;
+            zustand.serverModus = status.modus || null;
             return status;
         } catch (err) {
             zustand.serverErreichbar = false;
+            zustand.serverModus = null;
             return null;
         }
     }
@@ -139,6 +142,8 @@ export async function starteClientDienst({ konfig }) {
                 verbunden: zustand.serverErreichbar && !r.getrennt && !r.fehler,
                 ausstehend: r.ausstehend,
                 fehler: r.fehler,
+                // Gesetzt vom Desktop-Updater (desktop/updater.js), wenn ein Update aufgegeben wurde.
+                update_hinweis: process.env.HAJIME_UPDATE_HINWEIS || null,
                 instanzwechsel_laeuft: zustand.instanzwechselLaeuft,
                 uhr_offset_ms: zustand.uhrOffsetMs,
                 matte_id: await clientKonfig.matteId()
@@ -207,6 +212,23 @@ export async function starteClientDienst({ konfig }) {
         async verbinden() {
             replikation.verbinden();
             await pruefeSeriell();
+        },
+        // Desktop-Client (desktop/main.js): Server-Adresse (neuer Master nach mDNS-Suche) oder
+        // Geheimnis (nach erneuter Kopplung) zur Laufzeit ändern. konfig ist dasselbe Objekt, das
+        // replikation.js für die Remote-DB liest — ein Neustart der Replikation genügt.
+        // Läuft in derselben Kette wie pruefeSeriell: ein gleichzeitig laufender Turnierwechsel
+        // (wechsleInstanz stoppt/startet die Replikation) darf sich nicht mit dem Neustart hier
+        // überschneiden.
+        setzeVerbindung({ serverUrl, secret } = {}) {
+            const schritt = pruefung.then(async () => {
+                if (serverUrl) konfig.serverUrl = String(serverUrl).replace(/\/+$/, '');
+                if (secret !== undefined) konfig.secret = secret;
+                zustand.serverModus = null;
+                if (zustand.db) await replikation.starte(zustand.db);
+                await pruefeServer();
+            });
+            pruefung = schritt.catch(err => console.error('[Client-Sync] Verbindungswechsel fehlgeschlagen:', err));
+            return schritt;
         },
         // Test-Hilfe: wartet, bis alle eigenen Änderungen übertragen sind und die Replikation ruht.
         async leerlauf(maxMs = 15000) {

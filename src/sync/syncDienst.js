@@ -177,7 +177,9 @@ export async function starteSyncDienst({ knex, konfig, partnerUrl = null, startM
                 rolle: konfig.rolle,
                 instanz_id: zustand.instanzId,
                 turnier_id: zustand.turnierId,
-                db_name: zustand.instanzId ? turnierDbName(zustand.instanzId) : null
+                db_name: zustand.instanzId ? turnierDbName(zustand.instanzId) : null,
+                // 'master' | 'secondary' — Desktop-Clients suchen neu, wenn ihr Server Secondary ist.
+                modus
             };
         },
         modus: () => modus,

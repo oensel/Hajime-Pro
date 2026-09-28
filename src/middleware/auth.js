@@ -263,3 +263,12 @@ export function requireWriteAuth(req, res, next) {
     
     return res.status(401).json({ success: false, error: 'Passwort erforderlich für Schreibzugriff.' });
 }
+
+// Wie requireWriteAuth, aber auch für GET: für Daten, die nur die Turnierleitung sehen darf
+// (z.B. den Kopplungscode für neue Client-Geräte). Ohne STEUERUNG_PASSWORD offen wie alle
+// Verwaltungsseiten im Hallenbetrieb.
+export function requireSteuerungPasswort(req, res, next) {
+    const password = process.env.STEUERUNG_PASSWORD;
+    if (!password || req.headers['x-steuerung-password'] === password) return next();
+    return res.status(401).json({ success: false, error: 'Passwort erforderlich.' });
+}

@@ -113,9 +113,13 @@ async function spieleMatteDurch(page, anzahlKaempfe) {
     let vorherigePaarung = 'Kämpfer 1|Kämpfer 2';
     for (let i = 0; i < anzahlKaempfe; i++) {
         await page.locator('#btnNaechsterKampfLive').click();
+        // polling per Intervall statt requestAnimationFrame (Standard): headless Chromium unter Linux
+        // liefert für nicht im Vordergrund liegende Seiten keine Animation-Frames -- bei drei
+        // gleichzeitigen Kontexten würde die Bedingung sonst nie erneut geprüft.
         await page.waitForFunction(
             (vorher) => `${document.getElementById('nameW').value}|${document.getElementById('nameB').value}` !== vorher,
-            vorherigePaarung
+            vorherigePaarung,
+            { polling: 100 }
         );
         vorherigePaarung = await page.evaluate(() =>
             `${document.getElementById('nameW').value}|${document.getElementById('nameB').value}`
