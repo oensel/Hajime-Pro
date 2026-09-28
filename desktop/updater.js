@@ -22,18 +22,40 @@ export async function holeServerVersion(serverUrl, { timeoutMs = 3000 } = {}) {
     }
 }
 
-async function ladeDatei(url, status) {
-    const r = await fetch(url, { signal: AbortSignal.timeout(10 * 60 * 1000) });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const gesamt = Number(r.headers.get('content-length')) || 0;
-    const teile = [];
-    let geladen = 0;
-    for await (const teil of r.body) {
-        teile.push(teil);
-        geladen += teil.length;
-        if (gesamt) status(`Lade Update … ${Math.round(geladen / gesamt * 100)} %`);
+export const DOWNLOAD_ZEITLIMITS = { kopfMs: 10 * 1000, leerlaufMs: 30 * 1000, gesamtMs: 10 * 60 * 1000 };
+
+// Download mit Leerlauf-Überwachung: ohne Antwortkopf binnen kopfMs oder ohne neues Datenstück binnen
+// leerlaufMs wird abgebrochen (hängendes WLAN), gesamtMs bleibt die Obergrenze.
+async function ladeDatei(url, status, zeitlimits = DOWNLOAD_ZEITLIMITS) {
+    const { kopfMs, leerlaufMs, gesamtMs } = { ...DOWNLOAD_ZEITLIMITS, ...zeitlimits };
+    const steuerung = new AbortController();
+    let leerlauf = null;
+    const wache = (ms, grund) => {
+        clearTimeout(leerlauf);
+        leerlauf = setTimeout(() => steuerung.abort(new Error(grund)), ms);
+    };
+    const gesamt = setTimeout(() => steuerung.abort(new Error('Download dauert zu lange')), gesamtMs);
+    try {
+        wache(kopfMs, 'Server antwortet nicht');
+        const r = await fetch(url, { signal: steuerung.signal });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const laenge = Number(r.headers.get('content-length')) || 0;
+        const teile = [];
+        let geladen = 0;
+        wache(leerlaufMs, 'Download hängt');
+        for await (const teil of r.body) {
+            wache(leerlaufMs, 'Download hängt');
+            teile.push(teil);
+            geladen += teil.length;
+            if (laenge) status(`Lade Update … ${Math.round(geladen / laenge * 100)} %`);
+        }
+        return Buffer.concat(teile);
+    } catch (err) {
+        throw steuerung.signal.aborted && steuerung.signal.reason instanceof Error ? steuerung.signal.reason : err;
+    } finally {
+        clearTimeout(leerlauf);
+        clearTimeout(gesamt);
     }
-    return Buffer.concat(teile);
 }
 
 // Startet ein Programm losgelöst und wartet, bis es wirklich läuft — schlägt der Start fehl (fehlt,
@@ -78,16 +100,33 @@ export function linuxUmgebung(env) {
 // Dateisystem) und atomar umbenennen — die laufende Datei bleibt bis zum Prozessende gültig.
 export function tauscheAppImage({ quelle, ziel }) {
     const neu = `${ziel}.neu`;
-    copyFileSync(quelle, neu);
-    chmodSync(neu, 0o755);
-    renameSync(neu, ziel);
+    try {
+        copyFileSync(quelle, neu);
+        chmodSync(neu, 0o755);
+        renameSync(neu, ziel);
+    } catch (err) {
+        rmSync(neu, { force: true });
+        throw err;
+    }
     rmSync(quelle, { force: true });
 }
 
-async function tauscheAus({ app, plattform, datei }) {
+// Programm und Argumente für den Start nach dem Austausch (Windows: Installer, Linux: neue AppImage).
+export function startBefehl({ plattform, datei, appImage, env }) {
+    // NSIS oneClick ohne /S: zeigt sein eigenes Fortschrittsfenster, stellt aber keine Fragen;
+    // --force-run startet danach die neue Version.
+    if (plattform === 'win32-x64') return [datei, ['--force-run'], {}];
+    // executableArgs aus electron-builder.yml gelten nur für die .desktop-Datei, nicht für den Neustart.
+    if (plattform === 'linux-x64') return [appImage, ['--no-sandbox'], { env: linuxUmgebung(env) }];
+    throw new Error(`Kein Startbefehl für ${plattform}`);
+}
+
+async function tauscheAus({ app, plattform, datei, version, status }) {
     if (plattform === 'win32-x64') {
-        // NSIS still installieren (pro Benutzer, ohne Admin); --force-run startet danach die neue Version.
-        await starteLoesgeloest(datei, ['/S', '--force-run']);
+        // Installer pro Benutzer, ohne Admin (electron-builder.yml: oneClick, perMachine: false).
+        const [befehl, args] = startBefehl({ plattform, datei });
+        await starteLoesgeloest(befehl, args);
+        status(`Version ${version} wird installiert – Hajime Pro startet danach von selbst neu.`);
         app.quit();
         return;
     }
@@ -106,7 +145,8 @@ async function tauscheAus({ app, plattform, datei }) {
     }
     const ziel = process.env.APPIMAGE;
     tauscheAppImage({ quelle: datei, ziel });
-    await starteLoesgeloest(ziel, [], { env: linuxUmgebung(process.env) });
+    const [befehl, args, optionen] = startBefehl({ plattform, appImage: ziel, env: process.env });
+    await starteLoesgeloest(befehl, args, optionen);
     app.quit();
 }
 
@@ -115,7 +155,7 @@ function linuxAustauschbar(appImage) {
     try { accessSync(path.dirname(appImage), constants.W_OK); return true; } catch { return false; }
 }
 
-async function pruefeUndAktualisiereIntern({ serverUrl, einstellungen, status, app, schluesselPfad, tausche }) {
+async function pruefeUndAktualisiereIntern({ serverUrl, einstellungen, status, app, schluesselPfad, tausche, downloadZeitlimits }) {
     const eigeneVersion = app.getVersion();
     const werte = einstellungen.lade();
     // Erster Start nach erfolgreichem Update: Versuchszähler der jetzt laufenden Version löschen.
@@ -134,7 +174,7 @@ async function pruefeUndAktualisiereIntern({ serverUrl, einstellungen, status, a
     if (entscheidung === 'aufgegeben') {
         console.warn(`[Update] Update auf ${vj.version} mehrfach fehlgeschlagen – starte ${eigeneVersion}.`);
         status(`Update auf ${vj.version} mehrfach fehlgeschlagen – starte Version ${eigeneVersion}.`);
-        process.env.HAJIME_UPDATE_HINWEIS = `Update auf ${vj.version} fehlgeschlagen – bitte Client neu installieren (turnier.local/download).`;
+        process.env.HAJIME_UPDATE_HINWEIS = `Update auf ${vj.version} fehlgeschlagen – bitte Client neu installieren (${serverUrl}/download).`;
         return 'weiter';
     }
     const plattform = plattformSchluessel(process.platform, process.arch);
@@ -160,7 +200,7 @@ async function pruefeUndAktualisiereIntern({ serverUrl, einstellungen, status, a
     const versuche = einstellungen.lade().updateVersuche;
     einstellungen.speichere({ updateVersuche: { ...versuche, [vj.version]: (versuche[vj.version] || 0) + 1 } });
     try {
-        const puffer = await ladeDatei(`${serverUrl}/downloads/${encodeURIComponent(vj.version)}/${encodeURIComponent(eintrag.datei)}`, status);
+        const puffer = await ladeDatei(`${serverUrl}/downloads/${encodeURIComponent(vj.version)}/${encodeURIComponent(eintrag.datei)}`, status, downloadZeitlimits);
         const schluessel = readFileSync(schluesselPfad, 'utf8');
         const pruefung = pruefeDatei({ puffer, eintrag, version: vj.version, oeffentlicherSchluessel: schluessel });
         if (!pruefung.ok) {
@@ -173,7 +213,7 @@ async function pruefeUndAktualisiereIntern({ serverUrl, einstellungen, status, a
         const datei = path.join(ordner, path.basename(eintrag.datei));
         writeFileSync(datei, puffer);
         status(`Installiere Version ${vj.version} …`);
-        await tausche({ app, plattform, datei });
+        await tausche({ app, plattform, datei, version: vj.version, status });
         return 'neustart';
     } catch (err) {
         console.error('[Update] fehlgeschlagen:', err);
@@ -182,15 +222,16 @@ async function pruefeUndAktualisiereIntern({ serverUrl, einstellungen, status, a
     }
 }
 
-// app/schluesselPfad/tauscheAus nur für Tests überschreibbar; main.js übergibt serverUrl,
-// einstellungen und status. Wirft nie — im Zweifel startet die vorhandene Version.
-export async function pruefeUndAktualisiere({ serverUrl, einstellungen, status, app, schluesselPfad, tauscheAus: tausche } = {}) {
+// app/schluesselPfad/tauscheAus/downloadZeitlimits nur für Tests überschreibbar; main.js übergibt
+// serverUrl, einstellungen und status. Wirft nie — im Zweifel startet die vorhandene Version.
+export async function pruefeUndAktualisiere({ serverUrl, einstellungen, status, app, schluesselPfad, tauscheAus: tausche, downloadZeitlimits } = {}) {
     try {
         const electronApp = app || (await import('electron')).app;
         return await pruefeUndAktualisiereIntern({
             serverUrl, einstellungen, status, app: electronApp,
             schluesselPfad: schluesselPfad || path.join(hier, 'update-schluessel.pub'),
-            tausche: tausche || tauscheAus
+            tausche: tausche || tauscheAus,
+            downloadZeitlimits
         });
     } catch (err) {
         console.error('[Update] Prüfung fehlgeschlagen:', err);

@@ -7,7 +7,7 @@ import { tmpdir } from 'os';
 import path from 'path';
 import { generateKeyPairSync, sign } from 'crypto';
 import {
-    holeServerVersion, pruefeUndAktualisiere, macAustauschBefehl, linuxUmgebung, tauscheAppImage, starteLoesgeloest
+    holeServerVersion, pruefeUndAktualisiere, macAustauschBefehl, linuxUmgebung, tauscheAppImage, starteLoesgeloest, startBefehl
 } from '../../desktop/updater.js';
 import { erzeugeEinstellungen } from '../../desktop/einstellungen.js';
 import { sha256Hex, signaturNachricht } from '../../desktop/updateLogik.js';
@@ -38,8 +38,14 @@ test('hängender Server -> null nach Zeitlimit', async () => {
     s.closeAllConnections(); s.close();
 });
 
-test('kein JSON bzw. ohne Versionsfeld -> null', async () => {
-    const s = await server((req, res) => { res.end(req.url.includes('x') ? 'kein json' : '{"dateien":{}}'); });
+test('kein JSON -> null', async () => {
+    const s = await server((req, res) => { res.setHeader('Content-Type', 'application/json'); res.end('kein json'); });
+    assert.equal(await holeServerVersion(`http://127.0.0.1:${s.address().port}`), null);
+    s.close();
+});
+
+test('JSON ohne Versionsfeld -> null', async () => {
+    const s = await server((req, res) => { res.end('{"dateien":{}}'); });
     assert.equal(await holeServerVersion(`http://127.0.0.1:${s.address().port}`), null);
     s.close();
 });
@@ -103,6 +109,40 @@ test('manipulierte Datei: verworfen, Versuch gezählt, alte Version startet', as
     assert.deepEqual(u.einstellungen.lade().updateVersuche, { '1.0.1': 1 });
 });
 
+test('Download hängt nach dem Antwortkopf: Abbruch nach Leerlauf, weiter, Versuch gezählt', async () => {
+    const u = testUmgebung();
+    const s = await server((req, res) => {
+        if (req.url === '/api/client/version') { res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify(u.vj)); }
+        res.writeHead(200, { 'Content-Length': '1000000' });
+        res.write('erstes Stück'); // danach kommt nichts mehr
+    });
+    const start = Date.now();
+    const ergebnis = await pruefeUndAktualisiere({
+        ...u.optionen(`http://127.0.0.1:${s.address().port}`),
+        downloadZeitlimits: { kopfMs: 2000, leerlaufMs: 300, gesamtMs: 60000 }
+    });
+    s.closeAllConnections(); s.close();
+    assert.equal(ergebnis, 'weiter');
+    assert.ok(Date.now() - start < 3000);
+    assert.ok(u.meldungen.some(m => m.includes('Download hängt')), u.meldungen.join(' | '));
+    assert.deepEqual(u.einstellungen.lade().updateVersuche, { '1.0.1': 1 });
+});
+
+test('Server schickt keinen Antwortkopf: Abbruch nach kopfMs', async () => {
+    const u = testUmgebung();
+    const s = await server((req, res) => {
+        if (req.url === '/api/client/version') { res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify(u.vj)); }
+        // antwortet nie
+    });
+    const ergebnis = await pruefeUndAktualisiere({
+        ...u.optionen(`http://127.0.0.1:${s.address().port}`),
+        downloadZeitlimits: { kopfMs: 300, leerlaufMs: 60000, gesamtMs: 60000 }
+    });
+    s.closeAllConnections(); s.close();
+    assert.equal(ergebnis, 'weiter');
+    assert.ok(u.meldungen.some(m => m.includes('Server antwortet nicht')), u.meldungen.join(' | '));
+});
+
 test('fehlgeschlagener Austausch: weiter, keine Beendigung', async () => {
     const u = testUmgebung();
     const s = await updateServer(u);
@@ -117,11 +157,13 @@ test('nach zwei Versuchen aufgegeben: weiter, Hinweis für die Statusleiste gese
     delete process.env.HAJIME_UPDATE_HINWEIS;
     const u = testUmgebung({ versuche: { '1.0.1': 2 } });
     const s = await updateServer(u);
-    const ergebnis = await pruefeUndAktualisiere(u.optionen(`http://127.0.0.1:${s.address().port}`));
+    const url = `http://127.0.0.1:${s.address().port}`;
+    const ergebnis = await pruefeUndAktualisiere(u.optionen(url));
     s.close();
     assert.equal(ergebnis, 'weiter');
     assert.equal(u.ausgetauscht.length, 0);
     assert.match(process.env.HAJIME_UPDATE_HINWEIS, /Update auf 1\.0\.1 fehlgeschlagen/);
+    assert.ok(process.env.HAJIME_UPDATE_HINWEIS.includes(`${url}/download`));
     delete process.env.HAJIME_UPDATE_HINWEIS;
 });
 
@@ -190,6 +232,26 @@ test('tauscheAppImage ersetzt die Datei und hinterlässt keine .neu-Datei', () =
     tauscheAppImage({ quelle, ziel });
     assert.equal(readFileSync(ziel, 'utf8'), 'neu');
     assert.equal(existsSync(`${ziel}.neu`), false);
+});
+
+test('tauscheAppImage: scheitert der Tausch, bleibt keine .neu-Datei zurück', () => {
+    const ordner = mkdtempSync(path.join(tmpdir(), 'appimage-'));
+    const ziel = path.join(ordner, 'Hajime-Pro.AppImage');
+    mkdirSync(ziel); writeFileSync(path.join(ziel, 'blockiert'), 'x'); // Umbenennen auf ein belegtes Verzeichnis scheitert
+    const quelle = path.join(ordner, 'download.AppImage');
+    writeFileSync(quelle, 'neu');
+    assert.throws(() => tauscheAppImage({ quelle, ziel }));
+    assert.equal(existsSync(`${ziel}.neu`), false);
+    assert.equal(existsSync(quelle), true);
+});
+
+test('startBefehl: Windows-Installer ohne /S mit --force-run', () => {
+    assert.deepEqual(startBefehl({ plattform: 'win32-x64', datei: 'C:/u/setup.exe' }), ['C:/u/setup.exe', ['--force-run'], {}]);
+});
+
+test('startBefehl: Linux-AppImage mit --no-sandbox und bereinigter Umgebung', () => {
+    assert.deepEqual(startBefehl({ plattform: 'linux-x64', appImage: '/opt/h.AppImage', env: { APPIMAGE: '/opt/h.AppImage', HOME: '/h' } }),
+        ['/opt/h.AppImage', ['--no-sandbox'], { env: { HOME: '/h' } }]);
 });
 
 const shVerfuegbar = !spawnSync('sh', ['-c', 'exit 0']).error;
