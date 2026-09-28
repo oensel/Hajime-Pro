@@ -1,0 +1,45 @@
+# Tests bei jedem Push/PR; release.yml ruft diesen Workflow vor dem Build auf.
+# test:e2e:vollablauf läuft bewusst NICHT hier (schreibt in die echte Cloud-DB).
+name: CI
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_call:
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run test:unit
+
+  e2e:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [test:e2e, test:e2e:sync, test:e2e:cluster]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      # NODE_ENV=test wird NICHT hier gesetzt: tests/e2e-sync/test-env.js und
+      # tests/e2e-cluster/test-env.js setzen es bereits selbst in ihren Server-Envs
+      # (siehe syncServerEnv/serverEnv); npm run test:e2e (ohne test-env.js-Override)
+      # braucht es nicht, da es keine NODE_ENV-gegateten Test-Endpunkte nutzt.
+      - run: npm run ${{ matrix.suite }}
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bericht-${{ strategy.job-index }}
+          path: |
+            test-results/
+            playwright-report/
+            data/test-cluster/logs/
+          if-no-files-found: ignore
