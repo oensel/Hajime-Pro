@@ -3,3 +3,7 @@
 # (build/Release, kein arm64-Prebuild) auch die x64-Hälfte, und lipo bricht ab.
 extends: desktop/electron-builder.yml
 buildDependenciesFromSource: true
+mac:
+  # leveldown@5 bringt nur ein Intel-Prebuild mit; es ist in beiden Hälften identisch und darf
+  # unverändert bleiben (auf Apple Silicon lädt node-gyp-build das aus den Quellen gebaute arm64-Modul).
+  x64ArchFiles: "**/prebuilds/darwin-x64/**"
