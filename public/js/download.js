@@ -8,9 +8,16 @@
         'linux-x64': 'Datei ausführbar machen und starten. Unter Ubuntu ab 22.04 einmalig nötig: <code>sudo apt install libfuse2</code> (ab 24.04: <code>sudo apt install libfuse2t64</code>).'
     };
     const ua = navigator.userAgent;
+    const hinweis = document.getElementById('downloadHinweis');
+    // Tablets zuerst: Android meldet sich zusätzlich als "Linux", iPadOS als "Macintosh" (mit Touch)
+    // — sonst bekämen sie AppImage bzw. .dmg angeboten, die dort nicht laufen.
+    const istTablet = /Android|iPad|iPhone/i.test(ua) || (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
+    if (istTablet) {
+        hinweis.textContent = 'Tablets und Smartphones werden nicht unterstützt – bitte diese Seite auf einem Windows-, macOS- oder Linux-Notebook öffnen.';
+        return;
+    }
     const eigene = /Windows/i.test(ua) ? 'win32-x64' : /Mac OS X|Macintosh/i.test(ua) ? 'darwin-universal' : /Linux|X11/i.test(ua) ? 'linux-x64' : null;
 
-    const hinweis = document.getElementById('downloadHinweis');
     const resp = await fetch('/api/client/version').catch(() => null);
     if (!resp || !resp.ok) {
         hinweis.textContent = 'Auf diesem Server liegen noch keine Client-Dateien vor. Bitte die Turnierleitung, „npm run client:holen“ auszuführen.';

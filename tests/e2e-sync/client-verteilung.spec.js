@@ -27,6 +27,11 @@ test.describe.serial('Client-Verteilung', () => {
         expect(await resp.json()).toEqual(vj);
         const datei = await request.get(`/downloads/${version}/a.exe`);
         expect(await datei.text()).toBe('INHALT');
+        // Nur der Ordner der eigenen Serverversion ist abrufbar, ältere Stände nicht.
+        const alt = path.join(SYNC_TEST_DOWNLOADS, '0.0.1-alt');
+        mkdirSync(alt, { recursive: true });
+        writeFileSync(path.join(alt, 'a.exe'), 'ALT');
+        expect((await request.get('/downloads/0.0.1-alt/a.exe')).status()).toBe(404);
     });
 
     test('Download-Seite empfiehlt die Datei passend zum Betriebssystem', async ({ browser }) => {
@@ -46,6 +51,24 @@ test.describe.serial('Client-Verteilung', () => {
             await page.goto('/download');
             await expect(page.locator('#downloadHauptlink')).toHaveAttribute('href', `/downloads/${version}/${datei}`);
             await expect(page.locator('#downloadWeitere a')).toHaveCount(2);
+            await ctx.close();
+        }
+    });
+
+    test('Download-Seite: Tablets (Android, iPadOS) bekommen einen Hinweis statt einer Datei', async ({ browser }) => {
+        const faelle = [
+            ['Mozilla/5.0 (Linux; Android 14; SM-X710) AppleWebKit/537.36 Chrome/126.0 Safari/537.36', 0],
+            // iPadOS meldet sich als Mac — nur die Touch-Punkte verraten das Tablet.
+            ['Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/17.0 Safari/605.1.15', 5]
+        ];
+        for (const [ua, touchPunkte] of faelle) {
+            const ctx = await browser.newContext({ userAgent: ua });
+            if (touchPunkte) await ctx.addInitScript((n) => Object.defineProperty(Navigator.prototype, 'maxTouchPoints', { get: () => n }), touchPunkte);
+            const page = await ctx.newPage();
+            await page.goto('/download');
+            await expect(page.locator('#downloadHinweis')).toContainText('Tablets');
+            await expect(page.locator('#downloadHauptlink')).toHaveCount(0);
+            await expect(page.locator('#downloadWeitere a')).toHaveCount(0);
             await ctx.close();
         }
     });

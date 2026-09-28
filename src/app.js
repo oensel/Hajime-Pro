@@ -127,12 +127,15 @@ if (syncKonfig.istClient) {
 
     if (kopplung) {
         const downloadsVerzeichnis = process.env.CLIENT_DOWNLOADS_VERZEICHNIS || './data/client-downloads';
-        app.use('/downloads', express.static(path.resolve(downloadsVerzeichnis)));
+        const serverVersion = require('../package.json').version;
+        // Nur der Ordner der eigenen Version ist abrufbar (download.js/updater.js bauen
+        // /downloads/<version>/<datei>) — ältere Stände im Verzeichnis bleiben unerreichbar.
+        app.use(`/downloads/${encodeURIComponent(serverVersion)}`, express.static(path.join(path.resolve(downloadsVerzeichnis), serverVersion)));
         app.get('/download', (req, res) => res.sendFile(path.join(__dirname, '../public/download.html')));
         app.use('/api/client', getClientVerteilungRoutes({
             datenverzeichnis: syncKonfig.datenverzeichnis,
             downloadsVerzeichnis,
-            version: require('../package.json').version,
+            version: serverVersion,
             kopplung
         }));
     }
