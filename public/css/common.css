@@ -211,6 +211,19 @@ body {
 }
 .theme-toggle:hover { background-color: var(--border); }
 
+/* Variante mit Beschriftung (z.B. "Hallen-Server"-Button in der Kopfzeile) */
+.theme-toggle.theme-toggle-text {
+    width: auto;
+    padding: 0 10px;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+}
+.theme-toggle.theme-toggle-text .material-icons { font-size: 20px; }
+.theme-toggle.theme-toggle-text.active { background-color: var(--border); }
+
 /* Hinweis-Punkt auf dem Profil-Icon (z.B. für den Super-Admin: freizugebende Erstregistrierungen) */
 .nav-badge {
     position: absolute;

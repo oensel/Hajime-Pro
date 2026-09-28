@@ -9,7 +9,10 @@
     "test:e2e:vollablauf": "playwright test --config=playwright.vollablauf.config.js",
     "test:unit": "node --test \"tests/unit/**/*.test.js\"",
     "test:e2e:sync": "playwright test --config=playwright.sync.config.js",
-    "test:e2e:cluster": "playwright test -c playwright.cluster.config.js"
+    "test:e2e:cluster": "playwright test -c playwright.cluster.config.js",
+    "pg:start": "node scripts/lokale-pg.mjs start",
+    "pg:stopp": "node scripts/lokale-pg.mjs stopp",
+    "pg:status": "node scripts/lokale-pg.mjs status"
   },
   "dependencies": {
     "@material-design-icons/font": "^0.14.15",

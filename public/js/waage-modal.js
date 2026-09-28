@@ -141,16 +141,31 @@ document.addEventListener('DOMContentLoaded', () => {
     const gewichtsklasseSelect = document.getElementById('gewichtsklasse');
     const geschlechtsSelect = document.getElementById('geschlecht');
 
-    const STANDARD_ALTERSKLASSEN_IDS = ['U9', 'U11', 'U13', 'U15', 'U18', 'U21', 'Männer', 'Frauen', 'Mixed'];
-
-    // Liefert für ein Geschlecht die frei benannten Klassen (z.B. "U10", "Veteranen(Ü30)"),
-    // die über den "+"-Button in turnier.html für dieses Turnier angelegt wurden.
+    // Liefert für ein Geschlecht die frei benannten Klassen (z.B. "U9" bei mixed, "U10",
+    // "Veteranen(Ü30)"), die über den "+"-Button in turnier.html für dieses Turnier angelegt wurden.
+    // "Frei" heißt: nicht in der DJB-Liste dieses Geschlechts (altersklassen.json) — nur diese
+    // Klassen fügt befehleAltersklassenDropdown schon aus der DJB-Liste ins Dropdown ein. Eine fest
+    // verdrahtete ID-Liste passt hier nicht: U9 z.B. steht bei keinem Geschlecht in der
+    // DJB-Liste und fehlte dann ganz im Dropdown.
     function ermittleFreieKlassen(gewaehltesGeschlecht) {
         if (!turnierAltersklassen) return [];
-        return turnierAltersklassen
+        const djbIds = ((djbKlassenZentrale && djbKlassenZentrale[gewaehltesGeschlecht]) || []).map(k => k.id);
+        const freie = turnierAltersklassen
             .filter(k => k.startsWith(`${gewaehltesGeschlecht}_`) || k.startsWith('mixed_'))
             .map(k => k.slice(k.indexOf('_') + 1))
-            .filter(id => !STANDARD_ALTERSKLASSEN_IDS.includes(id));
+            .filter(id => !djbIds.includes(id));
+        return [...new Set(freie)];
+    }
+
+    const GEWICHTSKLASSE_GEWICHTSNAH = 'gewichtsnah';
+
+    // Übernimmt eine gespeicherte/gescannte Gewichtsklasse nur, wenn das Dropdown sie anbietet —
+    // sonst bliebe das Feld leer und die Vorauswahl (z.B. "gewichtsnah" bei mixed) ginge verloren.
+    function uebernimmGewichtsklasse(wert) {
+        if (!wert || !gewichtsklasseSelect) return;
+        if ([...gewichtsklasseSelect.options].some(opt => opt.value === wert)) {
+            gewichtsklasseSelect.value = wert;
+        }
     }
 
     // Befüllt die Gewichtsklassen basierend auf der Altersklasse und wählt die passende Klasse automatisch aus
@@ -164,6 +179,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const selektierteKlasse = klassenFuerGeschlecht.find(k => k.id === gewaehlteAltersklasseID);
 
         gewichtsklasseSelect.innerHTML = '<option value="" disabled selected hidden>Bitte wählen...</option>';
+
+        // Gemischte Klassen werden nach Gewichtsnähe gepoolt statt nach festen DJB-Gewichtsklassen —
+        // bei mixed gibt es deshalb immer "gewichtsnah", vorausgewählt und unabhängig vom Gewicht.
+        if (gewaehltesGeschlecht === 'mixed' && gewaehlteAltersklasseID) {
+            const gewichtsnahOpt = document.createElement('option');
+            gewichtsnahOpt.value = GEWICHTSKLASSE_GEWICHTSNAH;
+            gewichtsnahOpt.innerText = GEWICHTSKLASSE_GEWICHTSNAH;
+            gewichtsklasseSelect.appendChild(gewichtsnahOpt);
+            gewichtsklasseSelect.value = GEWICHTSKLASSE_GEWICHTSNAH;
+        }
 
         if (!selektierteKlasse || !selektierteKlasse.gewichtsklassen) {
             // Frei benannte Klasse ohne vordefinierte Gewichtsklassen-Liste: manuelle Eingabe anbieten.
@@ -189,7 +214,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const gewichtsEingabe = document.getElementById('gewicht').value.trim();
         const aktuellesGewicht = parseFloat(gewichtsEingabe.replace(',', '.'));
 
-        if (!isNaN(aktuellesGewicht) && aktuellesGewicht > 0) {
+        if (!isNaN(aktuellesGewicht) && aktuellesGewicht > 0 && gewaehltesGeschlecht !== 'mixed') {
             let gefundeneKlasse = "";
 
             const plusKlasse = selektierteKlasse.gewichtsklassen.find(g => g.startsWith('+'));
@@ -334,6 +359,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const turnier = await turnierResp.json();
                     if (turnier.datum) {
                         wettkampfJahr = new Date(turnier.datum).getFullYear();
+                        turnierDatum = lokalesDatum(turnier.datum);
                     }
                     if (turnier.altersklassen) {
                         let keys = [];
@@ -371,6 +397,24 @@ document.addEventListener('DOMContentLoaded', () => {
             if (gewichtFeld) {
                 gewichtFeld.addEventListener('input', befehleGewichtsklassenDropdown);
                 gewichtFeld.addEventListener('change', befehleGewichtsklassenDropdown);
+
+                // Ein Klick leert das Feld, damit an der Waage direkt das neue Gewicht getippt
+                // werden kann. Wird es ohne Eingabe wieder verlassen, kommt der bisherige Wert
+                // zurück — ein versehentlicher Klick soll kein Gewicht löschen. (Programmatisches
+                // Leeren/Zurücksetzen löst kein input-Event aus, die Gewichtsklasse bleibt stehen.)
+                let gewichtVorKlick = null;
+                gewichtFeld.addEventListener('click', () => {
+                    if (gewichtFeld.value === '') return;
+                    gewichtVorKlick = gewichtFeld.value;
+                    gewichtFeld.value = '';
+                });
+                gewichtFeld.addEventListener('input', () => { gewichtVorKlick = null; });
+                gewichtFeld.addEventListener('blur', () => {
+                    if (gewichtFeld.value === '' && gewichtVorKlick !== null) {
+                        gewichtFeld.value = gewichtVorKlick;
+                    }
+                    gewichtVorKlick = null;
+                });
             }
 
             altersklasseSelect.addEventListener('change', befehleGewichtsklassenDropdown);
@@ -469,9 +513,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // anhand von Geburtsjahr + Geschlecht automatisch vorauswählen.
             bestimmeUndWaehleAltersklasse();
         }
-        if (athlet.gewichtsklasse) {
-            document.getElementById('gewichtsklasse').value = athlet.gewichtsklasse;
-        }
+        uebernimmGewichtsklasse(athlet.gewichtsklasse);
 
         document.getElementById('lizenz_ablauf').value = athlet.lizenz_ablauf || '';
         aktualisiereLizenzKlasse(athlet.lizenz_ablauf);
@@ -530,6 +572,24 @@ document.addEventListener('DOMContentLoaded', () => {
     // per QR-Scan aufgerufen wurde — dann entfällt die Rückfrage (siehe Anforderung).
     let urspruenglichesGewicht = null;
     let letzteAenderungViaScan = false;
+
+    // Turnierdatum als lokales "YYYY-MM-DD" (siehe ladeDjbKlassenKonfiguration) — am Wettkampftag
+    // fragt der Submit-Handler bei eingetragenem Gewicht immer nach "gewogen", nicht nur bei
+    // einer Gewichtsänderung.
+    let turnierDatum = null;
+
+    // PostgreSQL liefert das Datum als ISO-Zeitstempel in UTC (z.B. "2026-10-16T22:00:00.000Z" für
+    // den 17.10. in Deutschland), SQLite als reines "YYYY-MM-DD" — beides auf den lokalen
+    // Kalendertag abbilden.
+    function lokalesDatum(wert) {
+        const str = String(wert);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+        const d = new Date(str);
+        if (isNaN(d)) return null;
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    const istWettkampftag = () => !!turnierDatum && turnierDatum === lokalesDatum(new Date());
 
     // Extrahiert das Geburtsjahr aus einem gescannten Wert — akzeptiert ein volles Datum (z.B.
     // "2012-05-01" aus einem DokuMe-Judopass-QR) ebenso wie eine bereits reine Jahreszahl.
@@ -620,9 +680,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         bestimmeUndWaehleAltersklasse();
 
-        if (parsedData.gewichtsklasse && gewichtsklasseSelect) {
-            gewichtsklasseSelect.value = parsedData.gewichtsklasse;
-        }
+        uebernimmGewichtsklasse(parsedData.gewichtsklasse);
 
         aktualisiereSpeicherButtonStatus();
         document.getElementById('verein').focus();
@@ -865,14 +923,16 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             // "Gewogen" darf serverseitig ohnehin nur der ausrichtende Verein (bzw. Offline-
-            // Betrieb) setzen (siehe teilnehmerController.js) — hier zusätzlich nur nachfragen,
-            // wenn sich das Gewicht überhaupt geändert hat (reine Korrekturen an Name o.ä. lösen
-            // keinen Dialog aus). Per QR-Scan aufgerufene Datensätze gelten als physisch am
-            // Wiegetisch erfasst -> Gewogen wird direkt gesetzt, ohne nachzufragen.
+            // Betrieb) setzen (siehe teilnehmerController.js). Am Wettkampftag wird bei jedem
+            // Speichern mit eingetragenem Gewicht nachgefragt (dort wird eingewogen); an anderen
+            // Tagen nur, wenn sich das Gewicht überhaupt geändert hat (reine Korrekturen an Name
+            // o.ä. lösen keinen Dialog aus). Per QR-Scan aufgerufene Datensätze gelten als
+            // physisch am Wiegetisch erfasst -> Gewogen wird direkt gesetzt, ohne nachzufragen.
             const vorherigesGewicht = parseFloat(String(urspruenglichesGewicht ?? '').replace(',', '.')) || 0;
             const gewichtGeaendert = gewichtFormatiert > 0 && gewichtFormatiert !== vorherigesGewicht;
+            const gewogenNachfragen = gewichtFormatiert > 0 && (gewichtGeaendert || istWettkampftag());
 
-            if (istGastgeberVerein && gewichtGeaendert) {
+            if (istGastgeberVerein && gewogenNachfragen) {
                 if (letzteAenderungViaScan) {
                     payload.gewogen = true;
                 } else {

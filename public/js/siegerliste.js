@@ -164,7 +164,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function renderPlatzierungen(pools, alleStandings) {
         if (pools.length === 0) {
-            platzierungenBody.innerHTML = '<tr><td colspan="5" class="no-data">Noch keine Pools für dieses Turnier vorhanden.</td></tr>';
+            platzierungenBody.innerHTML = '<tr><td colspan="5" class="no-data">Noch keine Pools abgeschlosen</td></tr>';
             return;
         }
 
@@ -209,7 +209,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function ladeSiegerliste() {
         try {
             const response = await fetch(`/api/pools/details?turnierId=${turnierId}`);
-            const pools = await response.json();
+            const allePools = await response.json();
+            const pools = allePools.filter(pool => pool.status === 'abgeschlossen');
 
             if (!response.ok) throw new Error((pools && pools.error) || 'Siegerliste konnte nicht geladen werden.');
             if (!Array.isArray(pools)) throw new Error('Unerwartetes Antwortformat.');

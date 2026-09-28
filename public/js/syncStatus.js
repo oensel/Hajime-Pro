@@ -3,7 +3,7 @@
 //  - Client-Gerät: grün "verbunden", gelb "offline – n Änderungen ausstehend", rot bei
 //    Replikations-/Konfigurationsfehler, blau während eines Turnierwechsels. Wechselt die
 //    Turnier-Instanz, lädt die Seite neu (die alten Daten sind dann verworfen).
-//  - Hallen-Server: kleine grüne Leiste "Hallen-Server"; ohne Sync keine Leiste.
+//  - Hallen-Server und ohne Sync: keine Leiste (Serverstatus am Icon "Hallen-Server" in menu.js).
 //  - window.wechsleClientMatte(neueMatteId, bisherigeMatteId): Mattenwechsel mit Nachfrage.
 (function () {
     let letzteInstanz = null;
@@ -34,10 +34,8 @@
             return;
         }
         if (!status || !status.rolle) return;
-        if (status.rolle === 'server') {
-            zeige('verbunden', 'Hallen-Server');
-            return;
-        }
+        // Hallen-Server: keine Leiste, der Serverstatus steht farbig am Icon "Hallen-Server" (menu.js).
+        if (status.rolle === 'server') return;
         if (letzteInstanz && status.instanz_id && status.instanz_id !== letzteInstanz) {
             window.location.reload();
             return;

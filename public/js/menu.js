@@ -1,5 +1,11 @@
 // public/js/navigation.js
 
+// Theme sofort beim Parsen setzen (menu.js steht im <head>), nicht erst nach DOMContentLoaded
+// und den Auth-Requests — sonst wird die Seite zuerst hell gerendert und springt dann auf dunkel.
+try {
+    document.documentElement.setAttribute('data-theme', localStorage.getItem('hajime-theme') || 'light');
+} catch (e) { /* localStorage gesperrt: helles Theme bleibt */ }
+
 // Global fetch wrapper to append X-Steuerung-Password and Authorization headers if available in localStorage
 (function() {
     const originalFetch = window.fetch;
@@ -211,6 +217,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             <button type="button" class="theme-toggle" id="themeToggle" title="Ansicht umschalten">
                 <span class="material-icons" id="themeIcon">dark_mode</span>
             </button>
+            <a href="/cluster.html" class="theme-toggle theme-toggle-text" id="hallenServerBtn" title="Status des Server-Clusters" style="display: none;">
+                <span class="material-icons">dns</span>
+            </a>
             <button type="button" class="theme-toggle" id="logoutBtn" title="Abmelden" style="color: #ef4444; border: none; background: transparent; cursor: pointer;">
                 <span class="material-icons">logout</span>
             </button>
@@ -275,6 +284,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     const urlParams = new URLSearchParams(window.location.search);
     const turnierId = urlParams.get('id') || urlParams.get('turnierId');
     const currentPath = window.location.pathname;
+
+    // Turnier-ID sofort an die Menü-Links hängen, noch bevor window.hajimeAktualisiereMenueSperren
+    // existiert: Seiten-Skripte (z.B. pools.js beim ersten Laden) sperren Menüpunkte teils, während
+    // diese Initialisierung noch auf Serverantworten wartet. Die Sperre sichert den Link als
+    // Backup und stellt ihn beim Entsperren wieder her — ohne Turnier-ID landete man sonst z.B.
+    // auf matten.html ohne Parameter, wo das Menü nur noch "anstehende Turniere" zeigt.
+    if (turnierId) {
+        document.querySelectorAll('.menu-item').forEach(link => {
+            const href = link.getAttribute('href');
+            if (href && href !== '#') {
+                if (href.includes('turniere.html')) return;
+                const paramName = href.includes('turnier.html') ? 'id' : 'turnierId';
+                link.setAttribute('href', `${href}?${paramName}=${turnierId}`);
+            }
+        });
+    }
 
     // Hilfsfunktion: Macht Menüpunkte sichtbar, aber blockiert die Klickbarkeit vollständig
     // (für Schritte, die noch nicht erreichbar sind, z.B. Pools ohne Teilnehmer)
@@ -637,8 +662,41 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- SERVER-CLUSTER (Hallen-Server mit CLUSTER_KNOTEN, siehe src/cluster/) ---
     // Menüpunkt "Cluster"; auf dem Secondary zusätzlich ein Hinweis, dass nur gelesen werden kann.
     if (syncRolle === 'server') {
+        // Button "Hallen-Server" in der Kopfzeile (links vom Logout) führt zur Cluster-Statusseite;
+        // ohne CLUSTER_KNOTEN zeigt cluster.html einen entsprechenden Hinweis.
+        const hallenServerBtn = document.getElementById('hallenServerBtn');
+        if (hallenServerBtn) {
+            hallenServerBtn.style.display = '';
+            if (currentPath.includes('cluster.html')) hallenServerBtn.classList.add('active');
+        }
+        // Icon-Farbe nach Anzahl erreichbarer Server: alle online = grün, im Cluster nur einer
+        // von zwei = gelb, eigener Server nicht erreichbar = rot. Ohne Cluster gibt es nur einen.
+        const hallenServerIcon = hallenServerBtn?.querySelector('.material-icons');
+        const zeigeServerAnzahl = (online, gesamt) => {
+            if (!hallenServerIcon) return;
+            const farbe = online === 0 ? '#c62828' : online < gesamt ? '#f9a825' : '#2e7d32';
+            hallenServerIcon.style.color = farbe;
+            hallenServerBtn.title = `Status des Server-Clusters – ${online} von ${gesamt} Server${gesamt === 1 ? '' : 'n'} online`;
+            hallenServerBtn.dataset.serverOnline = `${online}/${gesamt}`;
+        };
+        const holeClusterStatus = async () => {
+            try {
+                const antwort = await fetch('/api/cluster/status', { cache: 'no-store' });
+                if (!antwort.ok) throw new Error(`HTTP ${antwort.status}`);
+                const status = await antwort.json();
+                if (status.aktiv) zeigeServerAnzahl(1 + (status.partner ? 1 : 0), 2);
+                else zeigeServerAnzahl(1, 1);
+                return status;
+            } catch (error) {
+                const gesamt = hallenServerBtn?.dataset.serverOnline?.endsWith('/2') ? 2 : 1;
+                zeigeServerAnzahl(0, gesamt);
+                throw error;
+            }
+        };
+        setInterval(() => holeClusterStatus().catch(() => {}), 5000);
         try {
-            const cluster = await fetch('/api/cluster/status?nurEigen=1').then(r => r.json());
+            const status = await holeClusterStatus();
+            const cluster = status.aktiv ? { aktiv: true, ...status.eigen } : status;
             if (cluster.aktiv) {
                 const nav = document.getElementById('sidebarNavSecondary');
                 if (nav && !document.getElementById('nav-cluster')) {
@@ -684,15 +742,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!turnierId) {
             versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-kampf', 'nav-siegerliste', 'nav-dashboard', 'nav-uebersicht']);
         } else {
-            document.querySelectorAll('.menu-item').forEach(link => {
-                const href = link.getAttribute('href');
-                if (href && href !== '#') {
-                    if (href.includes('turniere.html')) return;
-                    const paramName = href.includes('turnier.html') ? 'id' : 'turnierId';
-                    link.setAttribute('href', `${href}?${paramName}=${turnierId}`);
-                }
-            });
-
             await Promise.all([
                 pruefePoolsMenuSperre(turnierId),
                 pruefeMattenMenuSperre(turnierId),
