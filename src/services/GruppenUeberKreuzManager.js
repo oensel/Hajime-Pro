@@ -1,5 +1,6 @@
 import { GRUPPEN_UEBERKREUZ_TOPOLOGIE, verknuepfeQuellenFuerPool } from '../shared/bracketTopologie.js';
 import { berechneKaempferPatches } from '../shared/kampfProgression.js';
+import { berechneGruppenUeberkreuzHalbfinalPatches } from '../shared/gruppenUeberkreuzProgression.js';
 
 export class GruppenUeberKreuzManager {
     /**
@@ -98,32 +99,18 @@ export class GruppenUeberKreuzManager {
 
         const findeKampf = (idKey) => kaempfe.find(k => k.reihenfolge_nummer === idKey);
 
-        const vorrundenKaempfe = kaempfe.filter(k => k.reihenfolge_nummer?.startsWith("V_"));
-        const vorrundeFertig = vorrundenKaempfe.length === 6 && vorrundenKaempfe.every(k => k.status === 'beendet');
-
-        const hf1 = findeKampf("HF1");
-        const hf2 = findeKampf("HF2");
-
         let changed = false;
 
         // PHASE 1: Vorrunde beendet -> Halbfinale (HF1, HF2). Bleibt Ranglisten-basiert (N-zu-2-
         // Aggregation über je 3 Vorrundenkämpfe pro Gruppe) — lässt sich nicht auf einen simplen
-        // 1:1-Link reduzieren, daher hier weiterhin manuell statt über die gemeinsame Engine.
-        if (vorrundeFertig && hf1 && hf2 && (!hf1.kaempfer1_id || !hf2.kaempfer1_id)) {
-            const ranglisteA = await this._berechneTeilRangliste(knex, poolId, "V_A_");
-            const ranglisteB = await this._berechneTeilRangliste(knex, poolId, "V_B_");
-
-            const ersterA = ranglisteA[0]?.id;
-            const zweiterA = ranglisteA[1]?.id;
-
-            const ersterB = ranglisteB[0]?.id;
-            const zweiterB = ranglisteB[1]?.id;
-
-            if (ersterA && zweiterA && ersterB && zweiterB) {
-                await knex('kaempfe').where({ id: hf1.id }).update({ kaempfer1_id: ersterA, kaempfer2_id: zweiterB });
-                await knex('kaempfe').where({ id: hf2.id }).update({ kaempfer1_id: ersterB, kaempfer2_id: zweiterA });
-                changed = true;
-            }
+        // 1:1-Link reduzieren, daher eigene, gemeinsam mit dem Offline-Scoreboard genutzte
+        // Engine statt der Quelle-Kampf-basierten kampfProgression.js (siehe
+        // gruppenUeberkreuzProgression.js).
+        const halbfinalPatches = berechneGruppenUeberkreuzHalbfinalPatches(kaempfe);
+        for (const patch of halbfinalPatches) {
+            const { id, ...updates } = patch;
+            await knex('kaempfe').where({ id }).update(updates);
+            changed = true;
         }
 
         // PHASE 2: HF1/HF2 -> F1/F2 über die gemeinsame Engine (einfacher 1:1-Sieger/Verlierer-Link,
@@ -175,55 +162,5 @@ export class GruppenUeberKreuzManager {
         });
 
         return { poolA, poolB };
-    }
-
-    /**
-     * Berechnet die mathematische Rangliste eines Unterpools (Gruppe A oder B) aus der DB.
-     * Sortierung nach Judo-Regelwerk:
-     * 1. Meiste Siege
-     * 2. Höhere Unterbewertung (Punkte aus Ippon/Waza-ari)
-     * @param {Object} knex - Die Knex-Instanz
-     * @param {number} poolId - Die ID des Hauptpools
-     * @param {string} turnierIdPraefix - Filter nach Phasen-Schlüssel (z.B. "V_A_" oder "V_B_")
-     * @returns {Promise<Array>} Sortierte Liste mit Objekten { id, siege, unterbewertung }
-     */
-    async _berechneTeilRangliste(knex, poolId, turnierIdPraefix) {
-        const gruppenKaempfe = await knex('kaempfe')
-            .where({ pool_id: poolId })
-            .andWhere('status', 'beendet')
-            .andWhereLike('reihenfolge_nummer', `${turnierIdPraefix}%`);
-
-        const teilnehmerIds = new Set();
-        gruppenKaempfe.forEach(k => {
-            if (k.kaempfer1_id) teilnehmerIds.add(k.kaempfer1_id);
-            if (k.kaempfer2_id) teilnehmerIds.add(k.kaempfer2_id);
-        });
-
-        const tabelle = Array.from(teilnehmerIds).map(tId => ({
-            id: tId,
-            siege: 0,
-            unterbewertung: 0
-        }));
-
-        gruppenKaempfe.forEach(kampf => {
-            if (!kampf.sieger_id) return;
-
-            const siegerEintrag = tabelle.find(e => e.id === kampf.sieger_id);
-            if (!siegerEintrag) return;
-
-            siegerEintrag.siege += 1;
-
-            const siegerIstKaempfer1 = kampf.sieger_id === kampf.kaempfer1_id;
-            siegerEintrag.unterbewertung += siegerIstKaempfer1
-                ? kampf.unterbewertung_kaempfer1
-                : kampf.unterbewertung_kaempfer2;
-        });
-
-        return tabelle.sort((a, b) => {
-            if (b.siege !== a.siege) {
-                return b.siege - a.siege;
-            }
-            return b.unterbewertung - a.unterbewertung;
-        });
     }
 }

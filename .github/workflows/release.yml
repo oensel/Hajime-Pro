@@ -1,0 +1,82 @@
+# Release bei Tag v* (npm version <patch|minor|major> && git push --follow-tags):
+# Tests -> Versionsprüfung -> Build je Plattform (+ Rauchtest) -> signieren + GitHub-Release.
+name: Release
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    uses: ./.github/workflows/ci.yml
+
+  pruefen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag muss package.json-Version entsprechen
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          test "v$VERSION" = "$GITHUB_REF_NAME" || { echo "Tag $GITHUB_REF_NAME passt nicht zu Version $VERSION"; exit 1; }
+
+  build:
+    needs: [tests, pruefen]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npx playwright install chromium
+      - run: npm run desktop:build
+        env: { CSC_IDENTITY_AUTO_DISCOVERY: 'false' }
+      - name: Rauchtest (Windows)
+        if: runner.os == 'Windows'
+        run: npm run test:electron
+        env: { HAJIME_APP_PFAD: 'dist-desktop\win-unpacked\Hajime Pro.exe' }
+      - name: Rauchtest (macOS)
+        if: runner.os == 'macOS'
+        run: npm run test:electron
+        env: { HAJIME_APP_PFAD: 'dist-desktop/mac-universal/Hajime Pro.app/Contents/MacOS/Hajime Pro' }
+      - name: Rauchtest (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run test:electron
+        env: { HAJIME_APP_PFAD: 'dist-desktop/linux-unpacked/hajime-pro' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-${{ runner.os }}
+          path: |
+            dist-desktop/*.exe
+            dist-desktop/*.dmg
+            dist-desktop/*.zip
+            dist-desktop/*.AppImage
+          if-no-files-found: error
+
+  veroeffentlichen:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/download-artifact@v4
+        with: { path: release, merge-multiple: true }
+      - name: Signaturschlüssel und öffentlichen Schlüssel prüfen
+        run: |
+          test -f desktop/update-schluessel.pub || { echo "desktop/update-schluessel.pub fehlt im Repo — 'npm run client:schluessel' einmalig laufen lassen und committen (siehe desktop/README.md)."; exit 1; }
+          test -n "$CLIENT_SIGNATUR_SCHLUESSEL" || { echo "Secret CLIENT_SIGNATUR_SCHLUESSEL fehlt (Settings -> Secrets and variables -> Actions), siehe desktop/README.md."; exit 1; }
+        env: { CLIENT_SIGNATUR_SCHLUESSEL: '${{ secrets.CLIENT_SIGNATUR_SCHLUESSEL }}' }
+      - name: Signieren und version.json erzeugen
+        run: node scripts/signiere-client.mjs release "${GITHUB_REF_NAME#v}"
+        env: { CLIENT_SIGNATUR_SCHLUESSEL: '${{ secrets.CLIENT_SIGNATUR_SCHLUESSEL }}' }
+      - name: GitHub-Release anlegen
+        run: gh release create "$GITHUB_REF_NAME" release/* --title "Hajime Pro $GITHUB_REF_NAME" --generate-notes
+        env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }

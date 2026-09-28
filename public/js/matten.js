@@ -209,10 +209,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             statusClass = 'kampflos';
         }
 
-        const bestaetigenButton = pool.status === 'kaempfe_beendet'
-            ? `<button type="button" class="btn btn-outlined pool-abschliessen-btn" data-pool-id="${pool.id}" style="height: 24px; padding: 0 8px; font-size: 11px;">Ergebnisse bestätigen</button>`
-            : '';
-
         return `
             <div class="pool-card" draggable="true" data-pool-id="${pool.id}" data-dauer-minuten="${dauer}">
                 <span class="material-icons drag-handle">drag_indicator</span>
@@ -225,7 +221,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <span class="pool-card-fights">${kaempfe} Kämpfe</span>
                 <span class="pool-card-sep">|</span>
                 <span class="pool-card-duration">${dauer}min</span>
-                ${bestaetigenButton}
             </div>
         `;
     }
@@ -588,36 +583,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         } catch (err) {
             zeigeNotification('Netzwerkfehler: ' + err.message, 'error');
-        }
-    });
-
-    // --- API: POOL-ERGEBNISSE BESTÄTIGEN (kaempfe_beendet -> abgeschlossen) ---
-    // Delegierter Klick-Handler auf dem stabilen Container statt pro Render neu zu binden,
-    // da renderAlles() den Inhalt komplett neu erzeugt.
-    mattenContainer.addEventListener('click', async (e) => {
-        const btn = e.target.closest('.pool-abschliessen-btn');
-        if (!btn) return;
-        e.stopPropagation();
-
-        const poolId = btn.getAttribute('data-pool-id');
-        const bestaetigt = await zeigeBestaetigung(
-            'Ergebnisse dieses Pools als final bestätigen? Damit ist der Pool bereit für Urkundendruck.',
-            'Pool abschließen',
-            'fact_check'
-        );
-        if (!bestaetigt) return;
-
-        try {
-            const response = await fetch(`/api/pools/${poolId}/abschliessen`, { method: 'POST' });
-            const result = await response.json();
-            if (result.success) {
-                zeigeNotification('Pool erfolgreich abgeschlossen.', 'success');
-                await ladeDaten();
-            } else {
-                zeigeNotification(result.error || 'Fehler beim Abschließen.', 'error');
-            }
-        } catch (err) {
-            zeigeNotification('Netzwerkfehler beim Abschließen.', 'error');
         }
     });
 

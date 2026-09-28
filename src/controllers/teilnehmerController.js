@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { resolveUserVereinName, hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
 import { turnierHatEchteKaempfe } from './poolController.js';
+import { FachFehler } from '../utils/fachFehler.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -51,128 +52,190 @@ function ermittleEffektivenStatus(turnier, { hatEchteKaempfe = false } = {}) {
 // ersten echten Kampf gilt die Auslosung als endgültig.
 const TEILNEHMERLISTE_GESPERRT_FEHLER = 'Die Teilnehmerliste ist gesperrt, da für dieses Turnier bereits Kämpfe stattgefunden haben.';
 
-export async function createTeilnehmer(knex, req, res) {
-    try {
-        const {
-            turnier_id, judopass_id, vorname, nachname, geburtsjahr,
-            lizenz_ablauf, geschlecht, verein, gewicht, altersklasse, gewichtsklasse,
-            startgeld_bezahlt, graduierung
-        } = req.body;
+// Zentrale Kampfbereitschafts-Prüfung, wiederverwendet von createTeilnehmer, updateTeilnehmer und
+// aendereStatusFelder — ein Judoka ist kampfbereit, sobald Lizenz gültig, Gewicht gültig, gewogen
+// bestätigt und Startgeld bezahlt ist (bei kostenlosen Turnieren gilt Startgeld immer als erfüllt).
+function pruefeKampfbereitschaft(teilnehmer, turnier) {
+    const heuteStr = new Date().toISOString().split('T')[0];
+    const lizenzGueltig = !!teilnehmer.lizenz_ablauf && teilnehmer.lizenz_ablauf >= heuteStr;
+    const gewichtGueltig = !!teilnehmer.gewicht && parseFloat(teilnehmer.gewicht) > 0;
+    const istGewogen = !!teilnehmer.gewogen;
+    const turnierKostenlos = (parseFloat(turnier.startgeld) || 0) === 0;
+    const startgeldBezahlt = turnierKostenlos || !!teilnehmer.startgeld_bezahlt;
+    return {
+        erfuellt: lizenzGueltig && gewichtGueltig && istGewogen && startgeldBezahlt,
+        lizenzGueltig, gewichtGueltig, istGewogen, startgeldBezahlt
+    };
+}
 
-        // Benutzer laden
-        const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
-        if (!user) {
-            return res.status(401).json({ success: false, error: 'Benutzerprofil nicht gefunden.' });
+// Leitet aus dem aktuellen Status + den (ggf. geänderten) Kampfbereitschafts-Kriterien den neuen
+// Lebenszyklus-Status ab (automatischer Wechsel angemeldet/nicht_erschienen <-> kampfbereit).
+// Rührt jeden anderen Status (z.B. teilgenommen, disqualifiziert) nicht an.
+function leiteStatusAusKampfbereitschaftAb(aktuellerStatus, kampfbereitErfuellt) {
+    if (kampfbereitErfuellt && ['angemeldet', 'nicht_erschienen'].includes(aktuellerStatus)) return 'kampfbereit';
+    if (!kampfbereitErfuellt && aktuellerStatus === 'kampfbereit') return 'angemeldet';
+    return aktuellerStatus;
+}
+
+// Rechte-Kontext der Service-Funktionen: REST-Routen leiten ihn aus dem angemeldeten Benutzer ab,
+// die Sync-Brücke des Hallen-Servers nutzt HALLEN_KONTEXT (dort gilt wie bei IS_OFFLINE jeder als
+// ausrichtender Verein).
+export const HALLEN_KONTEXT = Object.freeze({ istGastgeberVerein: true, istPrivilegiert: true, userVereinName: null });
+
+async function ermittleKontext(knex, req, turnier) {
+    const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
+    const istGastgeberVerein = process.env.IS_OFFLINE === 'true' || hatVereinsZugriffAufTurnier(user, turnier);
+    return {
+        istGastgeberVerein,
+        istPrivilegiert: istGastgeberVerein || !!(user && user.ist_super_admin),
+        userVereinName: await resolveUserVereinName(knex, user),
+        userGefunden: !!user
+    };
+}
+
+// Service-Funktion ohne req/res (REST-Route createTeilnehmer UND Sync-Brücke): legt einen
+// Teilnehmer an und liefert seine ID. Rechte kommen aus dem kontext (siehe HALLEN_KONTEXT).
+export async function legeTeilnehmerAn(knex, daten, kontext) {
+    const {
+        turnier_id, judopass_id, vorname, nachname, geburtsjahr,
+        lizenz_ablauf, geschlecht, verein, gewicht, altersklasse, gewichtsklasse,
+        startgeld_bezahlt, graduierung, gewogen, dokument_id
+    } = daten;
+
+    // Turnier laden
+    const turnier = await knex('turniere').where({ id: parseInt(turnier_id) }).first();
+    if (!turnier) {
+        throw new FachFehler(404, 'Turnier nicht gefunden.');
+    }
+
+    const hatEchteKaempfe = await turnierHatEchteKaempfe(knex, turnier.id);
+    if (hatEchteKaempfe) {
+        throw new FachFehler(409, TEILNEHMERLISTE_GESPERRT_FEHLER);
+    }
+
+    const istGastgeberVerein = kontext.istGastgeberVerein;
+    const userVereinName = kontext.userVereinName;
+    // Lizenz-Datum und Startgeld-Status sind Prüfungen, die nur der ausrichtende Verein (oder
+    // der Super-Admin) tatsächlich verifizieren kann — andere Vereine dürfen zwar ohne diese
+    // Angaben anmelden, aber keine Werte dafür setzen (siehe auch updateTeilnehmer).
+    const istPrivilegiertFuerLizenzUndStartgeld = kontext.istPrivilegiert;
+
+    // 1. Validierung: Überprüfen, ob alle Pflichtfelder da sind (Verein nur für Nicht-Gastgeber Pflicht).
+    // geburtsjahr ist hier bewusst Pflicht (nicht defaultbar): es steuert die Alters-
+    // klassen-Herleitung und damit sicherheitsrelevante Alterseinteilungen.
+    if (!turnier_id || !vorname || !nachname || !geburtsjahr || (!istGastgeberVerein && !verein)) {
+        throw new FachFehler(400, 'Fehlende Pflichtfelder (Turnier-ID, Vorname, Nachname, Geburtsjahr).');
+    }
+
+    // Wer nicht Mitglied des Gastgeber-Vereins ist, muss Club-Zugehörigkeit und Turnierstatus erfüllen
+    if (!istGastgeberVerein) {
+        if (ermittleEffektivenStatus(turnier, { hatEchteKaempfe }) !== 'veroeffentlicht') {
+            throw new FachFehler(403, 'Die Anmeldung für dieses Turnier ist nicht geöffnet.');
         }
 
-        // Turnier laden
-        const turnier = await knex('turniere').where({ id: parseInt(turnier_id) }).first();
+        if (!userVereinName) {
+            throw new FachFehler(400, 'Bitte tragen Sie zuerst Ihren Verein im Profil ein.');
+        }
+
+        if (verein !== userVereinName) {
+            throw new FachFehler(403, `Sie dürfen nur Teilnehmer für Ihren eigenen Verein (${userVereinName}) anmelden.`);
+        }
+    }
+
+    // --- DUPLETTEN-SCHUTZ PRÜFUNG ---
+    if (judopass_id) {
+        const bestehenderTeilnehmer = await knex('turnier_teilnehmer')
+            .where({
+                turnier_id: parseInt(turnier_id),
+                judopass_id: judopass_id.trim()
+            })
+            .first();
+
+        if (bestehenderTeilnehmer) {
+            throw new FachFehler(409, `${bestehenderTeilnehmer.vorname} ${bestehenderTeilnehmer.nachname} wurde für dieses Turnier bereits eingewogen/angemeldet.`, {
+                code: 'DUBLETTE', daten: { bestehendeId: bestehenderTeilnehmer.id }
+            });
+        }
+    }
+
+    // Falls keine Altersklasse übergeben wurde, anhand des Geburtsjahres ermitteln (analog zu waage.html)
+    const ermittelteAltersklasse = altersklasse || ermittleAltersklasse(
+        geburtsjahr,
+        geschlecht,
+        turnier.datum ? new Date(turnier.datum).getFullYear() : new Date().getFullYear(),
+        ermittleTurnierAltersklassenKeys(turnier)
+    );
+
+    // Gewicht robust parsen (deutsches Komma-Dezimaltrennzeichen wie beim CSV-Import zulassen).
+    const gewichtGeparst = parseFloat(String(gewicht ?? '').replace(',', '.')) || 0.00;
+
+    // gewichtsklasse ist in der Datenbank ein Pflichtfeld (NOT NULL). Wird sie nicht
+    // mitgeschickt (z.B. eigener API-Aufruf ohne die waage.js-Dropdown-Logik), serverseitig
+    // aus Gewicht/Geschlecht/Altersklasse herleiten (identische Logik zum CSV-Import) statt
+    // mit einem rohen SQL-NOT-NULL-Fehler abzustürzen.
+    const ermittelteGewichtsklasse = gewichtsklasse || ermittleGewichtsklasse(geschlecht, ermittelteAltersklasse, gewichtGeparst);
+    if (!ermittelteGewichtsklasse) {
+        throw new FachFehler(400, 'Die Gewichtsklasse konnte nicht ermittelt werden. Bitte Gewicht angeben oder die Gewichtsklasse manuell wählen.');
+    }
+
+    // "Gewogen" ist eine physische Verifikation am Wiegetisch und darf deshalb nur der
+    // ausrichtende Verein (bzw. der Offline-Betrieb) setzen — ein Gastverein, der z.B. beim
+    // Melden schon ein geschätztes Gewicht einträgt, darf damit nicht automatisch als
+    // "gewogen" gelten (siehe auch updateTeilnehmer).
+    const neuerTeilnehmer = {
+        turnier_id: parseInt(turnier_id),
+        // judopass_id ist ebenfalls NOT NULL, wird von der Anwendung aber als optional
+        // behandelt (z.B. Kinder/ausländische Gäste ohne Judopass) — leerer String statt
+        // null, das erfüllt die Spalte und wird an allen Stellen (istTeilnehmerStartberechtigt
+        // u.a.) bereits als "kein Judopass hinterlegt" gewertet.
+        judopass_id: judopass_id || '',
+        vorname: vorname,
+        nachname: nachname,
+        geburtsjahr: parseInt(geburtsjahr, 10),
+        // lizenz_ablauf ist NOT NULL; ein bewusst in der Vergangenheit liegender Default
+        // (wie beim CSV-Import) markiert "keine gültige Lizenz hinterlegt", statt abzustürzen.
+        // Nicht-privilegierte Vereine können hier ohnehin nichts Sinnvolles eintragen (s.o.).
+        lizenz_ablauf: istPrivilegiertFuerLizenzUndStartgeld ? (lizenz_ablauf || '1970-01-01') : '1970-01-01',
+        geschlecht: geschlecht,
+        verein: verein,
+        gewicht: gewichtGeparst,
+        altersklasse: ermittelteAltersklasse,
+        gewichtsklasse: ermittelteGewichtsklasse,
+        graduierung: GRADUIERUNG_IDS.has(graduierung) ? graduierung : null,
+        startgeld_bezahlt: istPrivilegiertFuerLizenzUndStartgeld ? (startgeld_bezahlt ? 1 : 0) : 0,
+        gewogen: istGastgeberVerein ? (gewogen ? 1 : 0) : 0
+    };
+    // Offline an der Waage angelegte Nachmeldung: Zuordnung zum Dokument teilnehmer:u-<uuid>
+    // der Sync-Dokument-DB (siehe src/sync/bruecke.js).
+    if (dokument_id) neuerTeilnehmer.dokument_id = dokument_id;
+
+    // Direkt bei der Neuanlage kampfbereit setzen, wenn schon alle Kriterien erfüllt sind
+    // (z.B. QR-Scan am Wiegetisch: Judopass bekannt, Lizenz gültig, Gewicht + gewogen +
+    // Startgeld in einem Schritt erfasst) — sonst bleibt der Spalten-Default "angemeldet".
+    const { erfuellt } = pruefeKampfbereitschaft(neuerTeilnehmer, turnier);
+    neuerTeilnehmer.status = leiteStatusAusKampfbereitschaftAb('angemeldet', erfuellt);
+
+    // 2. Insert in die Datenbank
+    const [idObj] = await knex('turnier_teilnehmer').insert(neuerTeilnehmer).returning('id');
+
+    return typeof idObj === 'object' ? idObj.id : idObj;
+}
+
+export async function createTeilnehmer(knex, req, res) {
+    try {
+        const turnier = await knex('turniere').where({ id: parseInt(req.body.turnier_id) }).first();
         if (!turnier) {
             return res.status(404).json({ success: false, error: 'Turnier nicht gefunden.' });
         }
-
-        const hatEchteKaempfe = await turnierHatEchteKaempfe(knex, turnier.id);
-        if (hatEchteKaempfe) {
-            return res.status(409).json({ success: false, error: TEILNEHMERLISTE_GESPERRT_FEHLER });
+        const kontext = await ermittleKontext(knex, req, turnier);
+        if (!kontext.userGefunden) {
+            return res.status(401).json({ success: false, error: 'Benutzerprofil nicht gefunden.' });
         }
-
-        const istGastgeberVerein = process.env.IS_OFFLINE === 'true' || hatVereinsZugriffAufTurnier(user, turnier);
-        const userVereinName = await resolveUserVereinName(knex, user);
-
-        // 1. Validierung: Überprüfen, ob alle Pflichtfelder da sind (Verein nur für Nicht-Gastgeber Pflicht).
-        // geburtsjahr ist hier bewusst Pflicht (nicht defaultbar): es steuert die Alters-
-        // klassen-Herleitung und damit sicherheitsrelevante Alterseinteilungen.
-        if (!turnier_id || !vorname || !nachname || !geburtsjahr || (!istGastgeberVerein && !verein)) {
-            return res.status(400).json({ success: false, error: 'Fehlende Pflichtfelder (Turnier-ID, Vorname, Nachname, Geburtsjahr).' });
-        }
-
-        // Wer nicht Mitglied des Gastgeber-Vereins ist, muss Club-Zugehörigkeit und Turnierstatus erfüllen
-        if (!istGastgeberVerein) {
-            if (ermittleEffektivenStatus(turnier, { hatEchteKaempfe }) !== 'veroeffentlicht') {
-                return res.status(403).json({ success: false, error: 'Die Anmeldung für dieses Turnier ist nicht geöffnet.' });
-            }
-
-            if (!userVereinName) {
-                return res.status(400).json({ success: false, error: 'Bitte tragen Sie zuerst Ihren Verein im Profil ein.' });
-            }
-
-            if (verein !== userVereinName) {
-                return res.status(403).json({ success: false, error: `Sie dürfen nur Teilnehmer für Ihren eigenen Verein (${userVereinName}) anmelden.` });
-            }
-        }
-
-        // --- DUPLETTEN-SCHUTZ PRÜFUNG ---
-        if (judopass_id) {
-            const bestehenderTeilnehmer = await knex('turnier_teilnehmer')
-                .where({
-                    turnier_id: parseInt(turnier_id),
-                    judopass_id: judopass_id.trim()
-                })
-                .first();
-
-            if (bestehenderTeilnehmer) {
-                return res.status(409).json({
-                    success: false,
-                    error: `${bestehenderTeilnehmer.vorname} ${bestehenderTeilnehmer.nachname} wurde für dieses Turnier bereits eingewogen/angemeldet.`
-                });
-            }
-        }
-
-        // Falls keine Altersklasse übergeben wurde, anhand des Geburtsjahres ermitteln (analog zu waage.html)
-        const ermittelteAltersklasse = altersklasse || ermittleAltersklasse(
-            geburtsjahr,
-            geschlecht,
-            turnier.datum ? new Date(turnier.datum).getFullYear() : new Date().getFullYear(),
-            ermittleTurnierAltersklassenKeys(turnier)
-        );
-
-        // Gewicht robust parsen (deutsches Komma-Dezimaltrennzeichen wie beim CSV-Import zulassen).
-        const gewichtGeparst = parseFloat(String(gewicht ?? '').replace(',', '.')) || 0.00;
-
-        // gewichtsklasse ist in der Datenbank ein Pflichtfeld (NOT NULL). Wird sie nicht
-        // mitgeschickt (z.B. eigener API-Aufruf ohne die waage.js-Dropdown-Logik), serverseitig
-        // aus Gewicht/Geschlecht/Altersklasse herleiten (identische Logik zum CSV-Import) statt
-        // mit einem rohen SQL-NOT-NULL-Fehler abzustürzen.
-        const ermittelteGewichtsklasse = gewichtsklasse || ermittleGewichtsklasse(geschlecht, ermittelteAltersklasse, gewichtGeparst);
-        if (!ermittelteGewichtsklasse) {
-            return res.status(400).json({
-                success: false,
-                error: 'Die Gewichtsklasse konnte nicht ermittelt werden. Bitte Gewicht angeben oder die Gewichtsklasse manuell wählen.'
-            });
-        }
-
-        // 2. Insert in die Datenbank
-        const [idObj] = await knex('turnier_teilnehmer').insert({
-            turnier_id: parseInt(turnier_id),
-            // judopass_id ist ebenfalls NOT NULL, wird von der Anwendung aber als optional
-            // behandelt (z.B. Kinder/ausländische Gäste ohne Judopass) — leerer String statt
-            // null, das erfüllt die Spalte und wird an allen Stellen (istTeilnehmerStartberechtigt
-            // u.a.) bereits als "kein Judopass hinterlegt" gewertet.
-            judopass_id: judopass_id || '',
-            vorname: vorname,
-            nachname: nachname,
-            geburtsjahr: parseInt(geburtsjahr, 10),
-            // lizenz_ablauf ist NOT NULL; ein bewusst in der Vergangenheit liegender Default
-            // (wie beim CSV-Import) markiert "keine gültige Lizenz hinterlegt", statt abzustürzen.
-            lizenz_ablauf: lizenz_ablauf || '1970-01-01',
-            geschlecht: geschlecht,
-            verein: verein,
-            gewicht: gewichtGeparst,
-            altersklasse: ermittelteAltersklasse,
-            gewichtsklasse: ermittelteGewichtsklasse,
-            graduierung: GRADUIERUNG_IDS.has(graduierung) ? graduierung : null,
-            startgeld_bezahlt: startgeld_bezahlt ? 1 : 0,
-            // createTeilnehmer wird ausschließlich über waage.html erreicht (Neuanlage am
-            // Wiegetisch) — das eingegebene Gewicht ist also ein echtes, gemessenes Gewicht.
-            gewogen: true
-        }).returning('id');
-
-        const teilnehmerId = typeof idObj === 'object' ? idObj.id : idObj;
+        const teilnehmerId = await legeTeilnehmerAn(knex, req.body, kontext);
         return res.status(201).json({ success: true, teilnehmerId });
-
     } catch (error) {
-        console.error('[Backend-Fehler Waage/Anmeldung]:', error);
-        return res.status(500).json({ success: false, error: error.message });
+        if (!error.statusCode) console.error('[Backend-Fehler Waage/Anmeldung]:', error);
+        return res.status(error.statusCode || 500).json({ success: false, error: error.message });
     }
 }
 
@@ -292,114 +355,145 @@ export async function getTeilnehmerById(knex, req, res) {
     }
 }
 
+// Service-Funktion ohne req/res (REST-Route updateTeilnehmer UND Sync-Brücke).
+export async function aktualisiereTeilnehmerDaten(knex, id, daten, kontext) {
+    const { vorname, nachname, judopass_id, verein, geburtsjahr, lizenz_ablauf, geschlecht, gewicht, altersklasse, gewichtsklasse, startgeld_bezahlt, graduierung, gewogen } = daten;
+
+    const athlet = await knex('turnier_teilnehmer').where({ id }).first();
+    if (!athlet) {
+        throw new FachFehler(404, 'Teilnehmer nicht gefunden.');
+    }
+
+    const turnier = await knex('turniere').where({ id: athlet.turnier_id }).first();
+
+    const hatEchteKaempfe = await turnierHatEchteKaempfe(knex, athlet.turnier_id);
+    if (hatEchteKaempfe) {
+        throw new FachFehler(409, TEILNEHMERLISTE_GESPERRT_FEHLER);
+    }
+
+    const istGastgeberVerein = kontext.istGastgeberVerein;
+    const userVereinName = kontext.userVereinName;
+    const isSameClub = userVereinName && athlet.verein === userVereinName;
+    // Lizenz-Datum und Startgeld-Status sind Prüfungen, die nur der ausrichtende Verein (oder
+    // der Super-Admin) tatsächlich verifizieren kann — ein anderer Verein darf diese Werte
+    // beim Bearbeiten seiner eigenen Athleten nicht verändern (siehe auch createTeilnehmer).
+    const istPrivilegiertFuerLizenzUndStartgeld = kontext.istPrivilegiert;
+
+    if (!istGastgeberVerein) {
+        if (!isSameClub) {
+            throw new FachFehler(403, 'Sie dürfen nur Teilnehmer Ihres eigenen Vereins bearbeiten.');
+        }
+        if (ermittleEffektivenStatus(turnier, { hatEchteKaempfe }) !== 'veroeffentlicht') {
+            throw new FachFehler(403, 'Änderungen sind für dieses Turnier nicht mehr möglich.');
+        }
+        if (verein && verein !== userVereinName) {
+            throw new FachFehler(403, `Sie können den Verein nicht auf einen anderen Club als Ihren eigenen (${userVereinName}) ändern.`);
+        }
+    }
+
+    const updates = {
+        vorname,
+        nachname,
+        judopass_id,
+        verein: istGastgeberVerein ? (verein !== undefined ? (verein || '') : athlet.verein) : userVereinName,
+        geburtsjahr: geburtsjahr !== undefined ? parseInt(geburtsjahr, 10) : athlet.geburtsjahr,
+        lizenz_ablauf: istPrivilegiertFuerLizenzUndStartgeld ? (lizenz_ablauf !== undefined ? lizenz_ablauf : athlet.lizenz_ablauf) : athlet.lizenz_ablauf,
+        geschlecht,
+        gewicht: gewicht !== undefined ? parseFloat(gewicht) : athlet.gewicht,
+        altersklasse,
+        gewichtsklasse,
+        graduierung: graduierung !== undefined ? (GRADUIERUNG_IDS.has(graduierung) ? graduierung : null) : athlet.graduierung,
+        startgeld_bezahlt: istPrivilegiertFuerLizenzUndStartgeld
+            ? (startgeld_bezahlt !== undefined ? (startgeld_bezahlt ? 1 : 0) : athlet.startgeld_bezahlt)
+            : athlet.startgeld_bezahlt,
+        // "Gewogen" ist eine physische Verifikation am Wiegetisch und darf deshalb nur der
+        // ausrichtende Verein (bzw. der Offline-Betrieb) setzen — ein Gastverein, der beim
+        // Bearbeiten seines eigenen Athleten z.B. nur ein geschätztes Gewicht korrigiert, darf
+        // ihn damit nicht automatisch als "gewogen" markieren (siehe auch createTeilnehmer).
+        gewogen: istGastgeberVerein ? (gewogen !== undefined ? (gewogen ? 1 : 0) : athlet.gewogen) : athlet.gewogen
+    };
+
+    // Kampfbereitschaft nach der Änderung neu bewerten (z.B. Gewicht korrigiert und im
+    // gleichen Zug als gewogen bestätigt -> automatisch kampfbereit; Gewicht ohne erneute
+    // Gewogen-Bestätigung geändert -> ggf. zurück auf "angemeldet", siehe waage-modal.js).
+    const merged = { ...athlet, ...updates };
+    const { erfuellt } = pruefeKampfbereitschaft(merged, turnier);
+    updates.status = leiteStatusAusKampfbereitschaftAb(athlet.status, erfuellt);
+
+    await knex('turnier_teilnehmer')
+        .where({ id })
+        .update({ ...updates, updated_at: knex.fn.now() });
+}
+
 export async function updateTeilnehmer(knex, req, res) {
     try {
-        const { id } = req.params;
-        const { vorname, nachname, judopass_id, verein, geburtsjahr, lizenz_ablauf, geschlecht, gewicht, altersklasse, gewichtsklasse, startgeld_bezahlt, graduierung } = req.body;
-
-        const athlet = await knex('turnier_teilnehmer').where({ id }).first();
+        const athlet = await knex('turnier_teilnehmer').where({ id: req.params.id }).first();
         if (!athlet) {
             return res.status(404).json({ success: false, error: 'Teilnehmer nicht gefunden.' });
         }
-
-        const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
         const turnier = await knex('turniere').where({ id: athlet.turnier_id }).first();
-
-        const hatEchteKaempfe = await turnierHatEchteKaempfe(knex, athlet.turnier_id);
-        if (hatEchteKaempfe) {
-            return res.status(409).json({ success: false, error: TEILNEHMERLISTE_GESPERRT_FEHLER });
-        }
-
-        const istGastgeberVerein = process.env.IS_OFFLINE === 'true' || hatVereinsZugriffAufTurnier(user, turnier);
-        const userVereinName = await resolveUserVereinName(knex, user);
-        const isSameClub = userVereinName && athlet.verein === userVereinName;
-
-        if (!istGastgeberVerein) {
-            if (!isSameClub) {
-                return res.status(403).json({ success: false, error: 'Sie dürfen nur Teilnehmer Ihres eigenen Vereins bearbeiten.' });
-            }
-            if (ermittleEffektivenStatus(turnier, { hatEchteKaempfe }) !== 'veroeffentlicht') {
-                return res.status(403).json({ success: false, error: 'Änderungen sind für dieses Turnier nicht mehr möglich.' });
-            }
-            if (verein && verein !== userVereinName) {
-                return res.status(403).json({ success: false, error: `Sie können den Verein nicht auf einen anderen Club als Ihren eigenen (${userVereinName}) ändern.` });
-            }
-        }
-
-        await knex('turnier_teilnehmer')
-            .where({ id })
-            .update({
-                vorname,
-                nachname,
-                judopass_id,
-                verein: istGastgeberVerein ? (verein !== undefined ? (verein || '') : athlet.verein) : userVereinName,
-                geburtsjahr: geburtsjahr !== undefined ? parseInt(geburtsjahr, 10) : athlet.geburtsjahr,
-                lizenz_ablauf,
-                geschlecht,
-                gewicht: gewicht !== undefined ? parseFloat(gewicht) : athlet.gewicht,
-                altersklasse,
-                gewichtsklasse,
-                graduierung: graduierung !== undefined ? (GRADUIERUNG_IDS.has(graduierung) ? graduierung : null) : athlet.graduierung,
-                startgeld_bezahlt: startgeld_bezahlt !== undefined ? (startgeld_bezahlt ? 1 : 0) : athlet.startgeld_bezahlt,
-                // updateTeilnehmer wird ausschließlich über waage.html erreicht (Bearbeiten am
-                // Wiegetisch) — ein hier eingetragenes Gewicht ist also ein echtes, gemessenes.
-                gewogen: true,
-                updated_at: knex.fn.now()
-            });
-
+        const kontext = await ermittleKontext(knex, req, turnier);
+        await aktualisiereTeilnehmerDaten(knex, req.params.id, req.body, kontext);
         return res.json({ success: true, message: 'Teilnehmer erfolgreich aktualisiert.' });
     } catch (error) {
-        return res.status(500).json({ success: false, error: error.message });
+        return res.status(error.statusCode || 500).json({ success: false, error: error.message });
     }
 }
 
 // Bestätigt "kampfbereit" am Wiegetisch: Judoka ist erschienen, Gewicht passt, Lizenz/Pass
 // wurden geprüft (Zustand 3 der Teilnehmer-Spezifikation, Voraussetzung für die Auslosung).
 // Gleiche Zugriffsregel wie aendereStatusFelder — nur der ausrichtende Verein bestätigt.
+export async function bestaetigeKampfbereitschaft(knex, id, kontext) {
+    const athlet = await knex('turnier_teilnehmer').where({ id }).first();
+    if (!athlet) {
+        throw new FachFehler(404, 'Teilnehmer nicht gefunden.');
+    }
+
+    const turnier = await knex('turniere').where({ id: athlet.turnier_id }).first();
+    if (!kontext.istGastgeberVerein) {
+        throw new FachFehler(403, 'Nur Mitglieder des ausrichtenden Vereins dürfen Kampfbereitschaft bestätigen.');
+    }
+
+    // Erneutes Bestätigen nach einer versehentlichen nicht_erschienen-Markierung (spätes
+    // Erscheinen vor dem Start der Pool-Zuteilung) bleibt möglich.
+    if (!['angemeldet', 'nicht_erschienen'].includes(athlet.status)) {
+        throw new FachFehler(400, `Kampfbereitschaft kann aus dem Status "${athlet.status}" nicht bestätigt werden.`);
+    }
+
+    const heuteStr = new Date().toISOString().split('T')[0];
+    if (!athlet.lizenz_ablauf || athlet.lizenz_ablauf < heuteStr) {
+        throw new FachFehler(400, 'Die Lizenz ist abgelaufen oder nicht hinterlegt.');
+    }
+    // Bei kostenlosen Turnieren (Startgeld 0€) gilt jeder als bezahlt, analog zur
+    // Frontend-Logik in teilnehmer.js (berechneStatus).
+    const turnierKostenlos = (parseFloat(turnier.startgeld) || 0) === 0;
+    if (!turnierKostenlos && !athlet.startgeld_bezahlt) {
+        throw new FachFehler(400, 'Das Startgeld ist noch nicht bezahlt.');
+    }
+    if (!athlet.gewicht || parseFloat(athlet.gewicht) <= 0) {
+        throw new FachFehler(400, 'Es ist kein gültiges Gewicht hinterlegt.');
+    }
+    if (!athlet.gewogen) {
+        throw new FachFehler(400, 'Der Teilnehmer ist noch nicht als gewogen markiert.');
+    }
+    // Die Judopass-Nummer selbst ist keine eigene Voraussetzung mehr — die Lizenzprüfung
+    // (oben, über lizenz_ablauf) deckt das ab, da sie ohnehin an den Judopass gebunden ist.
+
+    await knex('turnier_teilnehmer').where({ id }).update({ status: 'kampfbereit', updated_at: knex.fn.now() });
+}
+
 export async function bestaetigeKampfbereit(knex, req, res) {
     try {
-        const { id } = req.params;
-        const athlet = await knex('turnier_teilnehmer').where({ id }).first();
+        const athlet = await knex('turnier_teilnehmer').where({ id: req.params.id }).first();
         if (!athlet) {
             return res.status(404).json({ success: false, error: 'Teilnehmer nicht gefunden.' });
         }
-
         const turnier = await knex('turniere').where({ id: athlet.turnier_id }).first();
-        const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
-        const istGastgeberVerein = process.env.IS_OFFLINE === 'true' || hatVereinsZugriffAufTurnier(user, turnier);
-        if (!istGastgeberVerein) {
-            return res.status(403).json({ success: false, error: 'Nur Mitglieder des ausrichtenden Vereins dürfen Kampfbereitschaft bestätigen.' });
-        }
-
-        // Erneutes Bestätigen nach einer versehentlichen nicht_erschienen-Markierung (spätes
-        // Erscheinen vor dem Start der Pool-Zuteilung) bleibt möglich.
-        if (!['angemeldet', 'nicht_erschienen'].includes(athlet.status)) {
-            return res.status(400).json({ success: false, error: `Kampfbereitschaft kann aus dem Status "${athlet.status}" nicht bestätigt werden.` });
-        }
-
-        const heuteStr = new Date().toISOString().split('T')[0];
-        if (!athlet.lizenz_ablauf || athlet.lizenz_ablauf < heuteStr) {
-            return res.status(400).json({ success: false, error: 'Die Lizenz ist abgelaufen oder nicht hinterlegt.' });
-        }
-        // Bei kostenlosen Turnieren (Startgeld 0€) gilt jeder als bezahlt, analog zur
-        // Frontend-Logik in teilnehmer.js (berechneStatus).
-        const turnierKostenlos = (parseFloat(turnier.startgeld) || 0) === 0;
-        if (!turnierKostenlos && !athlet.startgeld_bezahlt) {
-            return res.status(400).json({ success: false, error: 'Das Startgeld ist noch nicht bezahlt.' });
-        }
-        if (!athlet.gewicht || parseFloat(athlet.gewicht) <= 0) {
-            return res.status(400).json({ success: false, error: 'Es ist kein gültiges Gewicht hinterlegt.' });
-        }
-        if (!athlet.gewogen) {
-            return res.status(400).json({ success: false, error: 'Der Teilnehmer ist noch nicht als gewogen markiert.' });
-        }
-        // Die Judopass-Nummer selbst ist keine eigene Voraussetzung mehr — die Lizenzprüfung
-        // (oben, über lizenz_ablauf) deckt das ab, da sie ohnehin an den Judopass gebunden ist.
-
-        await knex('turnier_teilnehmer').where({ id }).update({ status: 'kampfbereit', updated_at: knex.fn.now() });
+        const kontext = await ermittleKontext(knex, req, turnier);
+        await bestaetigeKampfbereitschaft(knex, req.params.id, kontext);
         return res.json({ success: true, message: 'Kampfbereitschaft bestätigt.' });
     } catch (error) {
-        return res.status(500).json({ success: false, error: error.message });
+        return res.status(error.statusCode || 500).json({ success: false, error: error.message });
     }
 }
 
@@ -409,19 +503,19 @@ export async function bestaetigeKampfbereit(knex, req, res) {
 async function loeseKampfAlsForfeitAuf(knex, athlet, kampfId, neuerTeilnehmerStatus) {
     const kampf = await knex('kaempfe').where({ id: kampfId }).first();
     if (!kampf) {
-        throw Object.assign(new Error('Kampf nicht gefunden.'), { statusCode: 404 });
+        throw new FachFehler(404, 'Kampf nicht gefunden.');
     }
     if (kampf.kaempfer1_id !== athlet.id && kampf.kaempfer2_id !== athlet.id) {
-        throw Object.assign(new Error('Der Teilnehmer ist an diesem Kampf nicht beteiligt.'), { statusCode: 400 });
+        throw new FachFehler(400, 'Der Teilnehmer ist an diesem Kampf nicht beteiligt.');
     }
     if (kampf.status === 'beendet' || kampf.status === 'freilos') {
-        throw Object.assign(new Error('Dieser Kampf ist bereits abgeschlossen.'), { statusCode: 409 });
+        throw new FachFehler(409, 'Dieser Kampf ist bereits abgeschlossen.');
     }
 
     const istKaempfer1 = kampf.kaempfer1_id === athlet.id;
     const gegnerId = istKaempfer1 ? kampf.kaempfer2_id : kampf.kaempfer1_id;
     if (!gegnerId) {
-        throw Object.assign(new Error('Der Kampf hat keinen Gegner, gegen den gewertet werden könnte.'), { statusCode: 400 });
+        throw new FachFehler(400, 'Der Kampf hat keinen Gegner, gegen den gewertet werden könnte.');
     }
 
     await knex('turnier_teilnehmer').where({ id: athlet.id }).update({ status: neuerTeilnehmerStatus, updated_at: knex.fn.now() });
@@ -476,54 +570,42 @@ async function loeseKampfAlsForfeitAuf(knex, athlet, kampfId, neuerTeilnehmerSta
     }
 }
 
-// Zustand 6: war kampfbereit, stand aber bei Aufruf nicht auf der Matte (z.B. Verletzung beim
-// Aufwärmen). Der Kampf wird als regulärer Sieg mit 10 Punkten für den Gegner gewertet.
-export async function markiereNichtAngetreten(knex, req, res) {
+// Service-Funktion ohne req/res (REST-Routen nicht-angetreten/disqualifizieren UND Sync-Brücke).
+// art: 'nicht_angetreten' | 'disqualifiziert'.
+export async function werteForfeit(knex, teilnehmerId, kampfId, art, kontext) {
+    const athlet = await knex('turnier_teilnehmer').where({ id: teilnehmerId }).first();
+    if (!athlet) throw new FachFehler(404, 'Teilnehmer nicht gefunden.');
+    if (!kontext.istGastgeberVerein) {
+        throw new FachFehler(403, 'Nur Mitglieder des ausrichtenden Vereins dürfen dies markieren.');
+    }
+    await loeseKampfAlsForfeitAuf(knex, athlet, kampfId, art);
+}
+
+async function werteForfeitPerRoute(knex, req, res, art, erfolgsMeldung) {
     try {
-        const { id } = req.params;
-        const { kampf_id } = req.body;
-        const athlet = await knex('turnier_teilnehmer').where({ id }).first();
+        const athlet = await knex('turnier_teilnehmer').where({ id: req.params.id }).first();
         if (!athlet) {
             return res.status(404).json({ success: false, error: 'Teilnehmer nicht gefunden.' });
         }
-
         const turnier = await knex('turniere').where({ id: athlet.turnier_id }).first();
-        const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
-        const istGastgeberVerein = process.env.IS_OFFLINE === 'true' || hatVereinsZugriffAufTurnier(user, turnier);
-        if (!istGastgeberVerein) {
-            return res.status(403).json({ success: false, error: 'Nur Mitglieder des ausrichtenden Vereins dürfen dies markieren.' });
-        }
-
-        await loeseKampfAlsForfeitAuf(knex, athlet, parseInt(kampf_id, 10), 'nicht_angetreten');
-        return res.json({ success: true, message: 'Teilnehmer als nicht angetreten markiert.' });
+        const kontext = await ermittleKontext(knex, req, turnier);
+        await werteForfeit(knex, athlet.id, parseInt(req.body.kampf_id, 10), art, kontext);
+        return res.json({ success: true, message: erfolgsMeldung });
     } catch (error) {
         return res.status(error.statusCode || 500).json({ success: false, error: error.message });
     }
 }
 
+// Zustand 6: war kampfbereit, stand aber bei Aufruf nicht auf der Matte (z.B. Verletzung beim
+// Aufwärmen). Der Kampf wird als regulärer Sieg mit 10 Punkten für den Gegner gewertet.
+export async function markiereNichtAngetreten(knex, req, res) {
+    return werteForfeitPerRoute(knex, req, res, 'nicht_angetreten', 'Teilnehmer als nicht angetreten markiert.');
+}
+
 // Zustand 7: Ausschluss wegen schwerem Regelverstoß (z.B. direktes Hansoku-make). Gleiche
 // Forfeit-Wertung wie nicht_angetreten.
 export async function disqualifiziere(knex, req, res) {
-    try {
-        const { id } = req.params;
-        const { kampf_id } = req.body;
-        const athlet = await knex('turnier_teilnehmer').where({ id }).first();
-        if (!athlet) {
-            return res.status(404).json({ success: false, error: 'Teilnehmer nicht gefunden.' });
-        }
-
-        const turnier = await knex('turniere').where({ id: athlet.turnier_id }).first();
-        const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
-        const istGastgeberVerein = process.env.IS_OFFLINE === 'true' || hatVereinsZugriffAufTurnier(user, turnier);
-        if (!istGastgeberVerein) {
-            return res.status(403).json({ success: false, error: 'Nur Mitglieder des ausrichtenden Vereins dürfen dies markieren.' });
-        }
-
-        await loeseKampfAlsForfeitAuf(knex, athlet, parseInt(kampf_id, 10), 'disqualifiziert');
-        return res.json({ success: true, message: 'Teilnehmer disqualifiziert.' });
-    } catch (error) {
-        return res.status(error.statusCode || 500).json({ success: false, error: error.message });
-    }
+    return werteForfeitPerRoute(knex, req, res, 'disqualifiziert', 'Teilnehmer disqualifiziert.');
 }
 
 // Automatischer Übergang zu "teilgenommen": mindestens ein Kampf mit Kampfzeit > 0 oder ein
@@ -617,17 +699,7 @@ export async function aendereStatusFelder(knex, req, res) {
         // Kriterien (dieselben Regeln wie in bestaetigeKampfbereit) jetzt erfüllt bzw. nicht
         // mehr erfüllt sind, und den Lebenszyklus-Status entsprechend mitziehen.
         const merged = { ...athlet, ...updates };
-        const heuteStr = new Date().toISOString().split('T')[0];
-        const lizenzGueltig = !!merged.lizenz_ablauf && merged.lizenz_ablauf >= heuteStr;
-        const gewichtGueltig = !!merged.gewicht && parseFloat(merged.gewicht) > 0;
-        const istGewogen = !!merged.gewogen;
-        // Bei kostenlosen Turnieren (Startgeld 0€) gilt jeder als bezahlt, analog zur
-        // Frontend-Logik in teilnehmer.js (berechneStatus) und zu bestaetigeKampfbereit.
-        const turnierKostenlos = (parseFloat(turnier.startgeld) || 0) === 0;
-        const startgeldBezahlt = turnierKostenlos || !!merged.startgeld_bezahlt;
-        // Die Judopass-Nummer selbst ist keine eigene Voraussetzung mehr — die Lizenzprüfung
-        // (lizenzGueltig, per Lizenz-Toggle gesetzt) deckt das ab, da sie an den Judopass gebunden ist.
-        const kampfbereitErfuellt = lizenzGueltig && gewichtGueltig && istGewogen && startgeldBezahlt;
+        const { erfuellt: kampfbereitErfuellt, lizenzGueltig, gewichtGueltig, istGewogen, startgeldBezahlt } = pruefeKampfbereitschaft(merged, turnier);
 
         if (status !== undefined) {
             // Ein explizit angefordertes "kampfbereit" muss dieselben Kriterien erfüllen wie die
@@ -642,10 +714,8 @@ export async function aendereStatusFelder(knex, req, res) {
                 return res.status(400).json({ success: false, error: `Kampfbereitschaft kann nicht gesetzt werden: ${fehlend.join(', ')}.` });
             }
             updates.status = status;
-        } else if (kampfbereitErfuellt && ['angemeldet', 'nicht_erschienen'].includes(athlet.status)) {
-            updates.status = 'kampfbereit';
-        } else if (!kampfbereitErfuellt && athlet.status === 'kampfbereit') {
-            updates.status = 'angemeldet';
+        } else {
+            updates.status = leiteStatusAusKampfbereitschaftAb(athlet.status, kampfbereitErfuellt);
         }
 
         await knex('turnier_teilnehmer').where({ id }).update({ ...updates, updated_at: knex.fn.now() });

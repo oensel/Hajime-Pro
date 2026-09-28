@@ -32,22 +32,6 @@
             </button>
         </div>
     </div>
-    
-    <!-- Offline-Bereich -->
-    <div id="offlineActions" style="display: none; border-top: 1px solid var(--border); margin-top: 16px; padding-top: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
-        <div style="font-size: 13px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Offline-Datenaustausch:</div>
-        <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-            <button type="button" class="btn btn-outlined" id="exportBtn" style="height: 38px; display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 0 14px; margin: 0;">
-                <span class="material-icons" style="font-size: 18px;">download</span>
-                Daten herunterladen (JSON)
-            </button>
-            <label class="btn btn-outlined" style="height: 38px; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; padding: 0 14px; margin: 0; cursor: pointer; text-transform: uppercase; font-weight: bold; box-sizing: border-box; justify-content: center; user-select: none;">
-                <span class="material-icons" style="font-size: 18px;">upload</span>
-                Ergebnisse einspielen (JSON)
-                <input type="file" id="importInput" accept=".json" style="display: none;">
-            </label>
-        </div>
-    </div>
 </div>
 
 <!-- Container für den Kampfplan -->
@@ -187,6 +171,9 @@
     </div>
 </div>
 
+<script src="/js/pouchdb/pouchdb.min.js"></script>
+<script src="/js/datenzugriff.js"></script>
+<script src="/js/syncStatus.js"></script>
 <script src="/js/kampf.js"></script>
 </body>
 </html>

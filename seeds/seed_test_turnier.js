@@ -1,13 +1,30 @@
 // seeds/seed_test_turnier.js
-// Testdaten: ~90 Teilnehmer in 2 Altersklassen (weiblich U13, Männer)
+// Testdaten: ~150 Teilnehmer (mixed U9, männlich/weiblich U11, männlich/weiblich U13) — nur PostgreSQL
 // Ausführen: node seeds/seed_test_turnier.js
+// Verbindung über DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME (knexfile.cjs, Umgebung 'online'),
+// z.B. gegen die lokale Instanz aus `npm run pg:start` (DB_HOST=127.0.0.1, DB_PORT=5433).
 
 import knexLib from 'knex';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const knexConfig = require('../knexfile.cjs');
 
-const knex = knexLib(knexConfig.offline);
+const pgConfig = knexConfig.online;
+const dbHost = pgConfig.connection.host;
+
+// Das Skript leert alle Turnierdaten (TRUNCATE). Zeigt DB_HOST nicht auf den eigenen Rechner,
+// ist es vermutlich die gemeinsame Cloud-DB — dann nur mit expliziter Bestätigung (wie setup_db.js).
+const LOKALE_HOSTS = ['127.0.0.1', 'localhost', '::1'];
+if (!LOKALE_HOSTS.includes(dbHost) && process.env.CONFIRM_ONLINE_RESET !== 'JA_WIRKLICH_LOESCHEN') {
+    console.error(
+        `❌ Abgebrochen: DB_HOST=${dbHost} ist kein lokaler Server. Das Seeden würde dort ALLE ` +
+        'Turniere (inkl. Teilnehmer, Pools, Kämpfe, Mannschaften) löschen.\n' +
+        '   Falls das wirklich beabsichtigt ist, setze zusätzlich CONFIRM_ONLINE_RESET=JA_WIRKLICH_LOESCHEN.'
+    );
+    process.exit(1);
+}
+
+const knex = knexLib(pgConfig);
 
 // --- HILFSFUNKTIONEN ---
 
@@ -98,7 +115,7 @@ function erzeugeTeilnehmer(anzahl, geschlecht, altersklasse, gewichtsklasse, gew
             gewicht: zufallsGewicht(gewichtMin, gewichtMax),
             altersklasse,
             gewichtsklasse,
-            startgeld_bezahlt: Math.random() < 0.7 ? 1 : 0
+            startgeld_bezahlt: Math.random() < 0.7
         });
     }
 
@@ -125,7 +142,7 @@ function erzeugeMixedTeilnehmer(anzahl, altersklasse, gewichtsklasse, gewichtMin
             gewicht: zufallsGewicht(gewichtMin, gewichtMax),
             altersklasse,
             gewichtsklasse,
-            startgeld_bezahlt: Math.random() < 0.7 ? 1 : 0
+            startgeld_bezahlt: Math.random() < 0.7
         });
     }
     return teilnehmer;
@@ -159,7 +176,29 @@ const u11w = [
     ...erzeugeTeilnehmer( 4, 'weiblich', 'U11', '+48',  48.1, 55.0,  2016, 2017),
 ];
 
-const alleTeilnehmer = [...u9mixed, ...u11m, ...u11w];
+// U13: Jahrgänge 2014-2015 (DJB-Gewichtsklassen aus src/config/altersklassen.json)
+const u13m = [
+    //  Klasse    Anz   GewMin  GewMax
+    ...erzeugeTeilnehmer( 4, 'männlich', 'U13', '-31',  28.1, 31.0,  2014, 2015),
+    ...erzeugeTeilnehmer( 6, 'männlich', 'U13', '-34',  31.1, 34.0,  2014, 2015),
+    ...erzeugeTeilnehmer( 8, 'männlich', 'U13', '-37',  34.1, 37.0,  2014, 2015),
+    ...erzeugeTeilnehmer( 7, 'männlich', 'U13', '-40',  37.1, 40.0,  2014, 2015),
+    ...erzeugeTeilnehmer( 5, 'männlich', 'U13', '-43',  40.1, 43.0,  2014, 2015),
+    ...erzeugeTeilnehmer( 4, 'männlich', 'U13', '-50',  46.1, 50.0,  2014, 2015),
+    ...erzeugeTeilnehmer( 3, 'männlich', 'U13', '+55',  55.1, 65.0,  2014, 2015),
+];
+
+const u13w = [
+    //  Klasse    Anz   GewMin  GewMax
+    ...erzeugeTeilnehmer( 3, 'weiblich', 'U13', '-30',  27.1, 30.0,  2014, 2015),
+    ...erzeugeTeilnehmer( 5, 'weiblich', 'U13', '-33',  30.1, 33.0,  2014, 2015),
+    ...erzeugeTeilnehmer( 7, 'weiblich', 'U13', '-36',  33.1, 36.0,  2014, 2015),
+    ...erzeugeTeilnehmer( 6, 'weiblich', 'U13', '-40',  36.1, 40.0,  2014, 2015),
+    ...erzeugeTeilnehmer( 4, 'weiblich', 'U13', '-44',  40.1, 44.0,  2014, 2015),
+    ...erzeugeTeilnehmer( 3, 'weiblich', 'U13', '+57',  57.1, 66.0,  2014, 2015),
+];
+
+const alleTeilnehmer = [...u9mixed, ...u11m, ...u11w, ...u13m, ...u13w];
 
 // Set weight to 0.0 for 3 participants to simulate "not weighed in yet"
 for (let i = 0; i < 3; i++) {
@@ -171,33 +210,57 @@ for (let i = 0; i < 3; i++) {
 // --- DATENBANK BEFÜLLEN ---
 
 async function seed() {
-    console.log('🧹 Lösche bestehende Testdaten...');
+    console.log(`🧹 Lösche bestehende Turnierdaten (PostgreSQL ${dbHost}/${pgConfig.connection.database})...`);
 
-    // Reihenfolge wegen Foreign Keys: Kämpfe → Teilnehmer → Pools → Kampfflächen → Turniere
-    await knex('kaempfe').del();
-    await knex('turnier_teilnehmer').del();
-    await knex('pools').del();
-    await knex('kampfflaechen').del();
-    await knex('turniere').del();
+    // TRUNCATE … CASCADE nimmt alle abhängigen Tabellen (Mannschaften, Begegnungen, …) mit,
+    // RESTART IDENTITY setzt die IDs zurück — das Turnier bekommt so bei jedem Lauf ID 1.
+    // Vereine und Benutzer bleiben unangetastet.
+    await knex.raw(
+        'TRUNCATE TABLE kaempfe, turnier_teilnehmer, pools, kampfflaechen, turniere RESTART IDENTITY CASCADE'
+    );
+
+    // Das Turnier muss einem Verein gehören — sonst ist es in turniere.html weder "eigenes"
+    // Turnier noch verwaltbar (Zugriffsrechte sind vereinsbasiert). SEED_VEREIN wählt den Verein
+    // per Name, sonst der erste vorhandene (im Hallenbetrieb der "Offline Club").
+    const vereinQuery = knex('vereine').orderBy('id').first('id', 'name');
+    const verein = process.env.SEED_VEREIN
+        ? await vereinQuery.where({ name: process.env.SEED_VEREIN })
+        : await vereinQuery;
+    if (!verein) {
+        throw new Error(process.env.SEED_VEREIN
+            ? `Verein "${process.env.SEED_VEREIN}" nicht gefunden.`
+            : 'Kein Verein vorhanden — zuerst Migrationen ausführen bzw. einen Verein anlegen.');
+    }
+
+    // Datum immer in der Zukunft (nächster Samstag in mind. 14 Tagen) — turniere.html listet nur
+    // anstehende Turniere, und mit erreichtem Wettkampftag gälte es schon als "in Durchführung".
+    const datum = new Date();
+    datum.setDate(datum.getDate() + 14);
+    datum.setDate(datum.getDate() + ((6 - datum.getDay() + 7) % 7));
+    const datumStr = `${datum.getFullYear()}-${String(datum.getMonth() + 1).padStart(2, '0')}-${String(datum.getDate()).padStart(2, '0')}`;
 
     console.log('🏯 Erstelle Turnier...');
 
     const [turnierIdObj] = await knex('turniere').insert({
         bezeichnung: '1. Lokaler Judo-CUP 2026',
         ort: 'Senden',
-        datum: '2026-07-05',
+        datum: datumStr,
         ausrichter: 'Judo Club Senden e.V.',
-        nutze_gewichtsklassen: 0,
+        verein_id: verein.id,
+        status: 'veroeffentlicht',
+        nutze_gewichtsklassen: false,
         altersklassen: JSON.stringify({
             "mixed_U9": "gewichtsnahe",
             "männlich_U11": "djb",
-            "weiblich_U11": "djb"
+            "weiblich_U11": "djb",
+            "männlich_U13": "djb",
+            "weiblich_U13": "djb"
         }),
         anzahl_kampfflaechen: 3
     }).returning('id');
-    const turnierId = typeof turnierIdObj === 'object' ? turnierIdObj.id : turnierIdObj;
+    const turnierId = turnierIdObj.id;
 
-    console.log(`✅ Turnier erstellt (ID: ${turnierId})`);
+    console.log(`✅ Turnier erstellt (ID: ${turnierId}, ${datumStr}, Verein: ${verein.name})`);
 
     // Kampfflächen anlegen
     for (let m = 1; m <= 3; m++) {
@@ -222,28 +285,31 @@ async function seed() {
     const u9Count = u9mixed.length;
     const u11mCount = u11m.length;
     const u11wCount = u11w.length;
+    const u13mCount = u13m.length;
+    const u13wCount = u13w.length;
 
     console.log('');
     console.log('╔══════════════════════════════════════════════════╗');
     console.log('║          TESTDATEN ERFOLGREICH ERSTELLT          ║');
     console.log('╠══════════════════════════════════════════════════╣');
     console.log(`║  Turnier:    1. Lokaler Judo-CUP 2026           ║`);
-    console.log(`║  Ort:        Karlsruhe-Durlach                  ║`);
+    console.log(`║  Ort:        Senden                             ║`);
     console.log(`║  Matten:     3                                  ║`);
     console.log('╠══════════════════════════════════════════════════╣');
     console.log(`║  mixed U9:        ${String(u9Count).padStart(3)} Teilnehmer               ║`);
     console.log(`║  männlich U11:    ${String(u11mCount).padStart(3)} Teilnehmer               ║`);
     console.log(`║  weiblich U11:    ${String(u11wCount).padStart(3)} Teilnehmer               ║`);
+    console.log(`║  männlich U13:    ${String(u13mCount).padStart(3)} Teilnehmer               ║`);
+    console.log(`║  weiblich U13:    ${String(u13wCount).padStart(3)} Teilnehmer               ║`);
     console.log(`║  ─────────────────────────────────               ║`);
-    console.log(`║  GESAMT:          ${String(u9Count + u11mCount + u11wCount).padStart(3)} Teilnehmer               ║`);
+    console.log(`║  GESAMT:          ${String(alleTeilnehmer.length).padStart(3)} Teilnehmer               ║`);
     console.log('╚══════════════════════════════════════════════════╝');
 }
 
 seed()
-    .then(() => {
-        process.exit(0);
-    })
-    .catch((err) => {
+    .then(() => knex.destroy())
+    .catch(async (err) => {
         console.error('❌ Fehler beim Seeden:', err);
-        process.exit(1);
+        await knex.destroy();
+        process.exitCode = 1;
     });

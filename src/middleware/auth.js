@@ -119,7 +119,7 @@ async function resolveTurnierId(knex, req) {
  * Middleware factory to check that the authenticated user is an approved (freigegeben)
  * member of the club hosting the tournament (turnier.verein_id). This is the single access
  * rule for managing a tournament and its content (editing the tournament itself, pools/
- * Auslosung, Kampfflächen, Kämpfe, offline import/export) — there is no separate "owner"
+ * Auslosung, Kampfflächen, Kämpfe) — there is no separate "owner"
  * concept; club membership alone governs access.
  * @param {Object} knex - Knex instance
  */
@@ -162,7 +162,7 @@ export function requireTournamentEditAccess(knex) {
 
 /**
  * Middleware factory to block write operations on the tournament's competition data (pools,
- * Kampfflächen, Kämpfe, offline result import) once the tournament is 'abgesagt' or
+ * Kampfflächen, Kämpfe) once the tournament is 'abgesagt' or
  * 'abgeschlossen'. Deliberately separate from requireTournamentEditAccess: that middleware is
  * also used by turnierRoutes.js's own lifecycle endpoints (absagen/löschen eines abgesagten
  * Turniers etc.), which have their own, more specific status rules and must NOT be blocked here.
@@ -262,4 +262,13 @@ export function requireWriteAuth(req, res, next) {
     }
     
     return res.status(401).json({ success: false, error: 'Passwort erforderlich für Schreibzugriff.' });
+}
+
+// Wie requireWriteAuth, aber auch für GET: für Daten, die nur die Turnierleitung sehen darf
+// (z.B. den Kopplungscode für neue Client-Geräte). Ohne STEUERUNG_PASSWORD offen wie alle
+// Verwaltungsseiten im Hallenbetrieb.
+export function requireSteuerungPasswort(req, res, next) {
+    const password = process.env.STEUERUNG_PASSWORD;
+    if (!password || req.headers['x-steuerung-password'] === password) return next();
+    return res.status(401).json({ success: false, error: 'Passwort erforderlich.' });
 }

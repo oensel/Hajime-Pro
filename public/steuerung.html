@@ -16,24 +16,6 @@
             
             <div id="datenSektorSection" class="collapse-content" style="padding: 16px 20px; display: block;">
                 
-                <!-- OFFLINE-DATENSTEUERUNG -->
-                <div style="border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 16px; margin-bottom: 16px; font-family: sans-serif; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
-                    <div style="font-weight: bold; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; color: #ffc107; display: flex; align-items: center; gap: 8px; margin: 0;">
-                        <span>📶</span>
-                        <span>Verbindungs-Modus:</span>
-                        <span id="connectionModeText" style="color: #28a745; font-size: 11px; padding: 2px 6px; border: 1px solid #28a745; border-radius: 4px; font-weight: bold; text-transform: uppercase;">Online (WLAN)</span>
-                    </div>
-                    <div style="display: flex; gap: 12px; align-items: center;">
-                        <label class="btn-main" style="background-color: #5a6268; font-size: 13px; padding: 8px 16px; margin: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; border-radius: 4px; color: white; font-weight: bold; border: none; text-transform: uppercase; box-shadow: 0 2px 4px rgba(0,0,0,0.15);">
-                            📥 Offline-Daten (JSON) laden
-                            <input type="file" id="offlineImportInput" accept=".json" style="display: none;">
-                        </label>
-                        <button type="button" id="btnOfflineExport" class="btn-main" style="background-color: #17a2b8; font-size: 13px; padding: 8px 16px; display: none; align-items: center; gap: 6px; border-radius: 4px; color: white; font-weight: bold; border: none; text-transform: uppercase; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.15);" onclick="offlineExportRun()">
-                            📤 Ergebnisse exportieren (JSON)
-                        </button>
-                    </div>
-                </div>
-
                 <!-- OBERER BEREICH: EINSTELLUNGEN -->
                 <div class="timer-section collapse-timer-reset">
                     <div class="meta-grid collapse-meta-grid">
@@ -251,6 +233,9 @@
         </div>
     </div>
 
+    <script src="/js/pouchdb/pouchdb.min.js"></script>
+    <script src="/js/datenzugriff.js"></script>
+    <script src="/js/syncStatus.js"></script>
     <script type="module" src="js/scoreboard.js"></script>
 </body>
 </html>

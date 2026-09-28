@@ -2,26 +2,50 @@
   "name": "hajime-pro",
   "version": "1.0.0",
   "type": "module",
+  "main": "desktop/main.js",
   "scripts": {
     "start": "node src/app.js",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:vollablauf": "playwright test --config=playwright.vollablauf.config.js",
+    "test:unit": "node --test \"tests/unit/**/*.test.js\"",
+    "test:e2e:sync": "playwright test --config=playwright.sync.config.js",
+    "test:e2e:cluster": "playwright test -c playwright.cluster.config.js",
+    "pg:start": "node scripts/lokale-pg.mjs start",
+    "pg:stopp": "node scripts/lokale-pg.mjs stopp",
+    "pg:status": "node scripts/lokale-pg.mjs status",
+    "client:schluessel": "node scripts/client-schluessel.mjs",
+    "client:signieren": "node scripts/signiere-client.mjs",
+    "client:holen": "node scripts/hole-client-release.mjs",
+    "desktop:start": "electron .",
+    "desktop:icon": "node scripts/erzeuge-app-icon.mjs",
+    "desktop:build": "electron-builder --config desktop/electron-builder.yml",
+    "test:electron": "playwright test -c playwright.electron.config.js"
   },
   "dependencies": {
     "@material-design-icons/font": "^0.14.15",
+    "bonjour-service": "^1.4.4",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "express-pouchdb": "^4.2.0",
     "jsonwebtoken": "^9.0.2",
     "jsqr": "^1.4.0",
     "knex": "^3.1.0",
     "material-components-web": "^14.0.0",
+    "multicast-dns": "^7.2.5",
     "nodemailer": "^6.9.15",
     "pg": "^8.11.5",
+    "pouchdb": "^9.0.0",
+    "pouchdb-find": "^9.0.0",
+    "pouchdb-node": "^9.0.0",
     "qrcode-generator": "^2.0.4",
     "sqlite3": "^5.1.7",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.2/xlsx-0.20.2.tgz"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.1"
+    "@playwright/test": "^1.62.1",
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3",
+    "embedded-postgres": "^18.4.0-beta.17"
   }
 }

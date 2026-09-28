@@ -1,0 +1,9 @@
+# In /etc/postgresql/<version>/main/pg_hba.conf ergänzen (beide Server).
+# ANPASSEN: 192.168.10.0/24 = Hallennetz, feste IPs der beiden Server.
+host    replication     replikator      192.168.10.11/32        scram-sha-256
+host    replication     replikator      192.168.10.12/32        scram-sha-256
+# pg_rewind verbindet sich als replikator mit einer normalen Datenbank
+host    postgres        replikator      192.168.10.11/32        scram-sha-256
+host    postgres        replikator      192.168.10.12/32        scram-sha-256
+# App (lokal)
+host    hajime          hajime          127.0.0.1/32            scram-sha-256

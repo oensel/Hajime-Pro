@@ -4,7 +4,8 @@ import { DoppelKo16Manager } from '../services/DoppelKo16Manager.js';
 import { DoppelKo32Manager } from '../services/DoppelKo32Manager.js';
 import { GruppenUeberKreuzManager } from '../services/GruppenUeberKreuzManager.js';
 import { planeKaempfeFuerKampfflaeche, synchronisiereMattenStatus } from './poolController.js';
-import { letztesKampfEndeProTeilnehmer, pruefeKampfPause } from '../shared/pausenRegel.js';
+import { baueMattenAnsicht } from '../shared/mattenAnsicht.js';
+import { FachFehler } from '../utils/fachFehler.js';
 import { aktualisiereMannschaftsPool, ermittleErsatzKandidaten, wechsleKaempfer } from '../services/mannschaftsBegegnungEngine.js';
 
 const jederGegenJeden = new JederGegenJedenManager();
@@ -109,77 +110,21 @@ export async function getKaempfe(knex, req, res) {
                 )
                 .orderBy('kaempfe.id', 'asc');
         } else if (kampfflaecheId) {
-            query = query
-                .join('pools', 'kaempfe.pool_id', '=', 'pools.id')
-                .leftJoin('turnier_teilnehmer as t1', 'kaempfe.kaempfer1_id', '=', 't1.id')
-                .leftJoin('turnier_teilnehmer as t2', 'kaempfe.kaempfer2_id', '=', 't2.id')
-                .leftJoin('mannschaftskaempfe as mk', 'kaempfe.mannschaftskampf_id', '=', 'mk.id')
-                .leftJoin('mannschaften as m1', 'mk.mannschaft1_id', '=', 'm1.id')
-                .leftJoin('mannschaften as m2', 'mk.mannschaft2_id', '=', 'm2.id')
-                .where('pools.kampfflaeche_id', parseInt(kampfflaecheId))
-                .select(
-                    'kaempfe.*',
-                    'pools.bezeichnung as pool_bezeichnung',
-                    'pools.kampfzeit_sekunden as pool_kampfzeit',
-                    'pools.altersklasse as pool_altersklasse',
-                    'pools.golden_score_aktiv as pool_golden_score_aktiv',
-                    'pools.golden_score_max_sekunden as pool_golden_score_max_sekunden',
-                    't1.vorname as kaempfer1_vorname',
-                    't1.nachname as kaempfer1_nachname',
-                    't1.verein as kaempfer1_verein',
-                    't2.vorname as kaempfer2_vorname',
-                    't2.nachname as kaempfer2_nachname',
-                    't2.verein as kaempfer2_verein',
-                    'mk.siegpunkte_mannschaft1', 'mk.siegpunkte_mannschaft2',
-                    'm1.bezeichnung as mannschaft1_bezeichnung', 'm1.verein as mannschaft1_verein',
-                    'm2.bezeichnung as mannschaft2_bezeichnung', 'm2.verein as mannschaft2_verein'
-                )
-                .orderBy('kaempfe.matten_reihenfolge', 'asc')
-                .orderBy('kaempfe.id', 'asc');
+            // Die Ansicht selbst baut die reine Funktion baueMattenAnsicht (src/shared/) — dieselbe,
+            // die das Frontend im Sync-Modus auf die Dokumente der Dokument-DB anwendet. Dort stehen
+            // auch die Regeln zu wartet_auf_einzelpools, Gewichtsklassen-Suffix und Pausenwarnung.
+            const mattenId = parseInt(kampfflaecheId);
+            const pools = await knex('pools').where({ kampfflaeche_id: mattenId });
+            const poolIds = pools.map(p => p.id);
+            const kaempfeDerMatte = poolIds.length ? await knex('kaempfe').whereIn('pool_id', poolIds) : [];
+            const teilnehmerIds = [...new Set(kaempfeDerMatte.flatMap(k => [k.kaempfer1_id, k.kaempfer2_id]).filter(Boolean))];
+            const teilnehmer = teilnehmerIds.length ? await knex('turnier_teilnehmer').whereIn('id', teilnehmerIds) : [];
+            const begegnungIds = [...new Set(kaempfeDerMatte.map(k => k.mannschaftskampf_id).filter(Boolean))];
+            const mannschaftskaempfe = begegnungIds.length ? await knex('mannschaftskaempfe').whereIn('id', begegnungIds) : [];
+            const mannschaftIds = [...new Set(mannschaftskaempfe.flatMap(m => [m.mannschaft1_id, m.mannschaft2_id]).filter(Boolean))];
+            const mannschaften = mannschaftIds.length ? await knex('mannschaften').whereIn('id', mannschaftIds) : [];
 
-            const kaempfeDerMatte = await query;
-
-            // Mannschaftskampf-Einzelkämpfe dürfen erst dann als "nächster Kampf" ausgewählt bzw.
-            // gestartet werden, wenn alle Einzelwettkampf-Pools der Matte fertig ausgekämpft sind
-            // (gleiche Regel wie in poolController.planeKaempfeFuerKampfflaeche) — sie bleiben aber
-            // in der Warteliste SICHTBAR (nur ans Ende einsortiert), damit der Tisch weiß, was auf
-            // der Matte noch folgt. Das Flag wird von kampf.js ausgewertet, um solche Kämpfe von
-            // der "aktueller Kampf"-Auswahl auszuschließen und in der Warteliste ans Ende zu setzen.
-            const einzelPoolsAufMatte = await knex('pools')
-                .where({ kampfflaeche_id: parseInt(kampfflaecheId) })
-                .andWhere(function () { this.whereNot('typ', 'mannschaft').orWhereNull('typ'); });
-            const alleEinzelPoolsAbgeschlossen = einzelPoolsAufMatte.every(p => p.status === 'kaempfe_beendet' || p.status === 'abgeschlossen');
-            if (!alleEinzelPoolsAbgeschlossen) {
-                for (const kampf of kaempfeDerMatte) {
-                    if (kampf.mannschaftskampf_id) {
-                        kampf.wartet_auf_einzelpools = true;
-                    }
-                }
-            }
-
-            // Mannschaftskampf-Einzelkämpfe zeigen statt des reinen Pool-Namens "<Poolname>
-            // <Gewichtsklasse>", damit z.B. auf der Matte/Anzeige erkennbar ist, welche
-            // Gewichtsklasse einer Begegnung gerade läuft.
-            for (const kampf of kaempfeDerMatte) {
-                if (kampf.mannschaft_gewichtsklasse) {
-                    const gewichtsklasse = String(kampf.mannschaft_gewichtsklasse);
-                    kampf.pool_bezeichnung = `${kampf.pool_bezeichnung} ${/kg$/i.test(gewichtsklasse) ? gewichtsklasse : gewichtsklasse + ' kg'}`;
-                }
-            }
-
-            // Pausenwarnung mit ECHTEN Zeitstempeln (nicht der Schätzung der Matten-Planung):
-            // pro noch nicht gestartetem Kampf prüfen, ob beide Kämpfer seit ihrem letzten
-            // tatsächlichen Kampfende schon genug Pause hatten — Grundlage für die Warnanzeige
-            // und den Tausch-Button in der Steuerung.
-            const letztesEnde = letztesKampfEndeProTeilnehmer(kaempfeDerMatte);
-            const jetzt = Date.now();
-            const mitPausenwarnung = kaempfeDerMatte.map(kampf => {
-                if (kampf.status !== 'bereit') return { ...kampf, pausenwarnung: null };
-                const pruefung = pruefeKampfPause(kampf, kampf.pool_altersklasse, letztesEnde, jetzt);
-                return { ...kampf, pausenwarnung: pruefung.ok ? null : pruefung };
-            });
-
-            return res.json(mitPausenwarnung);
+            return res.json(baueMattenAnsicht({ kaempfe: kaempfeDerMatte, pools, teilnehmer, mannschaftskaempfe, mannschaften }, mattenId, Date.now()));
         } else if (turnierId) {
             query = query
                 .join('pools', 'kaempfe.pool_id', '=', 'pools.id')
@@ -210,104 +155,117 @@ export async function getKampf(knex, req, res) {
     }
 }
 
+// Service-Funktion ohne req/res (REST-Route updateKampf UND Sync-Brücke, src/sync/bruecke.js):
+// wirft FachFehler mit dem HTTP-Status, den die Route zurückgibt.
+export async function aktualisiereKampf(knex, id, felder) {
+    const {
+        kaempfer1_id, kaempfer2_id, sieger_id, kampfzeit_in_sekunden,
+        unterbewertung_kaempfer1, unterbewertung_kaempfer2, status,
+        reihenfolge_nummer, matten_reihenfolge
+    } = felder;
+
+    const currentKampf = await knex('kaempfe').where({ id }).first();
+    if (!currentKampf) {
+        throw new FachFehler(404, 'Kampf nicht gefunden.');
+    }
+
+    if (status === 'gestartet' && (currentKampf.status === 'beendet' || currentKampf.status === 'freilos')) {
+        throw new FachFehler(400, 'Ein bereits beendeter Kampf kann nicht erneut gestartet werden.');
+    }
+
+    if (status === 'gestartet') {
+        const pool = await knex('pools').where({ id: currentKampf.pool_id }).first();
+        const matte = pool && pool.kampfflaeche_id ? await knex('kampfflaechen').where({ id: pool.kampfflaeche_id }).first() : null;
+        if (matte && (matte.status === 'pausiert' || matte.status === 'gesperrt')) {
+            throw new FachFehler(409, `Die Matte "${matte.bezeichnung}" ist aktuell ${matte.status === 'pausiert' ? 'pausiert' : 'gesperrt'} — es kann kein Kampf gestartet werden.`);
+        }
+    }
+
+    // Nachträgliche Korrektur eines bereits entschiedenen Kampfes (z.B. Schiedsrichter-
+    // Protest, Tippfehler): blockieren, falls ein direkt abhängiger Folgekampf (Doppel-KO/
+    // Gruppen-Überkreuz) bereits läuft oder sogar schon entschieden ist. Ohne diese Prüfung
+    // würde die anschließende Kaskade (kampfProgression.js) den Folgekampf NICHT mehr
+    // anfassen — der längst überholte, falsche Kämpfer bliebe dort stillschweigend stehen.
+    // Nur 'angelegt'/'bereit' stehende Folgekämpfe lässt triggerPoolUpdate danach automatisch
+    // korrekt nachziehen.
+    if (
+        (currentKampf.status === 'beendet' || currentKampf.status === 'freilos') &&
+        sieger_id !== undefined &&
+        sieger_id !== currentKampf.sieger_id
+    ) {
+        const abhaengigeKaempfe = await knex('kaempfe')
+            .where({ pool_id: currentKampf.pool_id })
+            .andWhere(function () {
+                this.where('kaempfer1_quelle_kampf_id', currentKampf.id)
+                    .orWhere('kaempfer2_quelle_kampf_id', currentKampf.id);
+            });
+
+        const bereitsFortgeschritten = abhaengigeKaempfe.filter(k => ['gestartet', 'beendet', 'freilos'].includes(k.status));
+        if (bereitsFortgeschritten.length > 0) {
+            const namen = bereitsFortgeschritten.map(k => k.reihenfolge_nummer || `#${k.id}`).join(', ');
+            throw new FachFehler(409, `Das Ergebnis kann nicht mehr korrigiert werden: der Folgekampf (${namen}) läuft bereits oder wurde bereits gewertet. Bitte zuerst dessen Ergebnis manuell korrigieren.`);
+        }
+
+        console.log(`[Korrektur] Kampf ${currentKampf.id} (Pool ${currentKampf.pool_id}): Sieger geändert von ${currentKampf.sieger_id ?? 'keinem'} auf ${sieger_id ?? 'keinem'}.`);
+    }
+
+    await knex('kaempfe').where({ id }).update({
+        kaempfer1_id: kaempfer1_id !== undefined ? kaempfer1_id : currentKampf.kaempfer1_id,
+        kaempfer2_id: kaempfer2_id !== undefined ? kaempfer2_id : currentKampf.kaempfer2_id,
+        sieger_id: sieger_id !== undefined ? sieger_id : currentKampf.sieger_id,
+        kampfzeit_in_sekunden: kampfzeit_in_sekunden !== undefined ? parseInt(kampfzeit_in_sekunden) : currentKampf.kampfzeit_in_sekunden,
+        unterbewertung_kaempfer1: unterbewertung_kaempfer1 !== undefined ? parseInt(unterbewertung_kaempfer1) : currentKampf.unterbewertung_kaempfer1,
+        unterbewertung_kaempfer2: unterbewertung_kaempfer2 !== undefined ? parseInt(unterbewertung_kaempfer2) : currentKampf.unterbewertung_kaempfer2,
+        status: status !== undefined ? status : currentKampf.status,
+        reihenfolge_nummer: reihenfolge_nummer !== undefined ? reihenfolge_nummer : currentKampf.reihenfolge_nummer,
+        matten_reihenfolge: matten_reihenfolge !== undefined ? matten_reihenfolge : currentKampf.matten_reihenfolge,
+        updated_at: knex.fn.now()
+    });
+
+    // Erster gestartete Kampf eines Pools markiert dessen Auslosung als tatsächlich gestartet.
+    if (status === 'gestartet') {
+        await knex('pools')
+            .where({ id: currentKampf.pool_id, status: 'matte_zugewiesen' })
+            .update({ status: 'gestartet' });
+
+        const poolFuerMatte = await knex('pools').where({ id: currentKampf.pool_id }).first();
+        if (poolFuerMatte && poolFuerMatte.kampfflaeche_id) {
+            await synchronisiereMattenStatus(knex, poolFuerMatte.kampfflaeche_id);
+        }
+    }
+
+    // Falls sich der Status auf 'beendet'/'freilos' geändert hat, oder der Sieger aktualisiert wurde, Kaskadenberechnung triggern
+    if (status === 'beendet' || status === 'freilos' || sieger_id !== undefined) {
+        await triggerPoolUpdate(knex, currentKampf.pool_id);
+
+        // Kampfflächen-Reihenfolge neu planen, da eventuell Hüllen befüllt wurden
+        const pool = await knex('pools').where({ id: currentKampf.pool_id }).first();
+        if (pool && pool.kampfflaeche_id) {
+            await planeKaempfeFuerKampfflaeche(knex, pool.kampfflaeche_id);
+            await synchronisiereMattenStatus(knex, pool.kampfflaeche_id);
+        }
+    }
+}
+
 export async function updateKampf(knex, req, res) {
     try {
-        const { id } = req.params;
-        const {
-            kaempfer1_id, kaempfer2_id, sieger_id, kampfzeit_in_sekunden,
-            unterbewertung_kaempfer1, unterbewertung_kaempfer2, status,
-            reihenfolge_nummer, matten_reihenfolge
-        } = req.body;
-
-        const currentKampf = await knex('kaempfe').where({ id }).first();
-        if (!currentKampf) {
-            return res.status(404).json({ success: false, error: 'Kampf nicht gefunden.' });
-        }
-
-        if (status === 'gestartet' && (currentKampf.status === 'beendet' || currentKampf.status === 'freilos')) {
-            return res.status(400).json({ success: false, error: 'Ein bereits beendeter Kampf kann nicht erneut gestartet werden.' });
-        }
-
-        if (status === 'gestartet') {
-            const pool = await knex('pools').where({ id: currentKampf.pool_id }).first();
-            const matte = pool && pool.kampfflaeche_id ? await knex('kampfflaechen').where({ id: pool.kampfflaeche_id }).first() : null;
-            if (matte && (matte.status === 'pausiert' || matte.status === 'gesperrt')) {
-                return res.status(409).json({ success: false, error: `Die Matte "${matte.bezeichnung}" ist aktuell ${matte.status === 'pausiert' ? 'pausiert' : 'gesperrt'} — es kann kein Kampf gestartet werden.` });
-            }
-        }
-
-        // Nachträgliche Korrektur eines bereits entschiedenen Kampfes (z.B. Schiedsrichter-
-        // Protest, Tippfehler): blockieren, falls ein direkt abhängiger Folgekampf (Doppel-KO/
-        // Gruppen-Überkreuz) bereits läuft oder sogar schon entschieden ist. Ohne diese Prüfung
-        // würde die anschließende Kaskade (kampfProgression.js) den Folgekampf NICHT mehr
-        // anfassen — der längst überholte, falsche Kämpfer bliebe dort stillschweigend stehen.
-        // Nur 'angelegt'/'bereit' stehende Folgekämpfe lässt triggerPoolUpdate danach automatisch
-        // korrekt nachziehen.
-        if (
-            (currentKampf.status === 'beendet' || currentKampf.status === 'freilos') &&
-            sieger_id !== undefined &&
-            sieger_id !== currentKampf.sieger_id
-        ) {
-            const abhaengigeKaempfe = await knex('kaempfe')
-                .where({ pool_id: currentKampf.pool_id })
-                .andWhere(function () {
-                    this.where('kaempfer1_quelle_kampf_id', currentKampf.id)
-                        .orWhere('kaempfer2_quelle_kampf_id', currentKampf.id);
-                });
-
-            const bereitsFortgeschritten = abhaengigeKaempfe.filter(k => ['gestartet', 'beendet', 'freilos'].includes(k.status));
-            if (bereitsFortgeschritten.length > 0) {
-                const namen = bereitsFortgeschritten.map(k => k.reihenfolge_nummer || `#${k.id}`).join(', ');
-                return res.status(409).json({
-                    success: false,
-                    error: `Das Ergebnis kann nicht mehr korrigiert werden: der Folgekampf (${namen}) läuft bereits oder wurde bereits gewertet. Bitte zuerst dessen Ergebnis manuell korrigieren.`
-                });
-            }
-
-            console.log(`[Korrektur] Kampf ${currentKampf.id} (Pool ${currentKampf.pool_id}): Sieger geändert von ${currentKampf.sieger_id ?? 'keinem'} auf ${sieger_id ?? 'keinem'}.`);
-        }
-
-        await knex('kaempfe').where({ id }).update({
-            kaempfer1_id: kaempfer1_id !== undefined ? kaempfer1_id : currentKampf.kaempfer1_id,
-            kaempfer2_id: kaempfer2_id !== undefined ? kaempfer2_id : currentKampf.kaempfer2_id,
-            sieger_id: sieger_id !== undefined ? sieger_id : currentKampf.sieger_id,
-            kampfzeit_in_sekunden: kampfzeit_in_sekunden !== undefined ? parseInt(kampfzeit_in_sekunden) : currentKampf.kampfzeit_in_sekunden,
-            unterbewertung_kaempfer1: unterbewertung_kaempfer1 !== undefined ? parseInt(unterbewertung_kaempfer1) : currentKampf.unterbewertung_kaempfer1,
-            unterbewertung_kaempfer2: unterbewertung_kaempfer2 !== undefined ? parseInt(unterbewertung_kaempfer2) : currentKampf.unterbewertung_kaempfer2,
-            status: status !== undefined ? status : currentKampf.status,
-            reihenfolge_nummer: reihenfolge_nummer !== undefined ? reihenfolge_nummer : currentKampf.reihenfolge_nummer,
-            matten_reihenfolge: matten_reihenfolge !== undefined ? matten_reihenfolge : currentKampf.matten_reihenfolge,
-            updated_at: knex.fn.now()
-        });
-
-        // Erster gestartete Kampf eines Pools markiert dessen Auslosung als tatsächlich gestartet.
-        if (status === 'gestartet') {
-            await knex('pools')
-                .where({ id: currentKampf.pool_id, status: 'matte_zugewiesen' })
-                .update({ status: 'gestartet' });
-
-            const poolFuerMatte = await knex('pools').where({ id: currentKampf.pool_id }).first();
-            if (poolFuerMatte && poolFuerMatte.kampfflaeche_id) {
-                await synchronisiereMattenStatus(knex, poolFuerMatte.kampfflaeche_id);
-            }
-        }
-
-        // Falls sich der Status auf 'beendet'/'freilos' geändert hat, oder der Sieger aktualisiert wurde, Kaskadenberechnung triggern
-        if (status === 'beendet' || status === 'freilos' || sieger_id !== undefined) {
-            await triggerPoolUpdate(knex, currentKampf.pool_id);
-
-            // Kampfflächen-Reihenfolge neu planen, da eventuell Hüllen befüllt wurden
-            const pool = await knex('pools').where({ id: currentKampf.pool_id }).first();
-            if (pool && pool.kampfflaeche_id) {
-                await planeKaempfeFuerKampfflaeche(knex, pool.kampfflaeche_id);
-                await synchronisiereMattenStatus(knex, pool.kampfflaeche_id);
-            }
-        }
-
+        await aktualisiereKampf(knex, req.params.id, req.body);
         return res.json({ success: true, message: 'Kampf erfolgreich aktualisiert.' });
     } catch (error) {
-        return res.status(500).json({ success: false, error: error.message });
+        return res.status(error.statusCode || 500).json({ success: false, error: error.message });
     }
+}
+
+// Setzt die Matten-Reihenfolge eines einzelnen Kampfes (Sync-Brücke: eine Matte hat zwei Kämpfe
+// getauscht, jede Seite kommt als eigene Dokument-Änderung an). Gleiche Einschränkung wie
+// tauscheKaempfeReihenfolge: nur noch nicht gestartete Kämpfe.
+export async function setzeMattenReihenfolge(knex, kampfId, wert) {
+    const kampf = await knex('kaempfe').where({ id: kampfId }).first();
+    if (!kampf) throw new FachFehler(404, 'Kampf nicht gefunden.');
+    if (kampf.status !== 'bereit') {
+        throw new FachFehler(409, 'Es können nur noch nicht gestartete Kämpfe (Status "bereit") umsortiert werden.');
+    }
+    await knex('kaempfe').where({ id: kampfId }).update({ matten_reihenfolge: wert, updated_at: knex.fn.now() });
 }
 
 // Vertauscht die Matten-Reihenfolge zweier noch nicht gestarteter Kämpfe derselben Kampffläche

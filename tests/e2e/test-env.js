@@ -22,5 +22,12 @@ export const testServerEnv = {
     // statt zu versenden. Sonst würde ein Testlauf, sobald in der lokalen .env irgendwann echte
     // SMTP-Zugangsdaten stehen, bei jeder Registrierungs-/Beitritts-Anfrage tatsächlich Mails
     // verschicken.
-    SMTP_HOST: ''
+    SMTP_HOST: '',
+    // Ebenso: eine lokale .env für den Hallen-Server-Betrieb (DB_CLIENT=pg, SYNC_ROLLE=server,
+    // CLUSTER_KNOTEN) würde den Testserver sonst gegen das lokale PostgreSQL statt gegen
+    // data/test.sqlite laufen lassen — im Sync-Modus löscht das Anlegen eines Turniers dort das
+    // bisherige. Die Suite braucht den reinen SQLite-Offline-Server ohne Sync/Cluster.
+    DB_CLIENT: '',
+    SYNC_ROLLE: '',
+    CLUSTER_KNOTEN: ''
 };

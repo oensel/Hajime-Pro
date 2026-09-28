@@ -1,5 +1,11 @@
 // public/js/navigation.js
 
+// Theme sofort beim Parsen setzen (menu.js steht im <head>), nicht erst nach DOMContentLoaded
+// und den Auth-Requests — sonst wird die Seite zuerst hell gerendert und springt dann auf dunkel.
+try {
+    document.documentElement.setAttribute('data-theme', localStorage.getItem('hajime-theme') || 'light');
+} catch (e) { /* localStorage gesperrt: helles Theme bleibt */ }
+
 // Global fetch wrapper to append X-Steuerung-Password and Authorization headers if available in localStorage
 (function() {
     const originalFetch = window.fetch;
@@ -138,7 +144,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             <div class="sidebar-brand" title="by Bastian Haas">
                 <img src="hajime_pro.png" height="60">
             </div>
-            <nav class="sidebar-nav">
+            <nav class="sidebar-nav" id="sidebarNavPrimary" style="visibility: hidden;">
                 <a href="/turniere.html" class="menu-item" id="nav-turniere">
                     <span class="material-icons">calendar_month</span>
                     <span class="menu-text">anstehende Turniere</span>
@@ -154,10 +160,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <a href="/pools.html" class="menu-item" id="nav-pools">
                     <span class="material-icons">groups</span>
                     <span class="menu-text">Pools</span>
+                    <span class="material-icons menu-item-warning" id="nav-pools-warning" style="display: none;" title="Mindestens ein Pool wartet auf Ergebnisprüfung">warning</span>
                 </a>
                 <a href="/mannschaften.html" class="menu-item" id="nav-mannschaften">
                     <span class="material-icons">groups_2</span>
                     <span class="menu-text">Mannschaften</span>
+                    <span class="material-icons menu-item-warning" id="nav-mannschaften-warning" style="display: none;" title="Mindestens ein Mannschafts-Pool wartet auf Ergebnisprüfung">warning</span>
                 </a>
                 <a href="/matten.html" class="menu-item" id="nav-matten">
                     <span class="material-icons">layers</span>
@@ -172,7 +180,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <span class="menu-text">Siegerliste</span>
                 </a>
             </nav>
-            <nav class="sidebar-nav">
+            <nav class="sidebar-nav" id="sidebarNavSecondary" style="visibility: hidden;">
                 <a href="/dashboard.html" class="menu-item" id="nav-dashboard">
                     <span class="material-icons">dashboard</span>
                     <span class="menu-text">Dashboard</span>
@@ -209,6 +217,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             <button type="button" class="theme-toggle" id="themeToggle" title="Ansicht umschalten">
                 <span class="material-icons" id="themeIcon">dark_mode</span>
             </button>
+            <a href="/cluster.html" class="theme-toggle theme-toggle-text" id="hallenServerBtn" title="Status des Server-Clusters" style="display: none;">
+                <span class="material-icons">dns</span>
+            </a>
             <button type="button" class="theme-toggle" id="logoutBtn" title="Abmelden" style="color: #ef4444; border: none; background: transparent; cursor: pointer;">
                 <span class="material-icons">logout</span>
             </button>
@@ -224,7 +235,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 
         <!-- OPTISCH ANSPRECHENDER MATERIAL CONFIRM DIALOG -->
-        <div id="customConfirmModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(2px); z-index: 9999; align-items: center; justify-content: center; transition: all 0.2s;">
+        <div id="customConfirmModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(2px); z-index: 10000; align-items: center; justify-content: center; transition: all 0.2s;">
             <div class="mdc-card" style="max-width: 420px; padding: 24px; border-radius: 4px; border: 2px solid var(--border); box-shadow: var(--shadow); background-color: var(--bg-card); animation: modalPulse 0.2s ease-out;">
                 <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
                     <span class="material-icons" id="modalIcon" style="font-size: 28px; color: var(--primary);">help_outline</span>
@@ -273,6 +284,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     const urlParams = new URLSearchParams(window.location.search);
     const turnierId = urlParams.get('id') || urlParams.get('turnierId');
     const currentPath = window.location.pathname;
+
+    // Turnier-ID sofort an die Menü-Links hängen, noch bevor window.hajimeAktualisiereMenueSperren
+    // existiert: Seiten-Skripte (z.B. pools.js beim ersten Laden) sperren Menüpunkte teils, während
+    // diese Initialisierung noch auf Serverantworten wartet. Die Sperre sichert den Link als
+    // Backup und stellt ihn beim Entsperren wieder her — ohne Turnier-ID landete man sonst z.B.
+    // auf matten.html ohne Parameter, wo das Menü nur noch "anstehende Turniere" zeigt.
+    if (turnierId) {
+        document.querySelectorAll('.menu-item').forEach(link => {
+            const href = link.getAttribute('href');
+            if (href && href !== '#') {
+                if (href.includes('turniere.html')) return;
+                const paramName = href.includes('turnier.html') ? 'id' : 'turnierId';
+                link.setAttribute('href', `${href}?${paramName}=${turnierId}`);
+            }
+        });
+    }
 
     // Hilfsfunktion: Macht Menüpunkte sichtbar, aber blockiert die Klickbarkeit vollständig
     // (für Schritte, die noch nicht erreichbar sind, z.B. Pools ohne Teilnehmer)
@@ -371,10 +398,48 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     };
 
-    // Globaler Zugriffspunkt für andere Skripte (teilnehmer.js, pools.js, matten.js), um nach
-    // einer eigenen Änderung gezielt einzelne Menü-Sperren live neu zu bewerten, ohne die
-    // gesamte Seite neu laden zu müssen. bereiche: Teilmenge aus ['pools', 'matten', 'kampf'].
-    window.hajimeAktualisiereMenueSperren = async (bereiche = ['pools', 'matten', 'kampf']) => {
+    // Gelbes Achtung-Icon am Menüpunkt "Pools": erscheint, sobald mindestens ein
+    // (Einzelwettkampf-)Pool im Status "Ergebnisse prüfen" (kaempfe_beendet) auf die
+    // manuelle Tischbestätigung wartet, und verschwindet wieder, sobald keiner mehr in
+    // diesem Status ist. Der Statuswechsel passiert serverseitig beim Kampfende auf
+    // kampf.html/matten.html, wo kein Skript diese Prüfung direkt anstößt — daher zusätzlich
+    // per Intervall unten periodisch neu bewertet, nicht nur reaktiv.
+    const pruefePoolsErgebnisWarnung = async (tId) => {
+        const badge = document.getElementById('nav-pools-warning');
+        if (!badge) return;
+
+        try {
+            const response = await fetch(`/api/pools/details?turnierId=${tId}`);
+            const pools = await response.json();
+            const hatWartendePools = Array.isArray(pools) && pools.some(p => p.status === 'kaempfe_beendet');
+            badge.style.display = hatWartendePools ? 'inline-block' : 'none';
+        } catch (error) {
+            console.error('Fehler bei der Prüfung offener Pool-Ergebnisse:', error);
+        }
+    };
+
+    // Gelbes Achtung-Icon am Menüpunkt "Mannschaften": exaktes Pendant zu
+    // pruefePoolsErgebnisWarnung oben, nur für Mannschafts-Pools (die bewusst nicht in
+    // /api/pools/details auftauchen, siehe pruefePoolsErgebnisWarnung), daher eigener Endpunkt
+    // und eigenes Badge statt Wiederverwendung von nav-pools-warning.
+    const pruefeMannschaftenErgebnisWarnung = async (tId) => {
+        const badge = document.getElementById('nav-mannschaften-warning');
+        if (!badge) return;
+
+        try {
+            const response = await fetch(`/api/mannschaften/pools?turnierId=${tId}`);
+            const pools = await response.json();
+            const hatWartendePools = Array.isArray(pools) && pools.some(p => p.status === 'kaempfe_beendet');
+            badge.style.display = hatWartendePools ? 'inline-block' : 'none';
+        } catch (error) {
+            console.error('Fehler bei der Prüfung offener Mannschafts-Pool-Ergebnisse:', error);
+        }
+    };
+
+    // Globaler Zugriffspunkt für andere Skripte (teilnehmer.js, pools.js, matten.js, mannschaften.js),
+    // um nach einer eigenen Änderung gezielt einzelne Menü-Sperren live neu zu bewerten, ohne die
+    // gesamte Seite neu laden zu müssen. bereiche: Teilmenge aus ['pools', 'matten', 'kampf', 'mannschaften'].
+    window.hajimeAktualisiereMenueSperren = async (bereiche = ['pools', 'matten', 'kampf', 'mannschaften']) => {
         const params = new URLSearchParams(window.location.search);
         const aktiveTurnierId = params.get('id') || params.get('turnierId');
         if (!aktiveTurnierId) return;
@@ -383,6 +448,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (bereiche.includes('pools')) aufgaben.push(pruefePoolsMenuSperre(aktiveTurnierId));
         if (bereiche.includes('matten')) aufgaben.push(pruefeMattenMenuSperre(aktiveTurnierId));
         if (bereiche.includes('kampf')) aufgaben.push(pruefeKampfMenuSperre(aktiveTurnierId));
+        if (bereiche.includes('pools')) aufgaben.push(pruefePoolsErgebnisWarnung(aktiveTurnierId));
+        if (bereiche.includes('mannschaften')) aufgaben.push(pruefeMannschaftenErgebnisWarnung(aktiveTurnierId));
         await Promise.all(aufgaben);
     };
 
@@ -545,13 +612,113 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Im Offline-Modus (lokaler Kiosk-Betrieb) gelten keine Vereins-Einschränkungen,
     // analog zur Server-Middleware.
     let istOffline = false;
+    let syncRolle = null;
     try {
         const configResp = await fetch('/api/config');
         if (configResp.ok) {
-            istOffline = !!(await configResp.json()).isOffline;
+            const config = await configResp.json();
+            istOffline = !!config.isOffline;
+            syncRolle = config.syncRolle || null;
         }
     } catch (error) {
         console.error('Fehler beim Laden der System-Konfiguration:', error);
+    }
+
+    // --- CLIENT-GERÄT (SYNC_ROLLE=client, Notebook/Tablet an Matte oder Waage) ---
+    // Es gibt nur Waage, Scoreboard und Mattenleitung (die Verwaltung liegt am Hallen-Server,
+    // siehe src/sync/clientApi.js). Die Menü-Sperren-Prüfungen des Servers entfallen.
+    if (syncRolle === 'client') {
+        const clientTurnierId = turnierId || localStorage.getItem('aktiveTurnierId');
+        versteckeMenuePunkte(['nav-turniere', 'nav-turnier', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-siegerliste', 'nav-dashboard', 'nav-uebersicht']);
+        const nav = document.getElementById('sidebarNavPrimary');
+        const suffix = clientTurnierId ? `?turnierId=${clientTurnierId}` : '';
+        const teilnehmerLink = document.getElementById('nav-teilnehmer');
+        if (teilnehmerLink) {
+            teilnehmerLink.setAttribute('href', `/teilnehmer.html${suffix}`);
+            teilnehmerLink.querySelector('.menu-text').textContent = 'Waage';
+        }
+        const kampfLink = document.getElementById('nav-kampf');
+        if (kampfLink) kampfLink.setAttribute('href', `/kampf.html${suffix}`);
+        if (nav) {
+            const zusatz = (id, href, icon, text) => {
+                const a = document.createElement('a');
+                a.href = href;
+                a.className = 'menu-item';
+                a.id = id;
+                a.innerHTML = `<span class="material-icons">${icon}</span><span class="menu-text">${text}</span>`;
+                return a;
+            };
+            nav.insertBefore(zusatz('nav-geraet', '/client.html', 'devices', 'Gerät'), nav.firstChild);
+            nav.appendChild(zusatz('nav-scoreboard', `/steuerung.html${suffix}`, 'scoreboard', 'Scoreboard'));
+            if (currentPath.includes('client.html')) document.getElementById('nav-geraet').classList.add('active');
+        }
+        if (currentPath.includes('teilnehmer.html')) document.getElementById('nav-teilnehmer')?.classList.add('active');
+        if (currentPath.includes('kampf.html')) document.getElementById('nav-kampf')?.classList.add('active');
+        document.getElementById('sidebarNavPrimary')?.style.removeProperty('visibility');
+        document.getElementById('sidebarNavSecondary')?.style.removeProperty('visibility');
+        return;
+    }
+
+    // --- SERVER-CLUSTER (Hallen-Server mit CLUSTER_KNOTEN, siehe src/cluster/) ---
+    // Menüpunkt "Cluster"; auf dem Secondary zusätzlich ein Hinweis, dass nur gelesen werden kann.
+    if (syncRolle === 'server') {
+        // Button "Hallen-Server" in der Kopfzeile (links vom Logout) führt zur Cluster-Statusseite;
+        // ohne CLUSTER_KNOTEN zeigt cluster.html einen entsprechenden Hinweis.
+        const hallenServerBtn = document.getElementById('hallenServerBtn');
+        if (hallenServerBtn) {
+            hallenServerBtn.style.display = '';
+            if (currentPath.includes('cluster.html')) hallenServerBtn.classList.add('active');
+        }
+        // Icon-Farbe nach Anzahl erreichbarer Server: alle online = grün, im Cluster nur einer
+        // von zwei = gelb, eigener Server nicht erreichbar = rot. Ohne Cluster gibt es nur einen.
+        const hallenServerIcon = hallenServerBtn?.querySelector('.material-icons');
+        const zeigeServerAnzahl = (online, gesamt) => {
+            if (!hallenServerIcon) return;
+            const farbe = online === 0 ? '#c62828' : online < gesamt ? '#f9a825' : '#2e7d32';
+            hallenServerIcon.style.color = farbe;
+            hallenServerBtn.title = `Status des Server-Clusters – ${online} von ${gesamt} Server${gesamt === 1 ? '' : 'n'} online`;
+            hallenServerBtn.dataset.serverOnline = `${online}/${gesamt}`;
+        };
+        const holeClusterStatus = async () => {
+            try {
+                const antwort = await fetch('/api/cluster/status', { cache: 'no-store' });
+                if (!antwort.ok) throw new Error(`HTTP ${antwort.status}`);
+                const status = await antwort.json();
+                if (status.aktiv) zeigeServerAnzahl(1 + (status.partner ? 1 : 0), 2);
+                else zeigeServerAnzahl(1, 1);
+                return status;
+            } catch (error) {
+                const gesamt = hallenServerBtn?.dataset.serverOnline?.endsWith('/2') ? 2 : 1;
+                zeigeServerAnzahl(0, gesamt);
+                throw error;
+            }
+        };
+        setInterval(() => holeClusterStatus().catch(() => {}), 5000);
+        try {
+            const status = await holeClusterStatus();
+            const cluster = status.aktiv ? { aktiv: true, ...status.eigen } : status;
+            if (cluster.aktiv) {
+                const nav = document.getElementById('sidebarNavSecondary');
+                if (nav && !document.getElementById('nav-cluster')) {
+                    const a = document.createElement('a');
+                    a.href = '/cluster.html';
+                    a.className = 'menu-item';
+                    a.id = 'nav-cluster';
+                    a.innerHTML = '<span class="material-icons">dns</span><span class="menu-text">Cluster</span>';
+                    nav.appendChild(a);
+                    if (currentPath.includes('cluster.html')) a.classList.add('active');
+                }
+                if (cluster.rolle !== 'master' && !document.getElementById('secondaryBanner')) {
+                    const banner = document.createElement('div');
+                    banner.id = 'secondaryBanner';
+                    banner.textContent = `Secondary (${cluster.knoten}) – nur lesend. Schreibzugriffe nur am Master über die VIP.`;
+                    banner.style.cssText = 'position: fixed; top: 0; left: 50%; transform: translateX(-50%); z-index: 100000; background: #f9a825; color: #000; font-weight: bold; font-size: 13px; padding: 6px 16px; border-radius: 0 0 6px 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.25);';
+                    document.body.appendChild(banner);
+                }
+            }
+        } catch (error) {
+            console.warn('Cluster-Status nicht lesbar:', error);
+        }
     }
 
     // Verein gewählt, aber Beitritt noch nicht freigegeben: Vereinsverwaltung (eigenes Turnier
@@ -575,20 +742,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!turnierId) {
             versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-kampf', 'nav-siegerliste', 'nav-dashboard', 'nav-uebersicht']);
         } else {
-            document.querySelectorAll('.menu-item').forEach(link => {
-                const href = link.getAttribute('href');
-                if (href && href !== '#') {
-                    if (href.includes('turniere.html')) return;
-                    const paramName = href.includes('turnier.html') ? 'id' : 'turnierId';
-                    link.setAttribute('href', `${href}?${paramName}=${turnierId}`);
-                }
-            });
-
             await Promise.all([
                 pruefePoolsMenuSperre(turnierId),
                 pruefeMattenMenuSperre(turnierId),
-                pruefeKampfMenuSperre(turnierId)
+                pruefeKampfMenuSperre(turnierId),
+                pruefePoolsErgebnisWarnung(turnierId),
+                pruefeMannschaftenErgebnisWarnung(turnierId)
             ]);
+
+            // Periodische Neubewertung: der Statuswechsel eines Pools auf "kaempfe_beendet"
+            // passiert serverseitig beim Kampfende (kampf.html/matten.html), ohne dass eines
+            // dieser Skripte die Menü-Sperren-Prüfung aktiv anstößt — Polling deckt das ab,
+            // unabhängig davon, auf welcher Seite gerade gearbeitet wird.
+            setInterval(() => pruefePoolsErgebnisWarnung(turnierId), 15000);
+            setInterval(() => pruefeMannschaftenErgebnisWarnung(turnierId), 15000);
 
             // --- TURNIERNAME ALS ÜBERSCHRIFT IN DER KOPFLEISTE ---
             // Wird für alle Nutzer geladen (nicht nur für die Vereins-Prüfung unten), damit die
@@ -656,6 +823,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
     }
+
+    // Erst jetzt sind alle Sperr-/Versteck-Entscheidungen (Freigabe, Turnierauswahl, Vereins-
+    // zugehörigkeit, Stufen-Voraussetzungen) getroffen — die Menüpunkte waren bis hierhin bewusst
+    // unsichtbar, damit sie nicht kurz erscheinen und sofort wieder verschwinden.
+    document.getElementById('sidebarNavPrimary')?.style.removeProperty('visibility');
+    document.getElementById('sidebarNavSecondary')?.style.removeProperty('visibility');
 
     // --- AKTIVEN REITER HERVORHEBEN ---
     if (currentPath.includes('turniere.html')) document.getElementById('nav-turniere')?.classList.add('active');
@@ -776,6 +949,8 @@ window.zeigeZentraleBestaetigung = (nachricht, titel = "Aktion bestätigen", ico
         txtMsg.innerText = nachricht;
         txtTitle.innerText = titel;
         icoEl.innerText = icon;
+        btnConfirm.innerText = optionen.confirmText || 'Fortfahren';
+        btnCancel.innerText = optionen.cancelText || 'Abbrechen';
 
         const karte = modal.querySelector('.mdc-card');
         if (karte) {

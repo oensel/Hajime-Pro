@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Kampf-Overlay</title>
+    <link rel="stylesheet" href="css/overlay.css">
+</head>
+<body>
+    <!-- Als OBS-Browser-Source pro Matte einbinden: overlay.html?matte=<kampfflaeche_id>
+         Transparenter Hintergrund, zeigt automatisch den aktuell laufenden Kampf dieser Matte
+         (Kämpfer/Mannschaften + Alters-/Gewichtsklasse) und blendet sich zwischen den Kämpfen aus. -->
+    <div id="overlayBar" class="overlay-bar">
+        <div class="overlay-pool" id="overlayPool"></div>
+        <div class="overlay-matchup">
+            <div class="overlay-fighter links">
+                <div class="overlay-name" id="overlayName1"></div>
+                <div class="overlay-verein" id="overlayVerein1"></div>
+            </div>
+            <div class="overlay-vs">VS</div>
+            <div class="overlay-fighter rechts">
+                <div class="overlay-name" id="overlayName2"></div>
+                <div class="overlay-verein" id="overlayVerein2"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/overlay.js"></script>
+</body>
+</html>

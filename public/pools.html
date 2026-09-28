@@ -46,7 +46,7 @@
         <p style="margin: 0 0 16px 0; font-weight: 600; color: var(--text-muted);">
             Alle Teilnehmer erfasst? Starten Sie die automatische Pool-Generierung nach DJB-Reglement.
         </p>
-        <button type="button" class="btn btn-raised" id="generatePoolsBtn" style="padding: 14px 40px;">
+        <button type="button" class="btn btn-raised" id="generatePoolsBtn" style="height: auto; padding: 14px 40px; display: inline-flex; align-items: center;">
             <span class="material-icons" style="vertical-align: middle; margin-right: 8px;">auto_awesome</span>
             Pools jetzt generieren
         </button>
@@ -110,8 +110,11 @@
             </table>
         </div>
         
-        <div style="display: flex; justify-content: flex-end;">
-            <button type="button" class="btn btn-raised" id="closeFightplanBtn" style="padding: 8px 24px; font-size: 12px;">Schließen</button>
+        <div style="display: flex; justify-content: flex-end; gap: 8px;">
+            <button type="button" class="btn btn-raised" id="confirmFightplanBtn" style="display: none; padding: 8px 24px; font-size: 12px; align-items: center; gap: 6px;">
+                <span class="material-icons" style="font-size: 16px;">fact_check</span> Ergebnisse geprüft
+            </button>
+            <button type="button" class="btn btn-outlined" id="closeFightplanBtn" style="padding: 8px 24px; font-size: 12px;">Schließen</button>
         </div>
     </div>
 </div>

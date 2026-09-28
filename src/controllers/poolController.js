@@ -55,7 +55,7 @@ function schaetzeBruttoKaempfe(modus, anzahlTeilnehmer) {
         case 'Jeder-gegen-Jeden':
             return (anzahlTeilnehmer * (anzahlTeilnehmer - 1)) / 2;
         case 'Gruppen-Überkreuz':
-            return 11;
+            return 10; // 6 Vorrundenkämpfe + HF1/HF2 + F1/F2 (siehe GruppenUeberKreuzManager.js)
         case 'Doppel-KO-8':
             return 11;
         case 'Doppel-KO-16':

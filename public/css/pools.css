@@ -751,6 +751,10 @@
     background-color: rgba(46, 125, 50, 0.15);
     color: #2e7d32;
 }
+.pool-status-badge.pruefen {
+    background-color: rgba(245, 178, 0, 0.18);
+    color: #b38600;
+}
 .pool-status-badge.kampflos {
     background-color: rgba(184, 50, 50, 0.15);
     color: #b83232;

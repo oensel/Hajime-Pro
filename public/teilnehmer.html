@@ -275,11 +275,11 @@
             <div class="grid-2">
                 <div class="form-group">
                     <label for="judopass_id">Judopass-Nummer (ID)</label>
-                    <input type="text" id="judopass_id" required placeholder="z.B. JP-1111">
+                    <input type="text" id="judopass_id" placeholder="z.B. JP-1111">
                 </div>
                 <div class="form-group">
                     <label for="lizenz_ablauf">Lizenz Gültig Bis</label>
-                    <input type="date" id="lizenz_ablauf" required style="background-color: rgba(0,0,0,0.02);">
+                    <input type="date" id="lizenz_ablauf" style="background-color: rgba(0,0,0,0.02);">
                 </div>
             </div>
 
@@ -328,7 +328,7 @@
                 </div>
                 <div class="form-group">
                     <label for="gewicht">Gewicht (kg)</label>
-                    <input type="text" id="gewicht" required placeholder="z.B. 34,50" inputmode="decimal">
+                    <input type="text" id="gewicht" placeholder="z.B. 34,50" inputmode="decimal">
                 </div>
             </div>
 
@@ -347,7 +347,7 @@
                 </div>
             </div>
 
-            <div class="grid-2" style="margin-top: 6px; margin-bottom: 10px;">
+            <div class="grid-2" id="startgeldBezahltRow" style="margin-top: 6px; margin-bottom: 10px;">
                 <div style="display: flex; align-items: center; gap: 8px; padding: 6px 0;">
                     <input type="checkbox" id="startgeld_bezahlt" style="width: 16px; height: 16px; cursor: pointer; accent-color: var(--primary); margin: 0;">
                     <label for="startgeld_bezahlt" style="margin: 0; cursor: pointer; font-weight: bold; user-select: none; display: inline-block; text-transform: none; font-size: 12px; letter-spacing: normal;">Startgeld bezahlt</label>
@@ -358,7 +358,7 @@
             <div class="actions">
                 <button type="button" class="btn btn-outlined" id="resetBtn">Eingabe Löschen</button>
                 <button type="button" class="btn btn-outlined" id="kampfbereitBtn" style="display: none; color: #2e7d32; border-color: #2e7d32;">Kampfbereit bestätigen</button>
-                <button type="submit" class="btn btn-raised" id="submitBtn" disabled style="display: none;">Eintrag Speichern</button>
+                <button type="submit" class="btn btn-raised" id="submitBtn" disabled>Eintrag Speichern</button>
             </div>
         </form>
     </div>
@@ -367,6 +367,9 @@
 <script src="/js/qr/jsQR.js"></script>
 <script src="/js/qrgen/qrcode.js"></script>
 <script src="/js/qrgen/qrcode_UTF8.js"></script>
+<script src="/js/pouchdb/pouchdb.min.js"></script>
+<script src="/js/datenzugriff.js"></script>
+<script src="/js/syncStatus.js"></script>
 <script src="/js/teilnehmer.js"></script>
 <script type="module" src="/js/waage-modal.js"></script>
 </body>

@@ -362,11 +362,12 @@ test.describe.serial('Teilnehmer-Import und -Verwaltung (teilnehmer.html)', () =
 
         // Aus dem Import vorbelegt: Gewicht 25kg, keine Judopass-Nr., Lizenz technisch abgelaufen
         // (1970-01-01, siehe importTeilnehmer) -> aktualisiereSpeicherButtonStatus() in
-        // waage-modal.js verbirgt den Speichern-Button deshalb zunächst komplett (fehlende Passnr.
-        // UND ungültige Lizenz).
+        // waage-modal.js hält den (immer sichtbaren) Speichern-Button deshalb zunächst deaktiviert
+        // (fehlende Passnr. UND ungültige Lizenz).
         await expect(gewichtFeld).toHaveValue('25');
         await expect(judopassFeld).toHaveValue('');
-        await expect(speichernBtn).toBeHidden();
+        await expect(speichernBtn).toBeVisible();
+        await expect(speichernBtn).toBeDisabled();
 
         // Alters- und Gewichtsklasse müssen bereits aus dem Import korrekt vorbelegt sein: U11
         // männlich, 25kg fällt nach den DJB-Gewichtsklassen (siehe altersklassen.json, "-23","-25",
@@ -385,7 +386,7 @@ test.describe.serial('Teilnehmer-Import und -Verwaltung (teilnehmer.html)', () =
         await lizenzFeld.fill('2020-01-01');
         await expect(lizenzFeld).toHaveClass(/lizenz-expired/);
         await expect(lizenzFeld).not.toHaveClass(/lizenz-valid/);
-        await expect(speichernBtn).toBeHidden();
+        await expect(speichernBtn).toBeDisabled();
 
         // Lizenz auf ein Datum in der Zukunft setzen -> muss grün (gültig) markiert werden.
         await lizenzFeld.fill('2030-12-31');
@@ -396,11 +397,16 @@ test.describe.serial('Teilnehmer-Import und -Verwaltung (teilnehmer.html)', () =
         await startgeldCheckbox.check();
 
         // Fehlende Judopass-Nr. (Lizenz-Nr.) nachtragen -> jetzt sind alle Pflichtfelder gefüllt UND
-        // die Lizenz gültig, der Speichern-Button erscheint erst jetzt.
+        // die Lizenz gültig, der Speichern-Button wird erst jetzt aktiv.
         await judopassFeld.fill('JP-ARM-0001');
-        await expect(speichernBtn).toBeVisible();
+        await expect(speichernBtn).toBeEnabled();
 
         await speichernBtn.click();
+        // Gewicht wurde geändert (25->26) und offline_user gilt als ausrichtender Verein ->
+        // "Als gewogen markieren?"-Rückfrage (siehe waage-modal.js) muss bestätigt werden, bevor
+        // die eigentliche Speicherung überhaupt losläuft.
+        await expect(page.locator('#customConfirmModal')).toBeVisible();
+        await page.locator('#modalConfirmBtn').click();
         await expect(page.locator('#snackbarText')).toHaveText(`Athlet ${editVorname} erfolgreich aktualisiert!`);
         await expect(waageModal).toBeHidden();
 
@@ -410,6 +416,105 @@ test.describe.serial('Teilnehmer-Import und -Verwaltung (teilnehmer.html)', () =
         await expect(geaenderteZeile.locator('td').nth(7)).toContainText('26,00 kg');
         await expect(geaenderteZeile.locator('[data-toggle="bezahlt"]')).toHaveClass(/active/);
         await expect(geaenderteZeile.locator('[data-toggle="lizenz"]')).toHaveClass(/active/);
+    });
+
+    test('Editier-Modal zeigt die freie Mixed-Klasse U9 als Altersklasse', async () => {
+        // U9 steht in keiner Geschlechtsliste von altersklassen.json, sondern ist hier eine im
+        // Turnier frei angelegte Klasse ("mixed_U9"). Das Altersklassen-Dropdown muss sie trotzdem
+        // anbieten und für einen U9-Jahrgang automatisch auswählen (Regression: das Feld blieb leer,
+        // weil U9 als "Standardklasse" galt und deshalb nicht bei den freien Klassen auftauchte).
+        const [u9Vorname, u9Nachname] = arminiaEinzel[20]; // erster U9-Eintrag (nach 10x U11m + 10x U11w)
+        const u9Zeile = findeZeile(u9Vorname, u9Nachname, 'Arminia Appelhülsen');
+        await expect(u9Zeile).toHaveCount(1);
+
+        await u9Zeile.locator('.icon-edit').click();
+        const waageModal = page.locator('#waageModal');
+        await expect(waageModal).toBeVisible();
+
+        await expect(page.locator('#geschlecht')).toHaveValue('mixed');
+        await expect(page.locator('#altersklasse')).toHaveValue('U9');
+
+        // Bei mixed gibt es immer die Gewichtsklasse "gewichtsnah" (gemischte Klassen werden nach
+        // Gewichtsnähe gepoolt statt nach festen DJB-Klassen) — sie muss vorausgewählt sein.
+        const gewichtsklasseFeld = page.locator('#gewichtsklasse');
+        await expect(gewichtsklasseFeld).toHaveValue('gewichtsnah');
+        await expect(gewichtsklasseFeld.locator('option:checked')).toHaveText('gewichtsnah');
+
+        // Auch nach einer Gewichtsänderung bleibt "gewichtsnah" ausgewählt.
+        await page.locator('#gewicht').fill('23');
+        await expect(gewichtsklasseFeld).toHaveValue('gewichtsnah');
+
+        await page.locator('#waageModalClose').click();
+        await expect(waageModal).toBeHidden();
+    });
+
+    // Speichert den im Editier-Test vorbereiteten Arminia-Teilnehmer (Passnr. + gültige Lizenz,
+    // Gewicht 26kg) unverändert — nur so ist der Speichern-Button überhaupt aktiv.
+    async function speichereUnveraendert(zielPage) {
+        const [editVorname, editNachname] = arminiaEinzel[0];
+        const zeile = zielPage.locator('#teilnehmerTableBody tr')
+            .filter({ hasText: editVorname }).filter({ hasText: editNachname }).filter({ hasText: 'Arminia Appelhülsen' });
+        await expect(zeile).toHaveCount(1);
+        await zeile.locator('.icon-edit').click();
+        await expect(zielPage.locator('#waageModal')).toBeVisible();
+        await expect(zielPage.locator('#gewicht')).toHaveValue('26');
+        await expect(zielPage.locator('#submitBtn')).toBeEnabled();
+        await zielPage.locator('#submitBtn').click();
+        return editVorname;
+    }
+
+    test('Außerhalb des Wettkampftags: unverändertes Gewicht speichert ohne Gewogen-Rückfrage', async () => {
+        const vorname = await speichereUnveraendert(page);
+        await expect(page.locator('#snackbarText')).toHaveText(`Athlet ${vorname} erfolgreich aktualisiert!`);
+        await expect(page.locator('#customConfirmModal')).toBeHidden();
+        await expect(page.locator('#waageModal')).toBeHidden();
+    });
+
+    test('Am Wettkampftag fragt Speichern mit eingetragenem Gewicht immer "als gewogen markieren?"', async () => {
+        // Eigene Seite mit auf den Wettkampftag (Turnier-Datum) gestellter Uhr — die gemeinsame
+        // Seite der Kette soll ihre echte Uhrzeit behalten.
+        const wettkampftagPage = await page.context().newPage();
+        await wettkampftagPage.clock.setFixedTime(new Date(`${WETTKAMPFJAHR}-09-18T09:00:00`));
+        await wettkampftagPage.goto(`/teilnehmer.html?id=${turnierId}`);
+
+        // Gewicht bleibt unverändert (26kg) — die Rückfrage muss trotzdem kommen.
+        const vorname = await speichereUnveraendert(wettkampftagPage);
+        const bestaetigung = wettkampftagPage.locator('#customConfirmModal');
+        await expect(bestaetigung).toBeVisible();
+        await expect(bestaetigung).toContainText('als gewogen markieren?');
+        await wettkampftagPage.locator('#modalCancelBtn').click();
+        await expect(wettkampftagPage.locator('#snackbarText')).toHaveText(`Athlet ${vorname} erfolgreich aktualisiert!`);
+
+        await wettkampftagPage.close();
+    });
+
+    test('Klick ins Gewichtsfeld leert es für die direkte Neueingabe', async () => {
+        const [editVorname, editNachname] = arminiaEinzel[0];
+        const zeile = findeZeile(editVorname, editNachname, 'Arminia Appelhülsen');
+        await zeile.locator('.icon-edit').click();
+        const waageModal = page.locator('#waageModal');
+        await expect(waageModal).toBeVisible();
+
+        const gewichtFeld = page.locator('#gewicht');
+        await expect(gewichtFeld).toHaveValue('26');
+
+        // Klick leert das Feld, direkt danach getippte Ziffern ergeben das neue Gewicht.
+        await gewichtFeld.click();
+        await expect(gewichtFeld).toHaveValue('');
+        await page.keyboard.type('27,5');
+        await expect(gewichtFeld).toHaveValue('27,5');
+        await expect(page.locator('#gewichtsklasse')).toHaveValue('-29');
+
+        // Feld ohne Eingabe wieder verlassen -> bisheriger Wert kommt zurück (ein versehentlicher
+        // Klick soll kein Gewicht löschen).
+        await gewichtFeld.click();
+        await expect(gewichtFeld).toHaveValue('');
+        await page.locator('#vorname').click();
+        await expect(gewichtFeld).toHaveValue('27,5');
+
+        // Ohne Speichern schließen — der Datensatz bleibt bei 26kg für die folgenden Tests.
+        await page.locator('#waageModalClose').click();
+        await expect(waageModal).toBeHidden();
     });
 
     test('QR-Scan: bekannter Teilnehmer lädt bestehenden Datensatz', async () => {
@@ -475,7 +580,7 @@ test.describe.serial('Teilnehmer-Import und -Verwaltung (teilnehmer.html)', () =
         await expect(judopassFeld).toHaveValue('JP-NEU-9001');
         await expect(lizenzFeld).toHaveClass(/lizenz-valid/);
         await expect(altersklasseFeld).toHaveValue(''); // Geschlecht noch nicht gesetzt -> noch keine Auto-Auswahl
-        await expect(speichernBtn).toBeHidden(); // Geschlecht/Gewicht fehlen noch
+        await expect(speichernBtn).toBeDisabled(); // Geschlecht/Gewicht fehlen noch
 
         // Geschlecht manuell wählen -> Altersklasse wird automatisch anhand des gescannten Geburtsdatums ermittelt.
         await page.locator('#geschlecht').selectOption('weiblich');
@@ -486,7 +591,7 @@ test.describe.serial('Teilnehmer-Import und -Verwaltung (teilnehmer.html)', () =
         // altersklassen.json) ermittelt.
         await gewichtFeld.fill('30');
         await expect(gewichtsklasseFeld).toHaveValue('-30');
-        await expect(speichernBtn).toBeVisible();
+        await expect(speichernBtn).toBeEnabled();
 
         await speichernBtn.click();
         await expect(page.locator('#snackbarText')).toHaveText(`Athlet ${neuVorname} erfolgreich eingewogen!`);

@@ -119,6 +119,34 @@
             gap: 8px;
             flex-shrink: 0;
         }
+        .profil-card-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 24px;
+            width: 100%;
+            max-width: 984px;
+        }
+        .profil-card-row > .mdc-card,
+        .profil-card-row > .profil-card-col {
+            flex: 1 1 480px;
+            max-width: 480px;
+            min-width: 0;
+            margin-top: 0;
+        }
+        .profil-card-col {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+        @media (max-width: 850px) {
+            .profil-card-row {
+                flex-direction: column;
+            }
+            .profil-card-row > .mdc-card,
+            .profil-card-row > .profil-card-col {
+                max-width: 100%;
+            }
+        }
     </style>
     <script src="/js/menu.js"></script>
 </head>
@@ -127,6 +155,7 @@
 <div class="kanji-left">柔</div>
 <div class="kanji-right">道</div>
 
+<div class="profil-card-row">
 <div class="mdc-card">
     <div class="form-title-area">
         <span class="material-icons">account_circle</span>
@@ -167,7 +196,8 @@
     </form>
 </div>
 
-<div class="mdc-card" style="margin-top: 24px;">
+<div class="profil-card-col">
+<div class="mdc-card">
     <div class="form-title-area">
         <span class="material-icons">groups</span>
         <h1>Meine Vereine</h1>
@@ -176,6 +206,16 @@
     <div id="meineVereineListe" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;"></div>
 
     <a href="/verein_auswahl.html" class="btn btn-outlined" style="width: 100%; box-sizing: border-box; text-align: center; display: block; text-decoration: none;">Weiterem Verein beitreten</a>
+</div>
+
+<div class="mdc-card" id="beitrittsanfragenCard" style="display: none;">
+    <div class="form-title-area">
+        <span class="material-icons">how_to_reg</span>
+        <h1>Beitrittsanfragen</h1>
+    </div>
+    <div id="beitrittsanfragenListe" style="display: flex; flex-direction: column;"></div>
+</div>
+</div>
 </div>
 
 <div class="mdc-card" id="superAdminCard" style="margin-top: 24px; display: none;">
@@ -344,6 +384,73 @@
         }
 
         renderMeineVereine();
+
+        // --- BEITRITTSANFRAGEN: weitere Funktionäre des eigenen Vereins ---
+        // Läuft für jeden Aufruf (nicht nur Super-Admins) — /api/vereine/pending liefert 403,
+        // wenn der Nutzer in keinem Verein Freigaberechte hat, dann bleibt die Karte einfach
+        // ausgeblendet. Das ist die Warteschlange, die menu.js im Profil-Badge mitzählt
+        // (siehe hajimeAktualisiereGenehmigungsHinweis), bislang aber nirgends auf profil.html
+        // dargestellt wurde.
+        async function ladeUndRendereBeitrittsanfragen() {
+            const card = document.getElementById('beitrittsanfragenCard');
+            const liste = document.getElementById('beitrittsanfragenListe');
+            try {
+                const resp = await fetch('/api/vereine/pending');
+                if (!resp.ok) {
+                    card.style.display = 'none';
+                    return;
+                }
+                const pending = await resp.json();
+
+                if (!Array.isArray(pending) || pending.length === 0) {
+                    card.style.display = 'none';
+                    return;
+                }
+
+                card.style.display = 'block';
+                liste.innerHTML = pending.map(p => `
+                    <div class="erstregistrierung-row">
+                        <div>
+                            <div class="erstregistrierung-name">${p.vorname} ${p.nachname}</div>
+                            <div class="erstregistrierung-meta">${p.email} &middot; ${p.verein_name}</div>
+                        </div>
+                        <div class="erstregistrierung-actions">
+                            <button type="button" class="btn btn-raised" data-action="approve" data-user-id="${p.id}" data-verein-id="${p.verein_id}" style="padding: 6px 12px; font-size: 11px;">Freigeben</button>
+                            <button type="button" class="btn btn-outlined" data-action="reject" data-user-id="${p.id}" data-verein-id="${p.verein_id}" style="padding: 6px 12px; font-size: 11px;">Ablehnen</button>
+                        </div>
+                    </div>
+                `).join('');
+
+                liste.querySelectorAll('button[data-action]').forEach(btn => {
+                    btn.addEventListener('click', async () => {
+                        const userId = btn.getAttribute('data-user-id');
+                        const vereinId = btn.getAttribute('data-verein-id');
+                        const action = btn.getAttribute('data-action');
+                        try {
+                            const response = await fetch(`/api/vereine/${action}`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ userId, vereinId })
+                            });
+                            const data = await response.json();
+                            if (!response.ok) throw new Error(data.error || 'Aktion fehlgeschlagen');
+                            if (window.zeigeNotification) {
+                                window.zeigeNotification(action === 'approve' ? 'Mitglied freigegeben.' : 'Anfrage abgelehnt.');
+                            }
+                            ladeUndRendereBeitrittsanfragen();
+                            if (window.hajimeAktualisiereGenehmigungsHinweis) window.hajimeAktualisiereGenehmigungsHinweis();
+                        } catch (err) {
+                            window.zeigeNotification ? window.zeigeNotification(err.message, 'error') : alert(err.message);
+                        }
+                    });
+                });
+            } catch (err) {
+                console.error('Fehler beim Laden der Beitrittsanfragen:', err);
+                card.style.display = 'none';
+            }
+        }
+
+        ladeUndRendereBeitrittsanfragen();
 
         // --- SUPER-ADMIN: ERSTREGISTRIERUNGEN ---
         if (aktuellerNutzer && aktuellerNutzer.ist_super_admin) {

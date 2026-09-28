@@ -1,0 +1,136 @@
+/* public/css/overlay.css
+   Transparente Stream-Overlay-Ansicht für OBS Browser-Source (siehe overlay.js). Bewusst ohne
+   Hintergrundfarbe auf html/body, damit OBS das Bild ohne Chroma-Key direkt über das Kamerabild
+   der Matte legen kann. */
+
+html, body {
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    font-family: 'Segoe UI', Arial, sans-serif;
+}
+
+.overlay-bar {
+    position: fixed;
+    left: 50%;
+    bottom: 40px;
+    transform: translateX(-50%) translateY(30px);
+    min-width: 640px;
+    max-width: 90vw;
+    background: linear-gradient(180deg, rgba(17, 24, 39, 0.92) 0%, rgba(17, 24, 39, 0.85) 100%);
+    border: 2px solid rgba(255, 255, 255, 0.15);
+    border-radius: 12px;
+    padding: 14px 32px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    color: #fff;
+    opacity: 0;
+    transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+.overlay-bar.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+.overlay-pool {
+    text-align: center;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #fbbf24;
+    margin-bottom: 8px;
+}
+
+.overlay-matchup {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+}
+
+.overlay-fighter {
+    flex: 1;
+    min-width: 0;
+    text-align: center;
+}
+
+.overlay-fighter.links { text-align: right; }
+.overlay-fighter.rechts { text-align: left; }
+
+.overlay-name {
+    font-size: 26px;
+    font-weight: 800;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.overlay-verein {
+    font-size: 14px;
+    font-weight: 500;
+    color: #d1d5db;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.overlay-vs {
+    font-size: 16px;
+    font-weight: 700;
+    color: #9ca3af;
+    flex: 0 0 auto;
+}
+
+/* Login-Formular: nur sichtbar, solange kein gültiges Token vorliegt bzw. nach 401 */
+.overlay-login {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: #1f2937;
+    border: 2px solid #374151;
+    border-radius: 8px;
+    padding: 28px;
+    width: 320px;
+    color: #f3f4f6;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+}
+
+.overlay-login h2 {
+    margin: 0 0 16px 0;
+    font-size: 16px;
+}
+
+.overlay-login input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    margin-bottom: 10px;
+    border: 1px solid #4b5563;
+    border-radius: 4px;
+    background: #111827;
+    color: #fff;
+}
+
+.overlay-login button {
+    width: 100%;
+    padding: 10px;
+    background: #3b82f6;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.overlay-login .overlay-login-error {
+    color: #ef4444;
+    font-size: 12px;
+    margin-top: 8px;
+    display: none;
+}

@@ -1,0 +1,46 @@
+# keepalived-Vorlage für Hajime Pro (Spec CouchDB-Umbau, Abschnitt 9). Nach
+# /etc/keepalived/keepalived.conf kopieren und die markierten Werte je Server anpassen.
+#
+# Beide Server laufen als BACKUP mit nopreempt: wer die VIP hat, behält sie, solange er gesund ist.
+# Gesund heißt (GET /api/cluster/gesund): App antwortet, PostgreSQL erreichbar, Zeuge (Router)
+# erreichbar, keine ausstehende Rückstufung, keine laufende Übergabe.
+
+global_defs {
+    router_id HAJIME_SERVER1            # ANPASSEN: HAJIME_SERVER1 bzw. HAJIME_SERVER2
+    script_user root
+    enable_script_security
+}
+
+vrrp_script hajime_gesund {
+    script "/usr/bin/curl -fs -m 1 http://127.0.0.1:3000/api/cluster/gesund -o /dev/null"
+    interval 1
+    fall 2                               # 2 s ungesund -> FAULT, VIP wird abgegeben
+    rise 2
+}
+
+vrrp_instance HAJIME {
+    state BACKUP
+    nopreempt
+    interface eth0                       # ANPASSEN: Netzwerkschnittstelle zum Hallen-Router
+    virtual_router_id 51                 # auf beiden Servern gleich, im Hallennetz eindeutig
+    priority 150                         # ANPASSEN: server1 150, server2 100
+    advert_int 1                         # ausbleibende Signale -> Übernahme nach ca. 3 s
+    authentication {
+        auth_type PASS
+        auth_pass hajime01               # ANPASSEN: auf beiden Servern gleich (max. 8 Zeichen)
+    }
+    unicast_src_ip 192.168.10.11         # ANPASSEN: eigene feste IP
+    unicast_peer {
+        192.168.10.12                    # ANPASSEN: feste IP des Partners
+    }
+    virtual_ipaddress {
+        192.168.10.10/24 dev eth0        # ANPASSEN: die VIP (Clients: SYNC_SERVER_URL=http://192.168.10.10:3000)
+    }
+    track_script {
+        hajime_gesund
+    }
+    notify_master "/usr/local/bin/hajime-befoerdern.sh"
+    notify_backup "/usr/local/bin/hajime-zurueckstufen.sh"
+    notify_fault  "/usr/local/bin/hajime-zurueckstufen.sh"
+    notify_stop   "/usr/local/bin/hajime-zurueckstufen.sh"
+}

@@ -1,7 +1,7 @@
 // Läuft einmalig vor der gesamten Testsuite (siehe globalSetup in playwright.config.js): setzt
 // die Offline-Test-SQLite-Datenbank auf einen sauberen, vollständig migrierten Ausgangszustand
 // zurück, damit jeder Testlauf reproduzierbar bei "keine Turniere/Teilnehmer vorhanden" beginnt.
-import { existsSync, unlinkSync } from 'fs';
+import { existsSync, mkdirSync, unlinkSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import knexLib from 'knex';
@@ -15,6 +15,8 @@ export default async function globalSetup() {
     if (existsSync(dbPath)) {
         unlinkSync(dbPath);
     }
+    // data/ ist git-ignoriert und fehlt in einem frischen Checkout (z.B. CI).
+    mkdirSync(path.dirname(dbPath), { recursive: true });
 
     const knex = knexLib({
         client: 'sqlite3',
