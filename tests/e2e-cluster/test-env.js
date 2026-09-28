@@ -43,6 +43,8 @@ export function serverEnv(name) {
         SYNC_ROLLE: 'server',
         SYNC_DATENVERZEICHNIS: k.dokumente,
         SYNC_SECRET: SECRET,
+        MDNS_AKTIV: 'false',
+        PORT80_WEITERLEITUNG: 'false',
         NODE_ENV: 'test',
         CLUSTER_KNOTEN: name,
         CLUSTER_PARTNER_URL: p.url,

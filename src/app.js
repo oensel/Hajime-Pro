@@ -31,6 +31,8 @@ import { starteClusterDienst } from './cluster/clusterDienst.js';
 import { getClusterRoutes } from './routes/clusterRoutes.js';
 import { nurMaster } from './middleware/nurMaster.js';
 import { getClientApiRoutes, clientStatischeSeiten } from './sync/clientApi.js';
+import { ladeKopplung } from './sync/kopplung.js';
+import { getClientVerteilungRoutes } from './routes/clientVerteilungRoutes.js';
 
 dotenv.config();
 
@@ -77,6 +79,16 @@ if (syncKonfig.istClient) {
 
     app.set('knex', knex);
 
+    // Kopplung neuer Desktop-Clients: ohne SYNC_SECRET in der .env erzeugt der Hallen-Server das
+    // Geheimnis selbst (zero-config). Es muss VOR dem Sync-Dienst feststehen, der es prüft.
+    const kopplung = syncKonfig.istServer ? ladeKopplung({ datenverzeichnis: syncKonfig.datenverzeichnis, envSecret: syncKonfig.secret }) : null;
+    if (kopplung) {
+        syncKonfig.secret = kopplung.secret;
+        if (kopplung.secretErzeugt) {
+            console.warn('[Kopplung] SYNC_SECRET automatisch erzeugt – Client-Geräte mit .env neu koppeln oder SYNC_SECRET aus kopplung.json übernehmen.');
+        }
+    }
+
     // Sync-Dienst (nur SYNC_ROLLE=server, siehe src/sync/). Das vorhandene Turnier aktiviert er erst
     // beim ersten Request (sync.bereit(), siehe dort).
     const sync = await starteSyncDienst({
@@ -103,6 +115,18 @@ if (syncKonfig.istClient) {
 
     app.use(express.json({ limit: '15mb' }));
     app.use(express.static(path.join(__dirname, '../public')));
+
+    if (kopplung) {
+        const downloadsVerzeichnis = process.env.CLIENT_DOWNLOADS_VERZEICHNIS || './data/client-downloads';
+        app.use('/downloads', express.static(path.resolve(downloadsVerzeichnis)));
+        app.get('/download', (req, res) => res.sendFile(path.join(__dirname, '../public/download.html')));
+        app.use('/api/client', getClientVerteilungRoutes({
+            datenverzeichnis: syncKonfig.datenverzeichnis,
+            downloadsVerzeichnis,
+            version: require('../package.json').version,
+            kopplung
+        }));
+    }
 
     // Nach jedem erfolgreichen schreibenden API-Request den Abgleich SQL -> Dokumente anstoßen
     // (entprellt). So erreichen Änderungen der Turnierleitung die Matten/Waagen, ohne dass jeder
@@ -177,3 +201,5 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
     console.log(`🚀 Hajime Pro läuft auf http://localhost:${PORT}`);
 });
+
+export { app };
