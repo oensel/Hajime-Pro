@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
+    <title>Hajime Pro</title>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #fafafa; }
+        #status { margin-top: 24px; color: #555; min-height: 1.2em; }
+        #kopplung { display: none; margin-top: 24px; text-align: center; }
+        #code { font-size: 28px; width: 8em; text-align: center; letter-spacing: 4px; }
+        #fehler { color: #c62828; min-height: 1.2em; }
+    </style>
+</head>
+<body>
+    <img src="../build/icon.png" width="128" height="128" alt="">
+    <div id="status">Starte …</div>
+    <form id="kopplung">
+        <p id="kopplungGrund">Dieses Gerät ist noch nicht mit dem Turnier-Server gekoppelt.<br>Code von der Turnierleitung (Seite „Kampfflächen“) eingeben:</p>
+        <input id="code" inputmode="numeric" autocomplete="off" autofocus>
+        <button type="submit">Koppeln</button>
+        <p id="fehler"></p>
+    </form>
+    <script src="start.js"></script>
+</body>
+</html>

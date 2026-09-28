@@ -1,0 +1,42 @@
+# Build des Desktop-Clients (Spec Desktop-Client Abschnitte 3, 6.3). Aus dem Repo-Root aufrufen:
+#   npm run desktop:build            (eigene Plattform)
+appId: de.hajime-pro.client
+productName: Hajime Pro
+directories:
+  output: dist-desktop
+  buildResources: desktop/build
+# asar aus: express.static, PouchDB/LevelDB und native Module lesen direkt vom Dateisystem —
+# vermeidet eine ganze Fehlerklasse zum Preis etwas größerer Pakete.
+asar: false
+files:
+  - desktop/**
+  - src/**
+  - public/**
+  - knexfile.cjs
+  - package.json
+  - "!**/*.test.js"
+  - "!tests/**"
+  - "!data/**"
+  - "!docs/**"
+artifactName: "Hajime-Pro-${version}-${os}-${arch}.${ext}"
+win:
+  target: [{ target: nsis, arch: [x64] }]
+nsis:
+  oneClick: true
+  perMachine: false
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: Hajime Pro
+mac:
+  target:
+    - { target: dmg, arch: [universal] }
+    - { target: zip, arch: [universal] }
+  category: public.app-category.sports
+  extendInfo:
+    NSCameraUsageDescription: Die Waage liest Judopass-QR-Codes mit der Kamera.
+  identity: null
+linux:
+  target: [{ target: AppImage, arch: [x64] }]
+  category: Utility
+  executableArgs: ["--no-sandbox"]
+publish: null

@@ -27,3 +27,6 @@ data/
 
 # Claude Code lokale Einstellungen
 .claude/settings.local.json
+
+# Build-Ausgabe des Desktop-Clients (electron-builder, siehe desktop/electron-builder.yml)
+/dist-desktop/
