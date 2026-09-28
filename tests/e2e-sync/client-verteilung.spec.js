@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync, rmSync } from 'fs';
 import path from 'path';
 import { createRequire } from 'module';
 import { SYNC_TEST_DOWNLOADS, SYNC_TEST_DOKUMENTE } from './test-env.js';
+import { legeTurnierAn } from './helpers.js';
 
 const { version } = createRequire(import.meta.url)('../../package.json');
 const ordner = path.join(SYNC_TEST_DOWNLOADS, version);
@@ -26,6 +27,49 @@ test.describe.serial('Client-Verteilung', () => {
         expect(await resp.json()).toEqual(vj);
         const datei = await request.get(`/downloads/${version}/a.exe`);
         expect(await datei.text()).toBe('INHALT');
+    });
+
+    test('Download-Seite empfiehlt die Datei passend zum Betriebssystem', async ({ browser }) => {
+        const d = (datei) => ({ datei, sha256: 'x', signatur: 'y' });
+        writeFileSync(path.join(ordner, 'version.json'), JSON.stringify({ version, dateien: {
+            'win32-x64': { installieren: d('w.exe'), aktualisieren: d('w.exe') },
+            'darwin-universal': { installieren: d('m.dmg'), aktualisieren: d('m.zip') },
+            'linux-x64': { installieren: d('l.AppImage'), aktualisieren: d('l.AppImage') } } }));
+        const faelle = [
+            ['Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'w.exe'],
+            ['Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0)', 'm.dmg'],
+            ['Mozilla/5.0 (X11; Linux x86_64)', 'l.AppImage']
+        ];
+        for (const [ua, datei] of faelle) {
+            const ctx = await browser.newContext({ userAgent: ua });
+            const page = await ctx.newPage();
+            await page.goto('/download');
+            await expect(page.locator('#downloadHauptlink')).toHaveAttribute('href', `/downloads/${version}/${datei}`);
+            await expect(page.locator('#downloadWeitere a')).toHaveCount(2);
+            await ctx.close();
+        }
+    });
+
+    test('Download-Seite ohne Client-Dateien zeigt einen Hinweis', async ({ page }) => {
+        rmSync(path.join(ordner, 'version.json'));
+        await page.goto('/download');
+        await expect(page.locator('#downloadHinweis')).toContainText('keine Client-Dateien');
+        await expect(page.locator('#downloadHauptlink')).toHaveCount(0);
+        // Fixture für die folgenden Tests wiederherstellen
+        writeFileSync(path.join(ordner, 'version.json'), JSON.stringify({ version, dateien: {} }));
+    });
+
+    // matten.html leitet ohne turnierId sofort auf turnier.html weiter (siehe public/js/matten.js) —
+    // daher wie in tests/e2e-sync/sync-konflikte.spec.js vorher ein Turnier anlegen und mit
+    // ?turnierId=... navigieren.
+    test('matten.html zeigt die Kopplungskarte, Erneuern aktualisiert den Code', async ({ page, request }) => {
+        const turnierId = await legeTurnierAn(request, 'Client-Verteilung Kopplungskarte');
+        await page.goto(`/matten.html?turnierId=${turnierId}`);
+        const code = (await (await request.get('/api/client/kopplungscode')).json()).code;
+        await expect(page.locator('#kopplungKarte')).toBeVisible();
+        await expect(page.locator('#kopplungCode')).toHaveText(`${code.slice(0, 3)} ${code.slice(3)}`);
+        await page.locator('#kopplungErneuernBtn').click();
+        await expect(page.locator('#kopplungCode')).not.toHaveText(`${code.slice(0, 3)} ${code.slice(3)}`);
     });
 
     test('Kopplung: richtiger Code (mit Leerzeichen) liefert das Geheimnis', async ({ request }) => {
