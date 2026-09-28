@@ -112,6 +112,11 @@ export async function clientVerbinden(request) {
     expect(r.ok()).toBeTruthy();
 }
 
+export async function clientVerbindungSetzen(request, verbindung) {
+    const resp = await request.post(`${CLIENT_BASE_URL}/api/sync/test/verbindung`, { data: verbindung });
+    expect(resp.ok(), await resp.text()).toBeTruthy();
+}
+
 export async function ladeClientDokument(request, dbName, id) {
     const resp = await request.get(`${CLIENT_BASE_URL}/db/${dbName}/${encodeURIComponent(id)}`);
     return resp.ok() ? resp.json() : null;

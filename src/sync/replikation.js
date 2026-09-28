@@ -13,7 +13,7 @@ export function erzeugeReplikation({ PouchDB, konfig, clientId }) {
     let feed = null;
     let getrennt = false; // nur Test-Endpunkt: Verbindung künstlich unterbrechen
     const ausstehend = new Map(); // docId -> lokale Revision
-    const zustand = { aktiv: false, ruhend: false, fehler: null };
+    const zustand = { aktiv: false, ruhend: false, fehler: null, abgelehnt: false };
 
     function remoteDb(dbName) {
         // skip_setup: niemals eine DB auf dem Server anlegen (z.B. eine alte Instanz nach einem
@@ -47,21 +47,27 @@ export function erzeugeReplikation({ PouchDB, konfig, clientId }) {
         sync = lokal.sync(remoteDb(lokal.name), { live: true, retry: true, back_off_function: (d) => (d === 0 ? 500 : Math.min(d * 2, 5000)) });
         sync.on('change', (info) => {
             zustand.fehler = null;
+            zustand.abgelehnt = false;
             if (info.direction === 'push') {
                 for (const doc of info.change.docs) {
                     if (ausstehend.get(doc._id) === doc._rev) ausstehend.delete(doc._id);
                 }
             }
         });
-        sync.on('active', () => { zustand.aktiv = true; zustand.ruhend = false; });
+        sync.on('active', () => { zustand.aktiv = true; zustand.ruhend = false; zustand.abgelehnt = false; zustand.fehler = null; });
         sync.on('paused', (err) => {
             zustand.aktiv = false;
             zustand.ruhend = !err;
-            if (err) zustand.fehler = null; // offline: kein Konfigurationsfehler, nur keine Verbindung
+            // Weder ein echter Offline-Zustand (err gesetzt) noch ein erfolgreiches Einpendeln in den
+            // Ruhezustand sind ein Konfigurationsfehler — ein zuvor gesetzter fehler/abgelehnt-Status
+            // ist damit überholt.
+            zustand.fehler = null;
+            zustand.abgelehnt = false;
         });
         sync.on('denied', (err) => { zustand.fehler = `Zugriff verweigert: ${err && err.message}`; });
         sync.on('error', (err) => {
-            zustand.fehler = (err && (err.status === 401 || err.status === 403))
+            zustand.abgelehnt = !!(err && (err.status === 401 || err.status === 403));
+            zustand.fehler = zustand.abgelehnt
                 ? 'Replikation abgelehnt (SYNC_SECRET prüfen)'
                 : `Replikationsfehler: ${err && err.message}`;
             sync = null;
@@ -115,6 +121,6 @@ export function erzeugeReplikation({ PouchDB, konfig, clientId }) {
             if (!getrennt && !sync) starteSync();
         },
         ausstehendeIds: () => [...ausstehend.keys()],
-        status: () => ({ getrennt, aktiv: zustand.aktiv, ruhend: zustand.ruhend, fehler: zustand.fehler, ausstehend: ausstehend.size })
+        status: () => ({ getrennt, aktiv: zustand.aktiv, ruhend: zustand.ruhend, fehler: zustand.fehler, abgelehnt: zustand.abgelehnt, ausstehend: ausstehend.size })
     };
 }

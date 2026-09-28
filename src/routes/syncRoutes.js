@@ -103,6 +103,13 @@ export function getSyncRoutes(holeSync) {
             await sync.verbinden();
             res.json({ success: true });
         });
+
+        router.post('/test/verbindung', async (req, res) => {
+            const sync = holeSync();
+            if (!sync || sync.rolle !== 'client') return res.status(400).json({ success: false });
+            await sync.setzeVerbindung(req.body || {});
+            res.json({ success: true });
+        });
     }
 
     return router;

@@ -208,6 +208,15 @@ export async function starteClientDienst({ konfig }) {
             replikation.verbinden();
             await pruefeSeriell();
         },
+        // Desktop-Client (desktop/main.js): Server-Adresse (neuer Master nach mDNS-Suche) oder
+        // Geheimnis (nach erneuter Kopplung) zur Laufzeit ändern. konfig ist dasselbe Objekt, das
+        // replikation.js für die Remote-DB liest — ein Neustart der Replikation genügt.
+        async setzeVerbindung({ serverUrl, secret } = {}) {
+            if (serverUrl) konfig.serverUrl = String(serverUrl).replace(/\/+$/, '');
+            if (secret !== undefined) konfig.secret = secret;
+            if (zustand.db) await replikation.starte(zustand.db);
+            await pruefeSeriell();
+        },
         // Test-Hilfe: wartet, bis alle eigenen Änderungen übertragen sind und die Replikation ruht.
         async leerlauf(maxMs = 15000) {
             const ende = Date.now() + maxMs;
