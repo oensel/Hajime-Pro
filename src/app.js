@@ -213,8 +213,12 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, syncKonfig.istClient ? '../public/client.html' : '../public/turniere.html'));
 });
 
-app.listen(PORT, () => {
-    console.log(`🚀 Hajime Pro läuft auf http://localhost:${PORT}`);
+// LISTEN_HOST (optional): nur an diese Adresse binden. Der Desktop-Client (desktop/main.js) setzt
+// 127.0.0.1, damit der Client-Knoten nicht im Hallen-WLAN erreichbar ist (und keine Firewall-
+// Abfrage auslöst). Ohne Variable wie bisher auf allen Schnittstellen.
+const LISTEN_HOST = process.env.LISTEN_HOST || undefined;
+app.listen(PORT, LISTEN_HOST, () => {
+    console.log(`🚀 Hajime Pro läuft auf http://${LISTEN_HOST || 'localhost'}:${PORT}`);
 });
 
 export { app };

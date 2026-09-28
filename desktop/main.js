@@ -1,7 +1,7 @@
 // Electron-Hauptprozess des Desktop-Clients (Spec Desktop-Client Abschnitte 3, 4): Server per mDNS
 // suchen, ggf. selbst aktualisieren, einmalig koppeln, dann den bestehenden Client-Knoten
 // (src/app.js mit SYNC_ROLLE=client) auf einem freien localhost-Port starten und client.html zeigen.
-import { app, BrowserWindow, ipcMain, session, systemPreferences } from 'electron';
+import { app, BrowserWindow, ipcMain, session, shell, systemPreferences } from 'electron';
 import net from 'net';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -13,6 +13,11 @@ import { richteLinuxIntegrationEin } from './linuxIntegration.js';
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const VERBINDUNG_WEG_MS = 10000;
 const UEBERWACHUNG_MS = 5000;
+// Nach einer vom Nutzer abgebrochenen Neukopplung (Start-Fenster geschlossen) erst nach dieser Zeit
+// erneut fragen, statt das Fenster alle 5 s wieder aufzureißen.
+const KOPPLUNG_PAUSE_MS = 60000;
+// Der Client-Knoten lauscht nur auf der Loopback-Adresse (nicht im Hallen-WLAN erreichbar).
+const LOKALER_HOST = '127.0.0.1';
 
 // --user-data-dir=<pfad> (Rauchtest, mehrere Profile auf einem Gerät) MUSS vor der ersten Nutzung
 // von app.getPath('userData') wirken — auch vor der Einzelinstanz-Sperre, die an diesem Profil hängt.
@@ -24,6 +29,7 @@ if (!einzigeInstanz) app.quit();
 
 let startFenster = null;
 let hauptFenster = null;
+let lokaleOrigin = null; // http://127.0.0.1:<port>, sobald der Client-Knoten läuft
 const einstellungen = erzeugeEinstellungen(path.join(app.getPath('userData'), 'einstellungen.json'));
 
 function status(text) {
@@ -33,7 +39,7 @@ function status(text) {
 function freierPort() {
     return new Promise((resolve, reject) => {
         const s = net.createServer();
-        s.listen(0, '127.0.0.1', () => { const { port } = s.address(); s.close(() => resolve(port)); });
+        s.listen(0, LOKALER_HOST, () => { const { port } = s.address(); s.close(() => resolve(port)); });
         s.on('error', reject);
     });
 }
@@ -47,9 +53,11 @@ async function warteAufServer(url, maxMs = 30000) {
     throw new Error('Lokaler Client-Dienst startet nicht.');
 }
 
-// Kopplung: zeigt das Formular im Start-Fenster und löst auf, sobald der Server einen Code akzeptiert.
+// Kopplung: zeigt das Formular im Start-Fenster und löst mit dem Geheimnis auf, sobald der Server
+// einen Code akzeptiert — oder mit null, wenn der Nutzer das Start-Fenster vorher schließt.
 function koppeln(serverUrl, grund) {
     return new Promise((resolve) => {
+        startFenster.once('closed', () => { ipcMain.removeHandler('koppeln'); resolve(null); });
         ipcMain.removeHandler('koppeln');
         ipcMain.handle('koppeln', async (_e, code) => {
             try {
@@ -60,7 +68,8 @@ function koppeln(serverUrl, grund) {
                 });
                 const daten = await r.json().catch(() => ({}));
                 if (r.status === 429) return { ok: false, fehler: `Zu viele Fehlversuche – bitte ${daten.restSekunden} s warten.` };
-                if (!r.ok) return { ok: false, fehler: 'Code falsch.' };
+                if (r.status === 401) return { ok: false, fehler: 'Code falsch.' };
+                if (!r.ok || !daten.secret) return { ok: false, fehler: `Server antwortet nicht wie erwartet (HTTP ${r.status}).` };
                 einstellungen.speichere({ secret: daten.secret, serverUrl });
                 resolve(daten.secret);
                 return { ok: true };
@@ -79,10 +88,11 @@ async function starteClientKnoten({ serverUrl, secret }) {
         SYNC_SERVER_URL: serverUrl || 'http://127.0.0.1:9', // ohne bekannte Adresse: offline, bis die Suche einen Server findet
         SYNC_SECRET: secret || '',
         SYNC_DATENVERZEICHNIS: path.join(app.getPath('userData'), 'dokumente'),
-        PORT: String(port)
+        PORT: String(port),
+        LISTEN_HOST: LOKALER_HOST
     });
     const { app: expressApp } = await import(pathToFileURL(path.join(hier, '../src/app.js')).href);
-    const basis = `http://localhost:${port}`;
+    const basis = `http://${LOKALER_HOST}:${port}`;
     await warteAufServer(`${basis}/client.html`);
     return { basis, clientDienst: () => expressApp.get('sync') };
 }
@@ -91,18 +101,26 @@ async function starteClientKnoten({ serverUrl, secret }) {
 // einmalig neu koppeln.
 function ueberwache(clientDienst) {
     let wegSeit = null;
-    let kopplungLaeuft = false;
-    setInterval(async () => {
+    let laeuft = false; // vorheriger Durchlauf (Suche/Kopplung) noch nicht fertig -> Tick auslassen
+    let kopplungPauseBis = 0;
+
+    async function neuKoppeln(dienst) {
+        const url = einstellungen.lade().serverUrl;
+        await zeigeStartFenster();
+        const secret = await koppeln(url, 'Der Server hat die Kopplung nicht angenommen (neuer Server oder Code erneuert). Bitte neuen Code eingeben:');
+        if (!secret) { // Nutzer hat das Start-Fenster geschlossen
+            kopplungPauseBis = Date.now() + KOPPLUNG_PAUSE_MS;
+            return;
+        }
+        if (startFenster && !startFenster.isDestroyed()) startFenster.close();
+        await dienst.setzeVerbindung({ secret });
+    }
+
+    async function durchlauf() {
         const dienst = clientDienst();
         if (!dienst) return;
-        if (dienst.replikation.status().abgelehnt && !kopplungLaeuft) {
-            kopplungLaeuft = true;
-            const url = einstellungen.lade().serverUrl;
-            await zeigeStartFenster();
-            const secret = await koppeln(url, 'Der Server hat die Kopplung nicht angenommen (neuer Server oder Code erneuert). Bitte neuen Code eingeben:');
-            await dienst.setzeVerbindung({ secret });
-            startFenster.close();
-            kopplungLaeuft = false;
+        if (dienst.replikation.status().abgelehnt) {
+            if (Date.now() >= kopplungPauseBis) await neuKoppeln(dienst);
             return;
         }
         if (dienst.zustand.serverErreichbar) { wegSeit = null; return; }
@@ -114,7 +132,53 @@ function ueberwache(clientDienst) {
             await dienst.setzeVerbindung({ serverUrl: gefunden.url });
             wegSeit = null;
         }
+    }
+
+    setInterval(async () => {
+        if (laeuft) return;
+        laeuft = true;
+        try {
+            await durchlauf();
+        } catch (err) {
+            console.error('[Desktop] Überwachung fehlgeschlagen:', err);
+        } finally {
+            laeuft = false;
+        }
     }, UEBERWACHUNG_MS).unref();
+}
+
+// Alle Fenster bleiben auf der lokalen Oberfläche: Navigation nur innerhalb von lokaleOrigin, neue
+// Fenster nur für lokale Seiten (kampf.js öffnet steuerung.html per window.open), externe
+// http(s)-Links im System-Browser, alles andere wird verweigert.
+function istLokal(url) {
+    try { return !!lokaleOrigin && new URL(url).origin === lokaleOrigin; } catch { return false; }
+}
+
+function oeffneExtern(url) {
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url).catch(() => {});
+}
+
+function sichereFenster() {
+    app.on('web-contents-created', (_e, wc) => {
+        wc.on('will-navigate', (e, url) => {
+            if (istLokal(url)) return;
+            e.preventDefault();
+            oeffneExtern(url);
+        });
+        wc.setWindowOpenHandler(({ url }) => {
+            if (istLokal(url)) return { action: 'allow', overrideBrowserWindowOptions: { autoHideMenuBar: true } };
+            oeffneExtern(url);
+            return { action: 'deny' };
+        });
+    });
+    // Kamera (Waage, Judopass-QR) nur für die lokale Oberfläche.
+    session.defaultSession.setPermissionRequestHandler((wc, recht, cb, details) => {
+        cb(recht === 'media' && istLokal((details && details.requestingUrl) || wc.getURL()));
+    });
+    session.defaultSession.setPermissionCheckHandler((_wc, recht, origin) => {
+        if (recht === 'media') return istLokal(origin);
+        return true; // übrige Prüfungen wie Electron-Standard
+    });
 }
 
 function zeigeStartFenster() {
@@ -127,7 +191,7 @@ function zeigeStartFenster() {
 }
 
 async function start() {
-    session.defaultSession.setPermissionRequestHandler((_wc, recht, cb) => cb(recht === 'media'));
+    sichereFenster();
     if (process.platform === 'darwin') systemPreferences.askForMediaAccess('camera').catch(() => {});
     if (process.platform === 'linux' && process.env.APPIMAGE) {
         richteLinuxIntegrationEin({ appImage: process.env.APPIMAGE, iconQuelle: path.join(hier, 'build/icon.png') });
@@ -152,12 +216,13 @@ async function start() {
             continue;
         }
         status(`Server gefunden: ${gefunden.url}`);
-        await koppeln(gefunden.url);
+        if (!await koppeln(gefunden.url)) return; // Start-Fenster geschlossen -> App endet
         werte = einstellungen.lade();
     }
 
     status('Starte …');
     const { basis, clientDienst } = await starteClientKnoten({ serverUrl: werte.serverUrl, secret: werte.secret });
+    lokaleOrigin = basis;
     hauptFenster = new BrowserWindow({ width: 1280, height: 860, title: 'Hajime Pro', show: false });
     hauptFenster.setMenuBarVisibility(false);
     await hauptFenster.loadURL(`${basis}/client.html`);
