@@ -139,6 +139,8 @@ export async function starteClientDienst({ konfig }) {
                 verbunden: zustand.serverErreichbar && !r.getrennt && !r.fehler,
                 ausstehend: r.ausstehend,
                 fehler: r.fehler,
+                // Gesetzt vom Desktop-Updater (desktop/updater.js), wenn ein Update aufgegeben wurde.
+                update_hinweis: process.env.HAJIME_UPDATE_HINWEIS || null,
                 instanzwechsel_laeuft: zustand.instanzwechselLaeuft,
                 uhr_offset_ms: zustand.uhrOffsetMs,
                 matte_id: await clientKonfig.matteId()

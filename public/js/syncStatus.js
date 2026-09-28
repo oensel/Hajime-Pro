@@ -43,7 +43,9 @@
         if (status.instanz_id) letzteInstanz = status.instanz_id;
 
         if (status.instanzwechsel_laeuft) zeige('wechsel', 'Turnierwechsel läuft …');
-        else if (status.fehler) zeige('fehler', status.fehler);
+        else if (status.fehler) zeige('fehler', status.update_hinweis ? `${status.fehler} · ${status.update_hinweis}` : status.fehler);
+        // Aufgegebenes Selbst-Update des Desktop-Clients: bleibt rot stehen, Verbindungsstatus davor.
+        else if (status.update_hinweis) zeige('fehler', `${status.verbunden ? 'verbunden' : 'offline'} · ${status.update_hinweis}`);
         else if (status.verbunden) zeige('verbunden', status.ausstehend ? `verbunden – ${status.ausstehend} werden übertragen` : 'verbunden');
         else zeige('offline', `offline – ${status.ausstehend} Änderung${status.ausstehend === 1 ? '' : 'en'} ausstehend`);
     }
