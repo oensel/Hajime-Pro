@@ -1,0 +1,5 @@
+# macOS-Universal-Build (release.yml): wie electron-builder.yml, aber native Module je Architektur
+# aus den Quellen bauen. Sonst überdeckt das beim npm ci für arm64 kompilierte leveldown@5
+# (build/Release, kein arm64-Prebuild) auch die x64-Hälfte, und lipo bricht ab.
+extends: desktop/electron-builder.yml
+buildDependenciesFromSource: true
