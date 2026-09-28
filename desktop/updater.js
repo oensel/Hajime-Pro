@@ -73,10 +73,20 @@ function macAppPfad() {
     return path.resolve(process.execPath, '../../..');
 }
 
-function macAustauschbar(appPfad) {
-    if (appPfad.startsWith('/Volumes/') || appPfad.includes('/AppTranslocation/')) return false;
-    try { accessSync(path.dirname(appPfad), constants.W_OK); return true; } catch { return false; }
+// null = austauschbar, sonst der Grund für die Statusmeldung: 'ort' (vom Image/aus der
+// Quarantäne-Kopie gestartet, nicht in Programme) oder 'schreibrecht' (Ordner nicht beschreibbar,
+// z.B. /Applications ohne Admin-Rechte des angemeldeten Kontos).
+export function macNichtAustauschbarGrund(appPfad, beschreibbar = (ordner) => {
+    try { accessSync(ordner, constants.W_OK); return true; } catch { return false; }
+}) {
+    if (appPfad.startsWith('/Volumes/') || appPfad.includes('/AppTranslocation/')) return 'ort';
+    return beschreibbar(path.dirname(appPfad)) ? null : 'schreibrecht';
 }
+
+export const MAC_HINWEIS = {
+    ort: 'Update nicht möglich: Bitte „Hajime Pro“ in den Ordner Programme verschieben und von dort starten.',
+    schreibrecht: 'Update nicht möglich: Keine Schreibrechte im Ordner Programme – bitte mit einem Administrator-Konto aktualisieren oder neu installieren.'
+};
 
 // Shell-Befehl für den Bundle-Tausch nach Ende des laufenden Prozesses. Pfade gehen als
 // Positionsparameter hinein (keine Quoting-Probleme). Das alte Bundle wird erst beiseitegelegt und
@@ -112,12 +122,17 @@ export function tauscheAppImage({ quelle, ziel }) {
 }
 
 // Programm und Argumente für den Start nach dem Austausch (Windows: Installer, Linux: neue AppImage).
-export function startBefehl({ plattform, datei, appImage, env }) {
+// Linux: die neue AppImage erst starten, wenn der alte Prozess (pid) beendet ist — sonst hält er noch
+// die Einzelinstanz-Sperre und die neue Instanz beendet sich sofort wieder (wie macAustauschBefehl).
+export function startBefehl({ plattform, datei, appImage, env, pid }) {
     // NSIS oneClick ohne /S: zeigt sein eigenes Fortschrittsfenster, stellt aber keine Fragen;
     // --force-run startet danach die neue Version.
     if (plattform === 'win32-x64') return [datei, ['--force-run'], {}];
     // executableArgs aus electron-builder.yml gelten nur für die .desktop-Datei, nicht für den Neustart.
-    if (plattform === 'linux-x64') return [appImage, ['--no-sandbox'], { env: linuxUmgebung(env) }];
+    if (plattform === 'linux-x64') {
+        const skript = 'while kill -0 "$1" 2>/dev/null; do sleep 0.2; done; exec "$2" --no-sandbox';
+        return ['/bin/sh', ['-c', skript, 'sh', String(pid), appImage], { env: linuxUmgebung(env) }];
+    }
     throw new Error(`Kein Startbefehl für ${plattform}`);
 }
 
@@ -145,7 +160,7 @@ async function tauscheAus({ app, plattform, datei, version, status }) {
     }
     const ziel = process.env.APPIMAGE;
     tauscheAppImage({ quelle: datei, ziel });
-    const [befehl, args, optionen] = startBefehl({ plattform, appImage: ziel, env: process.env });
+    const [befehl, args, optionen] = startBefehl({ plattform, appImage: ziel, env: process.env, pid: process.pid });
     await starteLoesgeloest(befehl, args, optionen);
     app.quit();
 }
@@ -185,8 +200,9 @@ async function pruefeUndAktualisiereIntern({ serverUrl, einstellungen, status, a
     }
     // Umgebungsprüfungen nur für den echten Austausch (Tests ersetzen tauscheAus).
     if (tausche === tauscheAus) {
-        if (plattform === 'darwin-universal' && !macAustauschbar(macAppPfad())) {
-            status('Update nicht möglich: Bitte „Hajime Pro“ in den Ordner Programme verschieben.');
+        const macGrund = plattform === 'darwin-universal' ? macNichtAustauschbarGrund(macAppPfad()) : null;
+        if (macGrund) {
+            status(MAC_HINWEIS[macGrund]);
             await new Promise(r => setTimeout(r, 4000));
             return 'weiter';
         }

@@ -7,7 +7,8 @@ import { tmpdir } from 'os';
 import path from 'path';
 import { generateKeyPairSync, sign } from 'crypto';
 import {
-    holeServerVersion, pruefeUndAktualisiere, macAustauschBefehl, linuxUmgebung, tauscheAppImage, starteLoesgeloest, startBefehl
+    holeServerVersion, pruefeUndAktualisiere, macAustauschBefehl, linuxUmgebung, tauscheAppImage, starteLoesgeloest, startBefehl,
+    macNichtAustauschbarGrund
 } from '../../desktop/updater.js';
 import { erzeugeEinstellungen } from '../../desktop/einstellungen.js';
 import { sha256Hex, signaturNachricht } from '../../desktop/updateLogik.js';
@@ -249,9 +250,26 @@ test('startBefehl: Windows-Installer ohne /S mit --force-run', () => {
     assert.deepEqual(startBefehl({ plattform: 'win32-x64', datei: 'C:/u/setup.exe' }), ['C:/u/setup.exe', ['--force-run'], {}]);
 });
 
-test('startBefehl: Linux-AppImage mit --no-sandbox und bereinigter Umgebung', () => {
-    assert.deepEqual(startBefehl({ plattform: 'linux-x64', appImage: '/opt/h.AppImage', env: { APPIMAGE: '/opt/h.AppImage', HOME: '/h' } }),
-        ['/opt/h.AppImage', ['--no-sandbox'], { env: { HOME: '/h' } }]);
+test('startBefehl: Linux-AppImage wartet auf das Ende des alten Prozesses, --no-sandbox, bereinigte Umgebung', () => {
+    const [befehl, args, optionen] = startBefehl({ plattform: 'linux-x64', appImage: '/opt/h.AppImage', pid: 4711, env: { APPIMAGE: '/opt/h.AppImage', HOME: '/h' } });
+    assert.equal(befehl, '/bin/sh');
+    assert.match(args[1], /while kill -0 "\$1".*exec "\$2" --no-sandbox/);
+    assert.deepEqual(args.slice(2), ['sh', '4711', '/opt/h.AppImage']);
+    assert.deepEqual(optionen, { env: { HOME: '/h' } });
+});
+
+test('startBefehl (Linux): Skript startet erst nach Prozessende', { skip: !!spawnSync('sh', ['-c', 'exit 0']).error && 'sh fehlt' }, () => {
+    const [, args] = startBefehl({ plattform: 'linux-x64', appImage: 'echo', pid: 999999, env: {} });
+    const r = spawnSync('sh', args, { encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.stdout.trim(), '--no-sandbox');
+});
+
+test('macNichtAustauschbarGrund unterscheidet Ort und Schreibrecht', () => {
+    assert.equal(macNichtAustauschbarGrund('/Volumes/Hajime/Hajime Pro.app', () => true), 'ort');
+    assert.equal(macNichtAustauschbarGrund('/private/var/folders/x/AppTranslocation/y/d/Hajime Pro.app', () => true), 'ort');
+    assert.equal(macNichtAustauschbarGrund('/Applications/Hajime Pro.app', () => false), 'schreibrecht');
+    assert.equal(macNichtAustauschbarGrund('/Applications/Hajime Pro.app', () => true), null);
 });
 
 const shVerfuegbar = !spawnSync('sh', ['-c', 'exit 0']).error;
