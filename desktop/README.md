@@ -8,8 +8,12 @@ Server intern immer mit `SYNC_ROLLE=client` und bindet ihn per `LISTEN_HOST` nur
 Turnier-Dokumente und geladene Updates liegen unter `userData` (`einstellungen.json`, `dokumente/`,
 `updates/`) — beim Deinstallieren bleibt dieses Verzeichnis erhalten, außer es wird manuell gelöscht.
 Fachlich verhält sich der Client wie das bestehende Client-Gerät (Notebook/Tablet an Matte/Waage,
-siehe CLAUDE.md): mDNS-Serversuche, Kopplung und Offline-Kaskade sind unverändert, nur Start,
-Serversuche und Selbst-Update sind neu.
+siehe CLAUDE.md): Replikation und Offline-Kaskade sind unverändert. Neu sind der Start (Electron),
+die Serversuche per mDNS (`_hajime._tcp`, bevorzugt die Absenderadresse der Antwort; findet sie
+nach ~15 s nichts oder ist der Server beim Koppeln nicht erreichbar, bietet das Startfenster die
+manuelle Eingabe der Server-Adresse an, z.B. `192.168.1.10` oder `turnier.local`, ohne Port gilt
+3000), die Kopplung per Code statt `.env` und das Selbst-Update. Im Betrieb sucht der Client neu,
+wenn der Server > 10 s fehlt oder sich als Secondary meldet (Cluster-Übergabe).
 
 ## Einmalige Einrichtung (Entwickler)
 
@@ -42,7 +46,7 @@ abzustürzen.
 2. `git push --follow-tags` — löst `release.yml` aus.
 3. Die Pipeline testet, prüft die Tag/Version-Übereinstimmung, baut Windows/macOS/Linux, signiert
    die Dateien und veröffentlicht sie als GitHub-Release.
-4. Auf dem Hallen-Server die neue Version holen: `git pull && npm ci && npm run client:holen`
+4. Auf dem Hallen-Server die neue Version holen: `git pull && npm ci --omit=dev && npm run client:holen`
    (bei privatem Repository zusätzlich `GITHUB_TOKEN` mit Leserecht auf Releases in der `.env`).
 
 ## Lokal entwickeln
@@ -67,15 +71,19 @@ abzustürzen.
 
 ### macOS
 
-1. `.dmg` installieren: Öffnen, App-Bundle nach „Programme“ ziehen.
-2. Erststart: Gatekeeper blockiert die unsignierte App → Systemeinstellungen →
-   Datenschutz & Sicherheit → „Trotzdem öffnen“.
+1. `.dmg` **in Safari auf einem Apple-Silicon-Mac** von `http://turnier.local/download` (bzw. `http://<server-ip>:3000/download`) laden (nur so
+   trägt die Datei das Quarantäne-Flag wie bei Helfern) und öffnen, App-Bundle nach „Programme“ ziehen.
+2. Erststart: Gatekeeper blockiert die nur ad-hoc signierte App → Systemeinstellungen →
+   Datenschutz & Sicherheit → „Trotzdem öffnen“. Es darf **nicht** „ist beschädigt und kann nicht
+   geöffnet werden“ erscheinen (das wäre ein kaputtes Siegel, siehe `identity: "-"` in
+   `electron-builder.yml`); zur Kontrolle `codesign --verify --deep --strict "/Applications/Hajime Pro.app"`.
 3. Neue Version am Server bereitstellen; Client lädt die `.zip`, entpackt sie, wartet auf
    Prozessende und tauscht das `.app`-Bundle aus.
 4. Neustart tauscht die Version aus — kein erneuter Gatekeeper-Dialog, da von der App selbst
    geschriebene Dateien kein Quarantäne-Flag tragen.
 5. Gegentest: App direkt aus dem `.dmg` bzw. aus App Translocation heraus starten → Startfenster
-   zeigt „Bitte in Programme verschieben“, kein Update-Versuch.
+   zeigt „Bitte in Programme verschieben“, kein Update-Versuch. Mit einem Standard-Konto ohne
+   Schreibrecht auf `/Applications` → Meldung „Keine Schreibrechte im Ordner Programme“.
 
 ### Linux
 
@@ -91,8 +99,9 @@ abzustürzen.
 
 ## Bekannte Grenzen
 
-- Ohne Code-Signatur: Windows-SmartScreen („Trotzdem ausführen“) und macOS-Gatekeeper
-  (Systemeinstellungen → Datenschutz → „Trotzdem öffnen“) je einmal bei der Erstinstallation.
+- Ohne Code-Signatur (macOS nur ad-hoc): Windows-SmartScreen („Trotzdem ausführen“) und
+  macOS-Gatekeeper (Systemeinstellungen → Datenschutz → „Trotzdem öffnen“) je einmal bei der
+  Erstinstallation.
 - macOS: Läuft die App aus dem `.dmg` oder einem schreibgeschützten Ort (App Translocation), kein
   Update; Startfenster zeigt „Bitte in Programme verschieben“.
 - Linux: Ubuntu ≥ 22.04 braucht einmalig `libfuse2` (bzw. `libfuse2t64`), sonst startet das AppImage
@@ -103,6 +112,8 @@ abzustürzen.
 - Der reale Dateitausch bei Update auf macOS und Linux (Prozessende abwarten, Bundle/AppImage
   ersetzen, Neustart) ist bisher nicht gegen ein echtes Release getestet — zu prüfen beim ersten
   Release.
+- Blockiert das Netz mDNS (WLAN-Client-Isolation, abgelehnte Firewall-Freigabe für UDP 5353),
+  findet der Client den Server nicht selbst — dann die Server-Adresse im Startfenster eingeben.
 - Server benötigt für mDNS UDP 5353 offen sowie `CAP_NET_BIND_SERVICE` für Port 80
   (Weiterleitung); siehe `deploy/linux/README.md` für die Firewall-/Capability-Einrichtung im
   Hallenbetrieb.

@@ -34,7 +34,13 @@ mac:
   category: public.app-category.sports
   extendInfo:
     NSCameraUsageDescription: Die Waage liest Judopass-QR-Codes mit der Kamera.
-  identity: null
+  # Ad-hoc-Signatur ("-"): ohne Apple-Zertifikat, aber mit gültigem Siegel über das ganze Bundle.
+  # identity: null ließe die Signatur ganz weg — das umgeschriebene Info.plist/umbenannte Programm
+  # bricht dann Electrons Vorab-Signatur, und Apple Silicon meldet nach dem Download „beschädigt“
+  # (ohne „Trotzdem öffnen“). Hardened Runtime aus: mit ad-hoc-Signatur schlüge sonst die
+  # Library-Validation beim Laden des Electron-Frameworks fehl (kein Team-ID).
+  identity: "-"
+  hardenedRuntime: false
 linux:
   target: [{ target: AppImage, arch: [x64] }]
   category: Utility
