@@ -4,10 +4,10 @@
 // sowie die daraus abgeleitete Vereinswertung (5/3/1 Punkte je Platz 1/2/3, siegerliste.js:122-140).
 // Anders als scoreboard.js hat siegerliste.js KEINEN Offline-Zweig (rein API-abhängig, siehe
 // GET /api/pools/details) -- ein Offline-Vergleich wie bei den Steuerung-Tests ist hier also nicht
-// anwendbar. Wichtig auch: die Platzierungen werden rein aus dem Live-Status der Kämpfe F/T3/T4
-// berechnet, NICHT erst nachdem der Pool über "Pool abschließen" auf 'abgeschlossen' gesetzt wurde
-// (siehe dritten Test unten) -- das wird hier bewusst mitgeprüft, weil siegerliste.js:69/80 nur
-// status 'beendet'/'freilos' der einzelnen Kämpfe verlangt, nicht den Pool-Gesamtstatus.
+// anwendbar. Wichtig auch: die Siegerliste zeigt nur Pools, die über "Pool abschließen" auf
+// 'abgeschlossen' gesetzt wurden (ladeSiegerliste() in siegerliste.js filtert danach) -- ein Pool
+// mit lediglich beendeten Kämpfen ('kaempfe_beendet', "Ergebnisse prüfen") erscheint noch nicht
+// (erster Test unten). Die Platzierungen selbst kommen aus dem Status der Kämpfe F/T3/T4.
 //
 // Turnier-Aufbau und Bracket-Austragung sind identisch zu (und bewusst dupliziert aus)
 // steuerung-dk8-komplett.spec.js -- siehe dortige Kommentare zur Determinismus-Begründung
@@ -114,9 +114,20 @@ test.describe.serial('Siegerliste: Platzierungen und Vereinswertung nach einem D
         await page.context().close();
     });
 
-    test('Zeigt Platz 1/2 aus dem Finale und den gemeinsamen Platz 3 aus beiden Bronze-Kämpfen', async () => {
+    test('Vor "Pool abschließen": Pool mit nur beendeten Kämpfen erscheint noch nicht', async () => {
+        // Alle 11 Kämpfe sind beendet -> Pool-Status 'kaempfe_beendet' ("Ergebnisse prüfen"), aber
+        // noch nicht am Tisch bestätigt.
         await page.goto(`/siegerliste.html?turnierId=${turnierId}`);
+        await expect(page.locator('#platzierungenTableBody')).toContainText('Noch keine Pools abgeschlossen');
+        await expect(page.locator('#platzierungenTableBody tr').filter({ hasText: poolBezeichnung })).toHaveCount(0);
+        await expect(page.locator('#vereinswertungTableBody')).not.toContainText('JC Alpha');
+    });
 
+    test('Nach "Pool abschließen": Platz 1/2 aus dem Finale und gemeinsamer Platz 3 aus beiden Bronze-Kämpfen', async ({ request }) => {
+        const abschliessenResp = await request.post(`/api/pools/${poolId}/abschliessen`);
+        expect(abschliessenResp.ok(), await abschliessenResp.text()).toBeTruthy();
+
+        await page.reload();
         const zeile = page.locator('#platzierungenTableBody tr').filter({ hasText: poolBezeichnung });
         await expect(zeile).toHaveCount(1);
 
@@ -125,11 +136,7 @@ test.describe.serial('Siegerliste: Platzierungen und Vereinswertung nach einem D
         // Gemeinsamer 3. Platz: beide Bronze-Sieger (T3 und T4) stehen in derselben Zelle.
         await expect(zeile.locator('.siegerliste-platz3')).toContainText('Ebert, Elena (JC Epsilon)');
         await expect(zeile.locator('.siegerliste-platz3')).toContainText('Graf, Greta (JC Eta)');
-
-        // Alle 11 Kämpfe sind beendet -> Pool-Status ist 'kaempfe_beendet' (noch nicht manuell
-        // "abgeschlossen", siehe DoppelKo8Manager.aktualisiereTurnier()), Label "Ergebnisse prüfen".
-        await expect(zeile.locator('.pool-status-badge')).toHaveText('Ergebnisse prüfen');
-        await expect(zeile.locator('.pool-status-badge')).toHaveClass(/beendet/);
+        await expect(zeile.locator('.pool-status-badge')).toHaveText('Abgeschlossen');
     });
 
     test('Vereinswertung: 5/3/1 Punkte für Platz 1/2/3, korrekt sortiert (Punktegleichstand alphabetisch nach Verein)', async () => {
@@ -156,19 +163,5 @@ test.describe.serial('Siegerliste: Platzierungen und Vereinswertung nach einem D
         await expect(zeilen.nth(3)).toContainText('1');
         // Ab Rang 4 gibt es keine rang-X-Klasse mehr (nur Rang 1-3 werden hervorgehoben).
         await expect(zeilen.nth(3).locator('.siegerliste-rang')).not.toHaveClass(/rang-\d/);
-    });
-
-    test('"Pool abschließen" ändert nur den Status-Badge, die Platzierungen bleiben unverändert', async ({ request }) => {
-        const abschliessenResp = await request.post(`/api/pools/${poolId}/abschliessen`);
-        expect(abschliessenResp.ok(), await abschliessenResp.text()).toBeTruthy();
-
-        await page.reload();
-        const zeile = page.locator('#platzierungenTableBody tr').filter({ hasText: poolBezeichnung });
-
-        await expect(zeile.locator('.pool-status-badge')).toHaveText('Abgeschlossen');
-        await expect(zeile.locator('.siegerliste-platz1')).toHaveText('Adler, Anna (JC Alpha)');
-        await expect(zeile.locator('.siegerliste-platz2')).toHaveText('Conrad, Clara (JC Gamma)');
-        await expect(zeile.locator('.siegerliste-platz3')).toContainText('Ebert, Elena (JC Epsilon)');
-        await expect(zeile.locator('.siegerliste-platz3')).toContainText('Graf, Greta (JC Eta)');
     });
 });
