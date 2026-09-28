@@ -100,6 +100,21 @@ server1 bekommt `priority 150`, server2 `priority 100`. Beide laufen mit `nopree
 zurückkehrender Server nimmt dem gesunden Master die VIP nicht weg. Zurückwechseln nur über die
 geplante Übergabe.
 
+## Erreichbarkeit als turnier.local
+
+Der Hallen-Server kündigt sich per mDNS als `turnier.local` (Dienst `_hajime._tcp`) an, damit
+Desktop-Clients und Helfer ihn ohne feste IP finden (`MDNS_NAME`/`MDNS_AKTIV` in der `.env`, siehe
+`src/sync/ankuendigung.js`). Dafür müssen zwei Dinge freigegeben sein:
+
+- **mDNS (UDP 5353):** `sudo ufw allow 5353/udp` — sonst lösen Windows/macOS/Linux-Clients
+  `turnier.local` nicht auf.
+- **Port 80 (Weiterleitung auf den eigentlichen Port):** läuft über `AmbientCapabilities=CAP_NET_BIND_SERVICE`
+  in der systemd-Unit (`deploy/linux/systemd/hajime-pro.service`) — ohne diese Capability kann der
+  Node-Prozess als `hajime`-User keinen Port unter 1024 öffnen. Ist Port 80 belegt oder die
+  Capability fehlt, loggt `src/sync/port80.js` das nur und die App bleibt unter `:PORT` erreichbar.
+
+Test: `http://turnier.local/download` öffnet ohne Portangabe die Download-Seite.
+
 ## Abläufe
 
 **Automatische Übernahme:** Der Master fällt aus oder meldet sich ungesund (PostgreSQL weg, Router

@@ -33,6 +33,8 @@ import { nurMaster } from './middleware/nurMaster.js';
 import { getClientApiRoutes, clientStatischeSeiten } from './sync/clientApi.js';
 import { ladeKopplung } from './sync/kopplung.js';
 import { getClientVerteilungRoutes } from './routes/clientVerteilungRoutes.js';
+import { starteAnkuendigung } from './sync/ankuendigung.js';
+import { starteWeiterleitung } from './sync/port80.js';
 
 dotenv.config();
 
@@ -126,6 +128,19 @@ if (syncKonfig.istClient) {
             version: require('../package.json').version,
             kopplung
         }));
+    }
+
+    if (sync && process.env.MDNS_AKTIV !== 'false') {
+        starteAnkuendigung({
+            name: process.env.MDNS_NAME || 'turnier',
+            port: Number(PORT),
+            version: require('../package.json').version,
+            knoten: clusterKonfig.aktiv ? clusterKonfig.knoten : '',
+            modus: () => sync.modus()
+        });
+    }
+    if (sync && process.env.PORT80_WEITERLEITUNG !== 'false' && Number(PORT) !== 80) {
+        starteWeiterleitung({ zielPort: Number(PORT) });
     }
 
     // Nach jedem erfolgreichen schreibenden API-Request den Abgleich SQL -> Dokumente anstoßen
