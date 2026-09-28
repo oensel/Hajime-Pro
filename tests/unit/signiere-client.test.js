@@ -26,3 +26,12 @@ test('version.json ordnet Dateien den Plattformen zu und die Signaturen sind prÃ
     assert.deepEqual(pruefeDatei({ puffer: readFileSync(path.join(dir, eintrag.datei)), eintrag, version: '1.2.0', oeffentlicherSchluessel: pub }), { ok: true });
     assert.deepEqual(JSON.parse(readFileSync(path.join(dir, 'version.json'), 'utf8')), vj);
 });
+
+test('doppelt belegte Plattform/Rolle bricht mit klarer Meldung ab', () => {
+    const { privateKey } = generateKeyPairSync('ed25519');
+    const dir = mkdtempSync(path.join(tmpdir(), 'signieren-'));
+    writeFileSync(path.join(dir, 'H-1.1.0-win-x64.exe'), 'alt');
+    writeFileSync(path.join(dir, 'H-1.2.0-win-x64.exe'), 'neu');
+    assert.throws(() => erzeugeVersionJson({ verzeichnis: dir, version: '1.2.0', privaterSchluessel: privateKey.export({ type: 'pkcs8', format: 'pem' }) }),
+        /win32-x64\/installieren doppelt belegt: H-1\.1\.0-win-x64\.exe und H-1\.2\.0-win-x64\.exe/);
+});
