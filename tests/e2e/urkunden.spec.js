@@ -83,4 +83,15 @@ test.describe('Urkunden', () => {
         });
         expect(leer.status()).toBe(422);
     });
+
+    test('Turnier-Export enthält die Vorlagen des Ausrichter-Vereins', async ({ request }) => {
+        // Export erst ab Veröffentlichung + echten Kämpfen ("in_durchfuehrung") erlaubt.
+        const pub = await request.post(`/api/turniere/${turnierId}/veroeffentlichen`);
+        expect(pub.ok(), await pub.text()).toBeTruthy();
+        const resp = await request.get(`/api/turniere/${turnierId}/export`);
+        expect(resp.ok(), await resp.text()).toBeTruthy();
+        const vorlage = (await resp.json()).urkunden_vorlagen?.find(v => v.name === VORLAGEN_NAME);
+        expect(vorlage?.felder).toEqual([FELD]);
+        expect(vorlage.pdf_base64).toBe(BLANKO);
+    });
 });

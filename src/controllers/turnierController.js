@@ -1,4 +1,5 @@
 import { hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
+import { exportiereVorlagen, importiereVorlagen } from '../services/urkundenVorlagenTransfer.js';
 import { entfernungZuPlzInKm } from '../utils/entfernungHelper.js';
 import { turnierHatEchteKaempfe } from './poolController.js';
 
@@ -741,6 +742,7 @@ export async function importTurnier(knex, req, res) {
             const turnierId = typeof turnierIdObj === 'object' ? turnierIdObj.id : turnierIdObj;
 
             await importWettkampfdaten(trx, turnierId, { kampfflaechen, pools, teilnehmer, kaempfe, mannschaften, mannschaftMitglieder });
+            await importiereVorlagen(trx, verein.id, daten.urkunden_vorlagen);
 
             return turnierId;
         });
@@ -942,7 +944,8 @@ export async function exportTurnier(knex, req, res) {
             teilnehmer,
             kaempfe,
             mannschaften,
-            mannschaft_mitglieder: mannschaftMitglieder
+            mannschaft_mitglieder: mannschaftMitglieder,
+            urkunden_vorlagen: await exportiereVorlagen(knex, turnier.verein_id)
         };
 
         const dateiname = `turnier_${turnierId}_export_${new Date().toISOString().slice(0, 10)}.json`;
