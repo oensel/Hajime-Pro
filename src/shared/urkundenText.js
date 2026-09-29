@@ -31,3 +31,10 @@ export function geschlechtText(g) {
     if (g === 'w') return 'weiblich';
     return g || '';
 }
+
+// Basislinie der Textzeile (y = Oberkante des Feldes, beides in pt). Entspricht der Darstellung
+// einer Fabric-Textbox mit lineHeight 1 (Zeilenhöhe 1.13 × Größe, Basislinie 0.222 × Größe über
+// der Zeilenunterkante), damit Editor und gedrucktes PDF übereinstimmen.
+export function basislinie(y, groesse) {
+    return y + groesse * (1.13 - 0.222);
+}

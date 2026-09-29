@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ersetzePlatzhalter, passeGroesseAn, berechneX, platzierungsText, geschlechtText } from '../../src/shared/urkundenText.js';
+import { ersetzePlatzhalter, passeGroesseAn, berechneX, platzierungsText, geschlechtText, basislinie } from '../../src/shared/urkundenText.js';
 
 test('ersetzePlatzhalter', () => {
     const d = { Name: 'Łukasz Şahin', Verein: null, Altersklasse: 'U15' };
@@ -28,4 +28,8 @@ test('Texte', () => {
     assert.equal(geschlechtText('w'), 'weiblich');
     assert.equal(geschlechtText('m'), 'männlich');
     assert.equal(geschlechtText(null), '');
+});
+
+test('basislinie entspricht der Fabric-Textbox (lineHeight 1)', () => {
+    assert.equal(basislinie(100, 30), 100 + 30 * (1.13 - 0.222));
 });

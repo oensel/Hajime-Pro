@@ -94,4 +94,22 @@ test.describe('Urkunden', () => {
         expect(vorlage?.felder).toEqual([FELD]);
         expect(vorlage.pdf_base64).toBe(BLANKO);
     });
+
+    test('Editor: freies Textfeld anlegen und speichern, Generieren öffnet die Vorschau', async ({ page, request }) => {
+        await page.goto(`/urkunden.html?turnierId=${turnierId}`);
+        await page.locator('#vorlagenAuswahl').selectOption(String(vorlageId));
+        await expect(page.locator('#editorLeer')).toBeHidden();
+        await page.locator('#btnFeldText').click();
+        await page.locator('#feldText').fill('Kreismeisterschaft 2026');
+        await page.locator('#btnVorlageSpeichern').click();
+        await expect.poll(async () => {
+            const liste = await (await request.get(`/api/urkunden/vorlagen?turnierId=${turnierId}`)).json();
+            return liste.find(v => v.id === vorlageId).felder.map(f => f.text);
+        }).toEqual(['{Name}', 'Kreismeisterschaft 2026']);
+
+        await page.locator('#genVorlage').selectOption(String(vorlageId));
+        await page.locator(`#genPoolListe input[data-pool-id="${poolId}"]`).check();
+        await page.locator('#btnGenerieren').click();
+        await expect(page.locator('#urkundenVorschauFrame')).toHaveAttribute('src', /^blob:/);
+    });
 });

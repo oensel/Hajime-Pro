@@ -5,7 +5,7 @@ import fs from 'node:fs/promises';
 import { PDFDocument, rgb, degrees } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import { findeSchrift, STANDARD_SCHRIFT_ID } from '../shared/urkundenSchriften.js';
-import { ersetzePlatzhalter, passeGroesseAn, berechneX } from '../shared/urkundenText.js';
+import { ersetzePlatzhalter, passeGroesseAn, berechneX, basislinie } from '../shared/urkundenText.js';
 
 const SCHRIFT_VERZEICHNIS = new URL('../../public/fonts/urkunden/', import.meta.url);
 const schriftCache = new Map();
@@ -109,7 +109,7 @@ export async function renderUrkunden({ pdfBytes, felder, datensaetze }) {
 
             seite.drawText(text, {
                 x: berechneX(feld.ausrichtung, feld.x, feld.breite, misst(text, groesse)),
-                y: hoehe - feld.y - font.heightAtSize(groesse, { descender: false }),
+                y: hoehe - basislinie(feld.y, groesse),
                 size: groesse,
                 font,
                 color: farbe(feld.farbe)
