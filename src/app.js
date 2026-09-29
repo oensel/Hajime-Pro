@@ -186,6 +186,8 @@ if (syncKonfig.istClient) {
 app.use('/js/qr', express.static(path.join(__dirname, '../node_modules/jsqr/dist')));
 app.use('/js/qrgen', express.static(path.join(__dirname, '../node_modules/qrcode-generator/dist')));
 app.use('/js/shared', express.static(path.join(__dirname, 'shared')));
+app.use('/js/fabric', express.static(path.join(__dirname, '../node_modules/fabric/dist')));
+app.use('/js/pdfjs', express.static(path.join(__dirname, '../node_modules/pdfjs-dist/build')));
 app.use('/js/pouchdb', express.static(path.join(__dirname, '../node_modules/pouchdb/dist')));
 app.use('/css/material', express.static(path.join(__dirname, '../node_modules/material-components-web')));
 app.use('/icons/material', express.static(path.join(__dirname, '../node_modules/@material-design-icons/font')));
