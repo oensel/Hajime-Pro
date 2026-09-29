@@ -1643,6 +1643,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (window.hajimeAktualisiereMenueSperren) {
                             window.hajimeAktualisiereMenueSperren(['pools']);
                         }
+                        window.hajimeUrkunden?.bieteUrkundenNachAbschlussAn(turnierId, activeFightplanPoolId, activeFightplanPoolName);
                     } else {
                         zeigeNotification(result.error || 'Fehler beim Abschließen.', 'error');
                     }

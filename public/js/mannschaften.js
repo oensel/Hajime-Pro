@@ -253,7 +253,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <span class="mannschafts-pool-meta">${escapeHtml(pool.altersklasse)} ${escapeHtml(pool.geschlecht)} · ${escapeHtml(pool.modus)}</span>
                     <span class="pool-status-badge ${statusKlasse}">${escapeHtml(statusText)}</span>
                     <div class="mannschafts-pool-actions">
-                        ${pool.status === 'kaempfe_beendet' ? `<button type="button" class="toolbar-btn toolbar-btn-primary confirm-pool-btn" data-pool-id="${pool.id}"><span class="material-icons">fact_check</span><span>Ergebnisse bestätigen</span></button>` : ''}
+                        ${pool.status === 'kaempfe_beendet' ? `<button type="button" class="toolbar-btn toolbar-btn-primary confirm-pool-btn" data-pool-id="${pool.id}" data-pool-name="${escapeHtml(pool.bezeichnung).replace(/"/g, '&quot;')}"><span class="material-icons">fact_check</span><span>Ergebnisse bestätigen</span></button>` : ''}
                         <button type="button" class="toolbar-btn add-team-btn" data-pool-id="${pool.id}"><span class="material-icons">add</span><span>Mannschaft</span></button>
                         <button type="button" class="icon-btn-small delete-pool-btn" data-pool-id="${pool.id}" title="Pool löschen"><span class="material-icons">delete</span></button>
                     </div>
@@ -424,6 +424,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (window.hajimeAktualisiereMenueSperren) {
                         window.hajimeAktualisiereMenueSperren(['mannschaften']);
                     }
+                    window.hajimeUrkunden?.bieteUrkundenNachAbschlussAn(turnierId, btn.dataset.poolId, btn.dataset.poolName);
                 } catch (e) { notify(e.message, 'error'); }
             });
         });

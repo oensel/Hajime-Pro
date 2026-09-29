@@ -80,4 +80,51 @@ export async function zeigeUrkundenVorschau({ turnierId, vorlageId, platzbereich
     if (autoDruck) frame.addEventListener('load', () => setTimeout(drucke, 300), { once: true });
 }
 
-window.hajimeUrkunden = { ...(window.hajimeUrkunden || {}), zeigeUrkundenVorschau };
+function frage(titel, text) {
+    return new Promise(resolve => {
+        const modal = baueModal('urkundenAngebotModal', `
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <span class="material-icons" style="font-size: 28px; color: var(--primary);">workspace_premium</span>
+                <h2 style="margin: 0; font-size: 18px;">${escapeHtml(titel)}</h2>
+            </div>
+            <p style="margin: 0;">${escapeHtml(text)}</p>
+            <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                <button type="button" class="btn btn-outlined" data-aktion="spaeter">Später</button>
+                <button type="button" class="btn btn-raised" data-aktion="drucken">Drucken</button>
+            </div>
+        `, '520px');
+        const antworte = ja => { modal.remove(); resolve(ja); };
+        modal.querySelector('[data-aktion="drucken"]').addEventListener('click', () => antworte(true));
+        modal.querySelector('[data-aktion="spaeter"]').addEventListener('click', () => antworte(false));
+    });
+}
+
+// Nach "Pool abschließen": ist beim Ausrichter-Verein eine Vorlage für den Druck beim Abschluss
+// markiert, wird der Druck der Urkunden dieses Pools angeboten. Ohne Vorlage, ohne Urkunden oder
+// bei Fehlern passiert nichts — der Abschluss selbst ist davon unabhängig.
+export async function bieteUrkundenNachAbschlussAn(turnierId, poolId, poolBezeichnung) {
+    let angebot;
+    try {
+        const res = await fetch(`/api/urkunden/abschluss-angebot?turnierId=${turnierId}&poolId=${poolId}`);
+        if (!res.ok) return;
+        angebot = await res.json();
+    } catch { return; }
+    if (!angebot?.vorlage || !angebot.anzahl) return;
+
+    const { vorlage } = angebot;
+    const bereich = vorlage.platzbereich === 'alle' ? 'alle Platzierungen' : `Platz 1–${vorlage.platzbereich}`;
+    const reihenfolge = vorlage.reihenfolge === 'aufsteigend' ? 'aufsteigend' : 'Siegerehrung';
+    const anzahl = `${angebot.anzahl} Urkunde${angebot.anzahl === 1 ? '' : 'n'}`;
+    const ja = await frage(`Urkunden für ${poolBezeichnung || 'diesen Pool'} drucken?`,
+        `Vorlage „${vorlage.name}“, ${bereich}, ${reihenfolge} · ${anzahl}`);
+    if (!ja) return;
+    await zeigeUrkundenVorschau({
+        turnierId,
+        vorlageId: vorlage.id,
+        platzbereich: vorlage.platzbereich,
+        reihenfolge: vorlage.reihenfolge,
+        poolIds: [Number(poolId)]
+    }, { autoDruck: true });
+}
+
+window.hajimeUrkunden = { ...(window.hajimeUrkunden || {}), zeigeUrkundenVorschau, bieteUrkundenNachAbschlussAn };

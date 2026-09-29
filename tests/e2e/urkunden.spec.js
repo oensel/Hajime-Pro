@@ -112,4 +112,50 @@ test.describe('Urkunden', () => {
         await page.locator('#btnGenerieren').click();
         await expect(page.locator('#urkundenVorschauFrame')).toHaveAttribute('src', /^blob:/);
     });
+
+    // Neues Turnier (gleicher Ausrichter-Verein, also dieselbe Vorlage) durchspielen und den Pool
+    // über den Kampfplan in pools.html abschließen.
+    async function schliessePoolUeberOberflaecheAb(page, request) {
+        const neu = await ladeUndErstelleTurnier(request, DK8);
+        await spieleBracketKomplettDurch(request, neu.poolId);
+        await page.goto(`/pools.html?turnierId=${neu.turnierId}`);
+        await page.locator(`.btn-view-fightplan[data-id="${neu.poolId}"]`).click();
+        await page.locator('#confirmFightplanBtn').click();
+        await page.locator('#modalConfirmBtn').click();
+        await expect.poll(async () => {
+            const pools = await (await request.get(`/api/pools/details?turnierId=${neu.turnierId}`)).json();
+            return pools.find(p => p.id === neu.poolId).status;
+        }).toBe('abgeschlossen');
+        return neu;
+    }
+
+    test('Pool abschließen bietet den Druck mit den Voreinstellungen der Vorlage an', async ({ page, request }) => {
+        const put = await request.put(`/api/urkunden/vorlagen/${vorlageId}?turnierId=${turnierId}`, {
+            data: { platzbereich: '5', reihenfolge: 'siegerehrung', bei_abschluss_anbieten: true }
+        });
+        expect(put.ok(), await put.text()).toBeTruthy();
+
+        const neu = await schliessePoolUeberOberflaecheAb(page, request);
+        const angebot = await (await request.get(`/api/urkunden/abschluss-angebot?turnierId=${neu.turnierId}&poolId=${neu.poolId}`)).json();
+        expect(angebot.vorlage.id).toBe(vorlageId);
+
+        const dialog = page.locator('#urkundenAngebotModal');
+        await expect(dialog).toContainText('Urkunden für');
+        await expect(dialog).toContainText('Platz 1–5');
+        await expect(dialog).toContainText(`${angebot.anzahl} Urkunde`);
+        await dialog.locator('[data-aktion="drucken"]').click();
+        await expect(page.locator('#urkundenVorschauFrame')).toHaveAttribute('src', /^blob:/);
+        await expect(page.locator('#urkundenVorschauModal')).toContainText(`(${angebot.anzahl} Seiten)`);
+    });
+
+    test('ohne markierte Vorlage erscheint beim Abschließen kein Dialog', async ({ page, request }) => {
+        const put = await request.put(`/api/urkunden/vorlagen/${vorlageId}?turnierId=${turnierId}`, {
+            data: { bei_abschluss_anbieten: false }
+        });
+        expect(put.ok(), await put.text()).toBeTruthy();
+
+        await schliessePoolUeberOberflaecheAb(page, request);
+        await page.waitForTimeout(1000);
+        await expect(page.locator('#urkundenAngebotModal')).toHaveCount(0);
+    });
 });
