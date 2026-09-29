@@ -68,6 +68,10 @@ Ein Textfeld enthält beliebigen Text, in dem Platzhalter vorkommen dürfen
 (z. B. `{Altersklasse} · {Gewichtsklasse}`). Ein Feld ohne Platzhalter ist ein **fester Text**
 (Turniername, Datum, Ort, …). Unbekannte `{…}` bleiben unverändert stehen.
 
+Feste Texte werden im Editor über **„+ Freier Text"** angelegt und wie Platzhalterfelder
+positioniert und formatiert. Da Vorlagen vereinsweit für alle Turniere gelten, wird ein festes
+Datum/Ort vor dem Turnier in der Vorlage angepasst — oder die Vorlage pro Turnier dupliziert.
+
 ### Reihenfolge der Seiten
 
 Pools sortiert nach Altersklasse → Geschlecht → Gewichtsklasse (wie Siegerliste), Einzel- vor
@@ -100,6 +104,9 @@ urkunden.html / urkunden.js ──(REST)──► /api/urkunden  (requireWriteAu
 | `pdf_dateiname` | string | Anzeige |
 | `seiten_breite_pt`, `seiten_hoehe_pt` | float | beim Upload aus Seite 1 gelesen (`/Rotate` berücksichtigt) |
 | `felder` | text (JSON), Standard `[]` | Feldliste |
+| `platzbereich` | string, Standard `'3'` | Voreinstellung: `'3'` \| `'5'` \| `'7'` \| `'alle'` |
+| `reihenfolge` | string, Standard `'siegerehrung'` | Voreinstellung: `'siegerehrung'` \| `'aufsteigend'` |
+| `bei_abschluss_anbieten` | boolean, Standard `false` | Druck beim Pool-Abschluss anbieten; höchstens eine Vorlage je Verein (Setzen löscht das Flag der anderen) |
 | `created_at`, `updated_at` | timestamps | |
 
 Feld-JSON (Koordinaten in PDF-Punkten, Ursprung **oben links**, `y` = Oberkante der Zeile):
@@ -159,9 +166,10 @@ erzeugen eine Warnung.
 | GET | `/vorlagen/:id/pdf` | Blanko-PDF für den Editor |
 | POST | `/vorlagen` | `{ turnierId, name, pdf_base64, pdf_dateiname }` — anlegen |
 | POST | `/vorlagen/:id/duplizieren` | `{ name }` |
-| PUT | `/vorlagen/:id` | `{ name?, felder? }` |
+| PUT | `/vorlagen/:id` | `{ name?, felder?, platzbereich?, reihenfolge?, bei_abschluss_anbieten? }` |
 | DELETE | `/vorlagen/:id` | löschen |
-| GET | `/uebersicht?turnierId=` | Pools mit `abgeschlossen` und Anzahl Urkunden je Platzbereich; Beispieldatensatz (längster Name, längster Verein) für den Editor |
+| GET | `/uebersicht?turnierId=` | Pools mit Status, `abgeschlossen` (Plätze stehen fest) und Anzahl Urkunden je Platzbereich; Beispieldatensatz (längster Name, längster Verein) für den Editor |
+| GET | `/abschluss-angebot?poolId=` | `{ vorlage: { id, name, platzbereich, reihenfolge } \| null, anzahl }` — die Vorlage mit `bei_abschluss_anbieten` des Ausrichter-Vereins und die Zahl der Urkunden für diesen Pool mit ihren Voreinstellungen |
 | POST | `/generieren` | `{ turnierId, vorlageId, platzbereich: 3\|5\|7\|'alle', poolIds, reihenfolge: 'siegerehrung'\|'aufsteigend' }` → `application/pdf` |
 
 - **Rechte:** nur freigegebene Mitglieder des ausrichtenden Vereins
@@ -189,7 +197,8 @@ erzeugen eine Warnung.
 ### Turnier-Export/-Import
 
 - `exportTurnier` hängt `urkunden_vorlagen: [{ name, pdf_base64, pdf_dateiname,
-  seiten_breite_pt, seiten_hoehe_pt, felder }]` des Ausrichter-Vereins an.
+  seiten_breite_pt, seiten_hoehe_pt, felder, platzbereich, reihenfolge, bei_abschluss_anbieten }]`
+  des Ausrichter-Vereins an.
 - `importTurnier` (Hallen-Server) legt sie beim per Ausrichter-Name zugeordneten Verein an bzw.
   überschreibt gleichnamige Vorlagen dieses Vereins. Ältere Exportdateien ohne das Feld
   funktionieren unverändert.
@@ -215,16 +224,46 @@ Menüpunkt „Urkunden" in `menu.js` direkt nach „Siegerliste" (mit `turnierId
   Verkleinerungsregel wie der Server.
 - Explizites *Speichern* (Rückrechnung in pt), Warnung beim Verlassen mit ungespeicherten
   Änderungen.
+- **Voreinstellungen der Vorlage:** Platzbereich, Reihenfolge und Schalter
+  „Beim Pool-Abschluss Druck anbieten" (werden mit *Speichern* übernommen).
 
 **Karte „Urkunden generieren"**
 
-- Vorlage, Platzbereich (1.–3. / 1.–5. / 1.–7. / alle), Reihenfolge (Siegerehrung / aufsteigend).
-- Pool-Liste mit Checkboxen, gruppiert Einzel/Mannschaft; standardmäßig nur abgeschlossene Pools
-  angehakt; nicht abgeschlossene tragen den Hinweis „noch nicht abgeschlossen" und liefern bei
-  Auswahl nur die bereits feststehenden Plätze. Anzeige „≈ N Urkunden".
-- *Urkunden generieren* → `fetch` → Blob → Modal mit `<iframe>` (Object-URL) und Knöpfen
-  *In neuem Tab öffnen* / *Herunterladen*. Gedruckt wird über den PDF-Viewer des Browsers.
-  Warnungen werden unter der Vorschau gelistet (Seite, Name, Feld).
+- Vorlage, Platzbereich (1.–3. / 1.–5. / 1.–7. / alle), Reihenfolge (Siegerehrung / aufsteigend);
+  Platzbereich und Reihenfolge werden beim Wählen einer Vorlage aus deren Voreinstellungen
+  vorbelegt.
+- Pool-Liste mit Checkboxen, gruppiert Einzel/Mannschaft; standardmäßig angehakt sind Pools mit
+  Status `abgeschlossen` (am Tisch bestätigt); nicht abgeschlossene tragen den Hinweis „noch nicht
+  abgeschlossen" und liefern bei Auswahl nur die bereits feststehenden Plätze. Anzeige
+  „≈ N Urkunden".
+- *Urkunden generieren* → Vorschau-Modal (siehe unten). Warnungen werden unter der Vorschau
+  gelistet (Seite, Name, Feld).
+
+**Gemeinsames Modul `public/js/urkundenDruck.js`**
+
+- `zeigeUrkundenVorschau(parameter)`: `fetch` auf `/generieren` → Blob → Modal mit `<iframe>`
+  (Object-URL) und Knöpfen *Drucken* (`iframe.contentWindow.print()`), *In neuem Tab öffnen*,
+  *Herunterladen*; Warnungsliste. Wird von `urkunden.js`, `pools.js` und `mannschaften.js` genutzt.
+- `bieteUrkundenNachAbschlussAn(turnierId, poolId)`: siehe nächster Abschnitt.
+
+### Druck direkt nach dem Pool-Abschluss
+
+Damit Urkunden in kleinen Stapeln pro Pool gedruckt werden können:
+
+1. Nach erfolgreichem `POST /api/pools/:id/abschliessen` rufen `pools.js`
+   (`confirmFightplanBtn`) und `mannschaften.js` (`.confirm-pool-btn`)
+   `bieteUrkundenNachAbschlussAn(turnierId, poolId)` auf.
+2. Das Modul fragt `GET /api/urkunden/abschluss-angebot?poolId=`. Keine Vorlage mit
+   `bei_abschluss_anbieten`, `anzahl = 0`, 403 oder Netzwerkfehler → nichts passiert (der
+   Abschluss selbst ist davon unabhängig und bereits erledigt).
+3. Sonst Bestätigungsdialog: „Urkunden für U15 w -44 kg drucken? Vorlage *Standard*, Platz 1–5,
+   Siegerehrung · 5 Urkunden" mit *Drucken* / *Später*.
+4. *Drucken* → `zeigeUrkundenVorschau({ turnierId, vorlageId, platzbereich, reihenfolge,
+   poolIds: [poolId] })`; nach dem Laden des PDFs wird der Druckdialog automatisch geöffnet.
+   Lässt der Browser das nicht zu, bleibt die Vorschau mit dem Knopf *Drucken* offen.
+
+Die Seiten `pools.html` und `mannschaften.html` binden dafür `urkundenDruck.js` ein. Auf dem
+Secondary im Cluster ist das Abschließen ohnehin gesperrt, der Dialog erscheint dort nicht.
 
 ## Fehlerfälle
 
@@ -252,6 +291,8 @@ Menüpunkt „Urkunden" in `menu.js` direkt nach „Siegerliste" (mit `turnierId
   Vorlage hochladen (Test-PDF in `tests/e2e/fixtures/`), Feld anlegen, speichern, neu laden →
   Feld vorhanden; Generieren 1.–3. / 1.–7. / alle → Seitenzahl des PDFs prüfen (`pdf-lib` im
   Test); Mannschafts-Pool → eine Seite je Mitglied; Siegerliste zeigt nach der Umstellung
-  unverändert dieselben Plätze 1–3.
+  unverändert dieselben Plätze 1–3; Vorlage mit „Beim Pool-Abschluss Druck anbieten" und
+  Platz 1–5 → Pool abschließen → Dialog erscheint, *Drucken* öffnet die Vorschau mit den
+  Urkunden nur dieses Pools; ohne markierte Vorlage erscheint kein Dialog.
 - **Export/Import:** vorhandenen Export/Import-Test um eine Vorlage erweitern (Rundreise von Name,
   Feldern und PDF).
