@@ -41,6 +41,18 @@ test('Vorlagen-Rundreise: Export → Import überschreibt gleichnamige, lässt a
 
         await importiereVorlagen(knex, ziel, undefined);
         assert.equal((await knex('urkunden_vorlagen').where({ verein_id: ziel })).length, 2);
+
+        // Ungültige Einträge (z. B. handbearbeitete Exportdatei): Felder kaputt → Vorlage übersprungen,
+        // unbekannter Platzbereich/Reihenfolge → Standardwerte.
+        await importiereVorlagen(knex, ziel, [
+            { ...exportiert[0], name: 'Kaputt', felder: [{ ...felder[0], text: 42 }] },
+            { ...exportiert[0], name: 'Werte', platzbereich: '10', reihenfolge: 'zufall' },
+            { ...exportiert[0], name: 'OhnePdf', pdf_base64: '' }
+        ]);
+        const namen = (await knex('urkunden_vorlagen').where({ verein_id: ziel })).map(z => z.name).sort();
+        assert.deepEqual(namen, ['Andere', 'Standard', 'Werte']);
+        const werte = await knex('urkunden_vorlagen').where({ verein_id: ziel, name: 'Werte' }).first();
+        assert.deepEqual([werte.platzbereich, werte.reihenfolge], ['3', 'siegerehrung']);
     } finally {
         await knex.destroy();
         rmSync(dir, { recursive: true, force: true });
