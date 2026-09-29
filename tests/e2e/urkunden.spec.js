@@ -104,6 +104,25 @@ test.describe('Urkunden', () => {
         expect(resp.status()).toBe(400);
     });
 
+    test('Oberfläche: Blanko-PDF über „Neue Vorlage (PDF hochladen)“ hochladen', async ({ page, request }) => {
+        await page.goto(`/urkunden.html?turnierId=${turnierId}`);
+        await expect(page.locator('#vorlagenAuswahl option')).not.toHaveCount(0);
+        page.once('dialog', dialog => dialog.accept(`Upload ${Date.now()}`));
+        const [dateiauswahl] = await Promise.all([
+            page.waitForEvent('filechooser'),
+            page.locator('#btnVorlageNeu').click()
+        ]);
+        await dateiauswahl.setFiles(path.join(__dirname, 'fixtures/urkunde-blanko.pdf'));
+        await expect(page.locator('#vorlagenAuswahl option:checked')).toContainText('Upload ');
+        await expect(page.locator('.canvas-container')).toBeVisible();
+
+        const liste = await (await request.get(`/api/urkunden/vorlagen?turnierId=${turnierId}`)).json();
+        const hochgeladen = liste.find(v => v.name.startsWith('Upload '));
+        expect(hochgeladen.pdf_dateiname).toBe('urkunde-blanko.pdf');
+        const del = await request.delete(`/api/urkunden/vorlagen/${hochgeladen.id}?turnierId=${turnierId}`);
+        expect(del.ok()).toBeTruthy();
+    });
+
     test('Editor: freies Textfeld anlegen und speichern, Generieren öffnet die Vorschau', async ({ page, request }) => {
         await page.goto(`/urkunden.html?turnierId=${turnierId}`);
         await page.locator('#vorlagenAuswahl').selectOption(String(vorlageId));

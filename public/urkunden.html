@@ -46,7 +46,7 @@
     <div class="urkunden-zeile">
         <label for="vorlagenAuswahl">Vorlage</label>
         <select id="vorlagenAuswahl"></select>
-        <button type="button" class="btn btn-outlined" id="btnVorlageNeu">Neu</button>
+        <button type="button" class="btn btn-raised" id="btnVorlageNeu">Neue Vorlage (PDF hochladen)</button>
         <button type="button" class="btn btn-outlined" id="btnVorlageDuplizieren">Duplizieren</button>
         <button type="button" class="btn btn-outlined" id="btnVorlageUmbenennen">Umbenennen</button>
         <button type="button" class="btn btn-outlined" id="btnVorlageLoeschen">Löschen</button>
@@ -84,7 +84,10 @@
     </div>
 
     <div id="editorContainer">
-        <div id="editorLeer">Keine Vorlage gewählt. Lege mit „Neu“ eine Vorlage aus einer Blanko-Urkunde (PDF) an.</div>
+        <div id="editorLeer">
+            <p id="editorLeerText">Noch keine Vorlage vorhanden. Lade eine Blanko-Urkunde als PDF hoch, um Textfelder darauf zu platzieren.</p>
+            <button type="button" class="btn btn-raised" id="btnVorlageNeuLeer">Blanko-PDF hochladen</button>
+        </div>
         <canvas id="urkundenCanvas"></canvas>
     </div>
 

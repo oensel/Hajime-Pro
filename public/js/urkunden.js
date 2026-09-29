@@ -365,12 +365,11 @@ async function start() {
     $('platzhalterKnoepfe').innerHTML = '<label>Platzhalter einfügen</label>' + PLATZHALTER
         .map(p => `<button type="button" class="btn btn-outlined platzhalter-btn" data-platzhalter="${p}">{${p}}</button>`).join('');
 
-    await ladeSchriften();
-    await ladeUebersicht();
-    await ladeVorlagen();
-
+    // Knöpfe zuerst binden, damit z. B. der PDF-Upload auch dann funktioniert, wenn das Laden
+    // der Vorlagen/Übersicht noch läuft oder fehlschlägt.
     $('vorlagenAuswahl').addEventListener('change', e => zeigeVorlage(Number(e.target.value)));
     $('btnVorlageNeu').addEventListener('click', () => $('vorlageDatei').click());
+    $('btnVorlageNeuLeer').addEventListener('click', () => $('vorlageDatei').click());
     $('vorlageDatei').addEventListener('change', e => {
         const datei = e.target.files[0];
         e.target.value = '';
@@ -449,6 +448,14 @@ async function start() {
             }
         }, 200);
     });
+
+    await ladeSchriften();
+    await ladeUebersicht();
+    await ladeVorlagen();
 }
 
-start().catch(e => melde(e.message, 'error'));
+start().catch(e => {
+    $('editorLeerText').textContent = `Die Urkunden-Seite konnte nicht geladen werden: ${e.message}`;
+    $('btnVorlageNeuLeer').style.display = 'none';
+    melde(e.message, 'error');
+});
