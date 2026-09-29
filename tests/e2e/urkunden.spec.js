@@ -95,6 +95,15 @@ test.describe('Urkunden', () => {
         expect(vorlage.pdf_base64).toBe(BLANKO);
     });
 
+    test('Turnier-Import nimmt Dateien über 15 MB an (Vorlagen-PDFs doppelt base64-kodiert)', async ({ request }) => {
+        // Ungültiger Inhalt: der Import lehnt ihn mit 400 ab, BEVOR er Daten löscht — geprüft wird nur,
+        // dass der Body-Parser die Größe nicht schon mit 413 abweist.
+        const resp = await request.post('/api/turniere/import', {
+            data: { contentBase64: Buffer.alloc(20 * 1024 * 1024, 'x').toString('base64') }
+        });
+        expect(resp.status()).toBe(400);
+    });
+
     test('Editor: freies Textfeld anlegen und speichern, Generieren öffnet die Vorschau', async ({ page, request }) => {
         await page.goto(`/urkunden.html?turnierId=${turnierId}`);
         await page.locator('#vorlagenAuswahl').selectOption(String(vorlageId));

@@ -123,7 +123,13 @@ if (syncKonfig.istClient) {
         app.use('/db', sync.middleware);
     }
 
-    app.use(express.json({ limit: '15mb' }));
+    // Turnier-Import/-Ergebnisupload schicken die Exportdatei base64-kodiert; darin stecken die
+    // Ausschreibung und die Urkunden-Vorlagen (je bis 10 MB) bereits als Base64 — daher ein
+    // eigenes, höheres Limit nur für diese beiden Routen.
+    const jsonImport = express.json({ limit: '200mb' });
+    const jsonStandard = express.json({ limit: '15mb' });
+    const IMPORT_ROUTE = /^\/api\/turniere\/(import|\d+\/import-ergebnisse)$/;
+    app.use((req, res, next) => (IMPORT_ROUTE.test(req.path) ? jsonImport : jsonStandard)(req, res, next));
     app.use(express.static(path.join(__dirname, '../public')));
 
     if (kopplung) {
