@@ -25,7 +25,7 @@
  * @param {string} praefix - 'V_A_' oder 'V_B_'
  * @returns {Array<{id: number, siege: number, unterbewertung: number}>} absteigend sortiert
  */
-function berechneGruppenRangliste(kaempfe, praefix) {
+export function berechneGruppenRangliste(kaempfe, praefix) {
     const gruppenKaempfe = kaempfe.filter(k => k.status === 'beendet' && k.reihenfolge_nummer?.startsWith(praefix));
 
     const teilnehmerIds = new Set();
