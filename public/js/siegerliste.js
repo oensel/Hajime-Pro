@@ -1,3 +1,5 @@
+import { berechnePlatzierungen } from '/js/shared/platzierungen.js';
+
 document.addEventListener('DOMContentLoaded', async () => {
     const urlParams = new URLSearchParams(window.location.search);
     const turnierId = urlParams.get('turnierId') || urlParams.get('id');
@@ -13,105 +15,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     const mannschaftsErgebnisseSection = document.getElementById('mannschaftsErgebnisseSection');
     const mannschaftsErgebnisseBody = document.getElementById('mannschaftsErgebnisseTableBody');
 
-    // --- PLATZIERUNGEN JE POOL BERECHNEN (portiert aus dem früheren getStandings in pools.js,
-    // liefert hier aber die Teilnehmer-Objekte statt fertig formatierter Strings, damit die
-    // Vereinswertung unten auf athlet.verein zugreifen kann) ---
+    // --- PLATZIERUNGEN JE POOL (gemeinsame Berechnung in src/shared/platzierungen.js, auch für die
+    // Urkunden genutzt); die Siegerliste zeigt weiterhin nur Platz 1-3 ---
     function berechnePoolStandings(pool) {
-        const athleteMap = new Map(pool.teilnehmer.map(t => [t.id, t]));
-        const fightMap = new Map(pool.kaempfe.map(k => [k.reihenfolge_nummer, k]));
-
-        const isJederGegenJeden = pool.modus === 'Jeder-gegen-Jeden' || pool.modus === 'Jeder gegen Jeden' || pool.teilnehmer.length === 1;
-        const isDoppelKo = pool.modus === 'Doppel-KO-8' || pool.modus === 'Doppel-KO-16' || pool.modus === 'Doppel-KO-32';
-        const isUeberKreuz = pool.modus === 'Gruppen-Überkreuz' || pool.modus === 'Gruppen-ueberkreuz';
-
-        if (isJederGegenJeden) {
-            if (pool.teilnehmer.length === 1) {
-                return { platz1: pool.teilnehmer[0] || null, platz2: null, platz3: [] };
-            }
-
-            const participants = [...pool.teilnehmer].sort((a, b) => Number(a.gewicht) - Number(b.gewicht));
-            const stats = participants.map(athleteI => {
-                let wins = 0;
-                let points = 0;
-                pool.kaempfe.forEach(k => {
-                    if (k.status === 'beendet' && k.sieger_id === athleteI.id) {
-                        wins += 1;
-                        if (k.kaempfer1_id === athleteI.id) points += Number(k.unterbewertung_kaempfer1) || 0;
-                        else points += Number(k.unterbewertung_kaempfer2) || 0;
-                    }
-                });
-                return { athlete: athleteI, wins, points };
-            });
-
-            stats.sort((a, b) => {
-                if (b.wins !== a.wins) return b.wins - a.wins;
-                return b.points - a.points;
-            });
-
-            return {
-                platz1: stats[0]?.athlete || null,
-                platz2: stats[1]?.athlete || null,
-                platz3: [stats[2]?.athlete].filter(Boolean)
-            };
-        }
-
-        if (isDoppelKo) {
-            const isDoppelKo32 = pool.modus === 'Doppel-KO-32';
-            const isDoppelKo16 = pool.modus === 'Doppel-KO-16';
-            const finalFight = fightMap.get((isDoppelKo16 || isDoppelKo32) ? 'F1' : 'F');
-            const bronzeFight1 = fightMap.get(isDoppelKo32 ? 'T27' : (isDoppelKo16 ? 'T11' : 'T3'));
-            const bronzeFight2 = fightMap.get(isDoppelKo32 ? 'T28' : (isDoppelKo16 ? 'T12' : 'T4'));
-
-            let platz1 = null;
-            let platz2 = null;
-            const platz3 = [];
-
-            if (finalFight && (finalFight.status === 'beendet' || finalFight.status === 'freilos')) {
-                if (finalFight.sieger_id === finalFight.kaempfer1_id) {
-                    platz1 = athleteMap.get(finalFight.kaempfer1_id) || null;
-                    platz2 = athleteMap.get(finalFight.kaempfer2_id) || null;
-                } else {
-                    platz1 = athleteMap.get(finalFight.kaempfer2_id) || null;
-                    platz2 = athleteMap.get(finalFight.kaempfer1_id) || null;
-                }
-            }
-
-            [bronzeFight1, bronzeFight2].forEach(fight => {
-                if (fight && (fight.status === 'beendet' || fight.status === 'freilos')) {
-                    const athlet = athleteMap.get(fight.sieger_id);
-                    if (athlet) platz3.push(athlet);
-                }
-            });
-
-            return { platz1, platz2, platz3 };
-        }
-
-        if (isUeberKreuz) {
-            const finalFight = fightMap.get('F1');
-            const platz3Fight = fightMap.get('F2');
-
-            let platz1 = null;
-            let platz2 = null;
-            let platz3Athlet = null;
-
-            if (finalFight && (finalFight.status === 'beendet' || finalFight.status === 'freilos')) {
-                if (finalFight.sieger_id === finalFight.kaempfer1_id) {
-                    platz1 = athleteMap.get(finalFight.kaempfer1_id) || null;
-                    platz2 = athleteMap.get(finalFight.kaempfer2_id) || null;
-                } else {
-                    platz1 = athleteMap.get(finalFight.kaempfer2_id) || null;
-                    platz2 = athleteMap.get(finalFight.kaempfer1_id) || null;
-                }
-            }
-
-            if (platz3Fight && (platz3Fight.status === 'beendet' || platz3Fight.status === 'freilos')) {
-                platz3Athlet = athleteMap.get(platz3Fight.sieger_id) || null;
-            }
-
-            return { platz1, platz2, platz3: [platz3Athlet].filter(Boolean) };
-        }
-
-        return { platz1: null, platz2: null, platz3: [] };
+        const { eintraege } = berechnePlatzierungen(pool, pool.kaempfe, pool.teilnehmer);
+        const mitPlatz = p => eintraege.filter(e => e.platz === p).map(e => e.teilnehmer);
+        return { platz1: mitPlatz(1)[0] || null, platz2: mitPlatz(2)[0] || null, platz3: mitPlatz(3) };
     }
 
     function formatiereName(athlet) {
