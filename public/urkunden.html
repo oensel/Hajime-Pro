@@ -6,25 +6,37 @@
     <title>Hajime Pro - Urkunden</title>
     <link rel="stylesheet" href="/css/common.css">
     <script src="/js/menu.js"></script>
-    <script src="/js/fabric/index.min.js"></script>
     <style>
         .urkunden-card { max-width: 1200px; margin: 24px auto; padding: 24px; }
         .urkunden-zeile { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
         .urkunden-zeile label { display: inline-flex; align-items: center; gap: 4px; margin: 0; font-size: 13px; font-weight: 700; }
-        .urkunden-zeile input[type="checkbox"] { width: auto; margin: 0; }
-        .urkunden-zeile input[type="color"] { width: 40px; height: 30px; padding: 0; margin: 0; }
-        .urkunden-zeile select, .urkunden-zeile input[type="text"], .urkunden-zeile input[type="number"] {
+        .urkunden-zeile select {
             width: auto; margin: 0; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-card); color: inherit;
         }
-        #editorContainer { position: relative; width: 100%; border: 1px solid var(--border); background: #f4f4f4; min-height: 120px; }
-        #editorLeer { padding: 24px; text-align: center; color: #777; }
-        .werkzeugleiste { border: 1px solid var(--border); border-radius: 4px; padding: 12px; margin-bottom: 12px; }
-        .werkzeugleiste[aria-disabled="true"] { opacity: 0.5; pointer-events: none; }
-        .platzhalter-btn { font-size: 12px; padding: 4px 8px; }
-        #feldText { min-width: 280px; flex: 1; }
-        .pool-liste { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 4px 16px; margin: 8px 0 12px; }
-        .pool-liste h3 { grid-column: 1 / -1; margin: 8px 0 0; font-size: 14px; }
-        .pool-hinweis { color: #b8860b; font-size: 12px; }
+        .vorlage-knopf { display: inline-flex; align-items: center; gap: 6px; min-width: 200px; max-width: 250px; justify-content: space-between; }
+        .vorlage-knopf #genVorlageName { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .pool-liste { display: flex; flex-direction: column; gap: 4px; margin: 8px 0 12px; }
+        .pool-liste h3 { margin: 8px 0 0; font-size: 14px; }
+        .pool-liste input[type="checkbox"] { width: 18px; height: 18px; margin: 0; flex-shrink: 0; accent-color: var(--primary); cursor: pointer; }
+        .pool-eintrag {
+            display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; padding: 0 8px;
+            border: 1px solid var(--border); border-radius: 4px; background: var(--bg-card);
+        }
+        .pool-eintrag label {
+            display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; align-self: stretch; margin: 0;
+            font-size: 14px; font-weight: 600; text-transform: none; letter-spacing: normal; color: var(--text-main); cursor: pointer;
+        }
+        .pool-eintrag:not(.gesperrt):hover, .pool-eintrag:has(input:checked) { border-color: var(--primary); }
+        /* Nicht wählbar: Pool noch nicht abgeschlossen */
+        .pool-eintrag.gesperrt { border-style: dashed; background: transparent; }
+        .pool-eintrag.gesperrt label { font-weight: 400; color: var(--text-muted); cursor: not-allowed; }
+        .pool-pdf { display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0; }
+        .pool-pdf-marke { display: inline-flex; align-items: center; gap: 2px; margin-right: 4px; font-size: 12px; color: #2e7d32; white-space: nowrap; }
+        .pool-pdf .material-icons { font-size: 18px; }
+        .pool-pdf-knopf { display: inline-flex; padding: 3px; border: 0; border-radius: 4px; background: none; color: inherit; cursor: pointer; }
+        .pool-pdf-knopf:hover { background: rgba(0, 0, 0, 0.08); }
+        .pool-hinweis { font-size: 12px; font-style: italic; }
+        .pool-liste input[type="checkbox"]:disabled { cursor: not-allowed; }
         .urkunden-hinweis { background: #fff8e1; border-left: 4px solid #f0b400; padding: 8px 12px; margin-bottom: 12px; font-size: 13px; color: #333; }
     </style>
 </head>
@@ -35,100 +47,22 @@
 
 <div class="mdc-card urkunden-card">
     <div class="form-title-area">
-        <span class="material-icons">workspace_premium</span>
-        <h1>Urkunden-Vorlagen</h1>
-    </div>
-
-    <div id="hallenHinweis" class="urkunden-hinweis" style="display: none;">
-        Änderungen an Vorlagen werden nicht in die Cloud übertragen.
-    </div>
-
-    <div class="urkunden-zeile">
-        <label for="vorlagenAuswahl">Vorlage</label>
-        <select id="vorlagenAuswahl"></select>
-        <button type="button" class="btn btn-raised" id="btnVorlageNeu">Neue Vorlage (PDF hochladen)</button>
-        <button type="button" class="btn btn-outlined" id="btnVorlageDuplizieren">Duplizieren</button>
-        <button type="button" class="btn btn-outlined" id="btnVorlageUmbenennen">Umbenennen</button>
-        <button type="button" class="btn btn-outlined" id="btnVorlageLoeschen">Löschen</button>
-        <input type="file" id="vorlageDatei" accept="application/pdf" style="display: none;">
-    </div>
-
-    <div class="urkunden-zeile">
-        <button type="button" class="btn btn-raised" id="btnFeldPlatzhalter">+ Platzhalterfeld</button>
-        <button type="button" class="btn btn-raised" id="btnFeldText">+ Freier Text</button>
-        <label style="margin-left: auto;"><input type="checkbox" id="schalterBeispiel"> Beispieldaten</label>
-    </div>
-
-    <div class="werkzeugleiste" id="werkzeugleiste" aria-disabled="true">
-        <div class="urkunden-zeile">
-            <label for="feldText">Text</label>
-            <input type="text" id="feldText" maxlength="200">
-        </div>
-        <div class="urkunden-zeile" id="platzhalterKnoepfe"></div>
-        <div class="urkunden-zeile">
-            <label for="feldSchrift">Schrift</label>
-            <select id="feldSchrift"></select>
-            <label for="feldGroesse">Größe (pt)</label>
-            <input type="number" id="feldGroesse" min="4" max="200" step="0.5" style="width: 80px;">
-            <label for="feldFarbe">Farbe</label>
-            <input type="color" id="feldFarbe">
-            <label for="feldAusrichtung">Ausrichtung</label>
-            <select id="feldAusrichtung">
-                <option value="links">links</option>
-                <option value="zentriert">zentriert</option>
-                <option value="rechts">rechts</option>
-            </select>
-            <button type="button" class="btn btn-outlined" id="btnFeldZentrieren">Auf Seite zentrieren</button>
-            <button type="button" class="btn btn-outlined" id="btnFeldLoeschen">Feld löschen</button>
-        </div>
-    </div>
-
-    <div id="editorContainer">
-        <div id="editorLeer">
-            <p id="editorLeerText">Noch keine Vorlage vorhanden. Lade eine Blanko-Urkunde als PDF hoch, um Textfelder darauf zu platzieren.</p>
-            <button type="button" class="btn btn-raised" id="btnVorlageNeuLeer">Blanko-PDF hochladen</button>
-        </div>
-        <canvas id="urkundenCanvas"></canvas>
-    </div>
-
-    <div class="urkunden-zeile" style="margin-top: 12px;">
-        <label for="vorlagePlatzbereich">Voreinstellung Platzierungen</label>
-        <select id="vorlagePlatzbereich">
-            <option value="3">1.–3.</option>
-            <option value="5">1.–5.</option>
-            <option value="7">1.–7.</option>
-            <option value="alle">alle</option>
-        </select>
-        <label for="vorlageReihenfolge">Reihenfolge</label>
-        <select id="vorlageReihenfolge">
-            <option value="siegerehrung">Siegerehrung (letzter Platz zuerst)</option>
-            <option value="aufsteigend">aufsteigend (1. Platz zuerst)</option>
-        </select>
-        <label><input type="checkbox" id="vorlageBeiAbschluss"> Beim Pool-Abschluss Druck anbieten</label>
-        <button type="button" class="btn btn-raised" id="btnVorlageSpeichern" style="margin-left: auto;">Speichern</button>
-    </div>
-</div>
-
-<div class="mdc-card urkunden-card">
-    <div class="form-title-area">
         <span class="material-icons">print</span>
         <h1>Urkunden generieren</h1>
     </div>
+    <div id="keineVorlageHinweis" class="urkunden-hinweis" style="display: none;">
+        Es gibt noch keine Urkunden-Vorlage. Lege im <a id="linkDesigner" href="/urkunden-designer.html">Urkunden-Designer</a> eine an.
+    </div>
     <div class="urkunden-zeile">
         <label for="genVorlage">Vorlage</label>
-        <select id="genVorlage"></select>
+        <button type="button" class="btn btn-outlined vorlage-knopf" id="genVorlage" data-vorlage-id="">
+            <span id="genVorlageName">– keine Vorlage –</span>
+            <span class="material-icons" style="font-size: 18px;">expand_more</span>
+        </button>
         <label for="genPlatzbereich">Platzierungen</label>
-        <select id="genPlatzbereich">
-            <option value="3">1.–3.</option>
-            <option value="5">1.–5.</option>
-            <option value="7">1.–7.</option>
-            <option value="alle">alle (ohne Platz: Teilnahme)</option>
-        </select>
+        <select id="genPlatzbereich"></select>
         <label for="genReihenfolge">Reihenfolge</label>
-        <select id="genReihenfolge">
-            <option value="siegerehrung">Siegerehrung</option>
-            <option value="aufsteigend">aufsteigend</option>
-        </select>
+        <select id="genReihenfolge"></select>
     </div>
     <div id="genFelderHinweis" class="urkunden-hinweis" style="display: none;">Die gewählte Vorlage enthält noch keine Felder.</div>
     <div class="pool-liste" id="genPoolListe"></div>

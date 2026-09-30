@@ -2,15 +2,23 @@
 // Spec: docs/superpowers/specs/2026-09-29-urkunden-generator-design.md
 // Zugriff: requireAuth + requireTournamentEditAccess an der Route (turnierId in Query/Body);
 // eine Vorlage darf nur zusammen mit einem Turnier ihres Vereins verwendet werden.
+import fs from 'node:fs/promises';
 import { findeSchrift } from '../shared/urkundenSchriften.js';
-import { leseVorlagenPdf, renderUrkunden, FehlerUngueltigesPdf } from '../services/urkundenRenderer.js';
-import { ladeUrkundenDaten, ladeUebersicht } from '../services/urkundenDaten.js';
+import { findeRahmen } from '../shared/urkundenRahmen.js';
+import { LINIEN_STILE } from '../shared/urkundenLinien.js';
+import { leseVorlagenPdf, renderUrkunden, teilePdf, FehlerUngueltigesPdf } from '../services/urkundenRenderer.js';
+import { ladeUrkundenDatenJePool, ladeUebersicht, zaehleUrkunden, BEISPIEL } from '../services/urkundenDaten.js';
+import {
+    MAX_BILDER, erkenneBildTyp, leseBilder, neueBildId, bereinigeBilder, pruefeBild
+} from '../services/urkundenBilder.js';
 
 const MAX_PDF_BYTES = 10 * 1024 * 1024;
+const RAHMEN_VERZEICHNIS = new URL('../../public/urkunden-rahmen/', import.meta.url);
 const MAX_FELDER = 50;
 const MAX_TEXT = 200;
 const PLATZBEREICHE = ['3', '5', '7', 'alle'];
-const REIHENFOLGEN = ['siegerehrung', 'aufsteigend'];
+// 'siegerehrung' ist der frühere Name von 'absteigend' (letzter Platz zuerst) und wird weiter angenommen.
+const REIHENFOLGEN = ['absteigend', 'aufsteigend', 'siegerehrung'];
 const AUSRICHTUNGEN = ['links', 'zentriert', 'rechts'];
 const LISTEN_SPALTEN = ['id', 'verein_id', 'name', 'pdf_dateiname', 'seiten_breite_pt', 'seiten_hoehe_pt',
     'felder', 'platzbereich', 'reihenfolge', 'bei_abschluss_anbieten', 'updated_at'];
@@ -19,22 +27,59 @@ export function darfVorlageNutzen(turnier, vorlage) {
     return !!(turnier && vorlage && turnier.verein_id && turnier.verein_id === vorlage.verein_id);
 }
 
-export function pruefeFelder(felder, seitenBreite, seitenHoehe) {
+const FARBE = /^#[0-9a-f]{6}$/i;
+const FARB_FEHLER = 'Farbe muss im Format #rrggbb angegeben werden.';
+const istZahl = z => typeof z === 'number' && Number.isFinite(z);
+
+// Feldtypen: 'text' (Standard, auch ohne typ), 'linie' (waagerecht, y = Mitte der Linie) und
+// 'bild' (Rechteck x/y/breite/hoehe, Bilddaten in urkunden_vorlagen.bilder). Jede Prüfung liefert
+// { fehler } oder die Unterkante des Feldes für die Prüfung gegen die Seitenhöhe.
+function pruefeTextFeld(f) {
+    if (typeof f.text !== 'string') return { fehler: 'Ungültiges Feld.' };
+    if (f.text.length > MAX_TEXT) return { fehler: `Feldtext höchstens ${MAX_TEXT} Zeichen.` };
+    if (!findeSchrift(f.schrift)) return { fehler: `Unbekannte Schrift: ${f.schrift}` };
+    if (!istZahl(f.groesse)) return { fehler: 'Ungültiges Feld.' };
+    if (f.groesse < 4 || f.groesse > 200) return { fehler: 'Schriftgröße muss zwischen 4 und 200 pt liegen.' };
+    if (!AUSRICHTUNGEN.includes(f.ausrichtung)) return { fehler: 'Ungültige Ausrichtung.' };
+    if (!FARBE.test(f.farbe || '')) return { fehler: FARB_FEHLER };
+    return { unten: f.y + f.groesse };
+}
+
+function pruefeLinie(f) {
+    if (!istZahl(f.staerke)) return { fehler: 'Ungültiges Feld.' };
+    if (f.staerke < 0.5 || f.staerke > 10) return { fehler: 'Linienstärke muss zwischen 0,5 und 10 pt liegen.' };
+    if (!LINIEN_STILE.some(s => s.id === f.stil)) return { fehler: 'Ungültiger Linienstil.' };
+    if (!FARBE.test(f.farbe || '')) return { fehler: FARB_FEHLER };
+    return { unten: f.y + f.staerke / 2 };
+}
+
+function pruefeBildFeld(f, bildIds) {
+    if (!istZahl(f.hoehe) || f.hoehe <= 0) return { fehler: 'Ungültiges Feld.' };
+    if (typeof f.bild_id !== 'string' || (bildIds && !bildIds.has(f.bild_id))) return { fehler: 'Bild nicht gefunden.' };
+    return { unten: f.y + f.hoehe };
+}
+
+const FELD_PRUEFUNGEN = { text: pruefeTextFeld, linie: pruefeLinie, bild: pruefeBildFeld };
+
+// bildIds (optional): vorhandene Bilder der Vorlage — Bildfelder müssen auf eines davon verweisen.
+export function pruefeFelder(felder, seitenBreite, seitenHoehe, bildIds = null) {
     if (!Array.isArray(felder)) return 'Feldliste fehlt oder ist ungültig.';
     if (felder.length > MAX_FELDER) return `Höchstens ${MAX_FELDER} Felder pro Vorlage.`;
     for (const f of felder) {
-        const zahlen = [f?.x, f?.y, f?.breite, f?.groesse];
-        if (!f || typeof f.text !== 'string' || zahlen.some(z => typeof z !== 'number' || !Number.isFinite(z))) return 'Ungültiges Feld.';
-        if (f.text.length > MAX_TEXT) return `Feldtext höchstens ${MAX_TEXT} Zeichen.`;
-        if (!findeSchrift(f.schrift)) return `Unbekannte Schrift: ${f.schrift}`;
-        if (f.groesse < 4 || f.groesse > 200) return 'Schriftgröße muss zwischen 4 und 200 pt liegen.';
-        if (!/^#[0-9a-f]{6}$/i.test(f.farbe || '')) return 'Farbe muss im Format #rrggbb angegeben werden.';
-        if (!AUSRICHTUNGEN.includes(f.ausrichtung)) return 'Ungültige Ausrichtung.';
-        if (f.x < 0 || f.y < 0 || f.breite <= 0 || f.x + f.breite > seitenBreite + 0.5 || f.y + f.groesse > seitenHoehe + 0.5) {
+        if (!f || ![f.x, f.y, f.breite].every(istZahl)) return 'Ungültiges Feld.';
+        const pruefe = FELD_PRUEFUNGEN[f.typ ?? 'text'];
+        if (!pruefe) return 'Unbekannter Feldtyp.';
+        const { fehler, unten } = pruefe(f, bildIds);
+        if (fehler) return fehler;
+        if (f.x < 0 || f.y < 0 || f.breite <= 0 || f.x + f.breite > seitenBreite + 0.5 || unten > seitenHoehe + 0.5) {
             return 'Ein Feld liegt außerhalb der Seite.';
         }
     }
     return null;
+}
+
+export function normalisiereReihenfolge(reihenfolge) {
+    return reihenfolge === 'aufsteigend' ? 'aufsteigend' : 'absteigend';
 }
 
 function alsVorlage(zeile) {
@@ -108,7 +153,17 @@ export async function legeVorlageAn(knex, req, res) {
 
         const name = String(req.body.name || '').trim();
         if (!name) return res.status(400).json({ success: false, error: 'Name fehlt.' });
-        const pdf = Buffer.from(String(req.body.pdf_base64 || ''), 'base64');
+        // Entweder ein hochgeladenes PDF oder einer der mitgelieferten Standard-Rahmen.
+        let pdf;
+        let pdfDateiname = req.body.pdf_dateiname || null;
+        if (req.body.rahmen_id !== undefined) {
+            const rahmen = findeRahmen(req.body.rahmen_id);
+            if (!rahmen) return res.status(400).json({ success: false, error: 'Unbekanntes Standard-Design.' });
+            pdf = await fs.readFile(new URL(rahmen.datei, RAHMEN_VERZEICHNIS));
+            pdfDateiname = rahmen.datei;
+        } else {
+            pdf = Buffer.from(String(req.body.pdf_base64 || ''), 'base64');
+        }
         if (pdf.length === 0) return res.status(400).json({ success: false, error: 'PDF-Datei fehlt.' });
         if (pdf.length > MAX_PDF_BYTES) return res.status(400).json({ success: false, error: 'Die PDF-Datei ist größer als 10 MB.' });
 
@@ -127,7 +182,7 @@ export async function legeVorlageAn(knex, req, res) {
             verein_id: turnier.verein_id,
             name,
             pdf,
-            pdf_dateiname: req.body.pdf_dateiname || null,
+            pdf_dateiname: pdfDateiname,
             seiten_breite_pt: groesse.breite,
             seiten_hoehe_pt: groesse.hoehe,
             felder: '[]'
@@ -170,9 +225,11 @@ export async function aktualisiereVorlage(knex, req, res) {
             aenderung.name = neuerName;
         }
         if (felder !== undefined) {
-            const fehler = pruefeFelder(felder, vorlage.seiten_breite_pt, vorlage.seiten_hoehe_pt);
+            const bilder = leseBilder(vorlage.bilder);
+            const fehler = pruefeFelder(felder, vorlage.seiten_breite_pt, vorlage.seiten_hoehe_pt, new Set(Object.keys(bilder)));
             if (fehler) return res.status(400).json({ success: false, error: fehler });
             aenderung.felder = JSON.stringify(felder);
+            aenderung.bilder = JSON.stringify(bereinigeBilder(bilder, felder));
         }
         if (platzbereich !== undefined) {
             if (!PLATZBEREICHE.includes(String(platzbereich))) return res.status(400).json({ success: false, error: 'Ungültiger Platzbereich.' });
@@ -196,6 +253,39 @@ export async function aktualisiereVorlage(knex, req, res) {
     } catch (error) { return fehler500(res, error); }
 }
 
+// Lädt ein Bild (PNG/JPEG, Base64) zur Vorlage hoch. Es bleibt nur erhalten, wenn beim nächsten
+// Speichern der Felder ein Bildfeld darauf verweist.
+export async function ladeBildHoch(knex, req, res) {
+    try {
+        const geladen = await ladeTurnierUndVorlage(knex, req, res, req.params.id);
+        if (!geladen) return;
+        const { vorlage } = geladen;
+        const daten = String(req.body.daten_base64 || '');
+        const bild = { typ: erkenneBildTyp(Buffer.from(daten, 'base64')), daten };
+        const fehler = pruefeBild(bild);
+        if (fehler) return res.status(400).json({ success: false, error: fehler });
+
+        const bilder = leseBilder(vorlage.bilder);
+        if (Object.keys(bilder).length >= MAX_BILDER) {
+            return res.status(400).json({ success: false, error: `Höchstens ${MAX_BILDER} Bilder pro Vorlage.` });
+        }
+        const bildId = neueBildId();
+        bilder[bildId] = bild;
+        await knex('urkunden_vorlagen').where({ id: vorlage.id }).update({ bilder: JSON.stringify(bilder) });
+        return res.json({ success: true, bild_id: bildId });
+    } catch (error) { return fehler500(res, error); }
+}
+
+export async function holeBild(knex, req, res) {
+    try {
+        const geladen = await ladeTurnierUndVorlage(knex, req, res, req.params.id);
+        if (!geladen) return;
+        const bild = leseBilder(geladen.vorlage.bilder)[req.params.bildId];
+        if (!bild) return res.status(404).json({ success: false, error: 'Bild nicht gefunden.' });
+        return res.type(bild.typ).send(Buffer.from(bild.daten, 'base64'));
+    } catch (error) { return fehler500(res, error); }
+}
+
 export async function loescheVorlage(knex, req, res) {
     try {
         const geladen = await ladeTurnierUndVorlage(knex, req, res, req.params.id);
@@ -213,6 +303,25 @@ export async function holeUebersicht(knex, req, res) {
     } catch (error) { return fehler500(res, error); }
 }
 
+// Einseitige Beispiel-Urkunde für die Mini-Ansicht in der Vorlagen-Auswahl.
+export async function holeVorlagenVorschau(knex, req, res) {
+    try {
+        const geladen = await ladeTurnierUndVorlage(knex, req, res, req.params.id);
+        if (!geladen) return;
+        const { bytes } = await renderUrkunden({
+            pdfBytes: geladen.vorlage.pdf, felder: alsVorlage(geladen.vorlage).felder,
+            bilder: leseBilder(geladen.vorlage.bilder), datensaetze: [BEISPIEL]
+        });
+        res.set('Cache-Control', 'no-store');
+        return res.type('application/pdf').send(Buffer.from(bytes));
+    } catch (error) {
+        if (error instanceof FehlerUngueltigesPdf) return res.status(400).json({ success: false, error: error.message });
+        return fehler500(res, error);
+    }
+}
+
+// Nach "Pool abschließen": Vorlagen des Ausrichter-Vereins und die Zahl der Urkunden des Pools je
+// Platzbereich. Ohne Vorlage bietet das Frontend nichts an.
 export async function holeAbschlussAngebot(knex, req, res) {
     try {
         const turnier = await ladeTurnier(knex, req);
@@ -220,20 +329,17 @@ export async function holeAbschlussAngebot(knex, req, res) {
         if (!turnier || !pool || pool.turnier_id !== turnier.id) {
             return res.status(404).json({ success: false, error: 'Pool nicht gefunden.' });
         }
-        const vorlage = turnier.verein_id
-            ? await knex('urkunden_vorlagen').where({ verein_id: turnier.verein_id, bei_abschluss_anbieten: true })
-                .select('id', 'name', 'platzbereich', 'reihenfolge').first()
-            : null;
-        if (!vorlage) return res.json({ vorlage: null, anzahl: 0 });
-        const datensaetze = await ladeUrkundenDaten(knex, turnier.id,
-            { platzbereich: vorlage.platzbereich, poolIds: [pool.id], reihenfolge: vorlage.reihenfolge });
-        return res.json({ vorlage, anzahl: datensaetze.length });
+        const vorlagen = turnier.verein_id
+            ? await knex('urkunden_vorlagen').where({ verein_id: turnier.verein_id }).select('id', 'name').orderBy('name')
+            : [];
+        if (vorlagen.length === 0) return res.json({ vorlagen: [], anzahl: {} });
+        return res.json({ vorlagen, anzahl: await zaehleUrkunden(knex, turnier.id, pool.id) });
     } catch (error) { return fehler500(res, error); }
 }
 
 export async function generiereUrkunden(knex, req, res) {
     try {
-        const { vorlageId, platzbereich = '3', poolIds, reihenfolge = 'siegerehrung' } = req.body;
+        const { vorlageId, platzbereich = '3', poolIds, reihenfolge = 'absteigend' } = req.body;
         if (!PLATZBEREICHE.includes(String(platzbereich))) return res.status(400).json({ success: false, error: 'Ungültiger Platzbereich.' });
         if (!REIHENFOLGEN.includes(reihenfolge)) return res.status(400).json({ success: false, error: 'Ungültige Reihenfolge.' });
         if (!Array.isArray(poolIds)) return res.status(400).json({ success: false, error: 'poolIds fehlt.' });
@@ -242,22 +348,89 @@ export async function generiereUrkunden(knex, req, res) {
         if (!geladen) return;
         const { turnier, vorlage } = geladen;
 
-        const datensaetze = poolIds.length === 0 ? [] : await ladeUrkundenDaten(knex, turnier.id,
-            { platzbereich: String(platzbereich), poolIds: poolIds.map(Number), reihenfolge });
+        const einstellungen = { platzbereich: String(platzbereich), reihenfolge: normalisiereReihenfolge(reihenfolge) };
+        const jePool = poolIds.length === 0 ? [] : await ladeUrkundenDatenJePool(knex, turnier.id,
+            { ...einstellungen, poolIds: poolIds.map(Number) });
+        const datensaetze = jePool.flatMap(p => p.datensaetze);
         if (datensaetze.length === 0) {
             return res.status(422).json({ success: false, error: 'Für diese Auswahl gibt es keine Urkunden.' });
         }
 
         const { bytes, warnungen } = await renderUrkunden({
-            pdfBytes: vorlage.pdf, felder: alsVorlage(vorlage).felder, datensaetze
+            pdfBytes: vorlage.pdf, felder: alsVorlage(vorlage).felder, bilder: leseBilder(vorlage.bilder), datensaetze
         });
+        const gespeichert = await speicherePoolPdfs(knex, req, { vorlage, einstellungen, jePool, bytes });
         const datum = new Date().toISOString().slice(0, 10);
         res.set({
             'Content-Disposition': `inline; filename="urkunden_${turnier.id}_${datum}.pdf"`,
             'X-Urkunden-Anzahl': String(datensaetze.length),
             'X-Urkunden-Warnungen': encodeURIComponent(JSON.stringify(warnungen.slice(0, 50))),
-            'Access-Control-Expose-Headers': 'X-Urkunden-Anzahl, X-Urkunden-Warnungen'
+            'X-Urkunden-Gespeichert': gespeichert ? '1' : '0',
+            'Access-Control-Expose-Headers': 'X-Urkunden-Anzahl, X-Urkunden-Warnungen, X-Urkunden-Gespeichert'
         });
         return res.type('application/pdf').send(Buffer.from(bytes));
+    } catch (error) { return fehler500(res, error); }
+}
+
+// Legt das erzeugte PDF je Pool ab (ersetzt das bisherige des Pools). Am Secondary ist die DB nur
+// lesbar: dort wird nichts gespeichert, gedruckt werden kann trotzdem. Ein Fehler beim Speichern
+// verhindert den Druck nicht.
+async function speicherePoolPdfs(knex, req, { vorlage, einstellungen, jePool, bytes }) {
+    const cluster = req.app.get('cluster');
+    if (cluster && !cluster.darfSchreiben()) return false;
+    try {
+        const teile = jePool.length === 1 ? [bytes] : await teilePdf(bytes, jePool.map(p => p.datensaetze.length));
+        const erzeugtAm = new Date().toISOString();
+        await knex.transaction(async trx => {
+            await trx('urkunden_pdfs').whereIn('pool_id', jePool.map(p => p.poolId)).del();
+            for (const [i, { poolId, datensaetze }] of jePool.entries()) {
+                await trx('urkunden_pdfs').insert({
+                    pool_id: poolId, vorlage_id: vorlage.id, vorlage_name: vorlage.name, ...einstellungen,
+                    anzahl: datensaetze.length, pdf: Buffer.from(teile[i]), erzeugt_am: erzeugtAm
+                });
+            }
+        });
+        return true;
+    } catch (error) {
+        console.error('[Urkunden] PDF konnte nicht gespeichert werden:', error);
+        return false;
+    }
+}
+
+async function ladePoolPdf(knex, req, res, spalten) {
+    const turnier = await ladeTurnier(knex, req);
+    const pool = await knex('pools').where({ id: parseInt(req.params.poolId) || -1 }).first();
+    if (!turnier || !pool || pool.turnier_id !== turnier.id) {
+        res.status(404).json({ success: false, error: 'Pool nicht gefunden.' });
+        return null;
+    }
+    const zeile = await knex('urkunden_pdfs').where({ pool_id: pool.id }).select(spalten).first();
+    if (!zeile) {
+        res.status(404).json({ success: false, error: 'Für diesen Pool liegt kein Urkunden-PDF vor.' });
+        return null;
+    }
+    return { turnier, pool, zeile };
+}
+
+export async function holePoolPdf(knex, req, res) {
+    try {
+        const geladen = await ladePoolPdf(knex, req, res, ['pdf', 'anzahl']);
+        if (!geladen) return;
+        res.set({
+            'Content-Disposition': `inline; filename="urkunden_${geladen.turnier.id}_pool_${geladen.pool.id}.pdf"`,
+            'Cache-Control': 'no-store',
+            'X-Urkunden-Anzahl': String(geladen.zeile.anzahl),
+            'Access-Control-Expose-Headers': 'X-Urkunden-Anzahl'
+        });
+        return res.type('application/pdf').send(Buffer.from(geladen.zeile.pdf));
+    } catch (error) { return fehler500(res, error); }
+}
+
+export async function loeschePoolPdf(knex, req, res) {
+    try {
+        const geladen = await ladePoolPdf(knex, req, res, ['id']);
+        if (!geladen) return;
+        await knex('urkunden_pdfs').where({ id: geladen.zeile.id }).del();
+        return res.json({ success: true });
     } catch (error) { return fehler500(res, error); }
 }

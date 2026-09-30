@@ -37,6 +37,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const regenerateActionArea = document.getElementById('regenerateActionArea');
     const poolsContainer = document.getElementById('poolsContainer');
     let activePoolModus = null;
+    // Gruppen-Überkreuz ohne kleines Finale: beide Halbfinal-Verlierer sind Dritte (ältere Pools
+    // haben noch einen F2-Kampf um Platz 3).
+    let halbfinalVerliererSindDritte = false;
 
     // --- UTILITIES (ZENTRALE DIALOGE & MAPPER) ---
     const mapWettkampfsystem = (modus, anzahlTeilnehmer) => {
@@ -169,13 +172,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     <thead>
                         <tr class="pools-table-header">
                             <th class="pool-cell">Pool</th>
-                            <th class="pool-cell">System</th>
                             <th class="pool-cell">Status</th>
                             <th class="pool-cell">Teilnehmer</th>
                             <th class="pool-cell">Kämpfe</th>
                             <th class="pool-cell">Dauer</th>
-                            <th class="pool-cell">Kampfzeit</th>
-                            <th class="pool-cell">Golden Score</th>
                             <th class="pool-cell">Athleten</th>
                             <th class="pool-cell">Details</th>
                         </tr>
@@ -248,14 +248,43 @@ document.addEventListener('DOMContentLoaded', () => {
                                     <!-- Spalte 1: Pool Name -->
                                     <td class="pool-cell pool-name-cell">
                                         <input type="text" class="pool-name-input" data-id="${pool.id}" value="${pool.bezeichnung}">
-                                    </td>
 
-                                    <!-- Spalte 2: Turniersystem -->
-                                    <td class="pool-cell pool-align-top">
-                                        <span class="pool-system-text">${mapWettkampfsystem(pool.modus, pool.anzahl_teilnehmer)}</span>
-                                        ${kannSystemWechseln ? `
-                                            <button type="button" class="btn-switch-system material-icons" data-id="${pool.id}" data-ziel-modus="${sechserZielModus}" title="Auf ${sechserZielModus === 'Jeder-gegen-Jeden' ? 'Jeder-gegen-Jeden' : 'Gruppen-Überkreuz'} umstellen" style="color: var(--text-muted); background: none; border: none; cursor: pointer; font-size: 15px; padding: 2px; vertical-align: middle;">swap_horiz</button>
-                                        ` : ''}
+                                        <!-- System, Kampfzeit und Golden Score stehen untereinander unter dem
+                                             Poolnamen statt in eigenen Spalten — so bleibt die Tabelle schmal
+                                             genug, dass die Details-Spalte ohne Scrollen erreichbar ist. -->
+                                        <div class="pool-einstellungen">
+                                            <span class="pool-einstellung-label">System</span>
+                                            <div class="pool-einstellung-wert">
+                                                <span class="pool-system-text">${mapWettkampfsystem(pool.modus, pool.anzahl_teilnehmer)}</span>
+                                                ${kannSystemWechseln ? `
+                                                    <button type="button" class="btn-switch-system material-icons" data-id="${pool.id}" data-ziel-modus="${sechserZielModus}" title="Auf ${sechserZielModus === 'Jeder-gegen-Jeden' ? 'Jeder-gegen-Jeden' : 'Gruppen-Überkreuz'} umstellen" style="color: var(--text-muted); background: none; border: none; cursor: pointer; font-size: 15px; padding: 2px; vertical-align: middle;">swap_horiz</button>
+                                                ` : ''}
+                                            </div>
+
+                                            <span class="pool-einstellung-label">Kampfzeit</span>
+                                            <div class="pool-einstellung-wert">
+                                                <select class="pool-time-select" data-id="${pool.id}">
+                                                    <option value="1" ${kampfzeitMinuten === 1 ? 'selected' : ''}>1 Min.</option>
+                                                    <option value="2" ${kampfzeitMinuten === 2 ? 'selected' : ''}>2 Min.</option>
+                                                    <option value="3" ${kampfzeitMinuten === 3 ? 'selected' : ''}>3 Min.</option>
+                                                    <option value="4" ${kampfzeitMinuten === 4 ? 'selected' : ''}>4 Min.</option>
+                                                    <option value="5" ${kampfzeitMinuten === 5 ? 'selected' : ''}>5 Min.</option>
+                                                </select>
+                                            </div>
+
+                                            <span class="pool-einstellung-label">Golden Score</span>
+                                            <div class="pool-einstellung-wert">
+                                                <select class="pool-gs-select" data-id="${pool.id}">
+                                                    <option value="nein" ${!goldenScoreAktiv ? 'selected' : ''}>Nein</option>
+                                                    <option value="ja" ${goldenScoreAktiv && !goldenScoreMaxSekunden ? 'selected' : ''}>Ja</option>
+                                                    ${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(minuten => {
+                                                        const sekunden = minuten * 60;
+                                                        const ausgewaehlt = goldenScoreAktiv && Number(goldenScoreMaxSekunden) === sekunden;
+                                                        return `<option value="${sekunden}" ${ausgewaehlt ? 'selected' : ''}>Max. ${minuten} Minute${minuten > 1 ? 'n' : ''}</option>`;
+                                                    }).join('')}
+                                                </select>
+                                            </div>
+                                        </div>
                                     </td>
 
                                     <!-- Spalte: Status -->
@@ -263,38 +292,12 @@ document.addEventListener('DOMContentLoaded', () => {
                                         <span class="pool-status-badge ${statusClass}">${statusText}</span>
                                     </td>
 
-                                    <!-- Spalte 3-5: Statistiken -->
+                                    <!-- Statistiken -->
                                     <td class="pool-cell pool-number-cell pool-stat-cell"><span class="pool-system-text">${pool.anzahl_teilnehmer}</span></td>
                                     <td class="pool-cell pool-number-cell pool-stat-cell"><span class="pool-system-text">${pool.gesamt_kaempfe}</span></td>
                                     <td class="pool-cell pool-number-cell pool-stat-cell"><span class="pool-system-text">${dauerText}</span></td>
 
-                                    <!-- Spalte 6: Kampfzeit-Auswahl -->
-                                    <td class="pool-cell pool-align-top">
-                                        <div class="pool-time-box">
-                                            <select class="pool-time-select" data-id="${pool.id}">
-                                                <option value="1" ${kampfzeitMinuten === 1 ? 'selected' : ''}>1 Min.</option>
-                                                <option value="2" ${kampfzeitMinuten === 2 ? 'selected' : ''}>2 Min.</option>
-                                                <option value="3" ${kampfzeitMinuten === 3 ? 'selected' : ''}>3 Min.</option>
-                                                <option value="4" ${kampfzeitMinuten === 4 ? 'selected' : ''}>4 Min.</option>
-                                                <option value="5" ${kampfzeitMinuten === 5 ? 'selected' : ''}>5 Min.</option>
-                                            </select>
-                                        </div>
-                                    </td>
-
-                                    <!-- Spalte: Golden Score -->
-                                    <td class="pool-cell pool-align-top">
-                                        <select class="pool-gs-select" data-id="${pool.id}" style="width: 130px; padding: 5px 4px; font-size: 12px;">
-                                            <option value="nein" ${!goldenScoreAktiv ? 'selected' : ''}>Nein</option>
-                                            <option value="ja" ${goldenScoreAktiv && !goldenScoreMaxSekunden ? 'selected' : ''}>Ja</option>
-                                            ${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(minuten => {
-                                                const sekunden = minuten * 60;
-                                                const ausgewaehlt = goldenScoreAktiv && Number(goldenScoreMaxSekunden) === sekunden;
-                                                return `<option value="${sekunden}" ${ausgewaehlt ? 'selected' : ''}>Max. ${minuten} Minute${minuten > 1 ? 'n' : ''}</option>`;
-                                            }).join('')}
-                                        </select>
-                                    </td>
-
-                                    <!-- Spalte 7: Athleten-Dropzone -->
+                                    <!-- Athleten-Dropzone -->
                                     <td class="pool-cell pool-athletes-cell pool-align-top">
                                         <div class="drop-zone" data-pool-id="${pool.id}" data-locked="${hatBegonnen}">
                                             ${pool.teilnehmer.map(t => {
@@ -315,7 +318,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                     </td>
 
                                      <!-- Spalte 8: Aktionen -->
-                                     <td class="pool-cell pool-action-cell pool-align-top" style="display: flex; gap: 8px; justify-content: flex-end; padding-top: 10px;">
+                                     <td class="pool-cell pool-action-cell pool-align-top">
                                          ${!istLeer ? `
                                              <button type="button" class="btn-view-fightplan material-icons" data-id="${pool.id}" data-name="${pool.bezeichnung}" title="Kampfplan ansehen" style="color: var(--primary); background: none; border: none; cursor: pointer; font-size: 18px; padding: 4px;">table_view</button>
                                          ` : ''}
@@ -1053,6 +1056,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (isK2Winner) {
                     medal2 = `<span class="medal bronze-medal" title="3. Platz (Bronze)" style="font-size: 14px; margin-left: 6px; vertical-align: middle;">🥉</span>`;
                 }
+            } else if (halbfinalVerliererSindDritte && (fight.reihenfolge_nummer === 'HF1' || fight.reihenfolge_nummer === 'HF2')) {
+                if (isK2Winner) {
+                    medal1 = `<span class="medal bronze-medal" title="3. Platz (Bronze)" style="font-size: 14px; margin-left: 6px; vertical-align: middle;">🥉</span>`;
+                } else if (isK1Winner) {
+                    medal2 = `<span class="medal bronze-medal" title="3. Platz (Bronze)" style="font-size: 14px; margin-left: 6px; vertical-align: middle;">🥉</span>`;
+                }
             }
         }
 
@@ -1372,6 +1381,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const athleteMap = new Map(pool.teilnehmer.map(t => [t.id, t]));
         const fightMap = new Map(pool.kaempfe.map(k => [k.reihenfolge_nummer, k]));
+        const kleinesFinale = fightMap.get('F2');
+        halbfinalVerliererSindDritte = !kleinesFinale;
 
         const sortedTeilnehmer = [...pool.teilnehmer].sort((a, b) => Number(a.gewicht) - Number(b.gewicht));
         const poolA = [];
@@ -1406,10 +1417,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                     </div>
                     <div class="bracket-round">
-                        <div class="bracket-round-title">Finale & Platz 3</div>
+                        <div class="bracket-round-title">${kleinesFinale ? 'Finale & Platz 3' : 'Finale'}</div>
                         <div class="bracket-match-list">
                             ${buildMatchCardHtml(fightMap.get('F1'), athleteMap)}
-                            ${buildMatchCardHtml(fightMap.get('F2'), athleteMap)}
+                            ${kleinesFinale ? buildMatchCardHtml(kleinesFinale, athleteMap) : ''}
                         </div>
                     </div>
                 </div>

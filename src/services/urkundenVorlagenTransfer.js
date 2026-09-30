@@ -1,6 +1,7 @@
 // Urkunden-Vorlagen im Turnier-Export/-Import (Cloud → Hallen-Server). Der Rückweg
 // (importTurnierErgebnisse) überträgt bewusst keine Vorlagen.
 import { pruefeFelder } from '../controllers/urkundenController.js';
+import { leseBilder, pruefeBild, bereinigeBilder } from './urkundenBilder.js';
 
 const PLATZBEREICHE = ['3', '5', '7', 'alle'];
 const REIHENFOLGEN = ['siegerehrung', 'aufsteigend'];
@@ -11,13 +12,16 @@ function normalisiereVorlage(v) {
     const hoehe = Number(v.seiten_hoehe_pt);
     if (!(breite > 0) || !(hoehe > 0)) return null;
     const felder = v.felder ?? [];
-    if (pruefeFelder(felder, breite, hoehe)) return null;
+    // Ungültige Bilder fallen weg; verweist ein Feld auf ein fehlendes Bild, ist die Vorlage ungültig.
+    const bilder = Object.fromEntries(Object.entries(leseBilder(v.bilder ?? {})).filter(([, b]) => !pruefeBild(b)));
+    if (pruefeFelder(felder, breite, hoehe, new Set(Object.keys(bilder)))) return null;
     return {
         ...v,
         name: v.name.trim(),
         seiten_breite_pt: breite,
         seiten_hoehe_pt: hoehe,
         felder,
+        bilder: bereinigeBilder(bilder, felder),
         platzbereich: PLATZBEREICHE.includes(String(v.platzbereich)) ? String(v.platzbereich) : '3',
         reihenfolge: REIHENFOLGEN.includes(v.reihenfolge) ? v.reihenfolge : 'siegerehrung'
     };
@@ -32,6 +36,7 @@ export async function exportiereVorlagen(knex, vereinId) {
         seiten_breite_pt: v.seiten_breite_pt,
         seiten_hoehe_pt: v.seiten_hoehe_pt,
         felder: JSON.parse(v.felder || '[]'),
+        bilder: leseBilder(v.bilder),
         platzbereich: v.platzbereich,
         reihenfolge: v.reihenfolge,
         bei_abschluss_anbieten: !!v.bei_abschluss_anbieten
@@ -58,6 +63,7 @@ export async function importiereVorlagen(knex, vereinId, vorlagen) {
             seiten_breite_pt: v.seiten_breite_pt,
             seiten_hoehe_pt: v.seiten_hoehe_pt,
             felder: JSON.stringify(v.felder),
+            bilder: JSON.stringify(v.bilder),
             platzbereich: v.platzbereich,
             reihenfolge: v.reihenfolge,
             bei_abschluss_anbieten: !!v.bei_abschluss_anbieten

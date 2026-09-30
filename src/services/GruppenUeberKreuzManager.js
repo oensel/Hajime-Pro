@@ -57,7 +57,8 @@ export class GruppenUeberKreuzManager {
             unterbewertung_kaempfer2: 0
         }));
 
-        // Zukünftige Kämpfe (HF1, HF2, F1, F2) als leere Hüllen vorab anlegen
+        // Zukünftige Kämpfe (HF1, HF2, F1) als leere Hüllen vorab anlegen. Kein kleines Finale:
+        // beide Halbfinal-Verlierer sind Dritte.
         neueKaempfe.push({
             pool_id: poolId, status: 'angelegt', reihenfolge_nummer: "HF1",
             kaempfer1_id: null, kaempfer2_id: null, sieger_id: null, kampfzeit_in_sekunden: 0, unterbewertung_kaempfer1: 0, unterbewertung_kaempfer2: 0
@@ -70,16 +71,12 @@ export class GruppenUeberKreuzManager {
             pool_id: poolId, status: 'angelegt', reihenfolge_nummer: "F1", // Finale
             kaempfer1_id: null, kaempfer2_id: null, sieger_id: null, kampfzeit_in_sekunden: 0, unterbewertung_kaempfer1: 0, unterbewertung_kaempfer2: 0
         });
-        neueKaempfe.push({
-            pool_id: poolId, status: 'angelegt', reihenfolge_nummer: "F2", // Kleines Finale (Platz 3)
-            kaempfer1_id: null, kaempfer2_id: null, sieger_id: null, kampfzeit_in_sekunden: 0, unterbewertung_kaempfer1: 0, unterbewertung_kaempfer2: 0
-        });
 
         // 4. In die Datenbank schreiben
         await knex('kaempfe').insert(neueKaempfe);
-        console.log(`[DB] 6 Vorrunden-Kämpfe und 4 Final-Hüllen für Gruppen-Überkreuz-Pool ID ${poolId} generiert.`);
+        console.log(`[DB] 6 Vorrunden-Kämpfe und 3 Final-Hüllen für Gruppen-Überkreuz-Pool ID ${poolId} generiert.`);
 
-        // Explizite Quell-Verknüpfung für F1/F2 (HF1/HF2 bleiben unverknüpft, siehe
+        // Explizite Quell-Verknüpfung für F1 (HF1/HF2 bleiben unverknüpft, siehe
         // GRUPPEN_UEBERKREUZ_TOPOLOGIE — deren Kämpfer kommen aus der Ranglistenberechnung)
         await verknuepfeQuellenFuerPool(knex, poolId, GRUPPEN_UEBERKREUZ_TOPOLOGIE);
 
@@ -113,8 +110,8 @@ export class GruppenUeberKreuzManager {
             changed = true;
         }
 
-        // PHASE 2: HF1/HF2 -> F1/F2 über die gemeinsame Engine (einfacher 1:1-Sieger/Verlierer-Link,
-        // siehe GRUPPEN_UEBERKREUZ_TOPOLOGIE).
+        // PHASE 2: HF1/HF2 -> F1 (bei älteren Pools auch F2) über die gemeinsame Engine (einfacher
+        // 1:1-Sieger/Verlierer-Link, siehe GRUPPEN_UEBERKREUZ_TOPOLOGIE).
         if (changed) {
             kaempfe = await knex('kaempfe').where({ pool_id: poolId });
         }
@@ -134,9 +131,10 @@ export class GruppenUeberKreuzManager {
         // ==========================================================
         const istBeendetOderFreilos = (k) => k?.status === 'beendet' || k?.status === 'freilos';
         const finale = findeKampf("F1");
+        // Kleines Finale gibt es nur noch in älteren Pools
         const platz3 = findeKampf("F2");
 
-        if (istBeendetOderFreilos(finale) && istBeendetOderFreilos(platz3)) {
+        if (istBeendetOderFreilos(finale) && (!platz3 || istBeendetOderFreilos(platz3))) {
             await knex('pools').where({ id: poolId }).update({ status: 'kaempfe_beendet' });
             console.log(`[DB] Gruppen-Überkreuz-Turnier ID ${poolId}: alle Kämpfe ausgetragen, wartet auf Bestätigung.`);
         }

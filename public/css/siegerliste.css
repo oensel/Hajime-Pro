@@ -86,6 +86,7 @@
 .siegerliste-platz1 { font-weight: 700; color: #2e7d32; }
 .siegerliste-platz2 { font-weight: 600; color: var(--text-main); }
 .siegerliste-platz3 { color: var(--text-muted); }
+.siegerliste-platz5 { color: var(--text-muted); }
 
 .siegerliste-rang {
     text-align: center;

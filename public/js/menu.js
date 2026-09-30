@@ -183,6 +183,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <span class="material-icons">workspace_premium</span>
                     <span class="menu-text">Urkunden</span>
                 </a>
+                <a href="/urkunden-designer.html" class="menu-item" id="nav-urkunden-designer">
+                    <span class="material-icons">design_services</span>
+                    <span class="menu-text">Urkunden-Designer</span>
+                </a>
             </nav>
             <nav class="sidebar-nav" id="sidebarNavSecondary" style="visibility: hidden;">
                 <a href="/dashboard.html" class="menu-item" id="nav-dashboard">
@@ -633,7 +637,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // siehe src/sync/clientApi.js). Die Menü-Sperren-Prüfungen des Servers entfallen.
     if (syncRolle === 'client') {
         const clientTurnierId = turnierId || localStorage.getItem('aktiveTurnierId');
-        versteckeMenuePunkte(['nav-turniere', 'nav-turnier', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-siegerliste', 'nav-urkunden', 'nav-dashboard', 'nav-uebersicht']);
+        versteckeMenuePunkte(['nav-turniere', 'nav-turnier', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
         const nav = document.getElementById('sidebarNavPrimary');
         const suffix = clientTurnierId ? `?turnierId=${clientTurnierId}` : '';
         const teilnehmerLink = document.getElementById('nav-teilnehmer');
@@ -733,7 +737,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const wartetAufFreigabe = !!(currentUser && currentUser.verein_id && !currentUser.verein_freigegeben);
 
     if (wartetAufFreigabe) {
-        versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-dashboard', 'nav-uebersicht']);
+        versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
 
         const istErlaubteSeite = currentPath.includes('turniere.html') || currentPath.includes('profil.html') || currentPath.includes('teilnehmer.html');
         if (!istErlaubteSeite) {
@@ -744,7 +748,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // --- STUFEN-VALIDIERUNG DER SICHTBARKEIT ---
         // Direkt nach der Anmeldung (kein Turnier ausgewählt) darf nur "Turniere" sichtbar sein.
         if (!turnierId) {
-            versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-dashboard', 'nav-uebersicht']);
+            versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
         } else {
             await Promise.all([
                 pruefePoolsMenuSperre(turnierId),
@@ -812,9 +816,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                             // darüber selbst an bzw. bearbeiten sie (siehe "Bearbeiten"/"Hinzufügen" in
                             // teilnehmer.js) — der Zugriff auf fremde Teilnehmer wird dabei serverseitig
                             // in teilnehmerController.js verhindert.
-                            versteckeMenuePunkte(['nav-turnier', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-dashboard', 'nav-uebersicht']);
+                            versteckeMenuePunkte(['nav-turnier', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
 
-                            const eingeschraenkteSeiten = ['turnier.html', 'pools.html', 'matten.html', 'kampf.html', 'siegerliste.html', 'urkunden.html', 'dashboard.html', 'uebersicht.html'];
+                            const eingeschraenkteSeiten = ['turnier.html', 'pools.html', 'matten.html', 'kampf.html', 'siegerliste.html', 'urkunden.html', 'urkunden-designer.html', 'dashboard.html', 'uebersicht.html'];
                             if (eingeschraenkteSeiten.some(seite => currentPath.includes(seite))) {
                                 window.location.href = `/teilnehmer.html?turnierId=${turnierId}`;
                                 return;
@@ -844,6 +848,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (currentPath.includes('kampf.html')) document.getElementById('nav-kampf')?.classList.add('active');
     if (currentPath.includes('siegerliste.html')) document.getElementById('nav-siegerliste')?.classList.add('active');
     if (currentPath.includes('urkunden.html')) document.getElementById('nav-urkunden')?.classList.add('active');
+    if (currentPath.includes('urkunden-designer.html')) document.getElementById('nav-urkunden-designer')?.classList.add('active');
     if (currentPath.includes('dashboard.html')) document.getElementById('nav-dashboard')?.classList.add('active');
     if (currentPath.includes('uebersicht.html')) document.getElementById('nav-uebersicht')?.classList.add('active');
 

@@ -45,7 +45,7 @@ const MATTEN_FIXTUR = [
     },
     {
         bezeichnung: 'CloudMatte2-GruppenUeberkreuz',
-        anzahlKaempfe: 10,
+        anzahlKaempfe: 9,
         erwarteterChampionKey: 'F1',
         teilnehmer: [
             { vorname: 'CM2-Anna', nachname: 'Adler', verein: 'JC CM2-Alpha', gewicht: 60 },

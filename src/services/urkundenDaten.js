@@ -3,7 +3,7 @@
 import { berechnePlatzierungen, berechneMannschaftsPlatzierungen } from '../shared/platzierungen.js';
 import { platzierungsText, geschlechtText } from '../shared/urkundenText.js';
 
-const BEISPIEL = {
+export const BEISPIEL = {
     Name: 'Maximilian Mustermann', Verein: 'Judo-Club Musterstadt', Platzierung: '1. Platz',
     Altersklasse: 'U15', Geschlecht: 'männlich', Gewichtsklasse: '-50 kg', Mannschaft: ''
 };
@@ -89,6 +89,9 @@ async function ladePools(knex, turnierId, poolIds) {
 
 const imBereich = (platzbereich, platz) => platzbereich === 'alle' || (platz !== null && platz <= Number(platzbereich));
 
+const anzahlJeBereich = datensaetze =>
+    Object.fromEntries(['3', '5', '7', 'alle'].map(b => [b, datensaetze.filter(d => imBereich(b, d._platz)).length]));
+
 function sortiere(datensaetze, reihenfolge) {
     const platzWert = d => (d._platz === null ? Infinity : d._platz);
     return [...datensaetze].sort((a, b) => {
@@ -102,14 +105,32 @@ function ohneIntern({ _platz, _sortierung, ...rest }) {
     return rest;
 }
 
-export async function ladeUrkundenDaten(knex, turnierId, { platzbereich, poolIds, reihenfolge }) {
+// Datensätze je Pool (in Druckreihenfolge der Pools); Pools ohne Urkunde im Platzbereich entfallen.
+export async function ladeUrkundenDatenJePool(knex, turnierId, { platzbereich, poolIds, reihenfolge }) {
     const pools = await ladePools(knex, turnierId, poolIds);
-    return pools.flatMap(({ datensaetze }) =>
-        sortiere(datensaetze.filter(d => imBereich(platzbereich, d._platz)), reihenfolge).map(ohneIntern));
+    return pools
+        .map(({ pool, datensaetze }) => ({
+            poolId: pool.id,
+            datensaetze: sortiere(datensaetze.filter(d => imBereich(platzbereich, d._platz)), reihenfolge).map(ohneIntern)
+        }))
+        .filter(p => p.datensaetze.length > 0);
+}
+
+const PDF_INFO_SPALTEN = ['pool_id', 'vorlage_id', 'vorlage_name', 'platzbereich', 'reihenfolge', 'anzahl', 'erzeugt_am'];
+
+// Anzahl der Urkunden eines Pools je Platzbereich (Druck-Angebot beim Pool-Abschluss).
+export async function zaehleUrkunden(knex, turnierId, poolId) {
+    const [pool] = await ladePools(knex, turnierId, [poolId]);
+    return anzahlJeBereich(pool?.datensaetze ?? []);
 }
 
 export async function ladeUebersicht(knex, turnierId) {
     const pools = await ladePools(knex, turnierId, null);
+    const pdfs = new Map();
+    if (pools.length > 0) {
+        const zeilen = await knex('urkunden_pdfs').whereIn('pool_id', pools.map(p => p.pool.id)).select(PDF_INFO_SPALTEN);
+        for (const { pool_id, ...info } of zeilen) pdfs.set(pool_id, info);
+    }
     const alle = pools.flatMap(p => p.datensaetze);
     const laengster = feld => alle.reduce((best, d) => (d[feld].length > best.length ? d[feld] : best), '');
     const beispiel = alle.length === 0 ? BEISPIEL : {
@@ -125,7 +146,8 @@ export async function ladeUebersicht(knex, turnierId) {
             typ: pool.typ === 'mannschaft' ? 'mannschaft' : 'einzel',
             status: pool.status,
             abgeschlossen,
-            anzahl: Object.fromEntries(['3', '5', '7', 'alle'].map(b => [b, datensaetze.filter(d => imBereich(b, d._platz)).length]))
+            anzahl: anzahlJeBereich(datensaetze),
+            pdf: pdfs.get(pool.id) ?? null
         })),
         beispiel
     };

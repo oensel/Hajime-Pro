@@ -1,6 +1,7 @@
 // End-to-End: analog zu steuerung-dk8-komplett.spec.js (siehe dortige
 // Kommentare), hier für Gruppen-Überkreuz (6 Teilnehmer,
-// 10 Kämpfe: V_A_1-3/V_B_1-3, HF1/HF2, F1/F2 -- siehe GruppenUeberKreuzManager.js).
+// 9 Kämpfe: V_A_1-3/V_B_1-3, HF1/HF2, F1 -- siehe GruppenUeberKreuzManager.js; kein kleines
+// Finale, beide Halbfinal-Verlierer sind Dritte).
 //
 // HF1/HF2 kommen aus einer Ranglistenberechnung über die Vorrunde (nicht aus einem einzelnen
 // Quellkampf, siehe src/shared/gruppenUeberkreuzProgression.js). Der Test spielt über die normale
@@ -69,7 +70,7 @@ async function richteTurnierEin(request, bezeichnung) {
 // überhaupt spielbar (Ranglistenberechnung, siehe Kommentar am Dateianfang) -- bricht diese
 // Berechnung nicht durch, lädt
 // "Nächster Kampf" hier nach der Vorrunde keinen weiteren Kampf mehr, und die Schleife bleibt bei
-// 6 (statt 10) Kämpfen stehen bzw. die spätere expect(...).toHaveLength(10)-Prüfung schlägt fehl.
+// 6 (statt 9) Kämpfen stehen bzw. die spätere expect(...).toHaveLength(9)-Prüfung schlägt fehl.
 async function spieleKompletteBrackedDurch(page, anzahlKaempfe) {
     // Paarung (kaempfer1|kaempfer2) statt nur nameW beobachten: in der Vorrunde tritt dieselbe
     // Person mehrfach hintereinander als Kämpfer 1 gegen wechselnde Gruppenmitglieder an (siehe
@@ -131,16 +132,17 @@ test.describe.serial('Gruppen-Überkreuz komplett austragen über den Hallen-Ser
         await onlinePage.goto(`/steuerung.html?turnierId=${turnierId}&matId=${matId}`);
         await expect(onlinePage.locator('#matSelect')).toHaveValue(String(matId));
 
-        await spieleKompletteBrackedDurch(onlinePage, 10);
+        await spieleKompletteBrackedDurch(onlinePage, 9);
 
         const kaempfeResp = await request.get(`/api/kaempfe?kampfflaecheId=${matId}`);
         const kaempfe = await kaempfeResp.json();
-        expect(kaempfe).toHaveLength(10);
+        expect(kaempfe).toHaveLength(9);
         expect(kaempfe.every(k => k.status === 'beendet')).toBe(true);
 
         onlineErgebnis = normalisiereKaempfe(kaempfe);
 
         expect(onlineErgebnis.F1.siegerSeite).toBe('kaempfer1');
         expect(onlineErgebnis.F1.kaempfer1).toBe('Adler, Anna');
+        expect(onlineErgebnis.F2).toBeUndefined();
     });
 });

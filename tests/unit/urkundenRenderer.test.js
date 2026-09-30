@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PDFDocument, degrees } from 'pdf-lib';
-import { renderUrkunden, leseVorlagenPdf, FehlerUngueltigesPdf } from '../../src/services/urkundenRenderer.js';
+import { renderUrkunden, teilePdf, leseVorlagenPdf, FehlerUngueltigesPdf } from '../../src/services/urkundenRenderer.js';
 
 async function blanko(rotate = 0, leer = false) {
     const d = await PDFDocument.create();
@@ -49,4 +49,22 @@ test('leseVorlagenPdf: Rotation und ungültig', async () => {
 test('Seite ganz ohne Inhalt wird ohne Hintergrund gerendert', async () => {
     const r = await renderUrkunden({ pdfBytes: await blanko(0, true), felder: [feld('{Name}')], datensaetze: [{ Name: 'Anna' }] });
     assert.equal((await PDFDocument.load(r.bytes)).getPageCount(), 1);
+});
+
+test('teilePdf: zerlegt das PDF in Teile mit den angegebenen Seitenzahlen', async () => {
+    const r = await renderUrkunden({ pdfBytes: await blanko(), felder: [feld('{Name}')],
+        datensaetze: Array.from({ length: 5 }, (_, i) => ({ Name: `Person ${i}` })) });
+    const teile = await teilePdf(r.bytes, [2, 3]);
+    const seiten = await Promise.all(teile.map(async t => (await PDFDocument.load(t)).getPageCount()));
+    assert.deepEqual(seiten, [2, 3]);
+    assert.ok(teile.every(t => t.length < r.bytes.length + 10_000), teile.map(t => t.length).join(','));
+});
+
+test('Linien in allen Stilen werden auf jede Seite gezeichnet', async () => {
+    const linie = stil => ({ id: stil, typ: 'linie', x: 50, y: 300, breite: 400, staerke: 2, stil, farbe: '#336699' });
+    const r = await renderUrkunden({ pdfBytes: await blanko(),
+        felder: [linie('durchgezogen'), linie('gepunktet'), linie('gestrichelt'), feld('{Name}')],
+        datensaetze: [{ Name: 'Anna' }, { Name: 'Ben' }] });
+    assert.equal((await PDFDocument.load(r.bytes)).getPageCount(), 2);
+    assert.deepEqual(r.warnungen, []);
 });

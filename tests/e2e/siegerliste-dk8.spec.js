@@ -1,7 +1,8 @@
 // End-to-End: Die Siegerliste (siegerliste.html) zeigt für einen ausgetragenen Doppel-KO-8-Pool
 // die korrekten Platzierungen -- 1./2. Platz aus dem Finale (F), gemeinsamer 3. Platz aus BEIDEN
-// Bronze-Kämpfen (T3+T4, siehe berechnePoolStandings()/isDoppelKo-Zweig in siegerliste.js:58-87)
-// sowie die daraus abgeleitete Vereinswertung (5/3/1 Punkte je Platz 1/2/3, siegerliste.js:122-140).
+// Bronze-Kämpfen (T3+T4, siehe berechnePoolStandings() in siegerliste.js), deren Verliererinnen
+// als Fünftplatzierte in der Spalte "4./5. Platz"
+// sowie die aus Platz 1-3 abgeleitete Vereinswertung (5/3/1 Punkte je Platz 1/2/3, siegerliste.js:122-140).
 // Anders als scoreboard.js hat siegerliste.js KEINEN Offline-Zweig (rein API-abhängig, siehe
 // GET /api/pools/details) -- ein Offline-Vergleich wie bei den Steuerung-Tests ist hier also nicht
 // anwendbar. Wichtig auch: die Siegerliste zeigt nur Pools, die über "Pool abschließen" auf
@@ -131,17 +132,32 @@ test.describe.serial('Siegerliste: Platzierungen und Vereinswertung nach einem D
         const zeile = page.locator('#platzierungenTableBody tr').filter({ hasText: poolBezeichnung });
         await expect(zeile).toHaveCount(1);
 
-        await expect(zeile.locator('.siegerliste-platz1')).toHaveText('Adler, Anna (JC Alpha)');
-        await expect(zeile.locator('.siegerliste-platz2')).toHaveText('Conrad, Clara (JC Gamma)');
+        await expect(zeile.locator('.siegerliste-platz1')).toHaveText('Adler, Anna');
+        await expect(zeile.locator('.siegerliste-platz2')).toHaveText('Conrad, Clara');
         // Gemeinsamer 3. Platz: beide Bronze-Sieger (T3 und T4) stehen in derselben Zelle.
-        await expect(zeile.locator('.siegerliste-platz3')).toContainText('Ebert, Elena (JC Epsilon)');
-        await expect(zeile.locator('.siegerliste-platz3')).toContainText('Graf, Greta (JC Eta)');
+        await expect(zeile.locator('.siegerliste-platz3')).toContainText('Ebert, Elena');
+        await expect(zeile.locator('.siegerliste-platz3')).toContainText('Graf, Greta');
+        // Der Verein der Platzierten steht nur in der Vereinswertung, nicht in den Platzierungen.
+        await expect(zeile).not.toContainText('JC ');
         await expect(zeile.locator('.pool-status-badge')).toHaveText('Abgeschlossen');
     });
 
+    test('Platz 5: beide Verliererinnen der Bronze-Kämpfe stehen in der Spalte "4./5. Platz"', async () => {
+        const zeile = page.locator('#platzierungenTableBody tr').filter({ hasText: poolBezeichnung });
+        const zelle = zeile.locator('.siegerliste-platz5');
+        // Verliererinnen von T3/T4 sind die Halbfinal-Verliererinnen (H5/H6) -- bei "W gewinnt immer"
+        // also die Siegerinnen von H2 und H4.
+        await expect(zelle.locator('.siegerliste-eintrag')).toHaveCount(2);
+        await expect(zelle).toContainText('5. Busch, Berta');
+        await expect(zelle).toContainText('5. Diehl, Diana');
+        // Platz 7 (Frida/Hanna) erscheint nicht mehr.
+        await expect(zeile).not.toContainText('Fuchs');
+        await expect(zeile).not.toContainText('Hoffmann');
+    });
+
     test('Vereinswertung: 5/3/1 Punkte für Platz 1/2/3, korrekt sortiert (Punktegleichstand alphabetisch nach Verein)', async () => {
-        // Nur die vier Vereine der tatsächlich platzierten Athletinnen tauchen auf -- Berta/Diana/
-        // Frida/Hanna (und ihre Vereine) haben nirgends platziert und bleiben unberücksichtigt
+        // Nur die vier Vereine der Athletinnen auf Platz 1-3 tauchen auf -- Berta/Diana (Platz 5)
+        // und Frida/Hanna (Platz 7) bringen ihren Vereinen keine Punkte
         // (siehe berechneVereinswertung() in siegerliste.js: addieren() läuft nur über platz1/2/3).
         const zeilen = page.locator('#vereinswertungTableBody tr');
         await expect(zeilen).toHaveCount(4);

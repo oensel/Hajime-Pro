@@ -93,6 +93,9 @@ export const DOPPEL_KO_32_TOPOLOGIE = {
 // HF1/HF2 sind bewusst NICHT enthalten: ihre Kämpfer kommen aus einer Ranglisten-Berechnung
 // über je 3 Vorrundenkämpfe (siehe gruppenUeberkreuzProgression.js), nicht aus dem Ergebnis
 // eines einzelnen Kampfes — lässt sich nicht auf einen 1:1-Link reduzieren.
+// F2 (kleines Finale) legen neue Pools nicht mehr an — beide Halbfinal-Verlierer sind Dritte. Der
+// Eintrag bleibt für ältere Pools, die F2 noch haben (verknuepfeQuellenFuerPool überspringt
+// fehlende Kämpfe).
 export const GRUPPEN_UEBERKREUZ_TOPOLOGIE = {
     F1: { k1: ['HF1', 'sieger'], k2: ['HF2', 'sieger'] },
     F2: { k1: ['HF1', 'verlierer'], k2: ['HF2', 'verlierer'] }

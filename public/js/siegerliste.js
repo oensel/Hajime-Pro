@@ -16,16 +16,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     const mannschaftsErgebnisseBody = document.getElementById('mannschaftsErgebnisseTableBody');
 
     // --- PLATZIERUNGEN JE POOL (gemeinsame Berechnung in src/shared/platzierungen.js, auch für die
-    // Urkunden genutzt); die Siegerliste zeigt weiterhin nur Platz 1-3 ---
+    // Urkunden genutzt); die Siegerliste zeigt Platz 1-5, Platz 7 bleibt den Urkunden vorbehalten.
+    // Platz 4 gibt es nur bei Jeder-gegen-Jeden und älteren Überkreuz-Pools mit kleinem Finale, er
+    // teilt sich deshalb eine Spalte mit Platz 5 (eintraege ist bereits nach Platz sortiert) ---
     function berechnePoolStandings(pool) {
         const { eintraege } = berechnePlatzierungen(pool, pool.kaempfe, pool.teilnehmer);
         const mitPlatz = p => eintraege.filter(e => e.platz === p).map(e => e.teilnehmer);
-        return { platz1: mitPlatz(1)[0] || null, platz2: mitPlatz(2)[0] || null, platz3: mitPlatz(3) };
+        return {
+            platz1: mitPlatz(1)[0] || null,
+            platz2: mitPlatz(2)[0] || null,
+            platz3: mitPlatz(3),
+            platz4und5: eintraege.filter(e => e.platz === 4 || e.platz === 5)
+        };
     }
 
     function formatiereName(athlet) {
         if (!athlet) return '<span class="no-data" style="padding:0; font-size: inherit;">noch offen</span>';
-        return `${athlet.nachname}, ${athlet.vorname} (${athlet.verein || '–'})`;
+        return `${athlet.nachname}, ${athlet.vorname}`;
     }
 
     // --- VEREINSWERTUNG: 1. Platz = 5 Punkte, 2. Platz = 3 Punkte, 3. Platz = 1 Punkt ---
@@ -73,15 +80,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function renderPlatzierungen(pools, alleStandings) {
         if (pools.length === 0) {
-            platzierungenBody.innerHTML = '<tr><td colspan="5" class="no-data">Noch keine Pools abgeschlossen.</td></tr>';
+            platzierungenBody.innerHTML = '<tr><td colspan="6" class="no-data">Noch keine Pools abgeschlossen.</td></tr>';
             return;
         }
 
+        const keinEintrag = '<span class="no-data" style="padding:0; font-size: inherit;">–</span>';
+
         platzierungenBody.innerHTML = pools.map((pool, i) => {
-            const { platz1, platz2, platz3 } = alleStandings[i];
+            const { platz1, platz2, platz3, platz4und5 } = alleStandings[i];
             const platz3Text = platz3.length > 0
                 ? platz3.map(a => formatiereName(a)).join('<br>')
-                : '<span class="no-data" style="padding:0; font-size: inherit;">–</span>';
+                : keinEintrag;
+            const platz5Text = platz4und5.length > 0
+                ? platz4und5.map(e => `<div class="siegerliste-eintrag">${e.platz}. ${formatiereName(e.teilnehmer)}</div>`).join('')
+                : keinEintrag;
             const { text: statusText, klasse: statusKlasse } = ermittlePoolStatus(pool);
 
             return `
@@ -91,6 +103,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <td class="siegerliste-platz1">${formatiereName(platz1)}</td>
                     <td class="siegerliste-platz2">${formatiereName(platz2)}</td>
                     <td class="siegerliste-platz3">${platz3Text}</td>
+                    <td class="siegerliste-platz5">${platz5Text}</td>
                 </tr>
             `;
         }).join('');
@@ -130,7 +143,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             renderVereinswertung(berechneVereinswertung(alleStandings));
         } catch (error) {
             const fehlerText = `Fehler beim Laden: ${error.message}`;
-            platzierungenBody.innerHTML = `<tr><td colspan="5" class="no-data" style="color: #b83232;">${fehlerText}</td></tr>`;
+            platzierungenBody.innerHTML = `<tr><td colspan="6" class="no-data" style="color: #b83232;">${fehlerText}</td></tr>`;
             vereinswertungBody.innerHTML = `<tr><td colspan="3" class="no-data" style="color: #b83232;">${fehlerText}</td></tr>`;
         }
     }

@@ -1,340 +1,119 @@
-// Urkunden-Seite: Vorlagen-Editor (pdf.js rendert Seite 1 als Hintergrund eines Fabric-Canvas,
-// Felder als einzeilige Textboxen) und Generieren (Vorschau über urkundenDruck.js).
-// Koordinaten der Felder in pt, Ursprung oben links — Umrechnung über state.scale (px pro pt).
-import { URKUNDEN_SCHRIFTEN, STANDARD_SCHRIFT_ID } from '/js/shared/urkundenSchriften.js';
-import { ersetzePlatzhalter, passeGroesseAn, PLATZHALTER } from '/js/shared/urkundenText.js';
-import { zeigeUrkundenVorschau } from '/js/urkundenDruck.js';
+// Urkunden generieren: Vorlage (Auswahl-Popup mit Mini-Ansicht), Platzierungen, Reihenfolge und
+// Pools wählen, Vorschau/Druck über urkundenDruck.js. Das zuletzt erzeugte PDF je Pool liegt am
+// Server und lässt sich hier öffnen, neu erzeugen oder löschen. Vorlagen bearbeitet urkunden-designer.html.
+import {
+    zeigeUrkundenVorschau, zeigeGespeichertesPdf, waehleVorlage, vorausgewaehlteVorlage, merkeVorlage,
+    PLATZBEREICH_OPTIONEN, REIHENFOLGE_OPTIONEN, urkundenAnzahlText
+} from '/js/urkundenDruck.js';
 
-const fabric = window.fabric;
 const turnierId = new URLSearchParams(location.search).get('turnierId');
 const $ = id => document.getElementById(id);
-const AUSRICHTUNG_FABRIC = { links: 'left', zentriert: 'center', rechts: 'right' };
 
-const state = {
-    vorlagen: [],
-    vorlage: null,
-    felder: [],
-    scale: 1,
-    canvas: null,
-    hintergrund: null,
-    beispiel: {},
-    uebersicht: { pools: [] },
-    ausgewaehlt: null,
-    geaendert: false
-};
-
-const messCtx = document.createElement('canvas').getContext('2d');
-const misstBreite = schrift => (text, groesse) => {
-    messCtx.font = `${groesse}px "${schrift}"`;
-    return messCtx.measureText(text).width;
-};
+const state = { vorlagen: [], vorlageId: null, uebersicht: { pools: [] } };
 
 function melde(text, typ = 'success') {
     if (window.zeigeNotification) window.zeigeNotification(text, typ);
     else if (typ === 'error') alert(text);
 }
 
-async function api(url, optionen = {}) {
+async function api(url) {
     const trenner = url.includes('?') ? '&' : '?';
-    const res = await fetch(`${url}${trenner}turnierId=${turnierId}`, {
-        ...optionen,
-        headers: optionen.body ? { 'Content-Type': 'application/json' } : undefined,
-        body: optionen.body ? JSON.stringify({ turnierId, ...optionen.body }) : undefined
-    });
+    const res = await fetch(`${url}${trenner}turnierId=${turnierId}`);
     if (!res.ok) {
         const daten = await res.json().catch(() => ({}));
         throw new Error(daten.error || `Fehler ${res.status}`);
     }
-    return res;
+    return res.json();
 }
 
-// --- Schriften ---
-async function ladeSchriften() {
-    await Promise.all(URKUNDEN_SCHRIFTEN.map(async s => {
-        const face = new FontFace(s.id, `url(/fonts/urkunden/${s.datei})`);
-        document.fonts.add(await face.load());
-    }));
-    $('feldSchrift').innerHTML = URKUNDEN_SCHRIFTEN.map(s => `<option value="${s.id}">${s.anzeigename}</option>`).join('');
+const escapeHtml = text => String(text ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function setzeVorlage(id) {
+    const vorlage = state.vorlagen.find(v => v.id === id) || null;
+    state.vorlageId = vorlage?.id ?? null;
+    $('genVorlage').dataset.vorlageId = state.vorlageId ?? '';
+    $('genVorlageName').textContent = vorlage?.name ?? '– keine Vorlage –';
+    $('genFelderHinweis').style.display = vorlage && (vorlage.felder || []).length === 0 ? 'block' : 'none';
 }
 
-// --- Vorlagen-Liste ---
-function fuelleAuswahl(select, ausgewaehlteId) {
-    select.innerHTML = state.vorlagen.length === 0
-        ? '<option value="">– keine Vorlage –</option>'
-        : state.vorlagen.map(v => `<option value="${v.id}">${v.name.replace(/</g, '&lt;')}</option>`).join('');
-    if (ausgewaehlteId) select.value = String(ausgewaehlteId);
-}
+// Wählbar sind nur Pools, deren Plätze feststehen oder die abgeschlossen wurden (auch kampflos).
+const istAbgeschlossen = p => p.abgeschlossen || p.status === 'abgeschlossen';
 
-async function ladeVorlagen(ausgewaehlteId) {
-    state.vorlagen = await (await api('/api/urkunden/vorlagen')).json();
-    const id = ausgewaehlteId || state.vorlage?.id || state.vorlagen[0]?.id;
-    fuelleAuswahl($('vorlagenAuswahl'), id);
-    fuelleAuswahl($('genVorlage'), $('genVorlage').value || id);
-    uebernehmeGenVoreinstellungen();
-    if (id) await zeigeVorlage(Number(id));
-    else leereEditor();
-}
-
-function leereEditor() {
-    state.vorlage = null;
-    state.felder = [];
-    state.canvas?.clear();
-    $('editorLeer').style.display = 'block';
-    waehleFeld(null);
-}
-
-// --- Editor ---
-async function renderHintergrund() {
-    const pdfjs = await import('/js/pdfjs/pdf.min.mjs');
-    pdfjs.GlobalWorkerOptions.workerSrc = '/js/pdfjs/pdf.worker.min.mjs';
-    const res = await api(`/api/urkunden/vorlagen/${state.vorlage.id}/pdf`);
-    const pdf = await pdfjs.getDocument({ data: new Uint8Array(await res.arrayBuffer()) }).promise;
-    return pdf.getPage(1);
-}
-
-async function zeigeVorlage(id) {
-    if (state.geaendert && !confirm('Ungespeicherte Änderungen verwerfen?')) {
-        $('vorlagenAuswahl').value = String(state.vorlage.id);
-        return;
-    }
-    state.vorlage = state.vorlagen.find(v => v.id === id);
-    if (!state.vorlage) return leereEditor();
-    state.felder = structuredClone(state.vorlage.felder || []);
-    state.hintergrund = await renderHintergrund();
-    $('vorlagePlatzbereich').value = state.vorlage.platzbereich;
-    $('vorlageReihenfolge').value = state.vorlage.reihenfolge;
-    $('vorlageBeiAbschluss').checked = !!state.vorlage.bei_abschluss_anbieten;
-    $('editorLeer').style.display = 'none';
-    await baueCanvas();
-    state.geaendert = false;
-}
-
-async function baueCanvas() {
-    const breitePx = $('editorContainer').clientWidth - 2;
-    state.scale = breitePx / state.vorlage.seiten_breite_pt;
-    // Das PDF liegt als CSS-Hintergrund unter der Fabric-Ebene (unabhängig von Fabrics
-    // Retina-Skalierung), gerendert in Geräteauflösung für scharfe Darstellung.
-    const dpr = window.devicePixelRatio || 1;
-    const viewport = state.hintergrund.getViewport({ scale: state.scale * dpr });
-    const offscreen = document.createElement('canvas');
-    offscreen.width = Math.round(viewport.width);
-    offscreen.height = Math.round(viewport.height);
-    await state.hintergrund.render({ canvasContext: offscreen.getContext('2d'), viewport }).promise;
-    const breite = Math.round(viewport.width / dpr);
-    const hoehe = Math.round(viewport.height / dpr);
-
-    if (!state.canvas) {
-        state.canvas = new fabric.Canvas('urkundenCanvas', { selection: false, preserveObjectStacking: true });
-        state.canvas.on('selection:created', e => waehleFeld(e.selected?.[0]?.feldId));
-        state.canvas.on('selection:updated', e => waehleFeld(e.selected?.[0]?.feldId));
-        state.canvas.on('selection:cleared', () => waehleFeld(null));
-        state.canvas.on('object:modified', e => uebernehmeObjekt(e.target));
-    }
-    state.canvas.clear();
-    state.canvas.setDimensions({ width: breite, height: hoehe });
-    Object.assign(state.canvas.wrapperEl.style, {
-        backgroundImage: `url(${offscreen.toDataURL('image/png')})`,
-        backgroundSize: '100% 100%',
-        backgroundRepeat: 'no-repeat'
-    });
-    state.felder.forEach(feld => state.canvas.add(baueObjekt(feld)));
-    state.canvas.requestRenderAll();
-}
-
-function anzeige(feld) {
-    if (!$('schalterBeispiel').checked) return { text: feld.text, groesse: feld.groesse };
-    const text = ersetzePlatzhalter(feld.text, state.beispiel);
-    return { text, groesse: passeGroesseAn(text, feld.groesse, feld.breite, misstBreite(feld.schrift)).groesse };
-}
-
-function objektEigenschaften(feld) {
-    const { text, groesse } = anzeige(feld);
-    return {
-        text,
-        left: feld.x * state.scale,
-        top: feld.y * state.scale,
-        width: feld.breite * state.scale,
-        fontSize: groesse * state.scale,
-        fontFamily: feld.schrift,
-        fill: feld.farbe,
-        textAlign: AUSRICHTUNG_FABRIC[feld.ausrichtung]
-    };
-}
-
-function baueObjekt(feld) {
-    const { text, ...eigenschaften } = objektEigenschaften(feld);
-    const obj = new fabric.Textbox(text, {
-        ...eigenschaften,
-        originX: 'left',
-        originY: 'top',
-        lineHeight: 1,
-        editable: false,
-        lockRotation: true,
-        lockScalingY: true,
-        splitByGrapheme: false,
-        borderColor: '#1565c0',
-        cornerColor: '#1565c0',
-        transparentCorners: false
-    });
-    obj.setControlsVisibility({ mt: false, mb: false, tl: false, tr: false, bl: false, br: false, mtr: false });
-    obj.feldId = feld.id;
-    return obj;
-}
-
-const objektZu = id => state.canvas?.getObjects().find(o => o.feldId === id);
-const feldZu = id => state.felder.find(f => f.id === id);
-const runde = z => Math.round(z * 10) / 10;
-
-function uebernehmeObjekt(obj) {
-    const feld = feldZu(obj.feldId);
-    if (!feld) return;
-    const breite = obj.width * (obj.scaleX || 1);
-    obj.set({ width: breite, scaleX: 1, scaleY: 1 });
-    feld.x = Math.max(0, runde(obj.left / state.scale));
-    feld.y = Math.max(0, runde(obj.top / state.scale));
-    feld.breite = runde(breite / state.scale);
-    state.geaendert = true;
-}
-
-function aktualisiereObjekt(feld) {
-    const obj = objektZu(feld.id);
-    if (!obj) return;
-    obj.set(objektEigenschaften(feld));
-    obj.setCoords();
-    state.canvas.requestRenderAll();
-}
-
-function waehleFeld(id) {
-    state.ausgewaehlt = id ? feldZu(id) : null;
-    const feld = state.ausgewaehlt;
-    $('werkzeugleiste').setAttribute('aria-disabled', feld ? 'false' : 'true');
-    if (!feld) return;
-    $('feldText').value = feld.text;
-    $('feldSchrift').value = feld.schrift;
-    $('feldGroesse').value = feld.groesse;
-    $('feldFarbe').value = feld.farbe;
-    $('feldAusrichtung').value = feld.ausrichtung;
-}
-
-function aendereFeld(aenderung) {
-    const feld = state.ausgewaehlt;
-    if (!feld) return;
-    Object.assign(feld, aenderung);
-    state.geaendert = true;
-    aktualisiereObjekt(feld);
-}
-
-function neuesFeld(text) {
-    if (!state.vorlage) return melde('Bitte zuerst eine Vorlage anlegen oder wählen.', 'error');
-    const breite = Math.round(state.vorlage.seiten_breite_pt * 0.6);
-    const feld = {
-        id: `f${Date.now().toString(36)}`,
-        text,
-        x: runde((state.vorlage.seiten_breite_pt - breite) / 2),
-        y: runde(state.vorlage.seiten_hoehe_pt / 2),
-        breite,
-        schrift: STANDARD_SCHRIFT_ID,
-        groesse: 24,
-        farbe: '#1a1a1a',
-        ausrichtung: 'zentriert'
-    };
-    state.felder.push(feld);
-    const obj = baueObjekt(feld);
-    state.canvas.add(obj);
-    state.canvas.setActiveObject(obj);
-    waehleFeld(feld.id);
-    state.geaendert = true;
-}
-
-async function speichern() {
-    if (!state.vorlage) return;
-    try {
-        await api(`/api/urkunden/vorlagen/${state.vorlage.id}`, {
-            method: 'PUT',
-            body: {
-                felder: state.felder,
-                platzbereich: $('vorlagePlatzbereich').value,
-                reihenfolge: $('vorlageReihenfolge').value,
-                bei_abschluss_anbieten: $('vorlageBeiAbschluss').checked
-            }
-        });
-        state.geaendert = false;
-        melde('Vorlage gespeichert.');
-        await ladeVorlagen(state.vorlage.id);
-    } catch (e) { melde(e.message, 'error'); }
-}
-
-// --- Vorlagen-Verwaltung ---
-function leseDatei(datei) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result).split(',')[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(datei);
-    });
-}
-
-async function neueVorlage(datei) {
-    const name = prompt('Name der neuen Vorlage:', datei.name.replace(/\.pdf$/i, ''));
-    if (!name) return;
-    try {
-        const res = await api('/api/urkunden/vorlagen', {
-            method: 'POST',
-            body: { name, pdf_base64: await leseDatei(datei), pdf_dateiname: datei.name }
-        });
-        state.geaendert = false;
-        await ladeVorlagen((await res.json()).id);
-    } catch (e) { melde(e.message, 'error'); }
-}
-
-async function vorlagenAktion(aktion) {
-    const v = state.vorlage;
-    if (!v) return;
-    try {
-        if (aktion === 'duplizieren') {
-            const name = prompt('Name der Kopie:', `${v.name} (Kopie)`);
-            if (!name) return;
-            const res = await api(`/api/urkunden/vorlagen/${v.id}/duplizieren`, { method: 'POST', body: { name } });
-            state.geaendert = false;
-            await ladeVorlagen((await res.json()).id);
-        } else if (aktion === 'umbenennen') {
-            const name = prompt('Neuer Name:', v.name);
-            if (!name) return;
-            await api(`/api/urkunden/vorlagen/${v.id}`, { method: 'PUT', body: { name } });
-            await ladeVorlagen(v.id);
-        } else if (aktion === 'loeschen') {
-            if (!confirm(`Vorlage „${v.name}“ löschen?`)) return;
-            await api(`/api/urkunden/vorlagen/${v.id}`, { method: 'DELETE' });
-            state.vorlage = null;
-            state.geaendert = false;
-            await ladeVorlagen();
-        }
-    } catch (e) { melde(e.message, 'error'); }
-}
-
-// --- Generieren ---
-function uebernehmeGenVoreinstellungen() {
-    const v = state.vorlagen.find(x => String(x.id) === $('genVorlage').value);
-    if (!v) return;
-    $('genPlatzbereich').value = v.platzbereich;
-    $('genReihenfolge').value = v.reihenfolge;
-    $('genFelderHinweis').style.display = (v.felder || []).length === 0 ? 'block' : 'none';
-    aktualisiereAnzahl();
-}
-
-function renderPoolListe() {
+// gewaehlt: IDs der angehakten Pools; Standard sind die abgeschlossenen Pools.
+function renderPoolListe(gewaehlt = new Set(state.uebersicht.pools.filter(p => p.status === 'abgeschlossen').map(p => p.id))) {
     const gruppen = [['einzel', 'Einzel'], ['mannschaft', 'Mannschaften']];
     $('genPoolListe').innerHTML = gruppen.map(([typ, titel]) => {
         const pools = state.uebersicht.pools.filter(p => p.typ === typ);
         if (pools.length === 0) return '';
         return `<h3>${titel}</h3>` + pools.map(p => `
-            <label>
-                <input type="checkbox" data-pool-id="${p.id}" ${p.status === 'abgeschlossen' ? 'checked' : ''}>
-                ${String(p.bezeichnung ?? `Pool ${p.id}`).replace(/</g, '&lt;')}
-                ${p.abgeschlossen ? '' : '<span class="pool-hinweis">(noch nicht abgeschlossen)</span>'}
-            </label>`).join('');
+            <div class="pool-eintrag${istAbgeschlossen(p) ? '' : ' gesperrt'}">
+                <label>
+                    <input type="checkbox" data-pool-id="${p.id}" ${istAbgeschlossen(p) ? (gewaehlt.has(p.id) ? 'checked' : '') : 'disabled'}>
+                    <span>${escapeHtml(p.bezeichnung ?? `Pool ${p.id}`)}</span>
+                    ${istAbgeschlossen(p) ? '' : '<span class="pool-hinweis">(noch nicht abgeschlossen)</span>'}
+                </label>
+                ${p.pdf ? pdfHtml(p) : ''}
+            </div>`).join('');
     }).join('') || '<span>Keine Pools vorhanden.</span>';
     aktualisiereAnzahl();
+}
+
+const optionText = (optionen, wert) => optionen.find(([v]) => v === wert)?.[1] ?? wert;
+
+function zeitText(iso) {
+    const datum = new Date(iso);
+    if (Number.isNaN(datum.getTime())) return '';
+    return datum.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+// Markierung "PDF liegt vor" mit den Aktionen Öffnen, Neu erzeugen und Löschen.
+function pdfHtml(pool) {
+    const { pdf } = pool;
+    const details = [
+        urkundenAnzahlText(pdf.anzahl),
+        `Platzierungen ${optionText(PLATZBEREICH_OPTIONEN, pdf.platzbereich)}`,
+        optionText(REIHENFOLGE_OPTIONEN, pdf.reihenfolge),
+        pdf.vorlage_name ? `Vorlage „${pdf.vorlage_name}“` : ''
+    ].filter(Boolean).join(' · ');
+    const knopf = (aktion, icon, titel) => `
+        <button type="button" class="pool-pdf-knopf" data-pdf-aktion="${aktion}" title="${titel}" aria-label="${titel}">
+            <span class="material-icons">${icon}</span>
+        </button>`;
+    return `
+        <span class="pool-pdf" data-pool-pdf="${pool.id}" title="${escapeHtml(details)}">
+            <span class="pool-pdf-marke"><span class="material-icons">picture_as_pdf</span>${escapeHtml(zeitText(pdf.erzeugt_am))}</span>
+            ${knopf('oeffnen', 'visibility', 'PDF öffnen')}
+            ${knopf('neu', 'refresh', 'PDF neu erzeugen')}
+            ${knopf('loeschen', 'delete', 'PDF löschen')}
+        </span>`;
+}
+
+// Lädt die Pool-Übersicht neu (nach Erzeugen/Löschen eines PDFs); die Auswahl bleibt erhalten.
+async function ladeUebersichtNeu() {
+    const gewaehlt = new Set(gewaehltePoolIds());
+    state.uebersicht = await api('/api/urkunden/uebersicht');
+    renderPoolListe(gewaehlt);
+}
+
+async function generiere(parameter) {
+    if (await zeigeUrkundenVorschau({ turnierId, ...parameter })) await ladeUebersichtNeu();
+}
+
+async function pdfAktion(aktion, pool) {
+    if (aktion === 'oeffnen') return zeigeGespeichertesPdf({ turnierId, poolId: pool.id });
+    if (aktion === 'neu') {
+        // Mit den Einstellungen des vorhandenen PDFs; gibt es dessen Vorlage nicht mehr, mit der gewählten.
+        const vorlageId = state.vorlagen.some(v => v.id === pool.pdf.vorlage_id) ? pool.pdf.vorlage_id : state.vorlageId;
+        if (!vorlageId) return melde('Bitte eine Vorlage wählen.', 'error');
+        return generiere({ vorlageId, platzbereich: pool.pdf.platzbereich, reihenfolge: pool.pdf.reihenfolge, poolIds: [pool.id] });
+    }
+    if (!confirm(`Urkunden-PDF für „${pool.bezeichnung ?? `Pool ${pool.id}`}“ löschen?`)) return;
+    const res = await fetch(`/api/urkunden/pools/${pool.id}/pdf?turnierId=${turnierId}`, { method: 'DELETE' });
+    if (!res.ok && res.status !== 404) {
+        const daten = await res.json().catch(() => ({}));
+        throw new Error(daten.error || `Fehler ${res.status}`);
+    }
+    await ladeUebersichtNeu();
 }
 
 const gewaehltePoolIds = () => [...document.querySelectorAll('#genPoolListe input[data-pool-id]:checked')].map(i => Number(i.dataset.poolId));
@@ -343,119 +122,50 @@ function aktualisiereAnzahl() {
     const bereich = $('genPlatzbereich').value;
     const ids = new Set(gewaehltePoolIds());
     const summe = state.uebersicht.pools.filter(p => ids.has(p.id)).reduce((s, p) => s + (p.anzahl[bereich] || 0), 0);
-    $('genAnzahl').textContent = `≈ ${summe} Urkunde${summe === 1 ? '' : 'n'}`;
+    $('genAnzahl').textContent = `≈ ${urkundenAnzahlText(summe)}`;
 }
 
-async function ladeUebersicht() {
-    state.uebersicht = await (await api('/api/urkunden/uebersicht')).json();
-    state.beispiel = state.uebersicht.beispiel || {};
-    renderPoolListe();
-}
-
-// --- Start ---
 async function start() {
     if (!turnierId) {
         alert('Fehler: Kein aktives Turnier ausgewählt!');
         location.href = '/turniere.html';
         return;
     }
-    const config = await fetch('/api/config').then(r => r.json()).catch(() => ({}));
-    $('hallenHinweis').style.display = config.isOffline && config.syncRolle !== 'client' ? 'block' : 'none';
+    $('linkDesigner').href = `/urkunden-designer.html?turnierId=${turnierId}`;
+    $('genPlatzbereich').innerHTML = PLATZBEREICH_OPTIONEN.map(([v, t]) => `<option value="${v}">${t}</option>`).join('');
+    $('genReihenfolge').innerHTML = REIHENFOLGE_OPTIONEN.map(([v, t]) => `<option value="${v}">${t}</option>`).join('');
 
-    $('platzhalterKnoepfe').innerHTML = '<label>Platzhalter einfügen</label>' + PLATZHALTER
-        .map(p => `<button type="button" class="btn btn-outlined platzhalter-btn" data-platzhalter="${p}">{${p}}</button>`).join('');
-
-    // Knöpfe zuerst binden, damit z. B. der PDF-Upload auch dann funktioniert, wenn das Laden
-    // der Vorlagen/Übersicht noch läuft oder fehlschlägt.
-    $('vorlagenAuswahl').addEventListener('change', e => zeigeVorlage(Number(e.target.value)));
-    $('btnVorlageNeu').addEventListener('click', () => $('vorlageDatei').click());
-    $('btnVorlageNeuLeer').addEventListener('click', () => $('vorlageDatei').click());
-    $('vorlageDatei').addEventListener('change', e => {
-        const datei = e.target.files[0];
-        e.target.value = '';
-        if (datei) neueVorlage(datei);
+    $('genVorlage').addEventListener('click', async () => {
+        if (state.vorlagen.length === 0) return melde('Es gibt noch keine Vorlage.', 'error');
+        const id = await waehleVorlage({ turnierId, vorlagen: state.vorlagen, ausgewaehlt: state.vorlageId });
+        if (id) setzeVorlage(id);
     });
-    $('btnVorlageDuplizieren').addEventListener('click', () => vorlagenAktion('duplizieren'));
-    $('btnVorlageUmbenennen').addEventListener('click', () => vorlagenAktion('umbenennen'));
-    $('btnVorlageLoeschen').addEventListener('click', () => vorlagenAktion('loeschen'));
-    $('btnFeldPlatzhalter').addEventListener('click', () => neuesFeld('{Name}'));
-    $('btnFeldText').addEventListener('click', () => neuesFeld('Text'));
-    $('btnVorlageSpeichern').addEventListener('click', speichern);
-    ['vorlagePlatzbereich', 'vorlageReihenfolge', 'vorlageBeiAbschluss'].forEach(id =>
-        $(id).addEventListener('change', () => { state.geaendert = true; }));
-
-    $('feldText').addEventListener('input', e => aendereFeld({ text: e.target.value }));
-    $('feldSchrift').addEventListener('change', e => aendereFeld({ schrift: e.target.value }));
-    $('feldGroesse').addEventListener('change', e => {
-        const g = Math.min(200, Math.max(4, Number(e.target.value) || 24));
-        aendereFeld({ groesse: g });
-    });
-    $('feldFarbe').addEventListener('input', e => aendereFeld({ farbe: e.target.value }));
-    $('feldAusrichtung').addEventListener('change', e => aendereFeld({ ausrichtung: e.target.value }));
-    $('btnFeldZentrieren').addEventListener('click', () => {
-        const feld = state.ausgewaehlt;
-        if (feld) aendereFeld({ x: runde((state.vorlage.seiten_breite_pt - feld.breite) / 2) });
-    });
-    $('btnFeldLoeschen').addEventListener('click', () => {
-        const feld = state.ausgewaehlt;
-        if (!feld) return;
-        state.felder = state.felder.filter(f => f.id !== feld.id);
-        state.canvas.remove(objektZu(feld.id));
-        state.canvas.discardActiveObject();
-        waehleFeld(null);
-        state.geaendert = true;
-    });
-    $('platzhalterKnoepfe').addEventListener('click', e => {
-        const knopf = e.target.closest('[data-platzhalter]');
-        if (!knopf || !state.ausgewaehlt) return;
-        const input = $('feldText');
-        const pos = input.selectionStart ?? input.value.length;
-        const einfuegen = `{${knopf.dataset.platzhalter}}`;
-        input.value = input.value.slice(0, pos) + einfuegen + input.value.slice(input.selectionEnd ?? pos);
-        aendereFeld({ text: input.value });
-        input.focus();
-        input.setSelectionRange(pos + einfuegen.length, pos + einfuegen.length);
-    });
-    $('schalterBeispiel').addEventListener('change', () => state.felder.forEach(aktualisiereObjekt));
-
-    $('genVorlage').addEventListener('change', uebernehmeGenVoreinstellungen);
     $('genPlatzbereich').addEventListener('change', aktualisiereAnzahl);
     $('genPoolListe').addEventListener('change', aktualisiereAnzahl);
+    $('genPoolListe').addEventListener('click', e => {
+        const knopf = e.target.closest('[data-pdf-aktion]');
+        if (!knopf) return;
+        const poolId = Number(knopf.closest('[data-pool-pdf]').dataset.poolPdf);
+        const pool = state.uebersicht.pools.find(p => p.id === poolId);
+        if (pool?.pdf) pdfAktion(knopf.dataset.pdfAktion, pool).catch(fehler => melde(fehler.message, 'error'));
+    });
     $('btnGenerieren').addEventListener('click', () => {
-        const vorlageId = Number($('genVorlage').value);
-        if (!vorlageId) return melde('Bitte eine Vorlage wählen.', 'error');
-        zeigeUrkundenVorschau({
-            turnierId,
-            vorlageId,
+        if (!state.vorlageId) return melde('Bitte eine Vorlage wählen.', 'error');
+        merkeVorlage(state.vorlageId);
+        generiere({
+            vorlageId: state.vorlageId,
             platzbereich: $('genPlatzbereich').value,
             reihenfolge: $('genReihenfolge').value,
             poolIds: gewaehltePoolIds()
-        });
+        }).catch(fehler => melde(fehler.message, 'error'));
     });
 
-    window.addEventListener('beforeunload', e => {
-        if (state.geaendert) e.preventDefault();
-    });
-    let breiteVorher = $('editorContainer').clientWidth;
-    let timer;
-    window.addEventListener('resize', () => {
-        clearTimeout(timer);
-        timer = setTimeout(() => {
-            const breite = $('editorContainer').clientWidth;
-            if (state.vorlage && breite !== breiteVorher) {
-                breiteVorher = breite;
-                baueCanvas();
-            }
-        }, 200);
-    });
-
-    await ladeSchriften();
-    await ladeUebersicht();
-    await ladeVorlagen();
+    const [vorlagen, uebersicht] = await Promise.all([api('/api/urkunden/vorlagen'), api('/api/urkunden/uebersicht')]);
+    state.vorlagen = vorlagen;
+    state.uebersicht = uebersicht;
+    $('keineVorlageHinweis').style.display = vorlagen.length === 0 ? 'block' : 'none';
+    setzeVorlage(vorausgewaehlteVorlage(vorlagen));
+    renderPoolListe();
 }
 
-start().catch(e => {
-    $('editorLeerText').textContent = `Die Urkunden-Seite konnte nicht geladen werden: ${e.message}`;
-    $('btnVorlageNeuLeer').style.display = 'none';
-    melde(e.message, 'error');
-});
+start().catch(e => melde(e.message, 'error'));

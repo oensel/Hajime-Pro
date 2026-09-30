@@ -98,7 +98,8 @@ function jgjMannschaftVergleich(begegnungen) {
     return (a, b) => (w(b.id).siege - w(a.id).siege) || (w(b.id).einzel - w(a.id).einzel) || (w(b.id).punkte - w(a.id).punkte);
 }
 
-// F1 → 1/2, F2 → 3/4, Gruppenplatz 3 → 5, Gruppenplatz 4 → 7 (sobald die Gruppe fertig ist).
+// F1 → 1/2, beide Halbfinal-Verlierer → 3, Gruppenplatz 3 → 5, Gruppenplatz 4 → 7 (sobald die
+// Gruppe fertig ist). Ältere Pools haben noch ein kleines Finale F2; dort gilt weiter F2 → 3/4.
 function berechneUeberkreuz(kaempfe) {
     const nachNr = new Map(kaempfe.map(k => [k.reihenfolge_nummer, k]));
     const plaetze = new Map();
@@ -108,7 +109,9 @@ function berechneUeberkreuz(kaempfe) {
         setze(plaetze, f1.sieger_id, 1);
         setze(plaetze, verlierer(f1, EINZEL), 2);
     }
-    if (fertig(f2)) {
+    if (!f2) {
+        ['HF1', 'HF2'].forEach(nr => setze(plaetze, verlierer(nachNr.get(nr), EINZEL), 3));
+    } else if (fertig(f2)) {
         setze(plaetze, f2.sieger_id, 3);
         setze(plaetze, verlierer(f2, EINZEL), 4);
     }
@@ -119,7 +122,7 @@ function berechneUeberkreuz(kaempfe) {
         setze(plaetze, rangliste[2]?.id, 5);
         setze(plaetze, rangliste[3]?.id, 7);
     }
-    return { plaetze, abgeschlossen: fertig(f1) && fertig(f2) };
+    return { plaetze, abgeschlossen: fertig(f1) && (!f2 || fertig(f2)) };
 }
 
 export function berechnePlatzierungen(pool, kaempfe, teilnehmer) {

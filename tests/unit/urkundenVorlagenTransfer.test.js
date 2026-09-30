@@ -5,6 +5,7 @@ import { tmpdir } from 'os';
 import path from 'path';
 import knexLib from 'knex';
 import { exportiereVorlagen, importiereVorlagen } from '../../src/services/urkundenVorlagenTransfer.js';
+import { PNG_1PX } from './helpers/bilder.js';
 
 test('Vorlagen-Rundreise: Export → Import überschreibt gleichnamige, lässt andere stehen', async () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'hajime-urk-'));
@@ -53,6 +54,23 @@ test('Vorlagen-Rundreise: Export → Import überschreibt gleichnamige, lässt a
         assert.deepEqual(namen, ['Andere', 'Standard', 'Werte']);
         const werte = await knex('urkunden_vorlagen').where({ verein_id: ziel, name: 'Werte' }).first();
         assert.deepEqual([werte.platzbereich, werte.reihenfolge], ['3', 'siegerehrung']);
+
+        // Bilder reisen mit; ungültige/unbenutzte fallen weg, ein Feld mit fehlendem Bild macht die Vorlage ungültig.
+        const logo = { typ: 'image/png', daten: PNG_1PX };
+        const bildFeld = { id: 'i', typ: 'bild', bild_id: 'logo', x: 10, y: 10, breite: 50, hoehe: 50 };
+        await knex('urkunden_vorlagen').where({ verein_id: quelle, name: 'Standard' }).update({
+            felder: JSON.stringify([...felder, bildFeld]),
+            bilder: JSON.stringify({ logo, alt: logo })
+        });
+        const mitBild = JSON.parse(JSON.stringify(await exportiereVorlagen(knex, quelle)))[0];
+        assert.deepEqual(Object.keys(mitBild.bilder).sort(), ['alt', 'logo']);
+        await importiereVorlagen(knex, ziel, [
+            { ...mitBild, name: 'MitBild' },
+            { ...mitBild, name: 'BildKaputt', bilder: { logo: { typ: 'image/png', daten: 'eA==' } } }
+        ]);
+        const importiert = await knex('urkunden_vorlagen').where({ verein_id: ziel, name: 'MitBild' }).first();
+        assert.deepEqual(JSON.parse(importiert.bilder), { logo });
+        assert.equal(await knex('urkunden_vorlagen').where({ verein_id: ziel, name: 'BildKaputt' }).first(), undefined);
     } finally {
         await knex.destroy();
         rmSync(dir, { recursive: true, force: true });

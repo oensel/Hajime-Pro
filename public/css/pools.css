@@ -95,37 +95,19 @@
 #poolsContainer td:nth-child(1),
 #poolsContainer th:nth-child(1),
 #poolsContainer .pool-name-cell {
-    width: 180px;
-    min-width: 180px;
+    width: 220px;
+    min-width: 220px;
 }
 
-#poolsContainer td:nth-child(2),
-#poolsContainer th:nth-child(2) {
-    width: 80px;
+/* Dauer */
+#poolsContainer td:nth-child(5),
+#poolsContainer th:nth-child(5) {
     min-width: 80px;
-}
-
-#poolsContainer td:nth-child(6),
-#poolsContainer th:nth-child(6) {
-    min-width: 80px;
-}
-
-#poolsContainer td:nth-child(7) {
-    width: 95px;
-    min-width: 95px;
-}
-
-/* Golden-Score-Spalte: so breit, dass die längste Option ("Max. 10 Minuten") ohne
-   Abschneiden hineinpasst. */
-#poolsContainer td:nth-child(8),
-#poolsContainer th:nth-child(8) {
-    width: 150px;
-    min-width: 150px;
 }
 
 /* Athleten-Spalte darf als einzige großzügiger umbrechen */
-#poolsContainer td:nth-child(9),
-#poolsContainer th:nth-child(9),
+#poolsContainer td:nth-child(6),
+#poolsContainer th:nth-child(6),
 #poolsContainer .pool-athletes-cell {
     white-space: normal;
     width: 320px;
@@ -142,13 +124,26 @@
     width: 36px;
 }
 
+/* Die Details-Spalte bleibt am rechten Rand stehen: die Tabelle ist breiter als der Platz neben
+   der Seitenleiste, und ohne Fixierung läge der Kampfplan-Button hinter dem Rand des
+   Scroll-Bereichs (dessen Scrollleiste erst unter dem letzten Pool sitzt). Die Trennlinie kommt als
+   box-shadow, weil Rahmen bei border-collapse nicht mit der fixierten Zelle mitwandern. */
+#poolsContainer .pool-action-cell,
+#poolsContainer .pools-table-header th:last-child {
+    position: sticky;
+    right: 0;
+    z-index: 1;
+    background-color: var(--bg-card);
+    box-shadow: inset 0 1px 0 var(--border);
+}
+
 /* ==========================================================================
    Formular-Elemente & Boxen (Karten-Stil)
    ========================================================================== */
 
 /* Poolname als editierbare Box */
 .pool-name-input {
-    width: 180px;
+    width: 100%;
     height: 18px;
     padding: 0px 4px;
     border: 1px solid var(--border);
@@ -193,18 +188,41 @@
     white-space: nowrap;
 }
 
-/* Kampfzeit als Minuten-Auswahl */
-.pool-time-box {
-    display: inline-flex;
-    align-items: flex-start;
-    min-height: 28px;
-    padding: 0;
-    margin-top: 0;
+/* System, Kampfzeit und Golden Score untereinander unter dem Poolnamen: links die Beschriftung,
+   rechts der Wert bzw. die Auswahl. */
+.pool-einstellungen {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 4px 8px;
+    margin-top: 6px;
 }
 
-.pool-time-select {
-    width: 76px;
-    padding: 5px 6px;
+.pool-einstellung-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+}
+
+.pool-einstellung-wert {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    min-height: 22px;
+}
+
+.pool-einstellung-wert .pool-system-text {
+    padding-top: 0;
+}
+
+/* Kampfzeit und Golden Score als Auswahl; die Breite reicht für die längste Golden-Score-Option
+   ("Max. 10 Minuten"). */
+.pool-time-select,
+.pool-gs-select {
+    width: 130px;
+    padding: 3px 4px;
     border: 1px solid var(--border);
     border-radius: 3px;
     background-color: var(--bg-card);
@@ -215,7 +233,8 @@
     cursor: pointer;
 }
 
-.pool-time-select:focus {
+.pool-time-select:focus,
+.pool-gs-select:focus {
     outline: none;
     border-color: var(--primary);
     box-shadow: 0 0 0 2px rgba(30, 58, 138, 0.12);
@@ -244,12 +263,14 @@
 
 [data-theme="dark"] .pool-name-input,
 [data-theme="dark"] .pool-system-box,
-[data-theme="dark"] .pool-time-select {
+[data-theme="dark"] .pool-time-select,
+[data-theme="dark"] .pool-gs-select {
     box-shadow: 0 1px 2px rgba(0,0,0,0.35);
 }
 
 [data-theme="dark"] .pool-name-input:focus,
-[data-theme="dark"] .pool-time-select:focus {
+[data-theme="dark"] .pool-time-select:focus,
+[data-theme="dark"] .pool-gs-select:focus {
     box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.16);
 }
 

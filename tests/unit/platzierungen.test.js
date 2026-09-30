@@ -57,7 +57,23 @@ test('ein Teilnehmer → Platz 1', () => {
     assert.deepEqual([r.abgeschlossen, r.eintraege[0].platz], [true, 1]);
 });
 
-test('Überkreuz: F1, F2, Gruppenplatz 3 → 5', () => {
+test('Überkreuz: F1, beide Halbfinal-Verlierer → 3, Gruppenplatz 3 → 5', () => {
+    const kaempfe = [
+        k('V_A_1', 1, 3, 1), k('V_A_2', 1, 5, 1), k('V_A_3', 3, 5, 3),
+        k('V_B_1', 2, 4, 2), k('V_B_2', 2, 6, 2), k('V_B_3', 4, 6, 4),
+        k('HF1', 1, 4, 1), k('HF2', 2, 3, 2), k('F1', 1, 2, null, 'bereit')
+    ];
+    let r = berechnePlatzierungen({ modus: 'Gruppen-Überkreuz' }, kaempfe, tn(6));
+    assert.equal(r.abgeschlossen, false);
+    assert.deepEqual(plaetze(r), { 1: null, 2: null, 3: 3, 4: 3, 5: 5, 6: 5 });
+
+    kaempfe[8] = k('F1', 1, 2, 1);
+    r = berechnePlatzierungen({ modus: 'Gruppen-Überkreuz' }, kaempfe, tn(6));
+    assert.equal(r.abgeschlossen, true);
+    assert.deepEqual(plaetze(r), { 1: 1, 2: 2, 3: 3, 4: 3, 5: 5, 6: 5 });
+});
+
+test('Überkreuz alt (mit kleinem Finale F2): F2 → 3/4', () => {
     const kaempfe = [
         k('V_A_1', 1, 3, 1), k('V_A_2', 1, 5, 1), k('V_A_3', 3, 5, 3),
         k('V_B_1', 2, 4, 2), k('V_B_2', 2, 6, 2), k('V_B_3', 4, 6, 4),

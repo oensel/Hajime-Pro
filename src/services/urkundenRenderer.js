@@ -1,11 +1,12 @@
 // Rendert Urkunden mit pdf-lib: Seite 1 der Blanko-Vorlage wird einmal eingebettet und auf jeder
-// Seite als Hintergrund gezeichnet, darüber die Textfelder (Koordinaten in pt, Ursprung oben links).
+// Seite als Hintergrund gezeichnet, darüber Bilder, Linien und Textfelder (Koordinaten in pt, Ursprung oben links).
 // Schriften aus public/fonts/urkunden per fontkit mit Subsetting (auch Zeichen außerhalb WinAnsi).
 import fs from 'node:fs/promises';
-import { PDFDocument, rgb, degrees } from 'pdf-lib';
+import { PDFDocument, rgb, degrees, LineCapStyle } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import { findeSchrift, STANDARD_SCHRIFT_ID } from '../shared/urkundenSchriften.js';
 import { ersetzePlatzhalter, passeGroesseAn, berechneX, basislinie } from '../shared/urkundenText.js';
+import { linienMuster, istLinie } from '../shared/urkundenLinien.js';
 
 const SCHRIFT_VERZEICHNIS = new URL('../../public/fonts/urkunden/', import.meta.url);
 const schriftCache = new Map();
@@ -70,13 +71,46 @@ async function bettetHintergrundEin(ziel, seite) {
     return ziel.embedPage(seite);
 }
 
-export async function renderUrkunden({ pdfBytes, felder, datensaetze }) {
+function zeichneLinie(seite, feld, hoehe) {
+    const { muster, kappe } = linienMuster(feld.stil, feld.staerke);
+    const y = hoehe - feld.y;
+    seite.drawLine({
+        start: { x: feld.x, y },
+        end: { x: feld.x + feld.breite, y },
+        thickness: feld.staerke,
+        color: farbe(feld.farbe),
+        dashArray: muster ?? undefined,
+        lineCap: kappe === 'round' ? LineCapStyle.Round : LineCapStyle.Butt
+    });
+}
+
+// Bettet jedes verwendete Bild einmal ein; Felder ohne (gültiges) Bild werden übersprungen.
+async function bettetBilderEin(ziel, bildFelder, bilder) {
+    const eingebettet = new Map();
+    for (const { bild_id: id } of bildFelder) {
+        const bild = bilder[id];
+        if (eingebettet.has(id) || !bild) continue;
+        const bytes = Buffer.from(bild.daten, 'base64');
+        try {
+            eingebettet.set(id, bild.typ === 'image/png' ? await ziel.embedPng(bytes) : await ziel.embedJpg(bytes));
+        } catch {
+            eingebettet.set(id, null);
+        }
+    }
+    return eingebettet;
+}
+
+export async function renderUrkunden({ pdfBytes, felder: alleFelder, bilder = {}, datensaetze }) {
+    const linien = alleFelder.filter(istLinie);
+    const bildFelder = alleFelder.filter(f => f.typ === 'bild');
+    const felder = alleFelder.filter(f => !istLinie(f) && f.typ !== 'bild');
     const quelle = await ladeQuelle(pdfBytes);
     const { drehung, breite, hoehe } = sichtbareGroesse(quelle.getPage(0));
 
     const ziel = await PDFDocument.create();
     ziel.registerFontkit(fontkit);
     const hintergrund = await bettetHintergrundEin(ziel, quelle.getPage(0));
+    const bildObjekte = await bettetBilderEin(ziel, bildFelder, bilder);
 
     const schriften = new Map();
     for (const feld of felder) {
@@ -91,6 +125,11 @@ export async function renderUrkunden({ pdfBytes, felder, datensaetze }) {
     datensaetze.forEach((datensatz, index) => {
         const seite = ziel.addPage([breite, hoehe]);
         if (hintergrund) zeichneHintergrund(seite, hintergrund, drehung);
+        for (const feld of bildFelder) {
+            const bild = bildObjekte.get(feld.bild_id);
+            if (bild) seite.drawImage(bild, { x: feld.x, y: hoehe - feld.y - feld.hoehe, width: feld.breite, height: feld.hoehe });
+        }
+        linien.forEach(linie => zeichneLinie(seite, linie, hoehe));
 
         for (const feld of felder) {
             const { font, zeichen } = schriften.get(findeSchrift(feld.schrift) ? feld.schrift : STANDARD_SCHRIFT_ID);
@@ -118,4 +157,20 @@ export async function renderUrkunden({ pdfBytes, felder, datensaetze }) {
     });
 
     return { bytes: await ziel.save(), warnungen };
+}
+
+// Zerlegt ein gerendertes PDF in aufeinanderfolgende Teile mit den angegebenen Seitenzahlen
+// (ein PDF je Pool); Hintergrund und Schriften liegen in jedem Teil nur einmal.
+export async function teilePdf(bytes, seitenzahlen) {
+    const quelle = await PDFDocument.load(bytes);
+    const teile = [];
+    let start = 0;
+    for (const anzahl of seitenzahlen) {
+        const teil = await PDFDocument.create();
+        const seiten = await teil.copyPages(quelle, Array.from({ length: anzahl }, (_, i) => start + i));
+        seiten.forEach(seite => teil.addPage(seite));
+        teile.push(await teil.save());
+        start += anzahl;
+    }
+    return teile;
 }

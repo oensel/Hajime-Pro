@@ -35,7 +35,7 @@ const MATTEN_FIXTUR = [
     },
     {
         bezeichnung: 'Matte2-GruppenUeberkreuz',
-        anzahlKaempfe: 10,
+        anzahlKaempfe: 9,
         erwarteterChampionKey: 'F1',
         teilnehmer: [
             { vorname: 'M2-Anna', nachname: 'Adler', verein: 'JC M2-Alpha', gewicht: 60 },

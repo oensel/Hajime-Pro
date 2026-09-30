@@ -36,14 +36,14 @@ mehrseitiges PDF erzeugen.
 | Doppel-KO-8 | Finale `F` | Sieger `T3`, `T4` | Verlierer `T3`, `T4` | Verlierer `T1`, `T2` |
 | Doppel-KO-16 | Finale `F1` | Sieger `T11`, `T12` | Verlierer `T11`, `T12` | Verlierer `T9`, `T10` |
 | Doppel-KO-32 | Finale `F1` | Sieger `T27`, `T28` | Verlierer `T27`, `T28` | Verlierer `T25`, `T26` |
-| Gruppen-Überkreuz | Finale `F1` | Sieger `F2`; Platz 4 = Verlierer `F2` | Gruppenplatz 3 beider Gruppen (geteilt) | Gruppenplatz 4 beider Gruppen (geteilt) |
+| Gruppen-Überkreuz | Finale `F1` | Verlierer `HF1`, `HF2` (kein kleines Finale; ältere Pools mit `F2`: Sieger `F2`, Platz 4 = Verlierer `F2`) | Gruppenplatz 3 beider Gruppen (geteilt) | Gruppenplatz 4 beider Gruppen (geteilt) |
 
 - **Jeder-gegen-Jeden:** fortlaufende Rangfolge 1, 2, 3, 4, 5 … nach Siegen, dann
   Wertungspunkten (Regel wie bisher in `siegerliste.js`).
 - **Pool mit einem Teilnehmer:** Platz 1.
 - Aus einem `freilos`-Kampf entsteht kein Verlierer-Platz.
-- **Platzbereich** 1.–N umfasst alle Einträge mit `platz <= N` (also bei Jeder-gegen-Jeden und
-  Überkreuz auch Platz 4).
+- **Platzbereich** 1.–N umfasst alle Einträge mit `platz <= N` (also bei Jeder-gegen-Jeden
+  auch Platz 4).
 - **„alle":** jede:r Teilnehmer:in eines gewählten Pools erhält eine Urkunde; wer keinen Platz hat,
   bekommt `{Platzierung}` = „Teilnahme".
 - **Mannschafts-Pools** (Jeder-gegen-Jeden, Doppel-KO-8/16) nach denselben Regeln auf Ebene der
@@ -296,3 +296,80 @@ Secondary im Cluster ist das Abschließen ohnehin gesperrt, der Dialog erscheint
   Urkunden nur dieses Pools; ohne markierte Vorlage erscheint kein Dialog.
 - **Export/Import:** vorhandenen Export/Import-Test um eine Vorlage erweitern (Rundreise von Name,
   Feldern und PDF).
+
+## Überarbeitung 2026-09-30
+
+Ersetzt die abweichenden Angaben weiter oben:
+
+- **Seiten:** `urkunden.html` dient nur noch dem Generieren. Der Editor liegt auf
+  `urkunden-designer.html` (eigener Menüpunkt „Urkunden-Designer“). Die Bearbeitungsfläche hat
+  die halbe Kartenbreite, die Werkzeuge stehen daneben.
+- **Vorlagen-Auswahl:** Ein Popup zeigt die Vorlagen mit Mini-Ansicht. Diese ist Seite 1 einer
+  Beispiel-Urkunde von `GET /vorlagen/:id/vorschau`, gerendert per pdf.js.
+- **Reihenfolge:** `absteigend` („letzter Platz zuerst“, Standard) und `aufsteigend`
+  („1. Platz zuerst“). `siegerehrung` wird als alter Name von `absteigend` weiter angenommen.
+- **Voreinstellungen entfallen:** Platzbereich, Reihenfolge und `bei_abschluss_anbieten` werden
+  im Designer nicht mehr gepflegt. Die Spalten bleiben in der DB und im Export, werden aber nicht
+  mehr ausgewertet.
+- **Druck beim Pool-Abschluss:** wird immer angeboten, sobald der Ausrichter-Verein mindestens
+  eine Vorlage hat. Im Dialog wählt man:
+  - die Vorlage (Mini-Ansicht, vorausgewählt ist die zuletzt genutzte aus `localStorage`),
+  - die Platzierungen (Standard 1.–3.),
+  - die Reihenfolge.
+
+  `GET /abschluss-angebot` liefert dazu `{ vorlagen: [{ id, name }], anzahl: { '3', '5', '7', 'alle' } }`.
+- **Linien:** Waagerechte Linien werden als Feld gespeichert:
+  `{ typ: 'linie', x, y, breite, staerke (0,5–10 pt), stil, farbe }`.
+  - `stil` ist `durchgezogen`, `gepunktet` oder `gestrichelt`.
+  - `y` ist die Linienmitte.
+  - Das Strichmuster ist gemeinsam für Editor und Renderer in `src/shared/urkundenLinien.js`
+    festgelegt.
+  - Textfelder tragen optional `typ: 'text'`.
+- **Hallen-Server:** Der Designer bleibt nutzbar. Änderungen dort gehen weiterhin nicht zurück in
+  die Cloud.
+
+### Ergänzung: Bilder, Standard-Rahmen, weitere Schriften
+
+- **Bilder:** Bildfelder haben die Form `{ typ: 'bild', bild_id, x, y, breite, hoehe }`.
+  - Erlaubt sind PNG oder JPEG bis 2 MB, höchstens 10 Bilder je Vorlage.
+  - GIF wandelt der Designer im Browser in ein PNG mit Alphakanal um, weil pdf-lib kein GIF
+    einbetten kann (bei animierten GIFs zählt das erste Bild). Transparente Bereiche von PNG
+    (Alphakanal oder Palette mit `tRNS`) landen im PDF als Transparenzmaske (`SMask`).
+  - Die Bilddaten liegen in der neuen Spalte `urkunden_vorlagen.bilder` (JSON
+    `{ <bild_id>: { typ, daten } }`, Migration `20260930100000`).
+  - `POST /vorlagen/:id/bilder` lädt ein Bild hoch, `GET /vorlagen/:id/bilder/:bildId` liefert es.
+  - Beim Speichern der Felder werden Bilder entfernt, auf die kein Feld mehr verweist.
+  - Duplizieren sowie Turnier-Export und -Import nehmen die Bilder mit. Beim Import werden
+    ungültige Bilder verworfen; zeigt ein Feld auf ein fehlendes Bild, ist die Vorlage ungültig.
+  - Der Renderer zeichnet in dieser Reihenfolge: Hintergrund → Bilder → Linien → Text.
+  - Im Editor lassen sich Bilder nur über die Ecken skalieren, das Seitenverhältnis bleibt fest.
+- **Standard-Rahmen:** Es gibt fünf Rahmen im Format A4 hoch: Klassisch, Ornament, Modern, Judo
+  und Schlicht.
+  - Sie liegen als Vektor-PDFs in `public/urkunden-rahmen/`, erzeugt von
+    `scripts/erzeuge-urkunden-rahmen.mjs`.
+  - `POST /vorlagen` nimmt statt `pdf_base64` auch `rahmen_id` an.
+  - Der Designer bietet die Rahmen bei „Neue Vorlage“ und als Startauswahl an, solange es noch
+    keine Vorlage gibt.
+- **Schriften:** Neu sind Pinyon Script, Alex Brush (beide Schreibschrift) und
+  UnifrakturMaguntia (Fraktur), jeweils unter SIL OFL.
+
+### Ergänzung: gespeichertes PDF je Pool
+
+- **Tabelle `urkunden_pdfs`** (Migration `20260930110000`): höchstens eine Zeile je Pool mit
+  `pool_id` (eindeutig, wird mit dem Pool gelöscht), `vorlage_id`/`vorlage_name`, `platzbereich`,
+  `reihenfolge`, `anzahl`, `pdf` und `erzeugt_am` (ISO-Text).
+- **Speichern:** `POST /generieren` legt das erzeugte PDF je Pool ab und ersetzt das bisherige.
+  - Bei mehreren Pools wird das Gesamt-PDF mit `teilePdf` (`urkundenRenderer.js`) je Pool zerlegt.
+  - Der Header `X-Urkunden-Gespeichert` ist `1` oder `0`.
+  - Am Secondary wird nichts gespeichert, der Druck funktioniert dort weiterhin. Ein Fehler beim
+    Speichern verhindert den Druck nicht.
+- **Routen:** `GET /pools/:poolId/pdf` liefert das PDF, `DELETE /pools/:poolId/pdf` löscht es.
+  `GET /uebersicht` liefert je Pool zusätzlich `pdf: { vorlage_id, vorlage_name, platzbereich,
+  reihenfolge, anzahl, erzeugt_am } | null`.
+- **`urkunden.html`:** Pools mit PDF zeigen eine Markierung mit Erzeugungszeit und drei Knöpfen:
+  - *Öffnen* zeigt das gespeicherte PDF in der Vorschau.
+  - *Neu erzeugen* rendert mit den Einstellungen des vorhandenen PDFs. Gibt es dessen Vorlage
+    nicht mehr, gilt die auf der Seite gewählte.
+  - *Löschen* entfernt das PDF nach Rückfrage.
+- **Nicht umgesetzt:** Das PDF wandert nicht mit dem Turnier-Export. Ob sich die Platzierungen
+  seit dem Erzeugen geändert haben, wird nicht erkannt.

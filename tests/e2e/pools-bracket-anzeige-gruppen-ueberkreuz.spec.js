@@ -57,7 +57,7 @@ test('Bracket-Ansicht (pools.html) zeigt für ein Gruppen-Überkreuz-Turnier vor
     // (siehe loadFightplan() -> GET /api/pools/:id in pools.js).
     const poolResp = await request.get(`/api/pools/${poolId}`);
     const pool = await poolResp.json();
-    expect(pool.kaempfe).toHaveLength(10);
+    expect(pool.kaempfe).toHaveLength(9);
     expect(pool.kaempfe.every(k => k.status === 'beendet' || k.status === 'freilos')).toBeTruthy();
 
     const nameById = new Map(pool.teilnehmer.map(t => [t.id, `${t.nachname}, ${t.vorname}`]));
@@ -66,10 +66,10 @@ test('Bracket-Ansicht (pools.html) zeigt für ein Gruppen-Überkreuz-Turnier vor
     await page.locator(`.btn-view-fightplan[data-id="${poolId}"]`).click();
     await expect(page.locator('#ueberKreuzContainer')).toBeVisible();
 
-    // Nur die 4 Halbfinal-/Final-Karten laufen über buildMatchCardHtml()/getPlaceholderName() --
+    // Nur die 3 Halbfinal-/Final-Karten laufen über buildMatchCardHtml()/getPlaceholderName() --
     // die Vorrunden-Kämpfe (V_A_1 etc.) werden als eigene Mini-Matrix gerendert, nicht als
     // Bracket-Karte (siehe buildMiniMatrixHtml() in pools.js).
-    for (const reihenfolgeNummer of ['HF1', 'HF2', 'F1', 'F2']) {
+    for (const reihenfolgeNummer of ['HF1', 'HF2', 'F1']) {
         const kampf = pool.kaempfe.find(k => k.reihenfolge_nummer === reihenfolgeNummer);
         const karte = page.locator(`.bracket-match-card[data-reihenfolge-nummer="${reihenfolgeNummer}"]`);
         await expect(karte).toHaveCount(1);
@@ -87,13 +87,17 @@ test('Bracket-Ansicht (pools.html) zeigt für ein Gruppen-Überkreuz-Turnier vor
     }
 
     // Deterministische Endstände (Kämpfer 1 gewinnt immer), siehe Kommentar am Dateianfang: Anna
-    // gewinnt Gruppe A und das Finale gegen Berta (Gruppensiegerin B); Diana (2. Gruppe B) gewinnt
-    // das kleine Finale gegen Clara (2. Gruppe A).
+    // gewinnt Gruppe A und das Finale gegen Berta (Gruppensiegerin B). Ein kleines Finale gibt es
+    // nicht: die Halbfinal-Verliererinnen Diana (2. Gruppe B) und Clara (2. Gruppe A) sind beide
+    // Dritte.
     const f1 = pool.kaempfe.find(k => k.reihenfolge_nummer === 'F1');
     expect(nameById.get(f1.sieger_id)).toBe('Adler, Anna');
     expect(nameById.get(f1.kaempfer2_id)).toBe('Busch, Berta');
 
-    const f2 = pool.kaempfe.find(k => k.reihenfolge_nummer === 'F2');
-    expect(nameById.get(f2.sieger_id)).toBe('Diehl, Diana');
-    expect(nameById.get(f2.kaempfer2_id)).toBe('Conrad, Clara');
+    await expect(page.locator('.bracket-match-card[data-reihenfolge-nummer="F2"]')).toHaveCount(0);
+    for (const [nr, dritte] of [['HF1', 'Diehl, Diana'], ['HF2', 'Conrad, Clara']]) {
+        const slot = page.locator(`.bracket-match-card[data-reihenfolge-nummer="${nr}"] [data-kaempfer-slot="2"]`);
+        await expect(slot).toContainText(dritte);
+        await expect(slot.locator('.bronze-medal')).toHaveCount(1);
+    }
 });

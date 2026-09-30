@@ -22,7 +22,7 @@ const TEILNEHMER = [
 
 const SYSTEME = [
     { name: 'Jeder-gegen-Jeden', teilnehmer: 4, kaempfe: 6 },
-    { name: 'Gruppen-Überkreuz', teilnehmer: 6, kaempfe: 10 },
+    { name: 'Gruppen-Überkreuz', teilnehmer: 6, kaempfe: 9 },
     { name: 'Doppel-KO-8', teilnehmer: 8, kaempfe: 11 },
     { name: 'Doppel-KO-16', teilnehmer: 16, kaempfe: 27 }
 ];
