@@ -219,11 +219,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     else if (p.status === 'aktiv') barClass = 'active';
 
                     const remaining = p.gesamt_kaempfe - p.beendete_kaempfe;
+                    let statusText = `noch ${remaining} Kämpfe`;
+                    if (p.status_pool === 'abgeschlossen') statusText = 'abgeschlossen';
+                    else if (p.status_pool === 'kaempfe_beendet') statusText = 'in Prüfung';
                     return `
                         <div class="pool-progress-item">
                             <div class="pool-progress-header">
                                 <span style="text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: 250px;">${escapeHtml(p.bezeichnung)}</span>
-                                <span style="color: ${p.status === 'beendet' ? '#2e7d32' : p.status === 'aktiv' ? '#007bff' : 'var(--text-muted)'};">noch ${remaining} Kämpfe</span>
+                                <span style="color: ${p.status === 'beendet' ? '#2e7d32' : p.status === 'aktiv' ? '#007bff' : 'var(--text-muted)'};">${statusText}</span>
                             </div>
                             <div class="pool-progress-bar-wrapper">
                                 <div class="pool-progress-bar ${barClass}" style="width: ${p.progress}%;"></div>
