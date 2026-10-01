@@ -35,7 +35,7 @@
     "knex": "^3.1.0",
     "material-components-web": "^14.0.0",
     "multicast-dns": "^7.2.5",
-    "nodemailer": "^6.9.15",
+    "nodemailer": "^10.0.13",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.3.289",
     "pg": "^8.11.5",
