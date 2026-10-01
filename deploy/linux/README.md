@@ -8,6 +8,20 @@ dieselbe virtuelle IP (VIP) mit dem neuen Master.
 
 Hintergrund und Entscheidungen: `docs/superpowers/specs/2026-09-25-couchdb-umbau-design.md`, Abschnitt 9.
 
+## Schnellstart: einzelner Hallen-Server (ein Befehl)
+
+Frisches Debian 12/13 oder Ubuntu 22.04+ ohne Desktop, Internetzugang für die Installation:
+
+```bash
+git clone <repo-url> Hajime-Pro && cd Hajime-Pro && sudo bash deploy/linux/install.sh
+```
+
+`install.sh` installiert Node.js 22 und PostgreSQL, legt Systembenutzer `hajime`, Datenbank,
+`/opt/hajime-pro/.env` (mit zufälligen Passwörtern/Geheimnissen), Migrationen, systemd-Dienst
+(Autostart) und ufw-Regeln an und zeigt am Ende Adresse und Passwörter an. Erneutes Ausführen
+nach `git pull` = Update (`.env` und Daten bleiben). CouchDB ist nicht nötig: die Dokument-DB
+für die Client-Geräte ist in die App eingebaut. Der Zwei-Server-Cluster (unten) bleibt Handarbeit.
+
 ## Netzplan
 
 ```
