@@ -47,7 +47,7 @@
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.2/xlsx-0.20.2.tgz"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.1",
+    "@playwright/test": "^1.63.0",
     "electron": "^44.4.5",
     "electron-builder": "^26.15.3",
     "embedded-postgres": "^18.4.0-beta.17"
