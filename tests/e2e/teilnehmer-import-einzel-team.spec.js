@@ -246,10 +246,19 @@ test.describe.serial('Teilnehmer-Import und -Verwaltung (teilnehmer.html)', () =
         const ausnahmeZeile = findeZeile(ausnahmeVorname, ausnahmeNachname, ausnahmeVerein);
         await ausnahmeZeile.locator('.row-checkbox').uncheck();
 
+        // Veraltete Meldung der vorherigen Aktion (z.B. "eingewogen!") entfernen, damit der
+        // Assert unten sicher die Meldung DIESER Sammel-Aktion prüft.
+        await page.evaluate(() => {
+            const text = document.getElementById('snackbarText');
+            if (text) text.innerText = '';
+        });
+
         await button.click();
         await expect(page.locator('#customConfirmModal')).toBeVisible();
         await page.locator('#modalConfirmBtn').click();
-        await expect(page.locator('#snackbarText')).toHaveText(erwarteteNachricht);
+        // Die Sammel-Aktion sendet pro Teilnehmer einen eigenen PUT (hier ~280 parallel);
+        // auf langsamen CI-Runnern dauert das deutlich länger als der Standard-Timeout.
+        await expect(page.locator('#snackbarText')).toHaveText(erwarteteNachricht, { timeout: 30_000 });
     }
 
     test.beforeAll(async ({ browser }) => {
@@ -642,7 +651,7 @@ test.describe.serial('Teilnehmer-Import und -Verwaltung (teilnehmer.html)', () =
     });
 
     test('Sammel-Aktionen "gewogen"/"lizenz"/"bezahlt" setzen Status auf "kampfbereit"', async () => {
-        test.setTimeout(60_000);
+        test.setTimeout(120_000);
 
         // Jeweils per Kopf-Checkbox ALLE Teilnehmer auswählen, aber genau einen (unberührten)
         // davon wieder abwählen, bevor die jeweilige Sammel-Aktion ausgeführt wird. Da

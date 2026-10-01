@@ -243,7 +243,11 @@ test.describe.serial('Pool-Verteilung nach Alters-/Gewichtsklasse und Wettkampfs
     }
 
     test.beforeAll(async ({ browser }) => {
-        const context = await browser.newContext();
+        // Hoher Viewport: Seit dem Umbau der Pool-Tabelle (System/Kampfzeit/Golden Score unter dem
+        // Poolnamen) sind die Zeilen deutlich höher. Mit dem Standard-Viewport liegen Quelle und
+        // Ziel eines Drags nicht mehr gemeinsam im sichtbaren Bereich, und Playwright müsste
+        // mitten in der Maus-Geste scrollen.
+        const context = await browser.newContext({ viewport: { width: 1600, height: 2400 } });
         page = await context.newPage();
     });
 
@@ -435,8 +439,27 @@ test.describe.serial('Pool-Verteilung nach Alters-/Gewichtsklasse und Wettkampfs
         const antwortPromise = page.waitForResponse(response =>
             response.url().includes('/api/pools/verschieben') && response.request().method() === 'POST'
         );
-        await page.locator(`.draggable-athlete[data-athlete-id="${athleteId}"]`)
-            .dragTo(page.locator(`.drop-zone[data-pool-id="${zielPoolId}"]`));
+        const quelle = page.locator(`.draggable-athlete[data-athlete-id="${athleteId}"]`);
+        const ziel = page.locator(`.drop-zone[data-pool-id="${zielPoolId}"]`);
+
+        // Beide Elemente vorab sichtbar scrollen und erst danach die Koordinaten messen, damit
+        // sich das Layout während der Maus-Geste nicht mehr verschiebt.
+        await quelle.scrollIntoViewIfNeeded();
+        await ziel.scrollIntoViewIfNeeded();
+        await quelle.scrollIntoViewIfNeeded();
+        const quellBox = await quelle.boundingBox();
+        const zielBox = await ziel.boundingBox();
+        expect(quellBox, 'Athlet nicht sichtbar').toBeTruthy();
+        expect(zielBox, 'Drop-Zone nicht sichtbar').toBeTruthy();
+
+        // Mit Zwischenschritten, damit dragenter/dragover der Drop-Zone sicher feuern. Gezielt wird
+        // auf die linke obere Ecke der Zone (nicht die Mitte), die nie von einer sticky
+        // Nachbarzelle überdeckt wird.
+        await page.mouse.move(quellBox.x + quellBox.width / 2, quellBox.y + quellBox.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(quellBox.x + quellBox.width / 2 + 5, quellBox.y + quellBox.height / 2 + 5, { steps: 5 });
+        await page.mouse.move(zielBox.x + 20, zielBox.y + Math.min(15, zielBox.height / 2), { steps: 20 });
+        await page.mouse.up();
         const antwort = await antwortPromise;
         expect(antwort.ok()).toBeTruthy();
     }
