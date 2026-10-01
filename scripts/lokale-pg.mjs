@@ -9,11 +9,13 @@
 //
 // Port und Datenbankname kommen aus der .env (DB_PORT, DB_NAME), damit App und Instanz
 // zusammenpassen. Migrationen danach: npx knex migrate:latest --knexfile knexfile.cjs --env online
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 import { execFileSync } from 'child_process';
 import pg from 'pg';
+
+dotenv.config({ quiet: true });
 
 const PLATTFORM = { win32: 'windows-x64', linux: process.arch === 'arm64' ? 'linux-arm64' : 'linux-x64', darwin: process.arch === 'arm64' ? 'darwin-arm64' : 'darwin-x64' }[process.platform];
 const binaries = await import(`@embedded-postgres/${PLATTFORM}`);

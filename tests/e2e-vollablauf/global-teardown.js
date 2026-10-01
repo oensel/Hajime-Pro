@@ -41,7 +41,7 @@ async function loescheTurnierKaskade(knex, turnierIds) {
 }
 
 export default async function globalTeardown() {
-    dotenv.config({ path: path.resolve(projectRoot, '.env') });
+    dotenv.config({ path: path.resolve(projectRoot, '.env'), quiet: true });
     const knexConfig = require(path.resolve(projectRoot, 'knexfile.cjs'));
     const knex = knexLib(knexConfig.online);
 

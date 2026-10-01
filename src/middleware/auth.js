@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import { hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
-dotenv.config();
+dotenv.config({ quiet: true });
 
 const JWT_SECRET = process.env.JWT_SECRET || 'hajime_pro_secret_key_123456!';
 
