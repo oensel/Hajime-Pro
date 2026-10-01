@@ -35,11 +35,22 @@ export function erzeugeDokumentDb({ datenverzeichnis }) {
     const verzeichnis = path.resolve(datenverzeichnis);
     mkdirSync(verzeichnis, { recursive: true });
     const PouchDB = PouchDBBasis.defaults({ prefix: verzeichnis + path.sep });
-    const middleware = expressPouchdb(PouchDB, {
+    const pouchApp = expressPouchdb(PouchDB, {
         mode: 'minimumForPouchDB',
         configPath: path.join(verzeichnis, 'config.json'),
         logPath: path.join(verzeichnis, 'log.txt')
     });
+    // express-pouchdb bringt Express 4 mit und tauscht beim Mounten den Request-Prototyp aus. In der
+    // Express-5-Hauptapp ist req.query nur ein Getter auf dem (ausgetauschten) Prototyp, danach fehlt
+    // es express-pouchdb ("reading 'rev'"). Daher vorab als eigene, beschreibbare Eigenschaft setzen.
+    const middleware = (req, res, next) => {
+        if (!Object.prototype.hasOwnProperty.call(req, 'query')) {
+            const query = {};
+            for (const [schluessel, wert] of new URL(req.url, 'http://localhost').searchParams) query[schluessel] = wert;
+            Object.defineProperty(req, 'query', { value: query, writable: true, configurable: true, enumerable: true });
+        }
+        return pouchApp(req, res, next);
+    };
     return {
         PouchDB,
         middleware,
