@@ -27,6 +27,7 @@
     "@pdf-lib/fontkit": "^1.1.1",
     "bonjour-service": "^1.4.4",
     "dotenv": "^18.0.5",
+    "embedded-postgres": "^18.4.0-beta.17",
     "express": "^5.2.1",
     "express-pouchdb": "^4.2.0",
     "fabric": "^7.4.0",
@@ -49,7 +50,6 @@
   "devDependencies": {
     "@playwright/test": "^1.63.0",
     "electron": "^44.5.1",
-    "electron-builder": "^26.15.3",
-    "embedded-postgres": "^18.4.0-beta.17"
+    "electron-builder": "^26.15.3"
   }
 }

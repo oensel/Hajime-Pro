@@ -98,6 +98,27 @@ test('mDNS und Port 80 lassen sich einzeln abschalten', () => {
     assert.equal(m.port80, false);
 });
 
+test('server ohne DB_HOST startet sein eigenes PostgreSQL, mit DB_HOST nutzt er ein vorhandenes', () => {
+    assert.equal(liesBetriebsmodus({ BETRIEBSMODUS: 'server' }).dbEingebettet, true);
+    assert.equal(liesBetriebsmodus({ BETRIEBSMODUS: 'server', DB_HOST: '' }).dbEingebettet, true);
+    assert.equal(liesBetriebsmodus({ BETRIEBSMODUS: 'server', DB_HOST: '127.0.0.1' }).dbEingebettet, false);
+    assert.equal(liesBetriebsmodus({ BETRIEBSMODUS: 'server', DB_HOST: 'db.intern' }).dbEingebettet, false);
+    // nicht bei SQLite, nicht in cloud/client
+    assert.equal(liesBetriebsmodus({ BETRIEBSMODUS: 'server', DB_CLIENT: 'sqlite' }).dbEingebettet, false);
+    assert.equal(liesBetriebsmodus({ BETRIEBSMODUS: 'cloud' }).dbEingebettet, false);
+    assert.equal(liesBetriebsmodus({ BETRIEBSMODUS: 'client' }).dbEingebettet, false);
+});
+
+test('legacy: ohne BETRIEBSMODUS wird nie ein eingebettetes PostgreSQL gestartet (DB_HOST-Standard 127.0.0.1 bleibt)', () => {
+    assert.equal(liesBetriebsmodus({ IS_OFFLINE: 'true', DB_CLIENT: 'pg' }).dbEingebettet, false);
+    assert.equal(liesBetriebsmodus({ IS_OFFLINE: 'true' }).dbEingebettet, false);
+});
+
+test('Cluster mit eingebettetem PostgreSQL ist ein Fehler (DB_HOST fehlt)', () => {
+    assert.ok(liesBetriebsmodus({ BETRIEBSMODUS: 'server', CLUSTER_KNOTEN: 'server1' }).fehler.some(f => /DB_HOST/.test(f)));
+    assert.deepEqual(liesBetriebsmodus({ BETRIEBSMODUS: 'server', DB_HOST: '127.0.0.1', CLUSTER_KNOTEN: 'server1' }).fehler, []);
+});
+
 test('server mit DB_CLIENT=sqlite bleibt als Altpfad möglich', () => {
     const m = liesBetriebsmodus({ BETRIEBSMODUS: 'server', DB_CLIENT: 'sqlite' });
     assert.equal(m.dbTyp, 'sqlite');
@@ -114,7 +135,7 @@ test('client: lokale Dokument-DB, keine relationale Datenbank, nur lokal', () =>
 });
 
 test('Cluster: nur im Modus server, mit PostgreSQL, nicht nur auf localhost gebunden', () => {
-    const gut = liesBetriebsmodus({ BETRIEBSMODUS: 'server', CLUSTER_KNOTEN: 'server2' });
+    const gut = liesBetriebsmodus({ BETRIEBSMODUS: 'server', DB_HOST: '127.0.0.1', CLUSTER_KNOTEN: 'server2' });
     assert.equal(gut.cluster, true);
     assert.deepEqual(gut.fehler, []);
     assert.ok(liesBetriebsmodus({ BETRIEBSMODUS: 'server', DB_CLIENT: 'sqlite', CLUSTER_KNOTEN: 'server1' }).fehler.some(f => /PostgreSQL/.test(f)));

@@ -24,6 +24,7 @@ import { getUrkundenRoutes } from './routes/urkundenRoutes.js';
 import { ensureSuperAdmin } from './utils/superAdmin.js';
 import { waehleKnexUmgebung } from './utils/dbUmgebung.js';
 import betriebsmodus from './config/betriebsmodus.cjs';
+import { starteEingebettetesPostgres, stoppeMitProzess } from './utils/eingebettetesPostgres.js';
 import { liesSyncKonfig } from './sync/konfig.js';
 import { starteSyncDienst } from './sync/syncDienst.js';
 import { getSyncRoutes } from './routes/syncRoutes.js';
@@ -96,7 +97,35 @@ if (syncKonfig.istClient) {
     app.use('/api/cluster', getClusterRoutes(() => null, { secret: syncKonfig.secret }));
 } else {
     const environment = waehleKnexUmgebung();
-    const knex = knexLib(knexConfig[environment]);
+    let knexKonfig = knexConfig[environment];
+
+    // Modus server ohne DB_HOST: der Server bringt sein PostgreSQL selbst mit (nichts zu installieren).
+    let eingebettet = null;
+    if (bm.dbEingebettet) {
+        try {
+            eingebettet = await starteEingebettetesPostgres({
+                datenverzeichnis: process.env.PG_DATENVERZEICHNIS || './data/pg',
+                port: Number(process.env.DB_PORT) || 5433,
+                dbName: process.env.DB_NAME || 'hajime'
+            });
+        } catch (e) {
+            console.error(`[Datenbank] ${e.message}`);
+            process.exit(1);
+        }
+        stoppeMitProzess(eingebettet);
+        knexKonfig = {
+            ...knexKonfig,
+            connection: { host: eingebettet.host, port: eingebettet.port, user: eingebettet.user, password: eingebettet.password, database: eingebettet.database },
+            // Absolut, damit der Start nicht vom Arbeitsverzeichnis abhängt (installierte App).
+            migrations: { directory: path.join(__dirname, '../migrations') }
+        };
+    }
+    const knex = knexLib(knexKonfig);
+    if (eingebettet) {
+        // Die eigene Datenbank hat keinen Installer, der migriert: Schema bei jedem Start auf den neuesten Stand bringen.
+        const [, neue] = await knex.migrate.latest();
+        console.log(`[Datenbank] Schema aktuell${neue.length ? ` (${neue.length} Migration(en) ausgeführt)` : ''}.`);
+    }
 
     // Der Super-Admin-Bootstrap betrifft nur den Online-Mehrbenutzerbetrieb (Vereins-Erstfreigabe) —
     // der Hallenbetrieb (BETRIEBSMODUS=server, bisher IS_OFFLINE=true) arbeitet mit seinem eigenen
