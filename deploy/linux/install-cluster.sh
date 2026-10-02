@@ -303,7 +303,7 @@ fi
 # ---------------------------------------------------------------------------------------------
 log "Systempakete installieren"
 apt-get update -qq
-apt-get install -y -qq postgresql keepalived curl ca-certificates gnupg rsync openssl sudo iproute2 \
+apt-get install -y -qq postgresql keepalived curl ca-certificates gnupg rsync openssl sudo iproute2 iputils-ping \
     build-essential python3 >/dev/null
 
 node_major() { if command -v node >/dev/null; then node -v | sed 's/^v\([0-9]*\).*/\1/'; else echo 0; fi; }
