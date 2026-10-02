@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="de">
+<head>
+    <meta charset="utf-8">
+    <title>Hajime Pro Server</title>
+    <style>
+        body { font-family: system-ui, "Segoe UI", sans-serif; margin: 0; height: 100vh; display: flex; flex-direction: column;
+               align-items: center; justify-content: center; background: #1a2744; color: #fff; text-align: center; }
+        h1 { font-size: 20px; margin: 0 0 6px; }
+        p { margin: 4px 24px; font-size: 13px; opacity: .85; }
+        #status { min-height: 2.6em; }
+        .balken { margin-top: 18px; width: 220px; height: 4px; background: rgba(255,255,255,.2); border-radius: 2px; overflow: hidden; }
+        .balken::after { content: ""; display: block; width: 40%; height: 100%; background: #fff; border-radius: 2px; animation: lauf 1.2s ease-in-out infinite; }
+        @keyframes lauf { 0% { margin-left: -40%; } 100% { margin-left: 100%; } }
+    </style>
+</head>
+<body>
+    <h1>Hajime Pro Server</h1>
+    <p id="status">Starte …</p>
+    <p>Beim ersten Start wird die Datenbank angelegt – das dauert einen Moment.</p>
+    <div class="balken"></div>
+</body>
+</html>

@@ -1,0 +1,55 @@
+# Build des Server-Pakets "Hajime Pro Server" (Notebook als Hallen-Server und Frontend in einem). Aus dem Repo-Root:
+#   npm run desktop:server:build        (eigene Plattform)
+# Eigenes Paket neben dem Client (desktop/electron-builder.yml): andere App-ID, anderer Hauptprozess, mit Datenbank.
+appId: de.hajime-pro.server
+productName: Hajime Pro Server
+directories:
+  output: dist-server
+  buildResources: desktop/build
+# Der Hauptprozess des Servers liegt unter desktop/server (der Client nutzt package.json "main").
+extraMetadata:
+  main: desktop/server/main.js
+# asar aus: express.static, PouchDB/LevelDB, native Module und die PostgreSQL-Programme (embedded-postgres)
+# müssen direkt vom Dateisystem lesbar/ausführbar sein.
+asar: false
+files:
+  - desktop/server/**
+  - desktop/build/icon.png
+  - src/**
+  - public/**
+  - migrations/**
+  - knexfile.cjs
+  - package.json
+  - "!**/*.test.js"
+  - "!tests/**"
+  - "!data/**"
+  - "!docs/**"
+artifactName: "Hajime-Pro-Server-${version}-${os}-${arch}.${ext}"
+win:
+  target: [{ target: nsis, arch: [x64] }]
+nsis:
+  oneClick: true
+  # Eine UAC-Bestätigung bei der Installation: legt die Firewall-Regel für das private Netzwerk an, damit Clients im
+  # Hallennetz den Server erreichen, ohne dass Windows beim ersten Start nachfragen muss.
+  perMachine: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: Hajime Pro Server
+  include: desktop/build/server-installer.nsh
+mac:
+  # Je Architektur ein eigenes Paket (arm64 und x64): die PostgreSQL-Programme gibt es je Architektur getrennt.
+  target:
+    - { target: dmg }
+    - { target: zip }
+  category: public.app-category.sports
+  extendInfo:
+    NSCameraUsageDescription: Die Waage liest Judopass-QR-Codes mit der Kamera.
+  # Ad-hoc-Signatur wie beim Client (siehe electron-builder.yml).
+  identity: "-"
+  hardenedRuntime: false
+linux:
+  executableName: hajime-pro-server
+  target: [{ target: AppImage }]
+  category: Utility
+  executableArgs: ["--no-sandbox"]
+publish: null
