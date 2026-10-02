@@ -17,6 +17,23 @@ jobs:
       - run: npm ci
       - run: npm run test:unit
 
+  # Selbststart des eingebetteten PostgreSQL im Modus "server" (kein DB_HOST) auf allen Zielplattformen:
+  # Instanz anlegen, migrieren, sauber beenden, neu starten, Absturz der App überstehen.
+  server-selbststart:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      # Kein --ignore-scripts: die embedded-postgres-Plattformpakete richten ihre Symlinks im postinstall ein.
+      - run: npm ci
+      - run: node scripts/smoke-server-eingebettet.mjs
+
   e2e:
     runs-on: ubuntu-latest
     strategy:

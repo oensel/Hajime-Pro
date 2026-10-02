@@ -12,6 +12,9 @@
 //
 // Ergänzende Einstellungen:
 //   DB_CLIENT=pg|sqlite             (nur server) Datenbank. Standard pg; sqlite ist ein auslaufender Altpfad.
+//   DB_HOST                         (nur server, pg) Ohne DB_HOST startet der Server sein eigenes, eingebettetes
+//                                   PostgreSQL (nichts zu installieren). Mit DB_HOST nutzt er einen vorhandenen
+//                                   PostgreSQL-Server (Linux-Server, Cluster).
 //   CLUSTER_KNOTEN=server1|server2  (nur server) Cluster-Betrieb zweier Linux-Server, siehe src/cluster/.
 //   MDNS_AKTIV / PORT80_WEITERLEITUNG=false   mDNS-Ankündigung bzw. Port-80-Weiterleitung abschalten.
 //
@@ -85,6 +88,9 @@ function liesBetriebsmodus(env = process.env) {
     }
     // knexfile.cjs kennt die Umgebungen "online" (PostgreSQL) und "offline" (SQLite).
     const knexUmgebung = dbTyp === 'pg' ? 'online' : dbTyp === 'sqlite' ? 'offline' : null;
+    // Eingebettetes PostgreSQL nur im ausdrücklich gesetzten Modus server: bei den Altvariablen galt ohne DB_HOST
+    // immer 127.0.0.1:5432, dort läuft evtl. eine bereits installierte Datenbank — das bleibt unangetastet.
+    const dbEingebettet = streng && istServer && dbTyp === 'pg' && !String(env.DB_HOST || '').trim();
 
     // --- Erreichbarkeit ---
     // Bindeadresse: ohne LISTEN_HOST auf allen Schnittstellen. Das Client-Gerät (desktop/main.js) setzt
@@ -105,6 +111,7 @@ function liesBetriebsmodus(env = process.env) {
     }
     if (cluster) {
         if (dbTyp !== 'pg') widerspruch('Der Cluster braucht PostgreSQL (DB_CLIENT=pg), nicht SQLite.');
+        if (dbEingebettet) widerspruch('Der Cluster braucht je Server eine eigene PostgreSQL-Instanz mit Replikation: DB_HOST setzen (das eingebettete PostgreSQL ist nur für einen einzelnen Server).');
         if (listenHost === '127.0.0.1' || listenHost === 'localhost') widerspruch('Im Cluster müssen sich die beiden Server gegenseitig erreichen: LISTEN_HOST darf nicht auf localhost stehen.');
     }
 
@@ -121,6 +128,7 @@ function liesBetriebsmodus(env = process.env) {
         syncRolle,
         dbTyp,
         knexUmgebung,
+        dbEingebettet,
         listenHost,
         mdns,
         port80,
