@@ -195,7 +195,9 @@ app.use('/js/qr', express.static(path.join(__dirname, '../node_modules/jsqr/dist
 app.use('/js/qrgen', express.static(path.join(__dirname, '../node_modules/qrcode-generator/dist')));
 app.use('/js/shared', express.static(path.join(__dirname, 'shared')));
 app.use('/js/fabric', express.static(path.join(__dirname, '../node_modules/fabric/dist')));
-app.use('/js/pdfjs', express.static(path.join(__dirname, '../node_modules/pdfjs-dist/build')));
+// legacy-Build: der moderne Build setzt sehr neue Browser-Funktionen voraus (z.B. Map.getOrInsertComputed, ab
+// Chrome ~145) und scheitert in älteren Browsern beim Rendern, ohne dass der Designer es meldet.
+app.use('/js/pdfjs', express.static(path.join(__dirname, '../node_modules/pdfjs-dist/legacy/build')));
 app.use('/js/pouchdb', express.static(path.join(__dirname, '../node_modules/pouchdb/dist')));
 app.use('/css/material', express.static(path.join(__dirname, '../node_modules/material-components-web')));
 app.use('/icons/material', express.static(path.join(__dirname, '../node_modules/@material-design-icons/font')));

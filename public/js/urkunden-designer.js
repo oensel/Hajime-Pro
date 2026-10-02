@@ -137,11 +137,17 @@ async function zeigeVorlage(id) {
     state.vorlage = state.vorlagen.find(v => v.id === id);
     if (!state.vorlage) return leereEditor();
     state.felder = structuredClone(state.vorlage.felder || []);
-    state.hintergrund = await renderHintergrund();
-    await ladeBilder();
-    $('editorLeer').style.display = 'none';
-    await baueCanvas();
-    state.geaendert = false;
+    try {
+        state.hintergrund = await renderHintergrund();
+        await ladeBilder();
+        $('editorLeer').style.display = 'none';
+        await baueCanvas();
+        state.geaendert = false;
+    } catch (e) {
+        // Ohne Meldung bliebe der Editor stumm leer (z.B. wenn der Browser pdf.js nicht ausführen kann).
+        console.error('[Urkunden-Designer] Vorlage konnte nicht angezeigt werden:', e);
+        melde(`Die Vorlage konnte nicht angezeigt werden: ${e.message}`, 'error');
+    }
 }
 
 async function baueCanvas() {
