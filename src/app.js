@@ -37,7 +37,7 @@ import { getClientVerteilungRoutes } from './routes/clientVerteilungRoutes.js';
 import { starteAnkuendigung } from './sync/ankuendigung.js';
 import { starteWeiterleitung } from './sync/port80.js';
 
-dotenv.config();
+dotenv.config({ quiet: true });
 
 // Knex-Konfiguration laden
 import { createRequire } from 'module';

@@ -26,7 +26,7 @@
     "@material-design-icons/font": "^0.14.15",
     "@pdf-lib/fontkit": "^1.1.1",
     "bonjour-service": "^1.4.4",
-    "dotenv": "^16.4.5",
+    "dotenv": "^18.0.5",
     "express": "^4.19.2",
     "express-pouchdb": "^4.2.0",
     "fabric": "^7.4.0",
@@ -38,17 +38,17 @@
     "nodemailer": "^10.0.13",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.3.289",
-    "pg": "^8.11.5",
+    "pg": "^8.23.1",
     "pouchdb": "^9.0.0",
     "pouchdb-find": "^9.0.0",
     "pouchdb-node": "^9.0.0",
     "qrcode-generator": "^2.0.4",
-    "sqlite3": "^5.1.7",
+    "sqlite3": "^6.0.1",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.2/xlsx-0.20.2.tgz"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.1",
-    "electron": "^44.4.5",
+    "@playwright/test": "^1.63.0",
+    "electron": "^44.5.1",
     "electron-builder": "^26.15.3",
     "embedded-postgres": "^18.4.0-beta.17"
   }

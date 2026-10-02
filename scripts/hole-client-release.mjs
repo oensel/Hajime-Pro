@@ -9,7 +9,7 @@ import { createRequire } from 'module';
 import dotenv from 'dotenv';
 import { pruefeDatei } from '../desktop/updateLogik.js';
 
-dotenv.config();
+dotenv.config({ quiet: true });
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json');
 const REPO = process.env.CLIENT_RELEASE_REPO || 'oensel/Hajime-Pro';
