@@ -160,8 +160,8 @@ export function getClientApiRoutes(holeClient) {
         res.json({ gesperrt });
     });
 
-    router.get('*', (req, res) => res.status(404).json({ success: false, error: NUR_AM_SERVER }));
-    router.all('*', (req, res) => res.status(403).json({ success: false, error: NUR_AM_SERVER }));
+    router.get('/{*pfad}', (req, res) => res.status(404).json({ success: false, error: NUR_AM_SERVER }));
+    router.all('/{*pfad}', (req, res) => res.status(403).json({ success: false, error: NUR_AM_SERVER }));
 
     return router;
 }

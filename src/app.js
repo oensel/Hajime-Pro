@@ -62,6 +62,13 @@ const __dirname = path.dirname(__filename);
 
 import { requireWriteAuth } from './middleware/auth.js';
 
+// Express 5 lässt req.body undefined, wenn kein Body geparst wurde (Express 4: {}). Die Controller und
+// resolveTurnierId lesen req.body.<feld> direkt, daher hier wieder das gewohnte leere Objekt setzen.
+const bodyLeerFallback = (req, res, next) => {
+    if (req.body === undefined) req.body = {};
+    next();
+};
+
 if (syncKonfig.istClient) {
     // ---------------------------------------------------------------------------------------
     // Client-Knoten (Notebook/Tablet): KEINE relationale DB. Lokale PouchDB unter /db, eine
@@ -72,6 +79,7 @@ if (syncKonfig.istClient) {
     app.set('sync', client);
     app.use('/db', client.middleware); // vor express.json(), siehe Server-Zweig
     app.use(express.json({ limit: '15mb' }));
+    app.use(bodyLeerFallback);
     app.use(clientStatischeSeiten(path.join(__dirname, '../public')));
     app.use(express.static(path.join(__dirname, '../public')));
     app.use('/api/sync', getSyncRoutes(() => app.get('sync')));
@@ -130,6 +138,7 @@ if (syncKonfig.istClient) {
     const jsonStandard = express.json({ limit: '15mb' });
     const IMPORT_ROUTE = /^\/api\/turniere\/(import|\d+\/import-ergebnisse)$/;
     app.use((req, res, next) => (IMPORT_ROUTE.test(req.path) ? jsonImport : jsonStandard)(req, res, next));
+    app.use(bodyLeerFallback);
     app.use(express.static(path.join(__dirname, '../public')));
 
     if (kopplung) {
