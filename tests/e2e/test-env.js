@@ -29,5 +29,8 @@ export const testServerEnv = {
     // bisherige. Die Suite braucht den reinen SQLite-Offline-Server ohne Sync/Cluster.
     DB_CLIENT: '',
     SYNC_ROLLE: '',
-    CLUSTER_KNOTEN: ''
+    CLUSTER_KNOTEN: '',
+    // Diese Suite läuft bewusst mit den ALTVARIABLEN (IS_OFFLINE=true) und deckt so den Altpfad von
+    // src/config/betriebsmodus.cjs ab; die Sync- und die Cluster-Suite nutzen den neuen BETRIEBSMODUS.
+    BETRIEBSMODUS: ''
 };

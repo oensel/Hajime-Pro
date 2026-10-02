@@ -5,6 +5,8 @@ import { fileURLToPath } from 'url';
 import { resolveUserVereinName, hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
 import { turnierHatEchteKaempfe } from './poolController.js';
 import { FachFehler } from '../utils/fachFehler.js';
+import betriebsmodus from '../config/betriebsmodus.cjs';
+const { istEinzelbenutzerBetrieb } = betriebsmodus;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -84,7 +86,7 @@ export const HALLEN_KONTEXT = Object.freeze({ istGastgeberVerein: true, istPrivi
 
 async function ermittleKontext(knex, req, turnier) {
     const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
-    const istGastgeberVerein = process.env.IS_OFFLINE === 'true' || hatVereinsZugriffAufTurnier(user, turnier);
+    const istGastgeberVerein = istEinzelbenutzerBetrieb() || hatVereinsZugriffAufTurnier(user, turnier);
     return {
         istGastgeberVerein,
         istPrivilegiert: istGastgeberVerein || !!(user && user.ist_super_admin),
@@ -255,7 +257,7 @@ export async function getTeilnehmerByTurnier(knex, req, res) {
         const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
         const userVereinName = user ? await resolveUserVereinName(knex, user) : null;
 
-        const istGastgeberVerein = process.env.IS_OFFLINE === 'true' || hatVereinsZugriffAufTurnier(user, turnier);
+        const istGastgeberVerein = istEinzelbenutzerBetrieb() || hatVereinsZugriffAufTurnier(user, turnier);
 
         let query = knex('turnier_teilnehmer').where({ turnier_id: parseInt(turnierId) });
 
@@ -293,7 +295,7 @@ export async function deleteTeilnehmer(knex, req, res) {
             return res.status(409).json({ success: false, error: TEILNEHMERLISTE_GESPERRT_FEHLER });
         }
 
-        const istGastgeberVerein = process.env.IS_OFFLINE === 'true' || hatVereinsZugriffAufTurnier(user, turnier);
+        const istGastgeberVerein = istEinzelbenutzerBetrieb() || hatVereinsZugriffAufTurnier(user, turnier);
         if (!istGastgeberVerein) {
             return res.status(403).json({ success: false, error: 'Nur Mitglieder des ausrichtenden Vereins dürfen Teilnehmer endgültig löschen. Zum Zurückziehen der eigenen Anmeldung bitte die entsprechende Funktion verwenden.' });
         }
@@ -668,7 +670,7 @@ export async function aendereStatusFelder(knex, req, res) {
         const turnier = await knex('turniere').where({ id: athlet.turnier_id }).first();
         const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
 
-        const istGastgeberVerein = process.env.IS_OFFLINE === 'true' || hatVereinsZugriffAufTurnier(user, turnier);
+        const istGastgeberVerein = istEinzelbenutzerBetrieb() || hatVereinsZugriffAufTurnier(user, turnier);
         if (!istGastgeberVerein) {
             // Nicht-Gastgeber-Vereine dürfen Gewogen/Lizenz/Bezahlt/Anmeldestatus nicht anfassen
             // (physische Verifikation am Wiegetisch bzw. zentrale Anmeldeverwaltung des
@@ -1120,7 +1122,7 @@ async function ladeImportKontext(knex, req) {
     }
 
     const userVereinName = await resolveUserVereinName(knex, user);
-    const istOffline = process.env.IS_OFFLINE === 'true';
+    const istOffline = istEinzelbenutzerBetrieb();
     const istGastgeberVerein = istOffline || hatVereinsZugriffAufTurnier(user, turnier);
     const istSuperAdmin = !!user.ist_super_admin;
 

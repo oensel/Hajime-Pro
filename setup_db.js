@@ -1,5 +1,6 @@
 import knexLib from 'knex';
 import knexConfig from './knexfile.cjs';
+import betriebsmodus from './src/config/betriebsmodus.cjs';
 import dotenv from 'dotenv';
 import { readFileSync } from 'fs';
 import path from 'path';
@@ -8,19 +9,28 @@ import { fileURLToPath } from 'url';
 dotenv.config({ quiet: true });
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const environment = process.env.IS_OFFLINE === 'true' ? 'offline' : 'online';
+const bm = betriebsmodus.liesBetriebsmodus();
+if (bm.fehler.length) {
+    bm.fehler.forEach(f => console.error(`❌ [Betriebsmodus] ${f}`));
+    process.exit(1);
+}
+if (!bm.knexUmgebung) {
+    console.error(`❌ Abgebrochen: Im Modus ${bm.modus} gibt es keine relationale Datenbank, die sich zurücksetzen ließe.`);
+    process.exit(1);
+}
+const environment = bm.knexUmgebung;
 const knex = knexLib(knexConfig[environment]);
 
-// Dieses Skript leert die komplette Datenbank (DROP TABLE) und baut sie leer neu auf. Läuft
-// IS_OFFLINE versehentlich nicht auf 'true' (z.B. vergessene .env-Umschaltung), würde das ohne
-// jede Rückfrage die ONLINE-Datenbank treffen — inklusive vereine/benutzer aller Clubs. Für den
-// Online-Modus daher eine explizite, bewusste Bestätigung verlangen.
+// Dieses Skript leert die komplette Datenbank (DROP TABLE) und baut sie leer neu auf. Läuft es versehentlich
+// gegen die PostgreSQL-Datenbank (z.B. vergessene .env-Umschaltung), würde das ohne jede Rückfrage die Cloud-
+// bzw. Hallen-Datenbank treffen — inklusive vereine/benutzer aller Clubs bzw. des laufenden Turniers. Für
+// PostgreSQL daher eine explizite, bewusste Bestätigung verlangen.
 if (environment === 'online' && process.env.CONFIRM_ONLINE_RESET !== 'JA_WIRKLICH_LOESCHEN') {
     console.error(
-        '❌ Abgebrochen: setup_db.js würde im ONLINE-Modus laufen und DIE GESAMTE Cloud-Datenbank ' +
+        `❌ Abgebrochen: setup_db.js würde gegen die PostgreSQL-Datenbank laufen (Modus ${bm.modus}) und sie KOMPLETT ` +
         '(inkl. aller Vereine, Benutzer und Turniere) löschen.\n' +
         '   Falls das wirklich beabsichtigt ist, setze zusätzlich CONFIRM_ONLINE_RESET=JA_WIRKLICH_LOESCHEN.\n' +
-        '   Für den normalen Offline-Kiosk-Aufbau IS_OFFLINE=true in der .env setzen.'
+        '   Für den lokalen Entwicklungsaufbau mit SQLite BETRIEBSMODUS=server und DB_CLIENT=sqlite in der .env setzen.'
     );
     process.exit(1);
 }

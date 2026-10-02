@@ -23,6 +23,7 @@ import { getMannschaftRoutes, getMannschaftskampfRoutes } from './routes/mannsch
 import { getUrkundenRoutes } from './routes/urkundenRoutes.js';
 import { ensureSuperAdmin } from './utils/superAdmin.js';
 import { waehleKnexUmgebung } from './utils/dbUmgebung.js';
+import betriebsmodus from './config/betriebsmodus.cjs';
 import { liesSyncKonfig } from './sync/konfig.js';
 import { starteSyncDienst } from './sync/syncDienst.js';
 import { getSyncRoutes } from './routes/syncRoutes.js';
@@ -44,6 +45,15 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const knexConfig = require('../knexfile.cjs');
 
+// Betriebsmodus einmal auswerten (cloud | server | client, siehe src/config/betriebsmodus.cjs). Widersprüchliche
+// Einstellungen verhindern den Start — lieber gar nicht starten als in einem halben Zustand laufen.
+const bm = betriebsmodus.liesBetriebsmodus();
+bm.warnungen.forEach(w => console.warn(`[Betriebsmodus] Hinweis: ${w}`));
+if (bm.fehler.length) {
+    bm.fehler.forEach(f => console.error(`[Betriebsmodus] ${f}`));
+    console.error('[Betriebsmodus] Server wird nicht gestartet.');
+    process.exit(1);
+}
 const syncKonfig = liesSyncKonfig();
 // Server-Cluster nur für Hallen-Server (SYNC_ROLLE=server) mit CLUSTER_KNOTEN.
 const clusterKonfig = syncKonfig.istServer ? liesClusterKonfig() : { aktiv: false };
@@ -89,9 +99,9 @@ if (syncKonfig.istClient) {
     const knex = knexLib(knexConfig[environment]);
 
     // Der Super-Admin-Bootstrap betrifft nur den Online-Mehrbenutzerbetrieb (Vereins-Erstfreigabe) —
-    // der Hallenbetrieb (IS_OFFLINE=true, auch mit DB_CLIENT=pg) arbeitet mit seinem eigenen
+    // der Hallenbetrieb (BETRIEBSMODUS=server, bisher IS_OFFLINE=true) arbeitet mit seinem eigenen
     // isolierten Mock-User, siehe requireAuth.
-    if (process.env.IS_OFFLINE !== 'true') {
+    if (bm.mehrbenutzer) {
         ensureSuperAdmin(knex);
     }
 
@@ -156,7 +166,7 @@ if (syncKonfig.istClient) {
         }));
     }
 
-    if (sync && process.env.MDNS_AKTIV !== 'false') {
+    if (sync && bm.mdns) {
         starteAnkuendigung({
             name: process.env.MDNS_NAME || 'turnier',
             port: Number(PORT),
@@ -165,7 +175,7 @@ if (syncKonfig.istClient) {
             modus: () => sync.modus()
         });
     }
-    if (sync && process.env.PORT80_WEITERLEITUNG !== 'false' && Number(PORT) !== 80) {
+    if (sync && bm.port80 && Number(PORT) !== 80) {
         starteWeiterleitung({ zielPort: Number(PORT) });
     }
 
@@ -232,7 +242,7 @@ app.get('/api/graduierungen', (req, res) => {
 });
 
 app.get('/api/config', (req, res) => {
-    res.json({ isOffline: process.env.IS_OFFLINE === 'true' || syncKonfig.istClient, syncRolle: syncKonfig.rolle });
+    res.json({ isOffline: bm.einzelbenutzer, syncRolle: syncKonfig.rolle, betriebsmodus: bm.modus });
 });
 
 if (syncKonfig.istClient) {
@@ -244,12 +254,11 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, syncKonfig.istClient ? '../public/client.html' : '../public/turniere.html'));
 });
 
-// LISTEN_HOST (optional): nur an diese Adresse binden. Der Desktop-Client (desktop/main.js) setzt
-// 127.0.0.1, damit der Client-Knoten nicht im Hallen-WLAN erreichbar ist (und keine Firewall-
-// Abfrage auslöst). Ohne Variable wie bisher auf allen Schnittstellen.
-const LISTEN_HOST = process.env.LISTEN_HOST || undefined;
-app.listen(PORT, LISTEN_HOST, () => {
-    console.log(`🚀 Hajime Pro läuft auf http://${LISTEN_HOST || 'localhost'}:${PORT}`);
+// Bindeadresse (bm.listenHost): der Desktop-Client (desktop/main.js) setzt LISTEN_HOST=127.0.0.1, damit er nicht im
+// WLAN erreichbar ist und keine Firewall-Abfrage auslöst. Ein Server bindet sonst auf allen Schnittstellen — ob der
+// Browser lokal läuft oder ein Client im LAN zugreift, macht für ihn keinen Unterschied.
+app.listen(PORT, bm.listenHost, () => {
+    console.log(`🚀 Hajime Pro läuft auf http://${bm.listenHost || 'localhost'}:${PORT} (Modus ${bm.modus})`);
 });
 
 export { app };

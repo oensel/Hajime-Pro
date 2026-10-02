@@ -125,6 +125,7 @@ function koppeln(serverUrlStart, grund) {
 async function starteClientKnoten({ serverUrl, secret }) {
     const port = await freierPort();
     Object.assign(process.env, {
+        BETRIEBSMODUS: 'client',
         SYNC_ROLLE: 'client',
         SYNC_SERVER_URL: serverUrl || 'http://127.0.0.1:9', // ohne bekannte Adresse: offline, bis die Suche einen Server findet
         SYNC_SECRET: secret || '',
