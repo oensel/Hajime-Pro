@@ -1,9 +1,12 @@
-// Liest die Sync-Einstellungen aus der Umgebung. SYNC_ROLLE entscheidet, ob dieser Knoten eine
+// Liest die Sync-Einstellungen aus der Umgebung. Der Betriebsmodus (BETRIEBSMODUS, bzw. SYNC_ROLLE bei den
+// Altvariablen; siehe src/config/betriebsmodus.cjs) entscheidet, ob dieser Knoten eine
 // Dokument-DB betreibt: 'server' = Hallen-Server (relationale DB + /db + Brücke), 'client' =
 // Notebook/Tablet (nur lokale PouchDB, repliziert zu SYNC_SERVER_URL), leer = heutiges Verhalten
 // ohne Sync (Cloud).
+import betriebsmodus from '../config/betriebsmodus.cjs';
+
 export function liesSyncKonfig(env = process.env) {
-    const rolle = env.SYNC_ROLLE === 'server' || env.SYNC_ROLLE === 'client' ? env.SYNC_ROLLE : null;
+    const rolle = betriebsmodus.liesBetriebsmodus(env).syncRolle;
     return {
         rolle,
         istServer: rolle === 'server',

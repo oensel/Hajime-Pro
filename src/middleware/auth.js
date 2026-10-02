@@ -1,12 +1,14 @@
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import { hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
+import betriebsmodus from '../config/betriebsmodus.cjs';
+const { istEinzelbenutzerBetrieb } = betriebsmodus;
 dotenv.config({ quiet: true });
 
 const JWT_SECRET = process.env.JWT_SECRET || 'hajime_pro_secret_key_123456!';
 
 export async function requireAuth(req, res, next) {
-    if (process.env.IS_OFFLINE === 'true') {
+    if (istEinzelbenutzerBetrieb()) {
         req.user = { id: 'offline_user', email: 'offline@hajime.os' };
         
         const knex = req.app.get('knex');
@@ -125,7 +127,7 @@ async function resolveTurnierId(knex, req) {
  */
 export function requireTournamentEditAccess(knex) {
     return async (req, res, next) => {
-        if (process.env.IS_OFFLINE === 'true') {
+        if (istEinzelbenutzerBetrieb()) {
             return next();
         }
 
@@ -204,7 +206,7 @@ export function requireTurnierAktiv(knex) {
  */
 export function requireVereinFreigabe(knex) {
     return async (req, res, next) => {
-        if (process.env.IS_OFFLINE === 'true') {
+        if (istEinzelbenutzerBetrieb()) {
             return next();
         }
 

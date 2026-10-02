@@ -15,11 +15,12 @@ export const CLIENT_TEST_DOKUMENTE = './data/test-sync-client';
 
 export const syncServerEnv = {
     ...process.env,
-    IS_OFFLINE: 'true',
+    BETRIEBSMODUS: 'server',
+    IS_OFFLINE: '',
     DB_CLIENT: 'sqlite',
     DB_SQLITE_PATH: SYNC_TEST_SQLITE_PATH,
     PORT: String(SYNC_TEST_PORT),
-    SYNC_ROLLE: 'server',
+    SYNC_ROLLE: '',
     SYNC_DATENVERZEICHNIS: SYNC_TEST_DOKUMENTE,
     SYNC_SECRET: SYNC_TEST_SECRET,
     MDNS_AKTIV: 'false',
@@ -33,9 +34,10 @@ export const syncServerEnv = {
 
 export const clientEnv = {
     ...process.env,
+    BETRIEBSMODUS: 'client',
     IS_OFFLINE: '',
     PORT: String(CLIENT_TEST_PORT),
-    SYNC_ROLLE: 'client',
+    SYNC_ROLLE: '',
     SYNC_SERVER_URL: SYNC_BASE_URL,
     SYNC_SECRET: SYNC_TEST_SECRET,
     SYNC_DATENVERZEICHNIS: CLIENT_TEST_DOKUMENTE,

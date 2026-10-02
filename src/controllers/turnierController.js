@@ -2,6 +2,8 @@ import { hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../ut
 import { exportiereVorlagen, importiereVorlagen } from '../services/urkundenVorlagenTransfer.js';
 import { entfernungZuPlzInKm } from '../utils/entfernungHelper.js';
 import { turnierHatEchteKaempfe } from './poolController.js';
+import betriebsmodus from '../config/betriebsmodus.cjs';
+const { istEinzelbenutzerBetrieb } = betriebsmodus;
 
 // Anmeldeschluss wird als reines Datum (ohne Uhrzeit) gespeichert; die Frist gilt bis
 // einschließlich 24:00 Uhr Ortszeit dieses Tages (identische Logik zu teilnehmerController.js).
@@ -222,7 +224,7 @@ export async function getTurnier(knex, req, res) {
 
         // Entwurf: nur für Mitglieder des ausrichtenden Vereins sichtbar (Zustand 1: "Nur für
         // den Ersteller sichtbar"). Offline-Betrieb ist Single-Tenant und bleibt ausgenommen.
-        if (statusEffektiv === 'entwurf' && process.env.IS_OFFLINE !== 'true') {
+        if (statusEffektiv === 'entwurf' && !istEinzelbenutzerBetrieb()) {
             const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
             if (!hatVereinsZugriffAufTurnier(user, turnier)) {
                 return res.status(403).json({ error: 'Dieses Turnier befindet sich noch im Entwurf und ist nicht sichtbar.' });
@@ -276,7 +278,7 @@ export async function ladeAusschreibung(knex, req, res) {
         const hatEchteKaempfe = await turnierHatEchteKaempfe(knex, turnier.id);
         const statusEffektiv = ermittleEffektivenStatus(turnier, { hatEchteKaempfe });
 
-        if (statusEffektiv === 'entwurf' && process.env.IS_OFFLINE !== 'true') {
+        if (statusEffektiv === 'entwurf' && !istEinzelbenutzerBetrieb()) {
             const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
             if (!hatVereinsZugriffAufTurnier(user, turnier)) {
                 return res.status(403).json({ error: 'Dieses Turnier befindet sich noch im Entwurf und ist nicht sichtbar.' });
@@ -313,7 +315,7 @@ export async function getTurniere(knex, req, res) {
             } else {
                 query = query.whereNull('id'); // kein Verein -> keine eigenen Turniere
             }
-        } else if (process.env.IS_OFFLINE !== 'true') {
+        } else if (!istEinzelbenutzerBetrieb()) {
             // Entwurf: nur für den ausrichtenden Verein sichtbar (Zustand 1 der Spezifikation).
             // Offline-Betrieb ist Single-Tenant und bleibt ausgenommen.
             if (user && user.verein_id) {
@@ -651,7 +653,7 @@ async function importWettkampfdaten(trx, turnierId, { kampfflaechen, pools, teil
 // Aufrufer muss das vorher bestätigen lassen (siehe Bestätigungsdialog in turniere.html).
 export async function importTurnier(knex, req, res) {
     try {
-        if (process.env.IS_OFFLINE !== 'true') {
+        if (!istEinzelbenutzerBetrieb()) {
             return res.status(403).json({ success: false, error: 'Der Turnier-Import ist nur im Offline-Modus verfügbar.' });
         }
 
@@ -772,7 +774,7 @@ export async function importTurnier(knex, req, res) {
 // anderes). Schützt per Turnier-ID-Abgleich davor, versehentlich die falsche Datei hochzuladen.
 export async function importTurnierErgebnisse(knex, req, res) {
     try {
-        if (process.env.IS_OFFLINE === 'true') {
+        if (istEinzelbenutzerBetrieb()) {
             return res.status(403).json({ success: false, error: 'Der Ergebnis-Upload ist nur im Online-Modus verfügbar.' });
         }
 
@@ -881,7 +883,7 @@ export async function exportTurnier(knex, req, res) {
         }
 
         const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
-        const hatZugriff = process.env.IS_OFFLINE === 'true' || hatVereinsZugriffAufTurnier(user, turnier);
+        const hatZugriff = istEinzelbenutzerBetrieb() || hatVereinsZugriffAufTurnier(user, turnier);
 
         if (!hatZugriff) {
             return res.status(403).json({ success: false, error: 'Nur freigegebene Mitglieder des ausrichtenden Vereins dürfen das Turnier exportieren.' });

@@ -81,14 +81,12 @@ else
     cat > "$ENV_DATEI" <<EOF
 # Erzeugt von deploy/linux/install.sh am $(date -Iseconds)
 PORT=$APP_PORT
-IS_OFFLINE=true
-DB_CLIENT=pg
+BETRIEBSMODUS=server
 DB_HOST=127.0.0.1
 DB_PORT=5432
 DB_NAME=$DB_NAME
 DB_USER=$DB_USER
 DB_PASSWORD=$DB_PASSWORD
-SYNC_ROLLE=server
 SYNC_DATENVERZEICHNIS=$INSTALL_DIR/data/dokumente
 SYNC_SECRET=$(zufall 32)
 CLIENT_DOWNLOADS_VERZEICHNIS=$INSTALL_DIR/data/client-downloads

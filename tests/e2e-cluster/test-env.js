@@ -32,7 +32,8 @@ export function serverEnv(name) {
     const p = KNOTEN[k.partner];
     return {
         ...process.env,
-        IS_OFFLINE: 'true',
+        BETRIEBSMODUS: 'server',
+        IS_OFFLINE: '',
         DB_CLIENT: 'pg',
         DB_HOST: '127.0.0.1',
         DB_PORT: String(k.pgPort),
@@ -40,7 +41,7 @@ export function serverEnv(name) {
         DB_PASSWORD: 'unbenutzt', // pg_hba: trust
         DB_NAME,
         PORT: String(k.appPort),
-        SYNC_ROLLE: 'server',
+        SYNC_ROLLE: '',
         SYNC_DATENVERZEICHNIS: k.dokumente,
         SYNC_SECRET: SECRET,
         MDNS_AKTIV: 'false',
@@ -59,9 +60,10 @@ export function serverEnv(name) {
 export function clientEnv() {
     return {
         ...process.env,
+        BETRIEBSMODUS: 'client',
         IS_OFFLINE: '',
         PORT: String(CLIENT_PORT),
-        SYNC_ROLLE: 'client',
+        SYNC_ROLLE: '',
         SYNC_SERVER_URL: VIP_URL,
         SYNC_SECRET: SECRET,
         SYNC_DATENVERZEICHNIS: path.join(BASIS, 'dokumente-client'),

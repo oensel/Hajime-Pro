@@ -1,8 +1,8 @@
-// Wählt die knex-Umgebung aus knexfile.cjs. IS_OFFLINE=true heißt "Hallenbetrieb" — welche
-// relationale DB dort läuft, steuert DB_CLIENT: 'pg' (Pflicht im Server-Cluster, nutzt dieselben
-// DB_HOST/DB_USER/...-Variablen wie die Cloud-Konfiguration) oder SQLite (Standard, Entwicklung
-// und einzelne Hallenrechner). Ohne IS_OFFLINE=true immer die Cloud-Konfiguration.
+// Wählt die knex-Umgebung aus knexfile.cjs: "online" = PostgreSQL, "offline" = SQLite. Die Entscheidung
+// trifft src/config/betriebsmodus.cjs (cloud/server -> PostgreSQL; server mit DB_CLIENT=sqlite bzw. das
+// bisherige IS_OFFLINE=true ohne DB_CLIENT=pg -> SQLite). Der Client hat keine relationale Datenbank.
+import betriebsmodus from '../config/betriebsmodus.cjs';
+
 export function waehleKnexUmgebung(env = process.env) {
-    if (env.IS_OFFLINE !== 'true') return 'online';
-    return env.DB_CLIENT === 'pg' ? 'online' : 'offline';
+    return betriebsmodus.liesBetriebsmodus(env).knexUmgebung || 'online';
 }

@@ -3,7 +3,7 @@
 ## Überblick
 
 Der Desktop-Client ist eine Electron-Hülle um den bestehenden `src/app.js` — er startet den
-Server intern immer mit `SYNC_ROLLE=client` und bindet ihn per `LISTEN_HOST` nur an `127.0.0.1`
+Server intern immer mit `BETRIEBSMODUS=client` und bindet ihn per `LISTEN_HOST` nur an `127.0.0.1`
 (kein Netzwerkzugriff von außen, nur die eigene Electron-Oberfläche spricht mit ihm). Einstellungen,
 Turnier-Dokumente und geladene Updates liegen unter `userData` (`einstellungen.json`, `dokumente/`,
 `updates/`) — beim Deinstallieren bleibt dieses Verzeichnis erhalten, außer es wird manuell gelöscht.

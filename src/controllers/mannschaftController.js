@@ -3,6 +3,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { resolveUserVereinName, hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
 import { turnierHatEchteKaempfe, poolHatBereitsEchteKaempfe, regeneriereMannschaftsPool, ermittleGoldenScoreEinstellungen } from './poolController.js';
+import betriebsmodus from '../config/betriebsmodus.cjs';
+const { istEinzelbenutzerBetrieb } = betriebsmodus;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -83,7 +85,7 @@ export async function createMannschaft(knex, req, res) {
             return res.status(409).json({ success: false, error: TEILNEHMERLISTE_GESPERRT_FEHLER });
         }
 
-        const istGastgeberVerein = process.env.IS_OFFLINE === 'true' || hatVereinsZugriffAufTurnier(user, turnier);
+        const istGastgeberVerein = istEinzelbenutzerBetrieb() || hatVereinsZugriffAufTurnier(user, turnier);
         const userVereinName = await resolveUserVereinName(knex, user);
 
         if (!turnier_id || !bezeichnung || (!istGastgeberVerein && !verein)) {
@@ -181,7 +183,7 @@ export async function getMannschaftById(knex, req, res) {
 
 async function pruefeMannschaftZugriff(knex, req, mannschaft) {
     if (!mannschaft) return { erlaubt: false, status: 404, error: 'Mannschaft nicht gefunden.' };
-    if (process.env.IS_OFFLINE === 'true') return { erlaubt: true };
+    if (istEinzelbenutzerBetrieb()) return { erlaubt: true };
 
     const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
     const turnier = await knex('turniere').where({ id: mannschaft.turnier_id }).first();

@@ -71,13 +71,13 @@ sobald der Standby streamt, und nach 5 s ohne Standby auf **asynchron** („ohne
 
 ## 3. Anwendung (`/opt/hajime-pro/.env`)
 
+`BETRIEBSMODUS=server` ersetzt die früheren Variablen `IS_OFFLINE=true`, `DB_CLIENT=pg` und `SYNC_ROLLE=server` (PostgreSQL ist im Modus `server` Standard). Bestehende `.env`-Dateien mit den alten Variablen laufen unverändert weiter.
+
 | Variable | server1 | server2 |
 |---|---|---|
-| `IS_OFFLINE` | `true` | `true` |
-| `DB_CLIENT` | `pg` | `pg` |
+| `BETRIEBSMODUS` | `server` | `server` |
 | `DB_HOST` / `DB_PORT` / `DB_NAME` | `127.0.0.1` / `5432` / `hajime` | gleich |
 | `DB_USER` / `DB_PASSWORD` | `hajime` / … | gleich |
-| `SYNC_ROLLE` | `server` | `server` |
 | `SYNC_SECRET` | **Pflicht im Cluster (auf beiden Servern gleich)** — gemeinsames Geheimnis, auch für die Desktop-Clients; fehlt es, startet der Server nicht | gleich |
 | `SYNC_DATENVERZEICHNIS` | `/opt/hajime-pro/data/dokumente` | gleich |
 | `CLUSTER_KNOTEN` | `server1` | `server2` |
