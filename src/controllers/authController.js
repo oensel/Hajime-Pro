@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { hashPassword, verifyPassword } from '../utils/password.js';
 import { ladeBenutzerMitAktivemVerein, ladeVereineFuerBenutzer } from '../utils/vereinHelper.js';
 import dotenv from 'dotenv';
-dotenv.config();
+dotenv.config({ quiet: true });
 
 const JWT_SECRET = process.env.JWT_SECRET || 'hajime_pro_secret_key_123456!';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
