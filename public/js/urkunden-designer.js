@@ -451,8 +451,10 @@ async function speichern() {
     try {
         await api(`/api/urkunden/vorlagen/${state.vorlage.id}`, { method: 'PUT', body: { felder: state.felder } });
         state.geaendert = false;
+        // Kein Neuladen/Neurendern: der Editor hält bereits den gespeicherten Stand; ein
+        // asynchrones Neuladen würde währenddessen hinzugefügte Felder wieder überschreiben.
+        state.vorlage.felder = structuredClone(state.felder);
         melde('Vorlage gespeichert.');
-        await ladeVorlagen(state.vorlage.id);
     } catch (e) { melde(e.message, 'error'); }
 }
 
