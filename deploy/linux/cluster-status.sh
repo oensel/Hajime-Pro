@@ -5,6 +5,7 @@ set -uo pipefail
 
 CLUSTER_ENV="${CLUSTER_ENV:-/etc/hajime/cluster.env}"
 ENV_DATEI="${ENV_DATEI:-/opt/hajime-pro/.env}"
+# shellcheck source=/dev/null
 [ -f "$CLUSTER_ENV" ] && set -a && . "$CLUSTER_ENV" && set +a
 lies() { [ -f "$ENV_DATEI" ] && grep -E "^$1=" "$ENV_DATEI" | tail -1 | cut -d= -f2-; }
 
