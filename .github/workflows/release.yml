@@ -1,4 +1,4 @@
-# Release bei Tag v* (npm version <patch|minor|major> && git push --follow-tags):
+# Stage prod: Release bei Tag v* (npm version <patch|minor|major> && git push --follow-tags):
 # Tests -> Versionsprüfung -> Build je Plattform (+ Rauchtest) + Android-APK -> signieren -> Server-Paket (mit den
 # signierten Client-Dateien) -> GitHub-Release.
 name: Release
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  tests:
+  tests:  # dev + test + qa im vollen Umfang (ci.yml, Tag => keine Pfadfilter)
     uses: ./.github/workflows/ci.yml
 
   pruefen:
@@ -24,6 +24,7 @@ jobs:
 
   build:
     needs: [tests, pruefen]
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
