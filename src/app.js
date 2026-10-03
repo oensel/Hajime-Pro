@@ -127,6 +127,26 @@ if (syncKonfig.istClient) {
         console.log(`[Datenbank] Schema aktuell${neue.length ? ` (${neue.length} Migration(en) ausgeführt)` : ''}.`);
     }
 
+    // Cloud-Container: auf Wunsch (DB_AUTO_MIGRATE=true) beim Start migrieren, über DB_URL_MIGRATION (Direct-/
+    // Session-Verbindung; der Supabase-Transaction-Pooler verträgt keine Migrationen). Standardmäßig aus, damit
+    // eine gemeinsame Cloud-DB nie ungefragt migriert wird.
+    if (bm.istCloud && process.env.DB_AUTO_MIGRATE === 'true') {
+        const migrationsKnex = knexLib({
+            ...knexConfig['online-migration'],
+            pool: { min: 0, max: 1 },
+            migrations: { directory: path.join(__dirname, '../migrations') }
+        });
+        try {
+            const [, neue] = await migrationsKnex.migrate.latest();
+            console.log(`[Datenbank] Schema aktuell${neue.length ? ` (${neue.length} Migration(en) ausgeführt)` : ''}.`);
+        } catch (e) {
+            console.error(`[Datenbank] Migration fehlgeschlagen: ${e.message}`);
+            process.exit(1);
+        } finally {
+            await migrationsKnex.destroy();
+        }
+    }
+
     // Der Super-Admin-Bootstrap betrifft nur den Online-Mehrbenutzerbetrieb (Vereins-Erstfreigabe) —
     // der Hallenbetrieb (BETRIEBSMODUS=server, bisher IS_OFFLINE=true) arbeitet mit seinem eigenen
     // isolierten Mock-User, siehe requireAuth.

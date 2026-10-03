@@ -1,0 +1,16 @@
+node_modules
+data
+dist-desktop
+playwright-report
+test-results
+.git
+.github
+.env
+.env.*
+!.env.cloud.example
+docs
+deploy
+desktop
+tests
+*.md
+!README.md
