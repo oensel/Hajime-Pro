@@ -74,6 +74,29 @@ test.describe.serial('Client-Verteilung', () => {
         }
     });
 
+    test('/api/client/version meldet ohne Dateien den Stand der automatischen Bereitstellung', async ({ request }) => {
+        rmSync(path.join(ordner, 'version.json'), { force: true });
+        const resp = await request.get('/api/client/version');
+        expect(resp.status()).toBe(404);
+        // In der Suite ist der Abruf aus (NODE_ENV=test) und nichts mitgeliefert -> "inaktiv".
+        expect((await resp.json()).status).toMatchObject({ phase: 'inaktiv' });
+        writeFileSync(path.join(ordner, 'version.json'), JSON.stringify({ version, dateien: {} }));
+    });
+
+    test('Download-Seite zeigt den Fortschritt, solange der Server die Dateien bereitstellt, und meldet Fehler', async ({ page }) => {
+        const antworte = (status) => page.route('**/api/client/version', route => route.fulfill({
+            status: 404, contentType: 'application/json', body: JSON.stringify({ success: false, error: 'keine Dateien', status })
+        }));
+        await antworte({ phase: 'kopiere', datei: 'b.dmg', fertig: 1, gesamt: 5, fehler: null });
+        await page.goto('/download');
+        await expect(page.locator('#downloadHinweis')).toContainText('stellt die Client-Dateien bereit (2 von 5)');
+        await page.unroute('**/api/client/version');
+        await antworte({ phase: 'fehler', fehler: 'Kein Release v1 gefunden', fertig: 0, gesamt: 0 });
+        await page.goto('/download');
+        await expect(page.locator('#downloadHinweis')).toContainText('Kein Release v1 gefunden');
+        await expect(page.locator('#downloadHinweis')).toContainText('regelmäßig erneut');
+    });
+
     test('Download-Seite ohne Client-Dateien zeigt einen Hinweis', async ({ page }) => {
         rmSync(path.join(ordner, 'version.json'));
         await page.goto('/download');

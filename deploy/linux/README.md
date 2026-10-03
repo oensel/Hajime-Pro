@@ -148,6 +148,13 @@ Desktop-Clients und Helfer ihn ohne feste IP finden (`MDNS_NAME`/`MDNS_AKTIV` in
 
 Test: `http://turnier.local/download` öffnet ohne Portangabe die Download-Seite.
 
+**Client-Dateien (Windows, macOS, Linux, Android):** Der Server holt sie beim Start selbst aus dem GitHub-Release
+zur eigenen Version (`src/sync/clientDateien.js`, Prüfung der Signatur, Wiederholung alle 15 Minuten) — dafür braucht
+er Internet. Ist das Repository privat, einmal ein Token mit Leserecht auf Releases mitgeben:
+`sudo CLIENT_RELEASE_TOKEN=ghp_… bash deploy/linux/install.sh` (bzw. `install-cluster.sh`; steht danach in der `.env`).
+Bis die Dateien da sind, zeigt `/download` den Stand an; `curl http://localhost:3000/api/client/version` liefert
+bis dahin 404 samt `status`. Das fertige Server-Paket (Notebook) braucht das nicht: es bringt die Dateien mit.
+
 ## Abläufe
 
 **Automatische Übernahme:** Der Master fällt aus oder meldet sich ungesund (PostgreSQL weg, Router

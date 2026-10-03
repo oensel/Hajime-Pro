@@ -38,3 +38,8 @@ data/
 /mobil/www/
 /mobil/node_modules/
 /dist-android/
+
+# Von der Release-Pipeline vor dem Build des Server-Pakets befüllt (Client-Dateien zum Mitliefern)
+/client-dateien/*
+!/client-dateien/.gitkeep
+/android-schluessel/

@@ -159,7 +159,9 @@ async function starteServer() {
         DB_NAME: 'hajime',
         PG_DATENVERZEICHNIS: path.join(basis, 'pg'),
         SYNC_DATENVERZEICHNIS: path.join(basis, 'dokumente'),
-        CLIENT_DOWNLOADS_VERZEICHNIS: path.join(basis, 'client-downloads')
+        CLIENT_DOWNLOADS_VERZEICHNIS: path.join(basis, 'client-downloads'),
+        // Im Installer mitgelieferte, signierte Client-Dateien (extraResources, siehe electron-builder.server.yml).
+        CLIENT_DATEIEN_MITGELIEFERT: app.isPackaged ? path.join(process.resourcesPath, 'client-dateien') : ''
     });
     status('Starte Datenbank und Server …');
     const expressApp = await importiereServer();

@@ -1,7 +1,8 @@
 // Download-Seite des Clients (turnier.local/download): erkennt das Betriebssystem am User-Agent und
 // bietet die passende Installationsdatei der aktuellen Serverversion an (Desktop-Installer bzw.
 // Android-App als APK). Wurde die Seite über den Kopplungs-QR-Code geöffnet (…/download#code=123456),
-// steht der Code in der Anleitung.
+// steht der Code in der Anleitung. Stellt der Server die Dateien gerade bereit (erster Start nach der
+// Installation), zeigt die Seite den Fortschritt und lädt sich danach von selbst.
 (async () => {
     const NAMEN = { 'win32-x64': 'Windows', 'darwin-universal': 'macOS', 'linux-x64': 'Linux', android: 'Android' };
     const ANLEITUNG = {
@@ -27,7 +28,18 @@
 
     const resp = await fetch('/api/client/version').catch(() => null);
     if (!resp || !resp.ok) {
-        hinweis.textContent = 'Auf diesem Server liegen noch keine Client-Dateien vor. Bitte die Turnierleitung, „npm run client:holen“ auszuführen.';
+        // Der Server stellt die Client-Dateien beim ersten Start selbst bereit (src/sync/clientDateien.js).
+        const status = resp ? (await resp.json().catch(() => ({}))).status : null;
+        if (status && ['unbekannt', 'kopiere', 'lade'].includes(status.phase)) {
+            hinweis.textContent = status.gesamt
+                ? `Der Server stellt die Client-Dateien bereit (${Math.min(status.fertig + 1, status.gesamt)} von ${status.gesamt}) – diese Seite aktualisiert sich selbst.`
+                : 'Der Server stellt die Client-Dateien bereit – diese Seite aktualisiert sich selbst.';
+            setTimeout(() => location.reload(), 3000);
+        } else if (status && status.phase === 'fehler') {
+            hinweis.textContent = `Die Client-Dateien konnten noch nicht bereitgestellt werden (${status.fehler}). Der Server versucht es regelmäßig erneut.`;
+        } else {
+            hinweis.textContent = 'Auf diesem Server liegen keine Client-Dateien vor. Bitte die Turnierleitung, „npm run client:holen“ auszuführen.';
+        }
         return;
     }
     const { version, dateien } = await resp.json();

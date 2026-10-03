@@ -210,11 +210,25 @@ if (syncKonfig.istClient) {
         // /downloads/<version>/<datei>) — ältere Stände im Verzeichnis bleiben unerreichbar.
         app.use(`/downloads/${encodeURIComponent(serverVersion)}`, express.static(path.join(path.resolve(downloadsVerzeichnis), serverVersion)));
         app.get('/download', (req, res) => res.sendFile(path.join(__dirname, '../public/download.html')));
+        // Client-Dateien selbst bereitstellen (mitgeliefert im Server-Paket oder aus dem GitHub-Release),
+        // damit nach der Installation keine Handarbeit nötig ist. In den Tests aus (kein Netzzugriff).
+        // Erst hier geladen: das Modul braucht desktop/ (Signaturprüfung), das im Cloud-Docker-Image fehlt.
+        const { erzeugeClientDateien } = await import('./sync/clientDateien.js');
+        const clientDateien = erzeugeClientDateien({
+            downloadsVerzeichnis,
+            version: serverVersion,
+            mitgeliefert: process.env.CLIENT_DATEIEN_MITGELIEFERT || '',
+            repo: process.env.CLIENT_RELEASE_REPO || 'oensel/Hajime-Pro',
+            token: process.env.CLIENT_RELEASE_TOKEN || process.env.GITHUB_TOKEN || '',
+            autoHolen: process.env.CLIENT_AUTO_HOLEN ? process.env.CLIENT_AUTO_HOLEN !== 'false' : process.env.NODE_ENV !== 'test'
+        });
+        clientDateien.starte();
         app.use('/api/client', getClientVerteilungRoutes({
             datenverzeichnis: syncKonfig.datenverzeichnis,
             downloadsVerzeichnis,
             version: serverVersion,
-            kopplung
+            kopplung,
+            clientDateienStatus: () => clientDateien.status()
         }));
     }
 

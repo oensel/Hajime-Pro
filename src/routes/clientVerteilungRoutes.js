@@ -8,14 +8,16 @@ import { requireSteuerungPasswort } from '../middleware/auth.js';
 import { erneuereCode, erzeugeSperre, normalisiereCode } from '../sync/kopplung.js';
 import { lokaleIpv4Adressen } from '../sync/ankuendigung.js';
 
-export function getClientVerteilungRoutes({ datenverzeichnis, downloadsVerzeichnis, version, kopplung }) {
+export function getClientVerteilungRoutes({ datenverzeichnis, downloadsVerzeichnis, version, kopplung, clientDateienStatus = () => null }) {
     const router = express.Router();
     const sperre = erzeugeSperre();
 
     router.get('/version', (req, res) => {
         const datei = path.join(path.resolve(downloadsVerzeichnis), version, 'version.json');
         if (!existsSync(datei)) {
-            return res.status(404).json({ success: false, error: `Für Version ${version} liegen am Server keine Client-Dateien vor.` });
+            // status: Stand der automatischen Bereitstellung (src/sync/clientDateien.js) — die Download-Seite
+            // zeigt ihn an, statt nur "keine Dateien".
+            return res.status(404).json({ success: false, error: `Für Version ${version} liegen am Server keine Client-Dateien vor.`, status: clientDateienStatus() });
         }
         res.type('application/json').send(readFileSync(datei, 'utf8'));
     });

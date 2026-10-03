@@ -46,14 +46,25 @@ npm run android:apk
 
 Nur das Web-Verzeichnis neu bauen: `npm run android:www`.
 
-## Installation
+## Installation auf den Geräten
 
-Die APK in `<CLIENT_DOWNLOADS_VERZEICHNIS>/<version>/` ablegen und mit `node scripts/signiere-client.mjs`
-in `version.json` aufnehmen (`.apk` wird als Plattform `android` erkannt). Die Release-Pipeline
-(`.github/workflows/release.yml`) baut die APK noch nicht — dafür fehlt ein Job mit JDK 21, Android-SDK
-und dem Keystore als Secret; bis dahin die signierte APK lokal bauen und dem Release hinzufügen. Danach öffnet
-ein Android-Gerät im Turnier-WLAN `http://turnier.local/download` (oder scannt den QR-Code auf
-`matten.html`), lädt die APK und installiert sie (einmalig „Aus dieser Quelle zulassen“).
+Am Hallen-Server ist nichts einzurichten: Die signierte APK gehört zu den Client-Dateien, die das Server-Paket mitbringt
+(bzw. ein Server aus dem Quellcode aus dem GitHub-Release holt) — siehe `desktop/README.md`, Abschnitt Release, und
+`src/sync/clientDateien.js`. Ein Android-Gerät im Turnier-WLAN scannt den QR-Code auf `matten.html` (oder öffnet
+`http://<Server-IP>:3000/download`), lädt die APK und installiert sie (einmalig „Aus dieser Quelle zulassen“).
+
+### Release-Signatur einmalig einrichten (GitHub-Secrets)
+
+`release.yml` baut die APK im Job `android` und bricht ab, solange der Keystore fehlt. Einmalig:
+
+```bash
+npm run android:schluessel
+```
+
+erzeugt `android-schluessel/hajime-android.jks` und gibt die vier Werte aus, die als Secrets im GitHub-Repository
+eingetragen werden: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`.
+Den Keystore und das Passwort sicher aufbewahren (nicht ins Repository): Alle späteren Versionen müssen mit demselben
+Schlüssel signiert sein, sonst lässt sich eine neue APK nicht über die alte installieren.
 
 ## Tests
 
