@@ -20,7 +20,26 @@ git clone <repo-url> Hajime-Pro && cd Hajime-Pro && sudo bash deploy/linux/insta
 `/opt/hajime-pro/.env` (mit zufälligen Passwörtern/Geheimnissen), Migrationen, systemd-Dienst
 (Autostart) und ufw-Regeln an und zeigt am Ende Adresse und Passwörter an. Erneutes Ausführen
 nach `git pull` = Update (`.env` und Daten bleiben). CouchDB ist nicht nötig: die Dokument-DB
-für die Client-Geräte ist in die App eingebaut. Der Zwei-Server-Cluster (unten) bleibt Handarbeit.
+für die Client-Geräte ist in die App eingebaut. Den Zwei-Server-Cluster richtet das nächste Skript ein.
+
+## Schnellstart: Zwei-Server-Cluster (geführt)
+
+Beide Server: Debian 12/13 oder Ubuntu 24.04+ ohne Desktop, feste IPs, eine freie VIP im selben Netz.
+
+```bash
+# server1 (legt alle Geheimnisse an -> /root/hajime-cluster-geheimnisse.env)
+sudo bash deploy/linux/install-cluster.sh --knoten server1 --eigene-ip 192.168.10.11 --partner-ip 192.168.10.12 --vip 192.168.10.10
+scp /root/hajime-cluster-geheimnisse.env root@192.168.10.12:/root/
+# server2 (baut PostgreSQL als Standby von server1 auf; server1 muss fertig sein)
+sudo bash deploy/linux/install-cluster.sh --knoten server2 --eigene-ip 192.168.10.12 --partner-ip 192.168.10.11 --vip 192.168.10.10
+hajime-cluster-status   # Zustand jederzeit (Rolle, Replikation, VIP, Partner)
+```
+
+Das Skript richtet Node.js, PostgreSQL-Replikation, Rollen, `pg_hba`, `.env`, systemd, Rückstufungs-Skript,
+keepalived und ufw ein (alle Optionen: `--help`); eine vorhandene Einzelserver-Installation wird zum server1.
+Wiederholbar (Update). Die Abschnitte unten beschreiben, was es einrichtet, und die Abnahme in der Halle.
+Test: `tests/unit/install-cluster.test.js` (erzeugte Konfiguration), CI-Job `cluster-installation`
+(`scripts/test-cluster-install-docker.sh`: zwei systemd-Container, Replikation und Failover).
 
 ## Netzplan
 
