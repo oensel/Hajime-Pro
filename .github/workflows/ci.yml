@@ -1,15 +1,104 @@
-# Tests bei jedem Push/PR; release.yml ruft diesen Workflow vor dem Build auf.
+# Gestaffelte Pipeline: dev -> test -> qa (-> prod = release.yml, ruft diesen Workflow mit vollem Umfang auf).
+#   dev  : schnell und billig (Ubuntu): Plan/Pfadfilter, Unit-Tests, shellcheck. Rot = nichts Teureres startet.
+#   test : E2E-Kern (test:e2e, test:e2e:sync) auf Ubuntu.
+#   qa   : teure Plattform-/Infrastrukturläufe (Windows/macOS-Selbststart, Docker-Cluster, test:e2e:cluster).
+# Pull Requests und Pushes auf main laufen mit Pfadfiltern (nur was die Änderung berührt). VOLLER Umfang ohne Filter:
+# Release (Tag v*, über workflow_call), nächtlicher Lauf (fängt Lücken der Pfadfilter ab) und manueller Start.
 # test:e2e:vollablauf läuft bewusst NICHT hier (schreibt in die echte Cloud-DB).
 name: CI
 on:
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
   workflow_call:
 
+# Veraltete Läufe desselben Branches/PRs abbrechen; main, Nachtlauf und Tags laufen immer zu Ende.
+concurrency:
+  group: ci-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
-  unit:
+  # ---------------------------------------------------------------- dev
+  plan:
+    name: dev / plan
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      kern: ${{ steps.ergebnis.outputs.kern }}
+      cluster: ${{ steps.ergebnis.outputs.cluster }}
+      plattform: ${{ steps.ergebnis.outputs.plattform }}
+      shell: ${{ steps.ergebnis.outputs.shell }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: f
+        # Für Release/Nachtlauf/manuell nicht nötig, dort gilt "alles".
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        with:
+          filters: |
+            kern:
+              - 'src/**'
+              - 'public/**'
+              - 'migrations/**'
+              - 'tests/**'
+              - 'scripts/**'
+              - 'knexfile.cjs'
+              - 'setup_db.js'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'playwright*.js'
+              - '.github/workflows/ci.yml'
+            cluster:
+              - 'src/cluster/**'
+              - 'src/sync/**'
+              - 'src/shared/**'
+              - 'deploy/linux/**'
+              - 'tests/e2e-cluster/**'
+              - 'scripts/test-cluster-install-docker.sh'
+              - 'playwright.cluster.config.js'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.github/workflows/ci.yml'
+            plattform:
+              - 'src/utils/eingebettetesPostgres.js'
+              - 'src/config/betriebsmodus.cjs'
+              - 'scripts/smoke-server-eingebettet.mjs'
+              - 'migrations/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.github/workflows/ci.yml'
+            shell:
+              - 'deploy/linux/**'
+              - 'scripts/*.sh'
+      - id: ergebnis
+        env:
+          EREIGNIS: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          F_KERN: ${{ steps.f.outputs.kern }}
+          F_CLUSTER: ${{ steps.f.outputs.cluster }}
+          F_PLATTFORM: ${{ steps.f.outputs.plattform }}
+          F_SHELL: ${{ steps.f.outputs.shell }}
+        run: |
+          voll=false
+          case "$EREIGNIS" in schedule|workflow_dispatch) voll=true ;; esac
+          case "$REF" in refs/tags/*) voll=true ;; esac
+          for n in kern cluster plattform shell; do
+            v=$(eval echo "\$F_$(echo $n | tr a-z A-Z)")
+            if [ "$voll" = true ] || [ "$v" = true ]; then echo "$n=true" >> "$GITHUB_OUTPUT"; else echo "$n=false" >> "$GITHUB_OUTPUT"; fi
+          done
+
+  unit:
+    name: dev / unit
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -17,9 +106,58 @@ jobs:
       - run: npm ci
       - run: npm run test:unit
 
+  shellcheck:
+    name: dev / shellcheck
+    needs: plan
+    if: needs.plan.outputs.shell == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: shellcheck -S warning deploy/linux/*.sh scripts/test-cluster-install-docker.sh
+
+  # --------------------------------------------------------------- test
+  e2e:
+    name: test / ${{ matrix.suite }}
+    needs: [plan, unit, shellcheck]
+    # shellcheck darf übersprungen sein; fehlgeschlagen/abgebrochen blockiert.
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.kern == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [test:e2e, test:e2e:sync]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - run: npx playwright install --with-deps chromium
+      # NODE_ENV=test wird NICHT hier gesetzt: tests/e2e-sync/test-env.js und tests/e2e-cluster/test-env.js setzen es
+      # selbst in ihren Server-Envs; npm run test:e2e braucht es nicht (keine NODE_ENV-gegateten Test-Endpunkte).
+      - run: npm run ${{ matrix.suite }}
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bericht-${{ strategy.job-index }}
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 3
+          if-no-files-found: ignore
+
+  # ----------------------------------------------------------------- qa
   # Selbststart des eingebetteten PostgreSQL im Modus "server" (kein DB_HOST) auf allen Zielplattformen:
   # Instanz anlegen, migrieren, sauber beenden, neu starten, Absturz der App überstehen.
   server-selbststart:
+    name: qa / selbststart (${{ matrix.os }})
+    needs: [plan, e2e]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.plattform == 'true' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
@@ -34,39 +172,42 @@ jobs:
       - run: npm ci
       - run: node scripts/smoke-server-eingebettet.mjs
 
-  # Cluster-Installationsskript: Syntaxprüfung, shellcheck und echter Aufbau eines Zwei-Server-Clusters in zwei
-  # systemd-Containern (Replikation, Failover). VRRP über Docker-Netz; echte Hardware-Abnahme: deploy/linux/README.md.
+  # Cluster-Installationsskript: echter Aufbau eines Zwei-Server-Clusters in zwei systemd-Containern (Replikation,
+  # Failover). VRRP über Docker-Netz; echte Hardware-Abnahme: deploy/linux/README.md.
   cluster-installation:
+    name: qa / cluster-installation
+    needs: [plan, e2e]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.cluster == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - run: shellcheck -S warning deploy/linux/*.sh scripts/test-cluster-install-docker.sh
       - run: bash scripts/test-cluster-install-docker.sh
 
-  e2e:
+  e2e-cluster:
+    name: qa / test:e2e:cluster
+    needs: [plan, e2e]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.cluster == 'true' }}
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        suite: [test:e2e, test:e2e:sync, test:e2e:cluster]
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - run: npm ci
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - run: npx playwright install --with-deps chromium
-      # NODE_ENV=test wird NICHT hier gesetzt: tests/e2e-sync/test-env.js und
-      # tests/e2e-cluster/test-env.js setzen es bereits selbst in ihren Server-Envs
-      # (siehe syncServerEnv/serverEnv); npm run test:e2e (ohne test-env.js-Override)
-      # braucht es nicht, da es keine NODE_ENV-gegateten Test-Endpunkte nutzt.
-      - run: npm run ${{ matrix.suite }}
+      - run: npm run test:e2e:cluster
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: bericht-${{ strategy.job-index }}
+          name: bericht-cluster
           path: |
             test-results/
             playwright-report/
             data/test-cluster/logs/
+          retention-days: 3
           if-no-files-found: ignore
