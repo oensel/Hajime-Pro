@@ -1,0 +1,55 @@
+# Hajime Pro im Cloud-Modus.
+#
+#   Gegen Supabase / vorhandenen PostgreSQL-Server (DB_URL in .env.cloud):
+#     docker compose --profile cloud up -d --build
+#   Zum Ausprobieren mit lokalem PostgreSQL (keine Supabase-Zugangsdaten nötig):
+#     docker compose --profile lokal up --build
+#
+# Konfiguration: .env.cloud.example nach .env.cloud kopieren und ausfüllen.
+services:
+  app:
+    profiles: ["cloud"]
+    build: .
+    env_file: .env.cloud
+    environment:
+      BETRIEBSMODUS: cloud
+      PORT: 3000
+    ports:
+      - "${PORT:-3000}:3000"
+    restart: unless-stopped
+
+  app-lokal:
+    profiles: ["lokal"]
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      BETRIEBSMODUS: cloud
+      PORT: 3000
+      DB_HOST: db
+      DB_USER: hajime
+      DB_PASSWORD: hajime
+      DB_NAME: hajime
+      DB_AUTO_MIGRATE: "true"
+      JWT_SECRET: nur-zum-ausprobieren-aendern
+    ports:
+      - "${PORT:-3000}:3000"
+
+  db:
+    profiles: ["lokal"]
+    image: postgres:17
+    environment:
+      POSTGRES_USER: hajime
+      POSTGRES_PASSWORD: hajime
+      POSTGRES_DB: hajime
+    volumes:
+      - pgdaten:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hajime -d hajime"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdaten:

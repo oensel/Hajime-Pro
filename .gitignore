@@ -4,6 +4,7 @@ node_modules/
 # Secrets / lokale Konfiguration
 .env
 .env.*
+!.env.cloud.example
 
 # Laufzeitdaten (SQLite-DB, enthält personenbezogene Turnier-/Judoka-Daten)
 data/

@@ -1,0 +1,21 @@
+# Baut das Cloud-Image (Dockerfile, BETRIEBSMODUS=cloud) — nur auf Knopfdruck (Actions → "Docker Cloud-Image" → Run workflow).
+# Es wird nichts veröffentlicht; der Lauf prüft, dass das Image baut und der Container startfähig ist.
+name: Docker Cloud-Image
+on:
+  workflow_dispatch:
+
+jobs:
+  bauen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: hajime-pro:cloud
+      - name: Image prüfen
+        run: docker run --rm --entrypoint node hajime-pro:cloud -e "console.log(require('./src/config/betriebsmodus.cjs').liesBetriebsmodus().modus)"
