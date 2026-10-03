@@ -1,17 +1,9 @@
 # Server-Paket "Hajime Pro Server" (Notebook als Hallen-Server und Frontend in einem) bauen und testen:
 # Build je Plattform, Rauchtest der gebauten App (Server startet mit eigenem PostgreSQL, Frontend, sauberes
-# Beenden), unter Windows zusätzlich Installer samt Firewall-Regel. Auch aus release.yml aufrufbar.
+# Beenden), unter Windows zusätzlich Installer samt Firewall-Regel. Wird aus ci.yml (Stage qa, nach dem E2E-Kern, nur bei
+# passenden Pfaden) und aus release.yml aufgerufen; ein eigener pull_request-Trigger würde die Staffelung umgehen.
 name: Server-Paket
 on:
-  pull_request:
-    paths:
-      - 'desktop/server/**'
-      - 'desktop/build/**'
-      - 'desktop/electron-builder.server.yml'
-      - 'tests/electron-server/**'
-      - 'src/utils/eingebettetesPostgres.js'
-      - 'package.json'
-      - '.github/workflows/server-paket.yml'
   workflow_dispatch:
   workflow_call:
 
