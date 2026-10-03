@@ -35,6 +35,7 @@ jobs:
       cluster: ${{ steps.ergebnis.outputs.cluster }}
       plattform: ${{ steps.ergebnis.outputs.plattform }}
       shell: ${{ steps.ergebnis.outputs.shell }}
+      paket: ${{ steps.ergebnis.outputs.paket }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -77,6 +78,15 @@ jobs:
             shell:
               - 'deploy/linux/**'
               - 'scripts/*.sh'
+            paket:
+              - 'desktop/server/**'
+              - 'desktop/build/**'
+              - 'desktop/electron-builder.server.yml'
+              - 'tests/electron-server/**'
+              - 'src/utils/eingebettetesPostgres.js'
+              - 'src/sync/clientDateien.js'
+              - 'package.json'
+              - '.github/workflows/server-paket.yml'
       - id: ergebnis
         env:
           EREIGNIS: ${{ github.event_name }}
@@ -85,11 +95,12 @@ jobs:
           F_CLUSTER: ${{ steps.f.outputs.cluster }}
           F_PLATTFORM: ${{ steps.f.outputs.plattform }}
           F_SHELL: ${{ steps.f.outputs.shell }}
+          F_PAKET: ${{ steps.f.outputs.paket }}
         run: |
           voll=false
           case "$EREIGNIS" in schedule|workflow_dispatch) voll=true ;; esac
           case "$REF" in refs/tags/*) voll=true ;; esac
-          for n in kern cluster plattform shell; do
+          for n in kern cluster plattform shell paket; do
             v=$(eval echo "\$F_$(echo $n | tr a-z A-Z)")
             if [ "$voll" = true ] || [ "$v" = true ]; then echo "$n=true" >> "$GITHUB_OUTPUT"; else echo "$n=false" >> "$GITHUB_OUTPUT"; fi
           done
@@ -211,3 +222,11 @@ jobs:
             data/test-cluster/logs/
           retention-days: 3
           if-no-files-found: ignore
+
+  # Server-Paket (Installer-Build je Plattform, bis 45 Min.): erst nach dem E2E-Kern, nur bei passenden Pfaden. Bei Tag
+  # baut release.yml es selbst (mit den signierten Client-Dateien), im Nachtlauf wäre es unnötig teuer.
+  server-paket:
+    name: qa / server-paket
+    needs: [plan, e2e]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.paket == 'true' && !startsWith(github.ref, 'refs/tags/') && github.event_name != 'schedule' }}
+    uses: ./.github/workflows/server-paket.yml
