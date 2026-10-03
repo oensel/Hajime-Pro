@@ -1,9 +1,4 @@
 exports.up = async function(knex) {
-    const isSqlite = knex.client.config.client === 'sqlite3';
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = OFF;');
-    }
-
     // 1. Create table vereine
     await knex.schema.createTable('vereine', (table) => {
         table.increments('id').primary();
@@ -39,17 +34,9 @@ exports.up = async function(knex) {
         });
     }
 
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = ON;');
-    }
 };
 
 exports.down = async function(knex) {
-    const isSqlite = knex.client.config.client === 'sqlite3';
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = OFF;');
-    }
-
     await knex.schema.alterTable('benutzer', (table) => {
         table.dropColumn('password_hash');
         table.dropColumn('verein_id');
@@ -58,7 +45,4 @@ exports.down = async function(knex) {
 
     await knex.schema.dropTableIfExists('vereine');
 
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = ON;');
-    }
 };

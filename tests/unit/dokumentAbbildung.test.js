@@ -27,7 +27,7 @@ test('mitServerStand übernimmt Spalten, _rev und Nur-Dokument-Felder, entfernt 
     assert.equal('forfeit_art' in neu, false);
 });
 
-test('Vergleich toleriert SQLite/PostgreSQL-Darstellungen', () => {
+test('Vergleich toleriert unterschiedliche Darstellungen (1/0, true/false, DECIMAL)', () => {
     assert.equal(gleicheWerte(1, true), true);
     assert.equal(gleicheWerte(0, false), true);
     assert.equal(gleicheWerte('60.00', 60), true);

@@ -231,8 +231,8 @@ export async function starteSyncDienst({ knex, konfig, partnerUrl = null, startM
 
     // Das (einzige) vorhandene Turnier wird verzögert beim ERSTEN Request aktiviert, nicht beim
     // Serverstart: vor dem ersten Request ist die DB evtl. noch gar nicht migriert (die E2E-Suites
-    // starten den Server vor ihrem globalSetup), und eine früh geöffnete SQLite-Verbindung würde
-    // unter Windows das Löschen der Testdatenbank blockieren.
+    // starten den Server vor ihrem globalSetup), und eine früh geöffnete Datenbankverbindung würde
+    // unter Windows das Löschen der Testdaten blockieren.
     let initVersprechen = null;
     dienst.bereit = function bereit() {
         if (!initVersprechen) {

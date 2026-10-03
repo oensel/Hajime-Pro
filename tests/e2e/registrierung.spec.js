@@ -8,26 +8,21 @@
 // Token. Das bedeutet aber auch: es gibt in dieser Suite immer nur EINE handelnde Identität, man
 // kann also nicht "als zwei verschiedene echte Personen" einloggen, um z.B. zu prüfen, dass ein
 // Vereinsmitglied den Beitritt eines ANDEREN Nutzers sieht. Für solche Zwei-Rollen-Szenarien wird
-// die "andere Seite" (Antragsteller bzw. Super-Admin-Rolle) direkt in der Test-SQLite-Datenbank
+// die "andere Seite" (Antragsteller bzw. Super-Admin-Rolle) direkt in der Test-PostgreSQL-Datenbank
 // vorbereitet (siehe mitTestDb unten) — die eigentliche Aktion läuft dann ganz normal per HTTP.
 import { test, expect } from '@playwright/test';
 import knexLib from 'knex';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { TEST_SQLITE_PATH } from './test-env.js';
+import { testDbVerbindung } from './test-env.js';
 
-const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
-// Öffnet eine eigene, kurzlebige Verbindung zur selben Test-SQLite-Datei, die auch der laufende
-// Testserver verwendet (siehe global-setup.js) — für Fixtures, die über die HTTP-API allein nicht
-// erreichbar sind (siehe Datei-Kommentar oben). busy_timeout statt sofortigem SQLITE_BUSY-Fehler,
-// da Server und Test hier als zwei getrennte Prozesse auf dieselbe Datei zugreifen.
+// Öffnet eine eigene, kurzlebige Verbindung zur selben Test-PostgreSQL-Datenbank, die auch der laufende
+// Testserver verwendet (siehe tests/helpers/pg-dienst.mjs) — für Fixtures, die über die HTTP-API allein nicht
+// erreichbar sind (siehe Datei-Kommentar oben).
 async function mitTestDb(fn) {
     const db = knexLib({
-        client: 'sqlite3',
-        connection: { filename: path.resolve(projectRoot, TEST_SQLITE_PATH) },
-        useNullAsDefault: true,
-        pool: { afterCreate: (conn, cb) => conn.run('PRAGMA busy_timeout = 5000;', cb) }
+        client: 'pg',
+        connection: testDbVerbindung,
+        pool: { min: 0, max: 2 }
     });
     try {
         return await fn(db);

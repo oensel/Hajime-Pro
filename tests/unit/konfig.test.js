@@ -24,12 +24,11 @@ test('Client-Einstellungen: Server-URL wird normalisiert', () => {
     assert.equal(k.secret, 'geheim');
 });
 
-test('knex-Umgebung: Cloud, Halle mit SQLite, Halle mit PostgreSQL', () => {
+test('knex-Umgebung ist immer online (PostgreSQL)', () => {
     assert.equal(waehleKnexUmgebung({ IS_OFFLINE: 'false' }), 'online');
     assert.equal(waehleKnexUmgebung({}), 'online');
-    assert.equal(waehleKnexUmgebung({ IS_OFFLINE: 'true' }), 'offline');
-    assert.equal(waehleKnexUmgebung({ IS_OFFLINE: 'true', DB_CLIENT: 'sqlite' }), 'offline');
-    assert.equal(waehleKnexUmgebung({ IS_OFFLINE: 'true', DB_CLIENT: 'pg' }), 'online');
+    assert.equal(waehleKnexUmgebung({ BETRIEBSMODUS: 'server' }), 'online');
+    assert.equal(waehleKnexUmgebung({ IS_OFFLINE: 'true', DB_HOST: 'db' }), 'online');
 });
 
 test('Cluster ohne SYNC_SECRET: Startabbruch, sonst kein Fehler', async () => {

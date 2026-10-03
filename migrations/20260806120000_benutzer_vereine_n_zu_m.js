@@ -7,11 +7,6 @@ export const config = { transaction: false };
 // gerade in der App-Oberfläche (Kopfleiste) ausgewählt ist. Anonyme Anmeldungen sind nicht
 // vorgesehen — ein Benutzer ist immer mindestens einem Verein zugeordnet.
 export async function up(knex) {
-    const isSqlite = knex.client.config.client === 'sqlite3';
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = OFF;');
-    }
-
     await knex.schema.createTable('benutzer_vereine', (table) => {
         table.increments('id').primary();
         table.string('benutzer_id').notNullable()
@@ -44,18 +39,9 @@ export async function up(knex) {
         table.dropColumn('verein_id');
         table.dropColumn('verein_freigegeben');
     });
-
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = ON;');
-    }
 }
 
 export async function down(knex) {
-    const isSqlite = knex.client.config.client === 'sqlite3';
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = OFF;');
-    }
-
     await knex.schema.alterTable('benutzer', (table) => {
         table.integer('verein_id').unsigned().nullable()
             .references('id').inTable('vereine').onDelete('SET NULL');
@@ -79,8 +65,4 @@ export async function down(knex) {
     });
 
     await knex.schema.dropTableIfExists('benutzer_vereine');
-
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = ON;');
-    }
 }

@@ -9,7 +9,7 @@
 // wie in den übrigen e2e-Tests direkt im Code. Bewusst NICHT über den echten Turnier-Import
 // (POST /api/turniere/import, siehe importTurnier() in turnierController.js) eingespielt: dieser
 // löscht vor dem Import ALLE Turniere/Pools/Teilnehmer der Test-DB -- die in der ganzen e2e-Suite
-// gemeinsam genutzt wird (siehe playwright.config.js: "Eine gemeinsame SQLite-Datei für die ganze
+// gemeinsam genutzt wird (siehe playwright.config.js: "Eine gemeinsame PostgreSQL-Datenbank für die ganze
 // Suite ... Tests laufen daher bewusst NICHT parallel gegen sie, um sich nicht gegenseitig Daten
 // wegzuschreiben") -- und würde damit je nach Ausführungsreihenfolge andere Testdateien
 // beschädigen. Stattdessen baut ladeUndErstelleTurnier() das Turnier aus der Fixtur über

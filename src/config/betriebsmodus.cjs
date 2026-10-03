@@ -11,8 +11,8 @@
 // ausnahmsweise nur lokal erreichbar haben will, setzt LISTEN_HOST=127.0.0.1.
 //
 // Ergänzende Einstellungen:
-//   DB_CLIENT=pg|sqlite             (nur server) Datenbank. Standard pg; sqlite ist ein auslaufender Altpfad.
-//   DB_HOST                         (nur server, pg) Ohne DB_HOST startet der Server sein eigenes, eingebettetes
+//   DB_CLIENT=pg                    optional und wirkungslos (es gibt nur PostgreSQL); DB_CLIENT=sqlite ist ein Fehler.
+//   DB_HOST / DB_URL                (nur server) Ohne DB_HOST/DB_URL startet der Server sein eigenes, eingebettetes
 //                                   PostgreSQL (nichts zu installieren). Mit DB_HOST nutzt er einen vorhandenen
 //                                   PostgreSQL-Server (Linux-Server, Cluster).
 //   CLUSTER_KNOTEN=server1|server2  (nur server) Cluster-Betrieb zweier Linux-Server, siehe src/cluster/.
@@ -20,7 +20,7 @@
 //
 // Ohne BETRIEBSMODUS gilt das bisherige Verhalten, abgeleitet aus den alten Variablen:
 //   SYNC_ROLLE=client                          -> client
-//   IS_OFFLINE=true                            -> server (SQLite, bei DB_CLIENT=pg PostgreSQL)
+//   IS_OFFLINE=true                            -> server (PostgreSQL über DB_HOST/DB_URL, kein eingebettetes)
 //   sonst                                      -> cloud
 // So laufen bestehende .env-Dateien und Test-Suiten unverändert weiter.
 //
@@ -74,23 +74,26 @@ function liesBetriebsmodus(env = process.env) {
     }
 
     // --- Datenbank ---
+    // Immer PostgreSQL (SQLite wurde entfernt). Ein gesetztes DB_CLIENT=sqlite ist ein Konfigurationsfehler, damit
+    // eine alte .env nicht stillschweigend gegen eine andere Datenbank läuft.
     let dbTyp = null;
-    if (istCloud) {
-        dbTyp = 'pg';
-        if (env.DB_CLIENT === 'sqlite') widerspruch('DB_CLIENT=sqlite ist im Cloud-Betrieb nicht möglich (immer PostgreSQL).');
-    } else if (istServer) {
-        if (env.DB_CLIENT === 'pg') dbTyp = 'pg';
-        else if (env.DB_CLIENT === 'sqlite') dbTyp = 'sqlite';
-        else dbTyp = streng ? 'pg' : 'sqlite'; // Altverhalten: ohne DB_CLIENT SQLite
-        if (env.DB_CLIENT && !['pg', 'sqlite'].includes(env.DB_CLIENT)) {
-            fehler.push(`DB_CLIENT="${env.DB_CLIENT}" ist ungültig. Erlaubt: pg, sqlite.`);
-        }
+    if (env.DB_CLIENT === 'sqlite') {
+        fehler.push('SQLite wird nicht mehr unterstützt. DB_CLIENT=sqlite aus der .env entfernen (Modus server: eingebettetes oder vorhandenes PostgreSQL; ' +
+            'ein bestehendes Turnier lässt sich per Turnier-Export/-Import übernehmen).');
+    } else if (env.DB_CLIENT && env.DB_CLIENT !== 'pg') {
+        fehler.push(`DB_CLIENT="${env.DB_CLIENT}" ist ungültig. Es gibt nur noch PostgreSQL (DB_CLIENT=pg oder weglassen).`);
     }
-    // knexfile.cjs kennt die Umgebungen "online" (PostgreSQL) und "offline" (SQLite).
-    const knexUmgebung = dbTyp === 'pg' ? 'online' : dbTyp === 'sqlite' ? 'offline' : null;
+    if (istCloud || istServer) dbTyp = 'pg';
+    // knexfile.cjs kennt die Umgebungen "online" (PostgreSQL) und "online-migration".
+    const knexUmgebung = dbTyp === 'pg' ? 'online' : null;
     // Eingebettetes PostgreSQL nur im ausdrücklich gesetzten Modus server: bei den Altvariablen galt ohne DB_HOST
     // immer 127.0.0.1:5432, dort läuft evtl. eine bereits installierte Datenbank — das bleibt unangetastet.
-    const dbEingebettet = streng && istServer && dbTyp === 'pg' && !String(env.DB_HOST || '').trim();
+    const externeDb = ['DB_HOST', 'DB_URL', 'DATABASE_URL'].some(name => String(env[name] || '').trim());
+    const dbEingebettet = streng && istServer && !externeDb;
+    if (!streng && istServer && !externeDb) {
+        fehler.push('Der Hallen-Server braucht PostgreSQL: mit DB_HOST/DB_USER/DB_PASSWORD/DB_NAME eine vorhandene Datenbank angeben ' +
+            'oder BETRIEBSMODUS=server setzen (dann startet der Server sein eigenes, eingebettetes PostgreSQL).');
+    }
 
     // --- Erreichbarkeit ---
     // Bindeadresse: ohne LISTEN_HOST auf allen Schnittstellen. Das Client-Gerät (desktop/main.js) setzt
@@ -110,7 +113,6 @@ function liesBetriebsmodus(env = process.env) {
         widerspruch(`CLUSTER_KNOTEN=${env.CLUSTER_KNOTEN} gilt nur im Modus server (aktuell: ${modus}).`);
     }
     if (cluster) {
-        if (dbTyp !== 'pg') widerspruch('Der Cluster braucht PostgreSQL (DB_CLIENT=pg), nicht SQLite.');
         if (dbEingebettet) widerspruch('Der Cluster braucht je Server eine eigene PostgreSQL-Instanz mit Replikation: DB_HOST setzen (das eingebettete PostgreSQL ist nur für einen einzelnen Server).');
         if (listenHost === '127.0.0.1' || listenHost === 'localhost') widerspruch('Im Cluster müssen sich die beiden Server gegenseitig erreichen: LISTEN_HOST darf nicht auf localhost stehen.');
     }

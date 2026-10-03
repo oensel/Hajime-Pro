@@ -1,5 +1,5 @@
 // End-to-End: kompletter Turnierablauf über zwei echte Serverprozesse (Online gegen die echte
-// Cloud-Postgres-DB, Offline gegen eine eigene SQLite) — siehe Plan
+// Cloud-Postgres-DB, Offline gegen ein eigenes eingebettetes PostgreSQL) — siehe Plan
 // C:\Users\Bastian\.claude\plans\swirling-booping-hamming.md für den vollständigen Kontext.
 //
 // Phase 1 (dieser Stand): jan@test.de meldet sich mit seinem bestehenden, bereits freigegebenen
@@ -172,7 +172,7 @@ test.describe.serial('Kompletter Turnierablauf', () => {
     });
 
     // --- PHASE 5: die heruntergeladene Turnier-Gesamtdatei wird auf dem Offline-Server
-    // eingelesen (eigener Prozess/eigene SQLite, siehe playwright.vollablauf.config.js) — ab hier
+    // eingelesen (eigener Prozess/eigenes PostgreSQL, siehe playwright.vollablauf.config.js) — ab hier
     // simuliert offlinePage die Matte/den Laptop vor Ort ohne Internetverbindung.
     test('Phase 5: Turnierdaten werden auf dem Offline-Server eingelesen', async () => {
         offlineTurnierId = await importiereTurnierOffline(offlinePage, OFFLINE_BASE_URL, turnierExportPfad);

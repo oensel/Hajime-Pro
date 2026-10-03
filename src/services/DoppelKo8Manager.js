@@ -16,7 +16,7 @@ export class DoppelKo8Manager {
     async initialisierePool(knex, poolId) {
         // 1. Pool-Daten und registrierte Teilnehmer laden
         const pool = await knex('pools').where({ id: poolId }).first();
-        const teilnehmer = await knex('turnier_teilnehmer').where({ pool_id: poolId });
+        const teilnehmer = await knex('turnier_teilnehmer').where({ pool_id: poolId }).orderBy('id', 'asc');
 
         const N = teilnehmer.length;
         const F = this.rasterGroesse - N;

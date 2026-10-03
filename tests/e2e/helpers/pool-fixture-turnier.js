@@ -41,8 +41,8 @@ export async function ladeUndErstelleTurnier(request, fixtur) {
     }
 
     // Reihenfolge identisch zur Fixtur -- Voraussetzung für ein deterministisches Raster/Freilos
-    // (die jeweiligen Manager lesen Teilnehmer ohne eigenes ORDER BY, SQLite liefert ohne
-    // Sortierung Einfüge-/Rowid-Reihenfolge).
+    // (die jeweiligen Manager lesen Teilnehmer nach id sortiert, also in
+    // Einfüge-Reihenfolge).
     for (const teilnehmerId of teilnehmerIds) {
         const moveResp = await request.post('/api/pools/verschieben', { data: { teilnehmerId, zielPoolId: poolId } });
         expect(moveResp.ok(), await moveResp.text()).toBeTruthy();

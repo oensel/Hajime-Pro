@@ -46,8 +46,8 @@ async function richteTurnierEin(request, bezeichnung) {
 
     // Reihenfolge identisch zur Fixtur -- Voraussetzung für ein deterministisches
     // Paarungsraster (siehe JederGegenJedenManager.js:
-    // Teilnehmer werden ohne eigenes ORDER BY gelesen, SQLite liefert ohne Sortierung
-    // Einfüge-/Rowid-Reihenfolge).
+    // Teilnehmer werden nach id sortiert gelesen,
+    // also in Einfüge-Reihenfolge).
     for (const teilnehmerId of teilnehmerIds) {
         const moveResp = await request.post('/api/pools/verschieben', { data: { teilnehmerId, zielPoolId: poolId } });
         expect(moveResp.ok(), await moveResp.text()).toBeTruthy();

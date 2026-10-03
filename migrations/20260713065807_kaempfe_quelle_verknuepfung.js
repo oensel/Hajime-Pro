@@ -8,11 +8,6 @@ import {
 export const config = { transaction: false };
 
 export async function up(knex) {
-    const isSqlite = knex.client.config.client === 'sqlite3';
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = OFF;');
-    }
-
     // 1. Schema: explizite Kampf-zu-Kampf-Quellreferenzen + Gruppenzugehörigkeit
     await knex.schema.alterTable('kaempfe', (table) => {
         table.integer('kaempfer1_quelle_kampf_id').unsigned().nullable()
@@ -23,10 +18,6 @@ export async function up(knex) {
         table.string('kaempfer2_quelle_typ').nullable();
         table.string('gruppe').nullable(); // 'A' | 'B' — nur Gruppen-Überkreuz-Vorrunde
     });
-
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = ON;');
-    }
 
     // 2. Backfill: bestehende Pools rückwirkend verknüpfen (rein additiv, betrifft nur die
     // neuen, bisher ungenutzten Spalten — keine bestehenden Ergebnisse/Zuordnungen ändern sich).
@@ -53,11 +44,6 @@ export async function up(knex) {
 }
 
 export async function down(knex) {
-    const isSqlite = knex.client.config.client === 'sqlite3';
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = OFF;');
-    }
-
     await knex.schema.alterTable('kaempfe', (table) => {
         table.dropColumn('kaempfer1_quelle_kampf_id');
         table.dropColumn('kaempfer1_quelle_typ');
@@ -65,8 +51,4 @@ export async function down(knex) {
         table.dropColumn('kaempfer2_quelle_typ');
         table.dropColumn('gruppe');
     });
-
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = ON;');
-    }
 }

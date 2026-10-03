@@ -5,11 +5,6 @@ export const config = { transaction: false };
 // unklar, welcher Name beim Export gilt. verein_id + JOIN auf vereine.name ist ab jetzt die
 // einzige Quelle der Wahrheit.
 export async function up(knex) {
-    const isSqlite = knex.client.config.client === 'sqlite3';
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = OFF;');
-    }
-
     // Sicherheitsnetz: Falls noch Benutzer mit Freitext-Verein aber ohne verein_id existieren
     // (z.B. nach manuellen DB-Änderungen), jetzt noch verknüpfen, bevor die Spalte verschwindet.
     const unverknuepft = await knex('benutzer').whereNull('verein_id').whereNotNull('verein');
@@ -31,23 +26,10 @@ export async function up(knex) {
     await knex.schema.alterTable('benutzer', (table) => {
         table.dropColumn('verein');
     });
-
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = ON;');
-    }
 }
 
 export async function down(knex) {
-    const isSqlite = knex.client.config.client === 'sqlite3';
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = OFF;');
-    }
-
     await knex.schema.alterTable('benutzer', (table) => {
         table.string('verein').nullable();
     });
-
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = ON;');
-    }
 }

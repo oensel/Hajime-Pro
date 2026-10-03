@@ -1,22 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'fs';
-import { tmpdir } from 'os';
-import path from 'path';
-import knexLib from 'knex';
 import { exportiereVorlagen, importiereVorlagen } from '../../src/services/urkundenVorlagenTransfer.js';
 import { PNG_1PX } from './helpers/bilder.js';
+import { starteTestPostgres } from '../helpers/testPostgres.js';
 
 test('Vorlagen-Rundreise: Export → Import überschreibt gleichnamige, lässt andere stehen', async () => {
-    const dir = mkdtempSync(path.join(tmpdir(), 'hajime-urk-'));
-    const knex = knexLib({
-        client: 'sqlite3',
-        connection: { filename: path.join(dir, 't.sqlite') },
-        useNullAsDefault: true,
-        migrations: { directory: path.resolve('migrations') }
-    });
+    const db = await starteTestPostgres();
+    const { knex } = db;
     try {
-        await knex.migrate.latest();
         const [a] = await knex('vereine').insert({ name: 'JC Quelle' }).returning('id');
         const [b] = await knex('vereine').insert({ name: 'JC Ziel' }).returning('id');
         const quelle = typeof a === 'object' ? a.id : a;
@@ -72,7 +63,6 @@ test('Vorlagen-Rundreise: Export → Import überschreibt gleichnamige, lässt a
         assert.deepEqual(JSON.parse(importiert.bilder), { logo });
         assert.equal(await knex('urkunden_vorlagen').where({ verein_id: ziel, name: 'BildKaputt' }).first(), undefined);
     } finally {
-        await knex.destroy();
-        rmSync(dir, { recursive: true, force: true });
+        await db.stoppe();
     }
 });

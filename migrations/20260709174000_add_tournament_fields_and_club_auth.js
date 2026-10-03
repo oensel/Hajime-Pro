@@ -1,11 +1,6 @@
 export const config = { transaction: false };
 
 export async function up(knex) {
-    const isSqlite = knex.client.config.client === 'sqlite3';
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = OFF;');
-    }
-
     await knex.schema.alterTable('benutzer', (table) => {
         table.string('verein').nullable();
     });
@@ -20,18 +15,9 @@ export async function up(knex) {
         table.string('registriert_von_benutzer_id').nullable()
             .references('id').inTable('benutzer').onDelete('SET NULL');
     });
-
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = ON;');
-    }
 }
 
 export async function down(knex) {
-    const isSqlite = knex.client.config.client === 'sqlite3';
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = OFF;');
-    }
-
     await knex.schema.alterTable('turnier_teilnehmer', (table) => {
         table.dropColumn('registriert_von_benutzer_id');
     });
@@ -45,8 +31,4 @@ export async function down(knex) {
     await knex.schema.alterTable('benutzer', (table) => {
         table.dropColumn('verein');
     });
-
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = ON;');
-    }
 }

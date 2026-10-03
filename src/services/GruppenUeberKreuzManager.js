@@ -20,7 +20,7 @@ export class GruppenUeberKreuzManager {
      */
     async initialisierePool(knex, poolId) {
         // 1. Alle registrierten Teilnehmer für diesen Pool laden
-        const teilnehmer = await knex('turnier_teilnehmer').where({ pool_id: poolId });
+        const teilnehmer = await knex('turnier_teilnehmer').where({ pool_id: poolId }).orderBy('id', 'asc');
 
         // Sortieren nach Gewicht aufsteigend
         teilnehmer.sort((a, b) => Number(a.gewicht) - Number(b.gewicht));

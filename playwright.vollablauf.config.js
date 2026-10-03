@@ -1,12 +1,14 @@
 // Eigene, komplett von playwright.config.js getrennte Konfiguration für den "kompletten
 // Turnierablauf"-Test (siehe tests/e2e-vollablauf/): startet ZWEI echte Serverprozesse parallel
-// (Online gegen die echte Cloud-Postgres-DB, Offline gegen eine eigene frische SQLite) und
+// (Online gegen die echte Cloud-Postgres-DB, Offline gegen ein eigenes frisches eingebettetes PostgreSQL) und
 // simuliert damit den realen Datenaustausch zwischen Turnierserver und einer Offline-Matte per
 // echtem Datei-Download/-Upload. Bewusst NICHT Teil von playwright.config.js/testDir './tests/e2e'
 // — dieser Lauf schreibt in die echte Cloud-DB und ist deutlich langsamer als die normale Suite,
 // muss also explizit über `npm run test:e2e:vollablauf` gestartet werden.
 import { defineConfig, devices } from '@playwright/test';
-import { ONLINE_BASE_URL, OFFLINE_BASE_URL, onlineServerEnv, offlineServerEnv } from './tests/e2e-vollablauf/test-env.js';
+import {
+    ONLINE_BASE_URL, OFFLINE_BASE_URL, onlineServerEnv, offlineServerEnv, pgDienstEnv, OFFLINE_PG_BEREIT_PORT
+} from './tests/e2e-vollablauf/test-env.js';
 
 export default defineConfig({
     testDir: './tests/e2e-vollablauf',
@@ -33,6 +35,15 @@ export default defineConfig({
     ],
 
     webServer: [
+        {
+            command: 'node tests/helpers/pg-dienst.mjs',
+            url: `http://127.0.0.1:${OFFLINE_PG_BEREIT_PORT}`,
+            env: pgDienstEnv,
+            reuseExistingServer: false,
+            timeout: 120_000,
+            stdout: 'pipe',
+            stderr: 'pipe'
+        },
         {
             command: 'node src/app.js',
             url: ONLINE_BASE_URL,
