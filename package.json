@@ -20,7 +20,10 @@
     "desktop:start": "electron .",
     "desktop:icon": "node scripts/erzeuge-app-icon.mjs",
     "desktop:build": "electron-builder --config desktop/electron-builder.yml",
-    "test:electron": "playwright test -c playwright.electron.config.js"
+    "test:electron": "playwright test -c playwright.electron.config.js",
+    "desktop:server:start": "electron desktop/server/main.js",
+    "desktop:server:build": "electron-builder --config desktop/electron-builder.server.yml",
+    "test:electron:server": "playwright test -c playwright.electron-server.config.js"
   },
   "dependencies": {
     "@material-design-icons/font": "^0.14.15",

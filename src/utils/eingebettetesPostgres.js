@@ -50,6 +50,22 @@ async function ladeBinaries() {
     }
 }
 
+// Alle von diesem Prozess gestarteten/übernommenen Instanzen — der Electron-Hauptprozess des Server-Pakets
+// stoppt sie beim Beenden der App (before-quit), ohne auf Signal-Handler angewiesen zu sein.
+const instanzen = new Set();
+
+export function stoppeAlleEingebetteten(modus = 'fast', log = console) {
+    for (const instanz of [...instanzen]) {
+        try {
+            instanz.stoppe(modus);
+            log.log('[Datenbank] PostgreSQL gestoppt.');
+        } catch (e) {
+            log.warn(`[Datenbank] PostgreSQL ließ sich nicht sauber stoppen: ${e.message.split('\n')[0]}`);
+        }
+        instanzen.delete(instanz);
+    }
+}
+
 function ctl(binaries, verzeichnis, args) {
     execFileSync(binaries.pg_ctl, ['-D', verzeichnis, ...args], { stdio: 'ignore' });
 }
@@ -132,7 +148,7 @@ export async function starteEingebettetesPostgres({ datenverzeichnis, port, dbNa
         await admin.end();
     }
 
-    return {
+    const instanz = {
         ...verbindung,
         password: '',
         database: dbName,
@@ -143,6 +159,8 @@ export async function starteEingebettetesPostgres({ datenverzeichnis, port, dbNa
             ctl(binaries, verzeichnis, ['-m', modus, '-w', '-t', '60', 'stop']);
         }
     };
+    instanzen.add(instanz);
+    return instanz;
 }
 
 // Beendet die Datenbank mit der App: bei SIGINT/SIGTERM und beim normalen Programmende. Ein Absturz der App
@@ -154,6 +172,7 @@ export function stoppeMitProzess(instanz, log = console) {
         beendet = true;
         try {
             instanz.stoppe('fast');
+            instanzen.delete(instanz);
             log.log('[Datenbank] PostgreSQL gestoppt.');
         } catch (e) {
             log.warn(`[Datenbank] PostgreSQL ließ sich nicht sauber stoppen: ${e.message.split('\n')[0]}`);

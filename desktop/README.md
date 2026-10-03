@@ -2,6 +2,10 @@
 
 ## Überblick
 
+> **Server-Paket:** Dieses Dokument beschreibt den Desktop-Client (Matte/Waage). Das zweite, getrennte Paket "Hajime Pro Server"
+> (`desktop/server/`, Builder-Konfiguration `desktop/electron-builder.server.yml`) macht ein Notebook zum Hallen-Server mit
+> eingebetteter Datenbank und Frontend in einem; Rauchtest `npm run test:electron:server`, CI `.github/workflows/server-paket.yml`.
+
 Der Desktop-Client ist eine Electron-Hülle um den bestehenden `src/app.js` — er startet den
 Server intern immer mit `BETRIEBSMODUS=client` und bindet ihn per `LISTEN_HOST` nur an `127.0.0.1`
 (kein Netzwerkzugriff von außen, nur die eigene Electron-Oberfläche spricht mit ihm). Einstellungen,

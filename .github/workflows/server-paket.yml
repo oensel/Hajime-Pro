@@ -1,0 +1,63 @@
+# Server-Paket "Hajime Pro Server" (Notebook als Hallen-Server und Frontend in einem) bauen und testen:
+# Build je Plattform, Rauchtest der gebauten App (Server startet mit eigenem PostgreSQL, Frontend, sauberes
+# Beenden), unter Windows zusätzlich Installer samt Firewall-Regel. Auch aus release.yml aufrufbar.
+name: Server-Paket
+on:
+  push:
+    branches: [claude/server-paket]
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  paket:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      # node-gyp braucht distutils (Python <= 3.11); leveldown@5 (pouchdb-node) wird für Electron neu gebaut.
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - run: npm ci
+      - run: npm run desktop:server:build
+        env: { CSC_IDENTITY_AUTO_DISCOVERY: 'false' }
+
+      - name: Rauchtest (Windows)
+        if: runner.os == 'Windows'
+        run: npm run test:electron:server
+        env: { HAJIME_APP_PFAD: 'dist-server\win-unpacked\Hajime Pro Server.exe' }
+      - name: Rauchtest (macOS)
+        if: runner.os == 'macOS'
+        run: npm run test:electron:server
+        env: { HAJIME_APP_PFAD: 'dist-server/mac-arm64/Hajime Pro Server.app/Contents/MacOS/Hajime Pro Server' }
+      - name: Rauchtest (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run test:electron:server
+        env: { HAJIME_APP_PFAD: 'dist-server/linux-unpacked/hajime-pro-server' }
+
+      # Der Installer legt die Firewall-Regel für das private Netzwerk an (desktop/build/server-installer.nsh).
+      - name: Installer-Test (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem dist-server -Filter 'Hajime-Pro-Server-*.exe' | Select-Object -First 1
+          Start-Process -FilePath $setup.FullName -ArgumentList '/S' -Wait
+          $regel = netsh advfirewall firewall show rule name="Hajime Pro Server"
+          Write-Host $regel
+          if ($LASTEXITCODE -ne 0) { throw 'Firewall-Regel "Hajime Pro Server" fehlt nach der Installation' }
+          if (-not (Test-Path 'C:\Program Files\Hajime Pro Server\Hajime Pro Server.exe')) { throw 'Programm nicht installiert' }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-${{ runner.os }}
+          path: |
+            dist-server/*.exe
+            dist-server/*.dmg
+            dist-server/*.zip
+            dist-server/*.AppImage
+          if-no-files-found: error
