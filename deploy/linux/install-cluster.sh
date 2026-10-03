@@ -423,6 +423,11 @@ if [ "$KNOTEN" = "server1" ]; then
         rendere_rechte_sql | psql_lokal -d postgres
         [ "$(psql_lokal -d postgres -c "SELECT 1 FROM pg_database WHERE datname='$DB_NAME'")" = "1" ] \
             || psql_lokal -d postgres -c "CREATE DATABASE $DB_NAME OWNER $DB_USER"
+        # Rechte auf Systemfunktionen gelten je Datenbank (pg_proc): die App verbindet sich mit $DB_NAME.
+        psql_lokal -d "$DB_NAME" <<SQL
+GRANT EXECUTE ON FUNCTION pg_promote(boolean, integer) TO $DB_USER;
+GRANT EXECUTE ON FUNCTION pg_reload_conf() TO $DB_USER;
+SQL
     fi
 else
     # --- server2: Standby von server1 ---------------------------------------------------------
