@@ -8,34 +8,14 @@ export const config = { transaction: false };
 // anmeldeschluss bereits ausschließlich als "YYYY-MM-DD"-String, daher ist keine Code-Änderung
 // nötig, nur die Spalten-Typumstellung.
 export async function up(knex) {
-    const isSqlite = knex.client.config.client === 'sqlite3';
-
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = OFF;');
-        await knex.schema.alterTable('turniere', (table) => {
-            table.date('anmeldeschluss').alter();
-        });
-        await knex.raw('PRAGMA foreign_keys = ON;');
-    } else {
-        // Leere Strings vor der Typumwandlung zu NULL machen, sonst schlägt ::date fehl.
-        await knex.raw(`
-            ALTER TABLE turniere
-            ALTER COLUMN anmeldeschluss TYPE date
-            USING NULLIF(anmeldeschluss, '')::date
-        `);
-    }
+    // Leere Strings vor der Typumwandlung zu NULL machen, sonst schlägt ::date fehl.
+    await knex.raw(`
+        ALTER TABLE turniere
+        ALTER COLUMN anmeldeschluss TYPE date
+        USING NULLIF(anmeldeschluss, '')::date
+    `);
 }
 
 export async function down(knex) {
-    const isSqlite = knex.client.config.client === 'sqlite3';
-
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = OFF;');
-        await knex.schema.alterTable('turniere', (table) => {
-            table.string('anmeldeschluss').alter();
-        });
-        await knex.raw('PRAGMA foreign_keys = ON;');
-    } else {
-        await knex.raw(`ALTER TABLE turniere ALTER COLUMN anmeldeschluss TYPE varchar(255) USING anmeldeschluss::text`);
-    }
+    await knex.raw(`ALTER TABLE turniere ALTER COLUMN anmeldeschluss TYPE varchar(255) USING anmeldeschluss::text`);
 }

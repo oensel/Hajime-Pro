@@ -1,6 +1,5 @@
-// Wählt die knex-Umgebung aus knexfile.cjs: "online" = PostgreSQL, "offline" = SQLite. Die Entscheidung
-// trifft src/config/betriebsmodus.cjs (cloud/server -> PostgreSQL; server mit DB_CLIENT=sqlite bzw. das
-// bisherige IS_OFFLINE=true ohne DB_CLIENT=pg -> SQLite). Der Client hat keine relationale Datenbank.
+// Wählt die knex-Umgebung aus knexfile.cjs: immer "online" (PostgreSQL). Die Entscheidung trifft
+// src/config/betriebsmodus.cjs; der Client hat keine relationale Datenbank.
 import betriebsmodus from '../config/betriebsmodus.cjs';
 
 export function waehleKnexUmgebung(env = process.env) {

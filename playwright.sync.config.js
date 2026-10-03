@@ -1,20 +1,22 @@
 import { defineConfig, devices } from '@playwright/test';
 import {
     SYNC_BASE_URL, syncServerEnv, CLIENT_BASE_URL, clientEnv, SYNC_TEST_SECRET,
-    SYNC_TEST_SQLITE_PATH, SYNC_TEST_DOKUMENTE, CLIENT_TEST_DOKUMENTE, SYNC_TEST_DOWNLOADS
+    SYNC_TEST_PG_VERZEICHNIS, SYNC_TEST_DOKUMENTE, CLIENT_TEST_DOKUMENTE, SYNC_TEST_DOWNLOADS
 } from './tests/e2e-sync/test-env.js';
 import { rmSync } from 'fs';
+import { bereinigeTestPostgres } from './tests/helpers/testPostgres.js';
 
 // Testdaten werden hier — VOR dem Start der Webserver — gelöscht, nicht erst im globalSetup
 // (das läuft nach dem Serverstart): der Client fragt sofort beim Start den Server-Status ab, und
-// eine dadurch geöffnete SQLite-/LevelDB-Datei ließe sich unter Windows nicht mehr löschen.
-// globalSetup migriert danach nur noch die frische SQLite-Datei.
+// eine dadurch geöffnete LevelDB-/PostgreSQL-Datei ließe sich unter Windows nicht mehr löschen.
+// Das frische Schema legt der Server beim Start selbst an (eingebettetes PostgreSQL, migriert beim Start).
 // Playwright wertet die Konfiguration mehrfach aus (Hauptprozess, Worker) — der Umgebungs-Marker
 // sorgt dafür, dass nur die ERSTE Auswertung aufräumt (Worker erben ihn), nicht eine spätere,
 // während die Server ihre Dateien schon geöffnet haben.
 if (!process.env.HAJIME_SYNC_TESTDATEN_BEREINIGT) {
     process.env.HAJIME_SYNC_TESTDATEN_BEREINIGT = '1';
-    for (const pfad of [SYNC_TEST_SQLITE_PATH, SYNC_TEST_DOKUMENTE, CLIENT_TEST_DOKUMENTE, SYNC_TEST_DOWNLOADS]) {
+    await bereinigeTestPostgres(SYNC_TEST_PG_VERZEICHNIS);
+    for (const pfad of [SYNC_TEST_DOKUMENTE, CLIENT_TEST_DOKUMENTE, SYNC_TEST_DOWNLOADS]) {
         rmSync(pfad, { recursive: true, force: true });
     }
 }
@@ -30,7 +32,7 @@ export default defineConfig({
     workers: 1,
     retries: 0,
     reporter: [['list']],
-    globalSetup: './tests/e2e-sync/global-setup.js',
+    globalTeardown: './tests/e2e-sync/global-teardown.js',
     use: {
         baseURL: SYNC_BASE_URL,
         // Direkte /db-Zugriffe der Tests sind keine Browser-Anfragen -> SYNC_SECRET mitsenden.
@@ -45,7 +47,7 @@ export default defineConfig({
             url: SYNC_BASE_URL,
             env: syncServerEnv,
             reuseExistingServer: false,
-            timeout: 30_000,
+            timeout: 120_000, // initdb + Migrationen des eingebetteten PostgreSQL
             stdout: 'pipe',
             stderr: 'pipe'
         },

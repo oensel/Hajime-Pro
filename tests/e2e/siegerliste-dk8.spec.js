@@ -60,8 +60,8 @@ async function richteDk8TurnierEin(request, bezeichnung) {
     }
 
     // Reihenfolge identisch zu TEILNEHMER_FIXTUR -- Voraussetzung für das deterministische Raster
-    // (siehe Kommentar oben sowie DoppelKo8Manager.js: Teilnehmer werden ohne eigenes ORDER BY
-    // gelesen, SQLite liefert ohne Sortierung Einfüge-/Rowid-Reihenfolge).
+    // (siehe Kommentar oben sowie DoppelKo8Manager.js: Teilnehmer werden nach id
+    // sortiert gelesen, also in Einfüge-Reihenfolge).
     for (const teilnehmerId of teilnehmerIds) {
         const moveResp = await request.post('/api/pools/verschieben', { data: { teilnehmerId, zielPoolId: poolId } });
         expect(moveResp.ok(), await moveResp.text()).toBeTruthy();

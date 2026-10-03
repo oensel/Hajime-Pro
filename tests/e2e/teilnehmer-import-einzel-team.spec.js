@@ -8,7 +8,7 @@
 // Daten auf) und teilen sich deshalb bewusst EINE Page/Session über test.describe.serial +
 // beforeAll statt jeweils eigenes Turnier + eigene 9-Datei-Imports zu wiederholen — das würde die
 // Laufzeit vervielfachen, ohne zusätzliche Abdeckung zu bringen (siehe playwright.config.js:
-// die Suite läuft ohnehin mit einem Worker gegen eine gemeinsame SQLite-Datei).
+// die Suite läuft ohnehin mit einem Worker gegen eine gemeinsame Test-Datenbank).
 import { test, expect } from '@playwright/test';
 import * as XLSX from 'xlsx';
 
@@ -507,7 +507,7 @@ test.describe.serial('Teilnehmer-Import und -Verwaltung (teilnehmer.html)', () =
         // (1970-01-01, siehe importTeilnehmer) -> aktualisiereSpeicherButtonStatus() in
         // waage-modal.js hält den (immer sichtbaren) Speichern-Button deshalb zunächst deaktiviert
         // (fehlende Passnr. UND ungültige Lizenz).
-        await expect(gewichtFeld).toHaveValue('25');
+        await expect(gewichtFeld).toHaveValue('25,00');
         await expect(judopassFeld).toHaveValue('');
         await expect(speichernBtn).toBeVisible();
         await expect(speichernBtn).toBeDisabled();
@@ -583,7 +583,7 @@ test.describe.serial('Teilnehmer-Import und -Verwaltung (teilnehmer.html)', () =
         await expect(page.locator('#nachname')).toHaveValue(editNachname);
         await expect(page.locator('#verein')).toHaveValue('Arminia Appelhülsen');
         await expect(page.locator('#judopass_id')).toHaveValue('JP-ARM-0001');
-        await expect(page.locator('#gewicht')).toHaveValue('26'); // stammt aus dem bestehenden Datensatz, nicht aus dem QR-Code
+        await expect(page.locator('#gewicht')).toHaveValue('26,00'); // stammt aus dem bestehenden Datensatz, nicht aus dem QR-Code
         await expect(page.locator('#lizenz_ablauf')).toHaveValue('2032-05-01'); // aus dem QR-Code übernommener, gültiger Lizenzablauf
         await expect(page.locator('#lizenz_ablauf')).toHaveClass(/lizenz-valid/);
 

@@ -579,7 +579,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let turnierDatum = null;
 
     // PostgreSQL liefert das Datum als ISO-Zeitstempel in UTC (z.B. "2026-10-16T22:00:00.000Z" für
-    // den 17.10. in Deutschland), SQLite als reines "YYYY-MM-DD" — beides auf den lokalen
+    // den 17.10. in Deutschland), die Dokument-DB als reines "YYYY-MM-DD" — beides auf den lokalen
     // Kalendertag abbilden.
     function lokalesDatum(wert) {
         const str = String(wert);

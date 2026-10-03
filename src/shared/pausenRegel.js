@@ -35,7 +35,7 @@ export function ermittlePausensekunden(altersklasse) {
 /**
  * Wandelt einen DB-Zeitstempel robust in ms seit Epoch um — unabhängig davon, ob der Treiber ihn
  * bereits als Date-Objekt liefert (PostgreSQL: TIMESTAMP-Spalten kommen über den pg-Treiber fertig
- * geparst) oder als naiven String ohne Zeitzonen-Kennzeichnung (SQLite: CURRENT_TIMESTAMP liefert
+ * geparst) oder als naiven String ohne Zeitzonen-Kennzeichnung (z.B. aus Dokumenten oder Exporten:
  * "YYYY-MM-DD HH:MM:SS" in UTC, aber OHNE "Z"/Offset). new Date() interpretiert einen solchen
  * String ohne Zeitzone als LOKALE Zeit, nicht als UTC — auf jedem Server außerhalb UTC (z.B. MESZ =
  * UTC+2) entsteht dadurch ein systematischer Versatz in der berechneten "verstrichenen Zeit seit

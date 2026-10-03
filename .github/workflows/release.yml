@@ -32,9 +32,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
-      # node-gyp@8 (über sqlite3, im Root hochgezogen) braucht distutils, das es ab Python 3.12
-      # nicht mehr gibt. leveldown@5 (pouchdb-node) hat kein Prebuild für macOS arm64 und wird
-      # dort beim npm ci kompiliert.
+      # Python 3.11 bleibt vorsorglich gepinnt: Node-Addons (leveldown@5 aus pouchdb-node hat kein Prebuild
+      # für macOS arm64) werden beim npm ci bzw. durch electron-builder aus den Quellen gebaut, und ältere
+      # node-gyp-Versionen brauchen distutils, das es ab Python 3.12 nicht mehr gibt.
       - uses: actions/setup-python@v5
         with: { python-version: '3.11' }
       - run: npm ci

@@ -517,8 +517,8 @@ function updateGsLimit() {
 // und den URL-Parameter-Zweig weiter unten). Ist Golden Score für den Pool deaktiviert, wird
 // das Zeitlimit-Feld ausgeblendet, da es dann irrelevant ist.
 function wendeGoldenScoreEinstellungenAn(aktiv, maxSekunden) {
-    // SQLite (Offline-Modus) liefert boolean-Spalten oft als 0/1 statt echtem true/false
-    // zurück — nur ein expliziter falscher Wert (false, 0, "0") gilt als deaktiviert, alles
+    // Boolean-Spalten kommen je nach Quelle (Dokument-DB, ältere Daten) auch als 0/1 statt echtem
+    // true/false an — nur ein expliziter falscher Wert (false, 0, "0") gilt als deaktiviert, alles
     // andere (inkl. undefined/null bei Kämpfen ohne Pool-Kontext) bleibt beim bisherigen
     // Standardverhalten (Golden Score aktiv).
     gsAktiv = !(aktiv === false || aktiv === 0 || aktiv === '0');

@@ -863,7 +863,7 @@ test.describe.serial('Pool-Verteilung nach Alters-/Gewichtsklasse und Wettkampfs
             // mit gesetzter matten_reihenfolge (siehe planbareKaempfe/neuGeplant in
             // planeKaempfeFuerKampfflaeche). 'angelegt' Kämpfe (z.B. spätere Doppel-KO-Runden ohne
             // feststehende Kämpfer) haben bewusst NOCH KEINE matten_reihenfolge und werden von
-            // getKaempfe deshalb (NULLs sortieren in SQLite zuerst) VOR die echte Reihenfolge
+            // getKaempfe deshalb (NULLs sortieren je nach Datenbank zuerst oder zuletzt) VOR die echte Reihenfolge
             // gemischt zurückgegeben — würden sie hier mitgezählt, verfälschten sie sowohl die
             // Positions-Indizes als auch die "verstrichene Zeit"-Summe zwischen zwei echten
             // Kämpfen. Beendete/Freilos-Kämpfe behalten ihre historische Reihenfolge, ist hier

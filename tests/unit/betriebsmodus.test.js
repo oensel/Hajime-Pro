@@ -18,20 +18,25 @@ test('legacy: ohne Variablen = cloud mit PostgreSQL und Vereinsrechten', () => {
     assert.deepEqual(m.fehler, []);
 });
 
-test('legacy: IS_OFFLINE=true = server mit SQLite, DB_CLIENT=pg = PostgreSQL', () => {
-    const sqlite = liesBetriebsmodus({ IS_OFFLINE: 'true' });
-    assert.equal(sqlite.modus, 'server');
-    assert.equal(sqlite.dbTyp, 'sqlite');
-    assert.equal(sqlite.knexUmgebung, 'offline');
-    assert.equal(sqlite.einzelbenutzer, true);
-    const pg = liesBetriebsmodus({ IS_OFFLINE: 'true', DB_CLIENT: 'pg' });
-    assert.equal(pg.dbTyp, 'pg');
-    assert.equal(pg.knexUmgebung, 'online');
+test('legacy: IS_OFFLINE=true = server mit PostgreSQL über DB_HOST/DB_URL', () => {
+    const m = liesBetriebsmodus({ IS_OFFLINE: 'true', DB_HOST: '127.0.0.1' });
+    assert.equal(m.modus, 'server');
+    assert.equal(m.dbTyp, 'pg');
+    assert.equal(m.knexUmgebung, 'online');
+    assert.equal(m.einzelbenutzer, true);
+    assert.deepEqual(m.fehler, []);
+    assert.deepEqual(liesBetriebsmodus({ IS_OFFLINE: 'true', DB_URL: 'postgres://a@h/d' }).fehler, []);
+});
+
+test('legacy: IS_OFFLINE=true ohne Datenbankangabe ist ein Fehler mit Hinweis auf BETRIEBSMODUS=server', () => {
+    const m = liesBetriebsmodus({ IS_OFFLINE: 'true' });
+    assert.ok(m.fehler.some(f => /BETRIEBSMODUS=server/.test(f)));
+    assert.equal(m.dbEingebettet, false);
 });
 
 test('legacy: die Sync-Rolle kommt allein aus SYNC_ROLLE (Hallenbetrieb ohne Sync bleibt möglich)', () => {
-    assert.equal(liesBetriebsmodus({ IS_OFFLINE: 'true' }).syncRolle, null);
-    assert.equal(liesBetriebsmodus({ IS_OFFLINE: 'true', SYNC_ROLLE: 'server' }).syncRolle, 'server');
+    assert.equal(liesBetriebsmodus({ IS_OFFLINE: 'true', DB_HOST: 'db' }).syncRolle, null);
+    assert.equal(liesBetriebsmodus({ IS_OFFLINE: 'true', DB_HOST: 'db', SYNC_ROLLE: 'server' }).syncRolle, 'server');
     assert.equal(liesBetriebsmodus({ SYNC_ROLLE: 'Server' }).syncRolle, null);
 });
 
@@ -53,9 +58,9 @@ test('legacy: SYNC_ROLLE=server ohne IS_OFFLINE bleibt lauffähig, warnt aber', 
 });
 
 test('legacy: Cluster-Widersprüche sind nur Warnungen, keine Abbrüche', () => {
-    const m = liesBetriebsmodus({ IS_OFFLINE: 'true', SYNC_ROLLE: 'server', CLUSTER_KNOTEN: 'server1' });
+    const m = liesBetriebsmodus({ IS_OFFLINE: 'true', DB_HOST: 'db', SYNC_ROLLE: 'server', CLUSTER_KNOTEN: 'server1', LISTEN_HOST: '127.0.0.1' });
     assert.deepEqual(m.fehler, []);
-    assert.ok(m.warnungen.some(w => /PostgreSQL/.test(w)));
+    assert.ok(m.warnungen.some(w => /LISTEN_HOST/.test(w)));
 });
 
 // --- Expliziter BETRIEBSMODUS ---
@@ -103,15 +108,15 @@ test('server ohne DB_HOST startet sein eigenes PostgreSQL, mit DB_HOST nutzt er 
     assert.equal(liesBetriebsmodus({ BETRIEBSMODUS: 'server', DB_HOST: '' }).dbEingebettet, true);
     assert.equal(liesBetriebsmodus({ BETRIEBSMODUS: 'server', DB_HOST: '127.0.0.1' }).dbEingebettet, false);
     assert.equal(liesBetriebsmodus({ BETRIEBSMODUS: 'server', DB_HOST: 'db.intern' }).dbEingebettet, false);
-    // nicht bei SQLite, nicht in cloud/client
-    assert.equal(liesBetriebsmodus({ BETRIEBSMODUS: 'server', DB_CLIENT: 'sqlite' }).dbEingebettet, false);
+    assert.equal(liesBetriebsmodus({ BETRIEBSMODUS: 'server', DB_URL: 'postgres://a@h/d' }).dbEingebettet, false);
+    // nicht in cloud/client
     assert.equal(liesBetriebsmodus({ BETRIEBSMODUS: 'cloud' }).dbEingebettet, false);
     assert.equal(liesBetriebsmodus({ BETRIEBSMODUS: 'client' }).dbEingebettet, false);
 });
 
 test('legacy: ohne BETRIEBSMODUS wird nie ein eingebettetes PostgreSQL gestartet (DB_HOST-Standard 127.0.0.1 bleibt)', () => {
     assert.equal(liesBetriebsmodus({ IS_OFFLINE: 'true', DB_CLIENT: 'pg' }).dbEingebettet, false);
-    assert.equal(liesBetriebsmodus({ IS_OFFLINE: 'true' }).dbEingebettet, false);
+    assert.equal(liesBetriebsmodus({ IS_OFFLINE: 'true', DB_HOST: 'db' }).dbEingebettet, false);
 });
 
 test('Cluster mit eingebettetem PostgreSQL ist ein Fehler (DB_HOST fehlt)', () => {
@@ -119,11 +124,12 @@ test('Cluster mit eingebettetem PostgreSQL ist ein Fehler (DB_HOST fehlt)', () =
     assert.deepEqual(liesBetriebsmodus({ BETRIEBSMODUS: 'server', DB_HOST: '127.0.0.1', CLUSTER_KNOTEN: 'server1' }).fehler, []);
 });
 
-test('server mit DB_CLIENT=sqlite bleibt als Altpfad möglich', () => {
-    const m = liesBetriebsmodus({ BETRIEBSMODUS: 'server', DB_CLIENT: 'sqlite' });
-    assert.equal(m.dbTyp, 'sqlite');
-    assert.equal(m.knexUmgebung, 'offline');
-    assert.deepEqual(m.fehler, []);
+test('DB_CLIENT=sqlite ist in jedem Modus ein Fehler (SQLite wurde entfernt), DB_CLIENT=pg ist harmlos', () => {
+    for (const modus of ['server', 'cloud']) {
+        assert.ok(liesBetriebsmodus({ BETRIEBSMODUS: modus, DB_CLIENT: 'sqlite' }).fehler.some(f => /SQLite wird nicht mehr unterstützt/.test(f)), modus);
+    }
+    assert.ok(liesBetriebsmodus({ IS_OFFLINE: 'true', DB_HOST: 'db', DB_CLIENT: 'sqlite' }).fehler.some(f => /SQLite/.test(f)));
+    assert.deepEqual(liesBetriebsmodus({ BETRIEBSMODUS: 'server', DB_CLIENT: 'pg' }).fehler, []);
 });
 
 test('client: lokale Dokument-DB, keine relationale Datenbank, nur lokal', () => {
@@ -138,7 +144,6 @@ test('Cluster: nur im Modus server, mit PostgreSQL, nicht nur auf localhost gebu
     const gut = liesBetriebsmodus({ BETRIEBSMODUS: 'server', DB_HOST: '127.0.0.1', CLUSTER_KNOTEN: 'server2' });
     assert.equal(gut.cluster, true);
     assert.deepEqual(gut.fehler, []);
-    assert.ok(liesBetriebsmodus({ BETRIEBSMODUS: 'server', DB_CLIENT: 'sqlite', CLUSTER_KNOTEN: 'server1' }).fehler.some(f => /PostgreSQL/.test(f)));
     assert.ok(liesBetriebsmodus({ BETRIEBSMODUS: 'server', LISTEN_HOST: '127.0.0.1', CLUSTER_KNOTEN: 'server1' }).fehler.some(f => /LISTEN_HOST/.test(f)));
     assert.ok(liesBetriebsmodus({ BETRIEBSMODUS: 'cloud', CLUSTER_KNOTEN: 'server1' }).fehler.some(f => /nur im Modus server/.test(f)));
 });
@@ -154,7 +159,6 @@ test('unbekannter BETRIEBSMODUS und ungültige Werte werden gemeldet', () => {
 test('expliziter Modus und widersprüchliche Altvariablen sind ein Fehler', () => {
     assert.ok(liesBetriebsmodus({ BETRIEBSMODUS: 'cloud', SYNC_ROLLE: 'server' }).fehler.some(f => /SYNC_ROLLE/.test(f)));
     assert.ok(liesBetriebsmodus({ BETRIEBSMODUS: 'client', SYNC_ROLLE: 'server' }).fehler.some(f => /SYNC_ROLLE/.test(f)));
-    assert.ok(liesBetriebsmodus({ BETRIEBSMODUS: 'cloud', DB_CLIENT: 'sqlite' }).fehler.some(f => /sqlite/.test(f)));
     // Übereinstimmende Altvariablen stören nicht
     assert.deepEqual(liesBetriebsmodus({ BETRIEBSMODUS: 'server', SYNC_ROLLE: 'server', IS_OFFLINE: 'true' }).fehler, []);
 });

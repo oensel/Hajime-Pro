@@ -1,9 +1,10 @@
-// Gemeinsame Konfiguration der Sync-Suite (Hallen-Server mit SYNC_ROLLE=server). Eigener Port,
-// eigene SQLite-Datei und eigenes Dokument-Verzeichnis, damit sie neben npm run test:e2e und einem
-// Dev-Server laufen kann.
+// Gemeinsame Konfiguration der Sync-Suite (Hallen-Server mit SYNC_ROLLE=server). Eigener Port, eigenes
+// eingebettetes PostgreSQL (der Server startet es selbst, BETRIEBSMODUS=server ohne DB_HOST) und eigenes
+// Dokument-Verzeichnis, damit sie neben npm run test:e2e und einem Dev-Server laufen kann.
 export const SYNC_TEST_PORT = 3200;
 export const SYNC_BASE_URL = `http://localhost:${SYNC_TEST_PORT}`;
-export const SYNC_TEST_SQLITE_PATH = './data/test-sync.sqlite';
+export const SYNC_TEST_PG_VERZEICHNIS = './data/test-sync-pg';
+export const SYNC_TEST_PG_PORT = 5602;
 export const SYNC_TEST_DOKUMENTE = './data/test-sync-dokumente';
 export const SYNC_TEST_DOWNLOADS = './data/test-sync-downloads';
 export const SYNC_TEST_SECRET = 'test-geheimnis';
@@ -17,8 +18,13 @@ export const syncServerEnv = {
     ...process.env,
     BETRIEBSMODUS: 'server',
     IS_OFFLINE: '',
-    DB_CLIENT: 'sqlite',
-    DB_SQLITE_PATH: SYNC_TEST_SQLITE_PATH,
+    DB_CLIENT: '',
+    DB_HOST: '',
+    DB_URL: '',
+    DATABASE_URL: '',
+    DB_PORT: String(SYNC_TEST_PG_PORT),
+    DB_NAME: 'hajime_sync',
+    PG_DATENVERZEICHNIS: SYNC_TEST_PG_VERZEICHNIS,
     PORT: String(SYNC_TEST_PORT),
     SYNC_ROLLE: '',
     SYNC_DATENVERZEICHNIS: SYNC_TEST_DOKUMENTE,

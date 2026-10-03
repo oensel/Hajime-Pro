@@ -25,7 +25,7 @@ const knex = knexLib(knexConfig[environment]);
 // gegen die PostgreSQL-Datenbank (z.B. vergessene .env-Umschaltung), würde das ohne jede Rückfrage die Cloud-
 // bzw. Hallen-Datenbank treffen — inklusive vereine/benutzer aller Clubs bzw. des laufenden Turniers. Für
 // PostgreSQL daher eine explizite, bewusste Bestätigung verlangen.
-if (environment === 'online' && process.env.CONFIRM_ONLINE_RESET !== 'JA_WIRKLICH_LOESCHEN') {
+if (process.env.CONFIRM_ONLINE_RESET !== 'JA_WIRKLICH_LOESCHEN') {
     console.error(
         `❌ Abgebrochen: setup_db.js würde gegen die PostgreSQL-Datenbank laufen (Modus ${bm.modus}) und sie KOMPLETT ` +
         '(inkl. aller Vereine, Benutzer und Turniere) löschen.\n' +

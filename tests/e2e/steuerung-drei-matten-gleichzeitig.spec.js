@@ -1,4 +1,4 @@
-// End-to-End: Hybrid-Modus-Szenario -- ein Server läuft lokal (im Testlauf technisch SQLite,
+// End-to-End: Hybrid-Modus-Szenario -- ein Server läuft lokal (im Testlauf mit eigenem PostgreSQL,
 // IS_OFFLINE=true, siehe tests/e2e/test-env.js), und DREI Kampfflächen ("eigene Laptops im
 // selben WLAN") sprechen gleichzeitig live per Netzwerk-Requests mit ihm, OHNE jemals zu
 // exportieren/importieren -- exakt der in scoreboard.js/kampf.js verwendete Online-Zweig

@@ -18,29 +18,15 @@ export async function up(knex) {
         .whereNotIn('status', ['veroeffentlicht'])
         .update({ status: 'entwurf' });
 
-    const isSqlite = knex.client.config.client === 'sqlite3';
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = OFF;');
-    }
     await knex.schema.alterTable('turniere', (table) => {
         table.string('status').notNullable().defaultTo('entwurf').alter();
     });
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = ON;');
-    }
 }
 
 export async function down(knex) {
-    const isSqlite = knex.client.config.client === 'sqlite3';
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = OFF;');
-    }
     await knex.schema.alterTable('turniere', (table) => {
         table.string('status').notNullable().defaultTo('anmeldung_offen').alter();
     });
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = ON;');
-    }
 
     await knex('turniere')
         .where({ status: 'veroeffentlicht' })

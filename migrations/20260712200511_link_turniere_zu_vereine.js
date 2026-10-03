@@ -1,11 +1,6 @@
 export const config = { transaction: false };
 
 export async function up(knex) {
-    const isSqlite = knex.client.config.client === 'sqlite3';
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = OFF;');
-    }
-
     // 1. Turniere bekommen eine echte Verknüpfung zum ausrichtenden Verein
     await knex.schema.alterTable('turniere', (table) => {
         table.integer('verein_id').unsigned().nullable()
@@ -32,18 +27,9 @@ export async function up(knex) {
     await knex.schema.alterTable('turniere', (table) => {
         table.dropColumn('benutzer_id');
     });
-
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = ON;');
-    }
 }
 
 export async function down(knex) {
-    const isSqlite = knex.client.config.client === 'sqlite3';
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = OFF;');
-    }
-
     // Hinweis: die ursprünglichen benutzer_id-Werte können beim Rollback nicht
     // wiederhergestellt werden, die Spalte wird leer neu angelegt.
     await knex.schema.alterTable('turniere', (table) => {
@@ -54,8 +40,4 @@ export async function down(knex) {
     await knex.schema.alterTable('turniere', (table) => {
         table.dropColumn('verein_id');
     });
-
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = ON;');
-    }
 }

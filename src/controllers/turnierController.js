@@ -649,7 +649,7 @@ async function importWettkampfdaten(trx, turnierId, { kampfflaechen, pools, teil
 // Gegenstück zu exportTurnier: importiert eine zuvor exportierte Turnier-JSON-Datei als
 // komplett NEUES Turnier mit frischen IDs. Ausschließlich im Offline-Modus verfügbar. Löscht
 // dabei ALLE bestehenden Turniere (samt Pools/Kämpfe/Teilnehmer/Kampfflächen) aus der lokalen
-// SQLite-DB, da der Offline-Kiosk-Betrieb von genau einem aktiven Turnier ausgeht — der
+// Datenbank, da der Offline-Kiosk-Betrieb von genau einem aktiven Turnier ausgeht — der
 // Aufrufer muss das vorher bestätigen lassen (siehe Bestätigungsdialog in turniere.html).
 export async function importTurnier(knex, req, res) {
     try {
@@ -698,7 +698,7 @@ export async function importTurnier(knex, req, res) {
         const neuesTurnierId = await knex.transaction(async (trx) => {
             // Der Offline-Kiosk-Betrieb geht von genau einem aktiven Turnier aus (siehe
             // automatische Turnier-Auswahl in turniere.html) — vor dem Import wird die
-            // SQLite-Datenbank daher komplett von alten Turnierdaten geleert.
+            // Datenbank daher komplett von alten Turnierdaten geleert.
             await trx('kaempfe').del();
             await trx('turnier_teilnehmer').del();
             await trx('pools').del();

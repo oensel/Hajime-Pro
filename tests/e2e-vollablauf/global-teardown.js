@@ -21,6 +21,8 @@ import { createRequire } from 'module';
 import dotenv from 'dotenv';
 import knexLib from 'knex';
 import { liesStatus } from './run-state.js';
+import { bereinigeTestPostgres } from '../helpers/testPostgres.js';
+import { OFFLINE_PG_VERZEICHNIS } from './test-env.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '../..');
@@ -68,5 +70,7 @@ export default async function globalTeardown() {
         }
     } finally {
         await knex.destroy();
+        // Offline-Server der Suite: eingebettetes Test-PostgreSQL stoppen und löschen.
+        await bereinigeTestPostgres(OFFLINE_PG_VERZEICHNIS);
     }
 }

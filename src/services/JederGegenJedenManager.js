@@ -12,7 +12,7 @@ export class JederGegenJedenManager {
     async initialisierePool(knex, poolId) {
         // 1. Pool-Daten und alle registrierten Teilnehmer laden
         const pool = await knex('pools').where({ id: poolId }).first();
-        const teilnehmer = await knex('turnier_teilnehmer').where({ pool_id: poolId });
+        const teilnehmer = await knex('turnier_teilnehmer').where({ pool_id: poolId }).orderBy('id', 'asc');
 
         // Sortieren nach Gewicht aufsteigend
         teilnehmer.sort((a, b) => Number(a.gewicht) - Number(b.gewicht));

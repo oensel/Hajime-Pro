@@ -30,29 +30,15 @@ export async function up(knex) {
         })
         .update({ status: 'angelegt' });
 
-    const isSqlite = knex.client.config.client === 'sqlite3';
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = OFF;');
-    }
     await knex.schema.alterTable('kaempfe', (table) => {
         table.string('status').notNullable().defaultTo('angelegt').alter();
     });
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = ON;');
-    }
 }
 
 export async function down(knex) {
-    const isSqlite = knex.client.config.client === 'sqlite3';
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = OFF;');
-    }
     await knex.schema.alterTable('kaempfe', (table) => {
         table.string('status').notNullable().defaultTo('wartet').alter();
     });
-    if (isSqlite) {
-        await knex.raw('PRAGMA foreign_keys = ON;');
-    }
 
     await knex('kaempfe').where({ status: 'gestartet' }).update({ status: 'laufend' });
     await knex('kaempfe').where({ status: 'freilos' }).update({ status: 'beendet' });

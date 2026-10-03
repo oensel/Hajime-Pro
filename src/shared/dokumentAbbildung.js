@@ -42,8 +42,8 @@ function normalisiere(wert) {
     return wert;
 }
 
-// Vergleichswert, der die Darstellungsunterschiede zwischen SQLite (1/0, Zahlen) und PostgreSQL
-// (true/false, DECIMAL als String "60.00") sowie Date-Objekten glättet.
+// Vergleichswert, der die Darstellungsunterschiede zwischen den Quellen (1/0 bzw.
+// true/false, DECIMAL als String "60.00" bzw. Zahl) sowie Date-Objekten glättet.
 function vergleichswert(wert) {
     const w = normalisiere(wert);
     if (w === null) return null;
