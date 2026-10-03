@@ -4,8 +4,11 @@
 -- App-Nutzer: Tabellen der Datenbank hajime + die Cluster-Funktionen, ohne Superuser.
 CREATE ROLE hajime LOGIN PASSWORD 'ANPASSEN';
 CREATE DATABASE hajime OWNER hajime;
+-- Rechte auf Systemfunktionen gelten je Datenbank: die App verbindet sich mit "hajime", also dort vergeben.
+\c hajime
 GRANT EXECUTE ON FUNCTION pg_promote(boolean, integer) TO hajime;
 GRANT EXECUTE ON FUNCTION pg_reload_conf() TO hajime;
+\c postgres
 GRANT ALTER SYSTEM ON PARAMETER synchronous_standby_names TO hajime;
 GRANT pg_monitor TO hajime;
 
