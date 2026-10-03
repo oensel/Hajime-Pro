@@ -68,8 +68,13 @@ jobs:
             dist-desktop/*.AppImage
           if-no-files-found: error
 
+  # Server-Paket "Hajime Pro Server" (Notebook als Hallen-Server): Build + Rauchtest je Plattform, gleiche Version wie der Client.
+  server-paket:
+    needs: [tests, pruefen]
+    uses: ./.github/workflows/server-paket.yml
+
   veroeffentlichen:
-    needs: build
+    needs: [build, server-paket]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -78,7 +83,11 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - uses: actions/download-artifact@v4
-        with: { path: release, merge-multiple: true }
+        with: { path: release, pattern: 'client-*', merge-multiple: true }
+      # Die Server-Installer liegen getrennt: sie werden nicht mit dem Client-Schema signiert (kein Selbst-Update,
+      # Installation von Hand) und dürfen die Zuordnung je Plattform/Rolle in version.json nicht stören.
+      - uses: actions/download-artifact@v4
+        with: { path: release-server, pattern: 'server-*', merge-multiple: true }
       - name: Signaturschlüssel und öffentlichen Schlüssel prüfen
         run: |
           test -f desktop/update-schluessel.pub || { echo "desktop/update-schluessel.pub fehlt im Repo — 'npm run client:schluessel' einmalig laufen lassen und committen (siehe desktop/README.md)."; exit 1; }
@@ -87,6 +96,8 @@ jobs:
       - name: Signieren und version.json erzeugen
         run: node scripts/signiere-client.mjs release "${GITHUB_REF_NAME#v}"
         env: { CLIENT_SIGNATUR_SCHLUESSEL: '${{ secrets.CLIENT_SIGNATUR_SCHLUESSEL }}' }
+      - name: Prüfsummen der Server-Installer
+        run: (cd release-server && sha256sum * > SHA256SUMS-Server.txt)
       - name: GitHub-Release anlegen
-        run: gh release create "$GITHUB_REF_NAME" release/* --title "Hajime Pro $GITHUB_REF_NAME" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" release/* release-server/* --title "Hajime Pro $GITHUB_REF_NAME" --generate-notes
         env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }

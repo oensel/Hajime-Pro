@@ -49,7 +49,11 @@ abzustürzen.
 1. `npm version patch|minor|major` — erhöht die Version in `package.json` und legt den Git-Tag an.
 2. `git push --follow-tags` — löst `release.yml` aus.
 3. Die Pipeline testet, prüft die Tag/Version-Übereinstimmung, baut Windows/macOS/Linux, signiert
-   die Dateien und veröffentlicht sie als GitHub-Release.
+   die Client-Dateien und veröffentlicht sie als GitHub-Release. Parallel baut und testet sie das
+   **Server-Paket** ("Hajime Pro Server", `server-paket.yml`); dessen Installer (Windows `.exe`, macOS `.dmg`/`.zip`
+   für Apple Silicon, Linux `.AppImage`) hängen mit `SHA256SUMS-Server.txt` am selben Release. Sie werden
+   nicht mit dem Client-Schema signiert (kein Selbst-Update, Installation von Hand) und stehen nicht in `version.json`.
+   Noch offen: Intel-Mac für das Server-Paket.
 4. Auf dem Hallen-Server die neue Version holen: `git pull && npm ci --omit=dev && npm run client:holen`
    (bei privatem Repository zusätzlich `GITHUB_TOKEN` mit Leserecht auf Releases in der `.env`).
 
