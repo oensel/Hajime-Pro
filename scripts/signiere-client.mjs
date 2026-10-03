@@ -12,7 +12,8 @@ const ZUORDNUNG = [
     { endung: '.exe', plattform: 'win32-x64', rollen: ['installieren', 'aktualisieren'] },
     { endung: '.dmg', plattform: 'darwin-universal', rollen: ['installieren'] },
     { endung: '.zip', plattform: 'darwin-universal', rollen: ['aktualisieren'] },
-    { endung: '.AppImage', plattform: 'linux-x64', rollen: ['installieren', 'aktualisieren'] }
+    { endung: '.AppImage', plattform: 'linux-x64', rollen: ['installieren', 'aktualisieren'] },
+    { endung: '.apk', plattform: 'android', rollen: ['installieren'] }
 ];
 
 export function erzeugeVersionJson({ verzeichnis, version, privaterSchluessel }) {

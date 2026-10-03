@@ -11,7 +11,7 @@ test('version.json ordnet Dateien den Plattformen zu und die Signaturen sind pr√
     const { publicKey, privateKey } = generateKeyPairSync('ed25519');
     const dir = mkdtempSync(path.join(tmpdir(), 'signieren-'));
     for (const [n, inhalt] of [['H-1.2.0-win-x64.exe', 'W'], ['H-1.2.0-mac-universal.dmg', 'D'], ['H-1.2.0-mac-universal.zip', 'Z'],
-        ['H-1.2.0-linux-x86_64.AppImage', 'L'], ['H-1.2.0-win-x64.exe.blockmap', 'B']]) {
+        ['H-1.2.0-linux-x86_64.AppImage', 'L'], ['H-1.2.0-win-x64.exe.blockmap', 'B'], ['Hajime-Pro-1.2.0.apk', 'A']]) {
         writeFileSync(path.join(dir, n), inhalt);
     }
     const vj = erzeugeVersionJson({ verzeichnis: dir, version: '1.2.0', privaterSchluessel: privateKey.export({ type: 'pkcs8', format: 'pem' }) });
@@ -21,6 +21,9 @@ test('version.json ordnet Dateien den Plattformen zu und die Signaturen sind pr√
     assert.equal(vj.dateien['darwin-universal'].installieren.datei, 'H-1.2.0-mac-universal.dmg');
     assert.equal(vj.dateien['darwin-universal'].aktualisieren.datei, 'H-1.2.0-mac-universal.zip');
     assert.equal(vj.dateien['linux-x64'].aktualisieren.datei, 'H-1.2.0-linux-x86_64.AppImage');
+    // Android-App: nur Erstinstallation √ºber die Download-Seite, kein Selbst-Update.
+    assert.equal(vj.dateien.android.installieren.datei, 'Hajime-Pro-1.2.0.apk');
+    assert.equal(vj.dateien.android.aktualisieren, undefined);
     const pub = publicKey.export({ type: 'spki', format: 'pem' });
     const eintrag = vj.dateien['darwin-universal'].aktualisieren;
     assert.deepEqual(pruefeDatei({ puffer: readFileSync(path.join(dir, eintrag.datei)), eintrag, version: '1.2.0', oeffentlicherSchluessel: pub }), { ok: true });

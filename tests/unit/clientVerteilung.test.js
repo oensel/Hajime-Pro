@@ -34,7 +34,11 @@ test('GET /kopplungscode und Erneuern verlangen das Passwort, wenn STEUERUNG_PAS
             assert.equal((await fetch(`${basis}/kopplungscode/erneuern`, { method: 'POST' })).status, 401);
             const ok = await fetch(`${basis}/kopplungscode`, { headers: { 'x-steuerung-password': 'leitung' } });
             assert.equal(ok.status, 200);
-            assert.deepEqual(await ok.json(), { code: '123456' });
+            const antwort = await ok.json();
+            assert.equal(antwort.code, '123456');
+            // LAN-Adressen für den Kopplungs-QR-Code der Android-App (Port des Servers, IPv4).
+            assert.ok(Array.isArray(antwort.urls));
+            for (const url of antwort.urls) assert.match(url, /^http:\/\/\d+\.\d+\.\d+\.\d+:\d+$/);
         });
     } finally {
         if (vorher === undefined) delete process.env.STEUERUNG_PASSWORD;

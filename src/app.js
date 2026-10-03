@@ -33,6 +33,7 @@ import { liesClusterKonfig, clusterSecretFehler } from './cluster/konfig.js';
 import { starteClusterDienst } from './cluster/clusterDienst.js';
 import { getClusterRoutes } from './routes/clusterRoutes.js';
 import { nurMaster } from './middleware/nurMaster.js';
+import { appCors } from './middleware/appCors.js';
 import { getClientApiRoutes, clientStatischeSeiten } from './sync/clientApi.js';
 import { ladeKopplung } from './sync/kopplung.js';
 import { getClientVerteilungRoutes } from './routes/clientVerteilungRoutes.js';
@@ -182,6 +183,8 @@ if (syncKonfig.istClient) {
     // /db (Dokument-DB) MUSS vor express.json() hängen — sonst konsumiert der JSON-Parser die
     // Request-Bodies, die express-pouchdb selbst lesen muss.
     if (sync) {
+        // Android-App (Herkunft localhost): Replikation, Status, Kopplung und Version freigeben.
+        app.use(['/db', '/api/sync/status', '/api/client/koppeln', '/api/client/version'], appCors);
         // Nur Datenzugriffe lösen die verzögerte Initialisierung aus — NICHT der Abruf statischer
         // Seiten wie "/" (die Erreichbarkeitsprüfung der Test-Suites läuft vor deren DB-Setup).
         const nachInitialisierung = (req, res, next) => sync.bereit().then(() => next(), next);

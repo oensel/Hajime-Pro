@@ -4,7 +4,7 @@
 // gewählten Matte (Mannschafts-Pools: Stufe 2). Die Schreibvorgänge tragen
 // bearbeitet_von: 'kaskade:<clientId>'; der Server wendet sie nicht an, sondern rechnet selbst nach
 // und überschreibt sie mit seinem maßgeblichen Stand.
-import { berechneKaskadenPatches } from '../shared/kaskadeDokumente.js';
+import { berechneKaskadenPatches } from './kaskadeDokumente.js';
 
 export function erzeugeKaskadeLokal({ client }) {
     const absender = `kaskade:${client.clientKonfig.clientId}`;

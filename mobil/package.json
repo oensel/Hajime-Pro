@@ -1,0 +1,14 @@
+{
+  "name": "hajime-pro-android",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Android-App (Capacitor-Hülle) für Hajime Pro: Client-Gerät an Waage und Matte. Siehe README.md",
+  "type": "module",
+  "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/core": "^8.5.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.2"
+  }
+}

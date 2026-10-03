@@ -55,18 +55,19 @@ test.describe.serial('Client-Verteilung', () => {
         }
     });
 
-    test('Download-Seite: Tablets (Android, iPadOS) bekommen einen Hinweis statt einer Datei', async ({ browser }) => {
+    test('Download-Seite: Apple-Geräte bekommen einen Hinweis, Android ohne APK ebenfalls', async ({ browser }) => {
         const faelle = [
-            ['Mozilla/5.0 (Linux; Android 14; SM-X710) AppleWebKit/537.36 Chrome/126.0 Safari/537.36', 0],
+            ['Mozilla/5.0 (Linux; Android 14; SM-X710) AppleWebKit/537.36 Chrome/126.0 Safari/537.36', 0, 'Für Android liegt auf diesem Server noch keine App vor'],
+            ['Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148', 0, 'iPhone und iPad'],
             // iPadOS meldet sich als Mac — nur die Touch-Punkte verraten das Tablet.
-            ['Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/17.0 Safari/605.1.15', 5]
+            ['Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/17.0 Safari/605.1.15', 5, 'iPhone und iPad']
         ];
-        for (const [ua, touchPunkte] of faelle) {
+        for (const [ua, touchPunkte, text] of faelle) {
             const ctx = await browser.newContext({ userAgent: ua });
             if (touchPunkte) await ctx.addInitScript((n) => Object.defineProperty(Navigator.prototype, 'maxTouchPoints', { get: () => n }), touchPunkte);
             const page = await ctx.newPage();
             await page.goto('/download');
-            await expect(page.locator('#downloadHinweis')).toContainText('Tablets');
+            await expect(page.locator('#downloadHinweis')).toContainText(text);
             await expect(page.locator('#downloadHauptlink')).toHaveCount(0);
             await expect(page.locator('#downloadWeitere a')).toHaveCount(0);
             await ctx.close();

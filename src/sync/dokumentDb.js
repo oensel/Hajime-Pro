@@ -5,6 +5,7 @@ import pouchFind from 'pouchdb-find';
 import expressPouchdb from 'express-pouchdb';
 import { mkdirSync } from 'fs';
 import path from 'path';
+import { turnierDbName } from '../shared/dokumentNamen.js';
 
 PouchDBBasis.plugin(pouchFind);
 
@@ -27,9 +28,7 @@ export async function oeffneMitWiederholung(PouchDB, name) {
     throw letzterFehler;
 }
 
-export function turnierDbName(instanzId) {
-    return `turnier_${instanzId}`;
-}
+export { turnierDbName };
 
 export function erzeugeDokumentDb({ datenverzeichnis }) {
     const verzeichnis = path.resolve(datenverzeichnis);

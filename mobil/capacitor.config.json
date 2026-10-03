@@ -1,0 +1,11 @@
+{
+  "appId": "de.hajimepro.client",
+  "appName": "Hajime Pro",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "http"
+  },
+  "android": {
+    "allowMixedContent": false
+  }
+}
