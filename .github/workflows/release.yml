@@ -76,6 +76,7 @@ jobs:
   android:
     needs: [tests, pruefen]
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
