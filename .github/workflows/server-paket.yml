@@ -3,8 +3,15 @@
 # Beenden), unter Windows zusätzlich Installer samt Firewall-Regel. Auch aus release.yml aufrufbar.
 name: Server-Paket
 on:
-  push:
-    branches: [claude/server-paket]
+  pull_request:
+    paths:
+      - 'desktop/server/**'
+      - 'desktop/build/**'
+      - 'desktop/electron-builder.server.yml'
+      - 'tests/electron-server/**'
+      - 'src/utils/eingebettetesPostgres.js'
+      - 'package.json'
+      - '.github/workflows/server-paket.yml'
   workflow_dispatch:
   workflow_call:
 
