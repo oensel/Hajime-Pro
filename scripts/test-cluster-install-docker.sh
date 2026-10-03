@@ -55,7 +55,11 @@ pruefe "VIP wandert auf server2" warte 60 docker exec "$S2" bash -c "ip -o addr 
 pruefe "App über die VIP erreichbar" warte 60 curl -fs "http://$VIP:3000/api/cluster/status"
 
 if [ "$fehler" -ne 0 ]; then
-    echo "--- Logs server2"; docker exec "$S2" journalctl -u hajime-pro -u keepalived --no-pager -n 60 || true
+    echo "--- Logs server2 (App, keepalived, Skripte)"; docker exec "$S2" journalctl --no-pager -n 150 -o short-precise || true
+    echo "--- Status server2"; docker exec "$S2" curl -s -m 3 "http://127.0.0.1:3000/api/cluster/status?nurEigen=1" || true; echo
+    docker exec "$S2" curl -s -m 3 "http://127.0.0.1:3000/api/cluster/gesund" || true; echo
+    echo "--- PostgreSQL-Log server2"; docker exec "$S2" bash -c 'tail -n 40 /var/log/postgresql/*.log' || true
+    echo "--- hajime-cluster-status server2"; docker exec "$S2" hajime-cluster-status || true
     echo "ERGEBNIS: $fehler Prüfung(en) fehlgeschlagen"; exit 1
 fi
 echo "ERGEBNIS: alles OK"
