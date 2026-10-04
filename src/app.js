@@ -33,6 +33,7 @@ import { liesClusterKonfig, clusterSecretFehler } from './cluster/konfig.js';
 import { starteClusterDienst } from './cluster/clusterDienst.js';
 import { getClusterRoutes } from './routes/clusterRoutes.js';
 import { nurMaster } from './middleware/nurMaster.js';
+import { appCors } from './middleware/appCors.js';
 import { getClientApiRoutes, clientStatischeSeiten } from './sync/clientApi.js';
 import { ladeKopplung } from './sync/kopplung.js';
 import { getClientVerteilungRoutes } from './routes/clientVerteilungRoutes.js';
@@ -182,6 +183,8 @@ if (syncKonfig.istClient) {
     // /db (Dokument-DB) MUSS vor express.json() hängen — sonst konsumiert der JSON-Parser die
     // Request-Bodies, die express-pouchdb selbst lesen muss.
     if (sync) {
+        // Android-App (Herkunft localhost): Replikation, Status, Kopplung und Version freigeben.
+        app.use(['/db', '/api/sync/status', '/api/client/koppeln', '/api/client/version'], appCors);
         // Nur Datenzugriffe lösen die verzögerte Initialisierung aus — NICHT der Abruf statischer
         // Seiten wie "/" (die Erreichbarkeitsprüfung der Test-Suites läuft vor deren DB-Setup).
         const nachInitialisierung = (req, res, next) => sync.bereit().then(() => next(), next);
@@ -207,11 +210,25 @@ if (syncKonfig.istClient) {
         // /downloads/<version>/<datei>) — ältere Stände im Verzeichnis bleiben unerreichbar.
         app.use(`/downloads/${encodeURIComponent(serverVersion)}`, express.static(path.join(path.resolve(downloadsVerzeichnis), serverVersion)));
         app.get('/download', (req, res) => res.sendFile(path.join(__dirname, '../public/download.html')));
+        // Client-Dateien selbst bereitstellen (mitgeliefert im Server-Paket oder aus dem GitHub-Release),
+        // damit nach der Installation keine Handarbeit nötig ist. In den Tests aus (kein Netzzugriff).
+        // Erst hier geladen: das Modul braucht desktop/ (Signaturprüfung), das im Cloud-Docker-Image fehlt.
+        const { erzeugeClientDateien } = await import('./sync/clientDateien.js');
+        const clientDateien = erzeugeClientDateien({
+            downloadsVerzeichnis,
+            version: serverVersion,
+            mitgeliefert: process.env.CLIENT_DATEIEN_MITGELIEFERT || '',
+            repo: process.env.CLIENT_RELEASE_REPO || 'oensel/Hajime-Pro',
+            token: process.env.CLIENT_RELEASE_TOKEN || process.env.GITHUB_TOKEN || '',
+            autoHolen: process.env.CLIENT_AUTO_HOLEN ? process.env.CLIENT_AUTO_HOLEN !== 'false' : process.env.NODE_ENV !== 'test'
+        });
+        clientDateien.starte();
         app.use('/api/client', getClientVerteilungRoutes({
             datenverzeichnis: syncKonfig.datenverzeichnis,
             downloadsVerzeichnis,
             version: serverVersion,
-            kopplung
+            kopplung,
+            clientDateienStatus: () => clientDateien.status()
         }));
     }
 

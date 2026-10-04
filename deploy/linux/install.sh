@@ -12,7 +12,11 @@
 # benötigt. Für den Zwei-Server-Cluster (keepalived, Replikation) siehe deploy/linux/README.md.
 #
 # Optionale Umgebungsvariablen: INSTALL_DIR (/opt/hajime-pro), APP_PORT (3000), DB_NAME (hajime),
-# MDNS_NAME (turnier), NODE_MAJOR (22).
+# MDNS_NAME (turnier), NODE_MAJOR (22), CLIENT_RELEASE_TOKEN.
+#
+# Client-Dateien (Windows/macOS/Linux/Android für /download): Der Server holt sie beim Start selbst aus dem
+# GitHub-Release zur Version (src/sync/clientDateien.js). Ist das Repository privat, dafür einmal ein
+# Token mit Leserecht mitgeben: sudo CLIENT_RELEASE_TOKEN=ghp_... bash deploy/linux/install.sh (steht dann in .env).
 set -euo pipefail
 
 INSTALL_DIR="${INSTALL_DIR:-/opt/hajime-pro}"
@@ -94,6 +98,7 @@ JWT_SECRET=$(zufall 48)
 STEUERUNG_PASSWORD=$STEUERUNG_PASSWORT
 SUPER_ADMIN_INITIAL_PASSWORD=$ADMIN_PASSWORT
 MDNS_NAME=$MDNS_NAME
+${CLIENT_RELEASE_TOKEN:+CLIENT_RELEASE_TOKEN=$CLIENT_RELEASE_TOKEN}
 EOF
     chown "$APP_USER":"$APP_USER" "$ENV_DATEI"
     chmod 600 "$ENV_DATEI"

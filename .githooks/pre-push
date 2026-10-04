@@ -1,0 +1,9 @@
+#!/bin/sh
+# Vorab-Lauf der CI vor jedem Push (Auswahl wie im plan-Job, siehe scripts/ci-lokal.mjs).
+# Überspringen: `git push --no-verify` oder HAJIME_CI_UEBERSPRINGEN=1 git push
+if [ -n "$HAJIME_CI_UEBERSPRINGEN" ]; then
+    echo "pre-push: lokale CI übersprungen (HAJIME_CI_UEBERSPRINGEN)"
+    exit 0
+fi
+cd "$(git rev-parse --show-toplevel)" || exit 1
+exec node scripts/ci-lokal.mjs

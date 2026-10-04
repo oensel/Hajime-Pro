@@ -33,3 +33,13 @@ data/
 /dist-desktop/
 # Build-Ausgabe des Server-Pakets (desktop/electron-builder.server.yml)
 /dist-server/
+
+# Android-App (mobil/): generiertes Web-Verzeichnis, Capacitor-Abhängigkeiten, gebaute APKs
+/mobil/www/
+/mobil/node_modules/
+/dist-android/
+
+# Von der Release-Pipeline vor dem Build des Server-Pakets befüllt (Client-Dateien zum Mitliefern)
+/client-dateien/*
+!/client-dateien/.gitkeep
+/android-schluessel/

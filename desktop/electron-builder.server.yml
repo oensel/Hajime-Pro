@@ -15,6 +15,9 @@ asar: false
 files:
   - desktop/server/**
   - desktop/build/icon.png
+  # Der Server prüft die mitgelieferten Client-Dateien gegen die Update-Signatur (src/sync/clientDateien.js).
+  - desktop/updateLogik.js
+  - desktop/update-schluessel.pub
   - src/**
   - public/**
   - migrations/**
@@ -24,6 +27,13 @@ files:
   - "!tests/**"
   - "!data/**"
   - "!docs/**"
+# Die in der Release-Pipeline signierten Client-Dateien (Windows, macOS, Linux, Android samt version.json) liegen
+# in client-dateien/ (release.yml legt sie vor dem Build dorthin; sonst bleibt der Ordner leer). Der Server
+# kopiert sie beim ersten Start nach client-downloads/<version>/ — /download funktioniert ohne Internet.
+extraResources:
+  - from: client-dateien
+    to: client-dateien
+    filter: ['**/*', '!.gitkeep']
 artifactName: "Hajime-Pro-Server-${version}-${os}-${arch}.${ext}"
 win:
   target: [{ target: nsis, arch: [x64] }]

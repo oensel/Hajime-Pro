@@ -3,7 +3,6 @@ import { mkdirSync, writeFileSync, rmSync } from 'fs';
 import path from 'path';
 import { createRequire } from 'module';
 import { SYNC_TEST_DOWNLOADS, SYNC_TEST_DOKUMENTE } from './test-env.js';
-import { legeTurnierAn } from './helpers.js';
 
 const { version } = createRequire(import.meta.url)('../../package.json');
 const ordner = path.join(SYNC_TEST_DOWNLOADS, version);
@@ -55,22 +54,46 @@ test.describe.serial('Client-Verteilung', () => {
         }
     });
 
-    test('Download-Seite: Tablets (Android, iPadOS) bekommen einen Hinweis statt einer Datei', async ({ browser }) => {
+    test('Download-Seite: Apple-Geräte bekommen einen Hinweis, Android ohne APK ebenfalls', async ({ browser }) => {
         const faelle = [
-            ['Mozilla/5.0 (Linux; Android 14; SM-X710) AppleWebKit/537.36 Chrome/126.0 Safari/537.36', 0],
+            ['Mozilla/5.0 (Linux; Android 14; SM-X710) AppleWebKit/537.36 Chrome/126.0 Safari/537.36', 0, 'Für Android liegt auf diesem Server noch keine App vor'],
+            ['Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148', 0, 'iPhone und iPad'],
             // iPadOS meldet sich als Mac — nur die Touch-Punkte verraten das Tablet.
-            ['Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/17.0 Safari/605.1.15', 5]
+            ['Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/17.0 Safari/605.1.15', 5, 'iPhone und iPad']
         ];
-        for (const [ua, touchPunkte] of faelle) {
+        for (const [ua, touchPunkte, text] of faelle) {
             const ctx = await browser.newContext({ userAgent: ua });
             if (touchPunkte) await ctx.addInitScript((n) => Object.defineProperty(Navigator.prototype, 'maxTouchPoints', { get: () => n }), touchPunkte);
             const page = await ctx.newPage();
             await page.goto('/download');
-            await expect(page.locator('#downloadHinweis')).toContainText('Tablets');
+            await expect(page.locator('#downloadHinweis')).toContainText(text);
             await expect(page.locator('#downloadHauptlink')).toHaveCount(0);
             await expect(page.locator('#downloadWeitere a')).toHaveCount(0);
             await ctx.close();
         }
+    });
+
+    test('/api/client/version meldet ohne Dateien den Stand der automatischen Bereitstellung', async ({ request }) => {
+        rmSync(path.join(ordner, 'version.json'), { force: true });
+        const resp = await request.get('/api/client/version');
+        expect(resp.status()).toBe(404);
+        // In der Suite ist der Abruf aus (NODE_ENV=test) und nichts mitgeliefert -> "inaktiv".
+        expect((await resp.json()).status).toMatchObject({ phase: 'inaktiv' });
+        writeFileSync(path.join(ordner, 'version.json'), JSON.stringify({ version, dateien: {} }));
+    });
+
+    test('Download-Seite zeigt den Fortschritt, solange der Server die Dateien bereitstellt, und meldet Fehler', async ({ page }) => {
+        const antworte = (status) => page.route('**/api/client/version', route => route.fulfill({
+            status: 404, contentType: 'application/json', body: JSON.stringify({ success: false, error: 'keine Dateien', status })
+        }));
+        await antworte({ phase: 'kopiere', datei: 'b.dmg', fertig: 1, gesamt: 5, fehler: null });
+        await page.goto('/download');
+        await expect(page.locator('#downloadHinweis')).toContainText('stellt die Client-Dateien bereit (2 von 5)');
+        await page.unroute('**/api/client/version');
+        await antworte({ phase: 'fehler', fehler: 'Kein Release v1 gefunden', fertig: 0, gesamt: 0 });
+        await page.goto('/download');
+        await expect(page.locator('#downloadHinweis')).toContainText('Kein Release v1 gefunden');
+        await expect(page.locator('#downloadHinweis')).toContainText('regelmäßig erneut');
     });
 
     test('Download-Seite ohne Client-Dateien zeigt einen Hinweis', async ({ page }) => {
@@ -82,12 +105,9 @@ test.describe.serial('Client-Verteilung', () => {
         writeFileSync(path.join(ordner, 'version.json'), JSON.stringify({ version, dateien: {} }));
     });
 
-    // matten.html leitet ohne turnierId sofort auf turnier.html weiter (siehe public/js/matten.js) —
-    // daher wie in tests/e2e-sync/sync-konflikte.spec.js vorher ein Turnier anlegen und mit
-    // ?turnierId=... navigieren.
-    test('matten.html zeigt die Kopplungskarte, Erneuern aktualisiert den Code', async ({ page, request }) => {
-        const turnierId = await legeTurnierAn(request, 'Client-Verteilung Kopplungskarte');
-        await page.goto(`/matten.html?turnierId=${turnierId}`);
+    test('client-konfig.html zeigt die Kopplungskarte, Erneuern aktualisiert den Code', async ({ page, request }) => {
+        await page.goto('/client-konfig.html');
+        await expect(page.locator('#nav-client-konfig')).toBeVisible();
         const code = (await (await request.get('/api/client/kopplungscode')).json()).code;
         await expect(page.locator('#kopplungKarte')).toBeVisible();
         await expect(page.locator('#kopplungCode')).toHaveText(`${code.slice(0, 3)} ${code.slice(3)}`);

@@ -25,7 +25,10 @@
                     const status = resp.ok ? await resp.json() : null;
                     if (status && status.db_name && window.PouchDB) {
                         knoten = status;
-                        db = new window.PouchDB(`${window.location.origin}/db/${status.db_name}`, { skip_setup: true });
+                        // Android-App (mobil/web): die Turnier-DB liegt lokal im Browser, nicht hinter /db.
+                        db = window.HajimeMobil
+                            ? await window.HajimeMobil.holeDb()
+                            : new window.PouchDB(`${window.location.origin}/db/${status.db_name}`, { skip_setup: true });
                         ({ baueMattenAnsicht } = await import('/js/shared/mattenAnsicht.js'));
                         modus = 'dokumente';
                         return modus;

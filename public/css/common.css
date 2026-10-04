@@ -140,6 +140,15 @@ body {
     border-top: 2px solid var(--border);
 }
 
+/* Menüpunkt(e) direkt über der Linie des Footers (z.B. "Client-Konfig") */
+.sidebar-nav-unten {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 0 12px 12px;
+    flex-shrink: 0;
+}
+
 /* Umschalter ganz unten in der Sidebar, klappt die Navigation ein/aus */
 .sidebar-footer {
     padding: 12px;

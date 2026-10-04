@@ -48,14 +48,21 @@ abzustürzen.
 
 1. `npm version patch|minor|major` — erhöht die Version in `package.json` und legt den Git-Tag an.
 2. `git push --follow-tags` — löst `release.yml` aus.
-3. Die Pipeline testet, prüft die Tag/Version-Übereinstimmung, baut Windows/macOS/Linux, signiert
-   die Client-Dateien und veröffentlicht sie als GitHub-Release. Parallel baut und testet sie das
-   **Server-Paket** ("Hajime Pro Server", `server-paket.yml`); dessen Installer (Windows `.exe`, macOS `.dmg`/`.zip`
-   für Apple Silicon, Linux `.AppImage`) hängen mit `SHA256SUMS-Server.txt` am selben Release. Sie werden
-   nicht mit dem Client-Schema signiert (kein Selbst-Update, Installation von Hand) und stehen nicht in `version.json`.
+3. Die Pipeline testet, prüft die Tag/Version-Übereinstimmung, baut Windows/macOS/Linux **und die Android-App**
+   (`android`-Job, signiert mit dem Keystore aus den Secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
+   `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` — einmalig erzeugen mit `npm run android:schluessel`, siehe `mobil/README.md`),
+   signiert alle vier Client-Dateien einmal (`signieren`-Job, `version.json`) und baut danach das **Server-Paket**
+   ("Hajime Pro Server", `server-paket.yml`) **mit diesen signierten Client-Dateien im Installer**. Dessen Installer
+   (Windows `.exe`, macOS `.dmg`/`.zip` für Apple Silicon, Linux `.AppImage`) hängen mit `SHA256SUMS-Server.txt` am
+   selben Release, die Client-Dateien samt `version.json` ebenfalls. Die Server-Installer werden nicht mit dem
+   Client-Schema signiert (kein Selbst-Update, Installation von Hand) und stehen nicht in `version.json`.
    Noch offen: Intel-Mac für das Server-Paket.
-4. Auf dem Hallen-Server die neue Version holen: `git pull && npm ci --omit=dev && npm run client:holen`
-   (bei privatem Repository zusätzlich `GITHUB_TOKEN` mit Leserecht auf Releases in der `.env`).
+4. **Am Hallen-Server ist nichts zu tun:** Das Server-Paket kopiert die mitgelieferten Client-Dateien beim ersten Start
+   nach `client-downloads/<version>/` (`src/sync/clientDateien.js`, prüft jede Datei gegen die Signatur) — `/download`
+   bietet danach Windows, macOS, Linux und Android an, ohne Internet. Ein Server aus dem Quellcode (`deploy/linux/install.sh`,
+   Entwicklung) holt sich die Dateien stattdessen aus dem GitHub-Release zur eigenen Version, bei privatem Repository mit
+   `CLIENT_RELEASE_TOKEN` (Leserecht auf Releases; `install.sh` übernimmt ihn aus der Umgebung in die `.env`); `CLIENT_AUTO_HOLEN=false`
+   schaltet das ab. Manueller Abruf: `npm run client:holen`.
 
 ## Lokal entwickeln
 

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hajime Pro - Gerät koppeln</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <style>
+        body { max-width: 520px; margin: 0 auto; padding: 16px; }
+        .feld { margin-bottom: 14px; }
+        .feld label { display: block; font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+        .feld input { width: 100%; box-sizing: border-box; height: 44px; font-size: 18px; }
+        #codeEingabe { letter-spacing: 6px; text-align: center; font-size: 24px; }
+        #scannerContainer { display: none; position: fixed; inset: 0; z-index: 10001; background: #000; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
+        #previewVideo { max-width: 100%; max-height: 80vh; }
+        #meldung { min-height: 22px; font-weight: 600; }
+        #meldung.fehler { color: #c62828; }
+        .zeile { display: flex; gap: 10px; flex-wrap: wrap; }
+    </style>
+</head>
+<body>
+<div class="mdc-card" style="padding: 16px 20px;">
+    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+        <span class="material-icons" style="font-size: 24px; color: var(--primary);">devices</span>
+        <h1 style="font-size: 20px; margin: 0; font-weight: 800; text-transform: uppercase;">Gerät koppeln</h1>
+    </div>
+
+    <div id="ansichtKoppeln">
+        <p style="margin-top: 0; color: var(--text-muted);">Im Turnier-WLAN den QR-Code auf der Seite <b>Matten</b> des Hallen-Servers scannen – oder Adresse und Code eintragen.</p>
+        <div class="zeile" style="margin-bottom: 16px;">
+            <button type="button" class="btn btn-raised" id="startScanBtn">
+                <span class="material-icons" style="font-size: 18px; vertical-align: middle;">qr_code_scanner</span> QR-Code scannen
+            </button>
+        </div>
+        <div class="feld">
+            <label for="serverEingabe">Server-Adresse</label>
+            <input id="serverEingabe" class="form-control" type="text" inputmode="url" autocapitalize="off" autocomplete="off" placeholder="z.B. 192.168.1.5:3000">
+        </div>
+        <div class="feld">
+            <label for="codeEingabe">Kopplungscode (6 Ziffern)</label>
+            <input id="codeEingabe" class="form-control" type="text" inputmode="numeric" maxlength="7" autocomplete="off" placeholder="000 000">
+        </div>
+        <button type="button" class="btn btn-raised" id="koppelnBtn">Koppeln</button>
+    </div>
+
+    <div id="ansichtLaden" style="display: none;">
+        <p id="ladeText" style="margin-top: 0;">Turnierdaten werden geladen …</p>
+        <button type="button" class="btn btn-raised" id="nochmalBtn" style="display: none;">Erneut prüfen</button>
+    </div>
+
+    <p id="meldung" role="status"></p>
+</div>
+
+<div id="scannerContainer">
+    <video id="previewVideo" playsinline muted></video>
+    <button type="button" class="btn btn-raised" id="stopScanBtn">Abbrechen</button>
+</div>
+
+<script src="/js/qr/jsQR.js"></script>
+<script type="module" src="/js/mobil/verbinden.js"></script>
+</body>
+</html>

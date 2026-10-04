@@ -1,0 +1,114 @@
+// Lokaler Vorab-Lauf der CI: wählt wie der `plan`-Job in .github/workflows/ci.yml anhand der
+// geänderten Dateien aus, welche Test-Gruppen laufen, und führt die passenden npm-Befehle aus.
+// Die Pfadfilter unten müssen mit denen in ci.yml übereinstimmen.
+//
+//   npm run ci:lokal                 geänderte Dateien gegen origin/main (+ uncommittete Änderungen)
+//   npm run ci:lokal -- --alles      alle Gruppen (wie Nachtlauf/Tag), ohne Paket und Docker
+//   npm run ci:lokal -- --nur-anzeigen   nur zeigen, was laufen würde
+//   --base <ref>   Vergleichsbasis (Standard: origin/main, sonst main)
+//   --weiter       nach einem Fehler die übrigen Gruppen trotzdem ausführen
+//   --paket        zusätzlich Server-Paket bauen + Electron-Rauchtest (langsam)
+//   --docker       zusätzlich cluster-installation (Docker mit systemd nötig)
+import { spawnSync } from 'node:child_process';
+
+const FILTER = {
+    kern: ['src/**', 'public/**', 'migrations/**', 'tests/**', 'scripts/**', 'knexfile.cjs', 'setup_db.js',
+        'package.json', 'package-lock.json', 'playwright*.js', '.github/workflows/ci.yml'],
+    cluster: ['src/cluster/**', 'src/sync/**', 'src/shared/**', 'deploy/linux/**', 'tests/e2e-cluster/**',
+        'scripts/test-cluster-install-docker.sh', 'playwright.cluster.config.js', 'package.json',
+        'package-lock.json', '.github/workflows/ci.yml'],
+    plattform: ['src/utils/eingebettetesPostgres.js', 'src/config/betriebsmodus.cjs',
+        'scripts/smoke-server-eingebettet.mjs', 'migrations/**', 'package.json', 'package-lock.json',
+        '.github/workflows/ci.yml'],
+    shell: ['deploy/linux/**', 'scripts/*.sh'],
+    paket: ['desktop/server/**', 'desktop/build/**', 'desktop/electron-builder.server.yml',
+        'tests/electron-server/**', 'src/utils/eingebettetesPostgres.js', 'src/sync/clientDateien.js',
+        'package.json', '.github/workflows/server-paket.yml'],
+};
+
+const args = process.argv.slice(2);
+const hat = (f) => args.includes(f);
+const wert = (f) => (args.includes(f) ? args[args.indexOf(f) + 1] : null);
+const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+
+function git(...a) {
+    const r = spawnSync('git', a, { encoding: 'utf8' });
+    return r.status === 0 ? r.stdout : null;
+}
+
+function globRegex(muster) {
+    const rx = muster.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+        .replace(/\*\*/g, '\u0000').replace(/\*/g, '[^/]*').replace(/\u0000/g, '.*');
+    return new RegExp(`^${rx}$`);
+}
+
+function geaenderteDateien() {
+    const base = wert('--base')
+        || (git('rev-parse', '--verify', '-q', 'origin/main') ? 'origin/main' : 'main');
+    const mergeBase = git('merge-base', base, 'HEAD');
+    if (!mergeBase) throw new Error(`Keine gemeinsame Basis mit "${base}" gefunden (--base angeben).`);
+    const dateien = new Set();
+    for (const out of [
+        git('diff', '--name-only', mergeBase.trim(), 'HEAD'),
+        git('diff', '--name-only', 'HEAD'),
+        git('ls-files', '--others', '--exclude-standard'),
+    ]) {
+        (out || '').split('\n').filter(Boolean).forEach((d) => dateien.add(d));
+    }
+    console.log(`Basis: ${base} (${mergeBase.trim().slice(0, 8)}), ${dateien.size} geänderte Dateien`);
+    return [...dateien];
+}
+
+const alles = hat('--alles');
+const dateien = alles ? [] : geaenderteDateien();
+const trifft = (gruppe) => alles || dateien.some((d) => FILTER[gruppe].some((m) => globRegex(m).test(d)));
+
+function shellcheckVerfuegbar() {
+    return spawnSync('shellcheck', ['--version'], { stdio: 'ignore' }).status === 0;
+}
+
+const schritte = [{ name: 'unit', befehl: [npm, 'run', 'test:unit'] }];
+if (trifft('shell')) {
+    if (shellcheckVerfuegbar()) {
+        schritte.push({
+            name: 'shellcheck',
+            befehl: ['bash', '-c', 'shellcheck -S warning deploy/linux/*.sh scripts/test-cluster-install-docker.sh'],
+        });
+    } else {
+        console.log('shellcheck nicht installiert, Schritt übersprungen (CI prüft es trotzdem).');
+    }
+}
+if (trifft('kern')) {
+    schritte.push({ name: 'e2e', befehl: [npm, 'run', 'test:e2e'] });
+    schritte.push({ name: 'e2e:sync', befehl: [npm, 'run', 'test:e2e:sync'] });
+}
+if (trifft('cluster')) schritte.push({ name: 'e2e:cluster', befehl: [npm, 'run', 'test:e2e:cluster'] });
+if (trifft('plattform')) {
+    schritte.push({ name: 'server-selbststart', befehl: ['node', 'scripts/smoke-server-eingebettet.mjs'] });
+}
+if (hat('--paket')) {
+    schritte.push({ name: 'server-paket-bauen', befehl: [npm, 'run', 'desktop:server:build'] });
+    schritte.push({ name: 'server-paket-rauchtest', befehl: [npm, 'run', 'test:electron:server'] });
+} else if (trifft('paket')) {
+    console.log('Hinweis: Paket-Dateien geändert, Server-Paket läuft nur mit --paket (CI baut es).');
+}
+if (hat('--docker')) {
+    schritte.push({ name: 'cluster-installation', befehl: ['bash', 'scripts/test-cluster-install-docker.sh'] });
+}
+
+console.log(`\nGeplant: ${schritte.map((s) => s.name).join(', ')}\n`);
+if (hat('--nur-anzeigen')) process.exit(0);
+
+const ergebnis = [];
+for (const s of schritte) {
+    console.log(`\n=== ${s.name}: ${s.befehl.join(' ')} ===`);
+    const start = Date.now();
+    const r = spawnSync(s.befehl[0], s.befehl.slice(1), { stdio: 'inherit', shell: s.befehl[0].endsWith('.cmd') });
+    const ok = r.status === 0;
+    ergebnis.push({ name: s.name, ok, sek: Math.round((Date.now() - start) / 1000) });
+    if (!ok && !hat('--weiter')) break;
+}
+
+console.log('\n=== Ergebnis ===');
+for (const e of ergebnis) console.log(`${e.ok ? 'OK    ' : 'FEHLER'} ${e.name} (${e.sek} s)`);
+process.exit(ergebnis.every((e) => e.ok) && ergebnis.length === schritte.length ? 0 : 1);
