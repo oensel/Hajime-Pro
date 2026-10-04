@@ -170,8 +170,8 @@ test.describe.serial('Android-App', () => {
         await page.context().unroute(SERVER_MUSTER);
     });
 
-    test('Hallen-Server: matten.html zeigt den Kopplungs-QR-Code mit LAN-Adresse', async ({ page, request }) => {
-        await page.goto(`/matten.html?turnierId=${turnier.turnierId}`);
+    test('Hallen-Server: client-konfig.html zeigt den Kopplungs-QR-Code mit LAN-Adresse', async ({ page, request }) => {
+        await page.goto('/client-konfig.html');
         await expect(page.locator('#kopplungKarte')).toBeVisible();
         await expect(page.locator('#kopplungQr svg')).toBeVisible();
         await expect(page.locator('#kopplungQrAdresse')).toHaveText(/^http:\/\/\d+\.\d+\.\d+\.\d+:3400$/);

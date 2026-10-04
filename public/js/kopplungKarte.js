@@ -1,4 +1,4 @@
-// Karte "Neues Gerät koppeln" auf matten.html (nur Hallen-Server): zeigt den Kopplungscode, den
+// Karte "Neues Gerät koppeln" auf client-konfig.html (nur Hallen-Server): zeigt den Kopplungscode, den
 // ein neu installierter Client (Desktop oder Android-App) beim ersten Start abfragt, und einen
 // QR-Code für die Android-App (Download-Seite + Code, siehe src/shared/kopplungsQr.js). Erneuern
 // macht den alten Code ungültig; bereits gekoppelte Geräte bleiben gekoppelt.

@@ -3,7 +3,6 @@ import { mkdirSync, writeFileSync, rmSync } from 'fs';
 import path from 'path';
 import { createRequire } from 'module';
 import { SYNC_TEST_DOWNLOADS, SYNC_TEST_DOKUMENTE } from './test-env.js';
-import { legeTurnierAn } from './helpers.js';
 
 const { version } = createRequire(import.meta.url)('../../package.json');
 const ordner = path.join(SYNC_TEST_DOWNLOADS, version);
@@ -106,12 +105,9 @@ test.describe.serial('Client-Verteilung', () => {
         writeFileSync(path.join(ordner, 'version.json'), JSON.stringify({ version, dateien: {} }));
     });
 
-    // matten.html leitet ohne turnierId sofort auf turnier.html weiter (siehe public/js/matten.js) —
-    // daher wie in tests/e2e-sync/sync-konflikte.spec.js vorher ein Turnier anlegen und mit
-    // ?turnierId=... navigieren.
-    test('matten.html zeigt die Kopplungskarte, Erneuern aktualisiert den Code', async ({ page, request }) => {
-        const turnierId = await legeTurnierAn(request, 'Client-Verteilung Kopplungskarte');
-        await page.goto(`/matten.html?turnierId=${turnierId}`);
+    test('client-konfig.html zeigt die Kopplungskarte, Erneuern aktualisiert den Code', async ({ page, request }) => {
+        await page.goto('/client-konfig.html');
+        await expect(page.locator('#nav-client-konfig')).toBeVisible();
         const code = (await (await request.get('/api/client/kopplungscode')).json()).code;
         await expect(page.locator('#kopplungKarte')).toBeVisible();
         await expect(page.locator('#kopplungCode')).toHaveText(`${code.slice(0, 3)} ${code.slice(3)}`);

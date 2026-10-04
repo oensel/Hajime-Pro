@@ -198,6 +198,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <span class="menu-text">Übersicht</span>
                 </a>
             </nav>
+            <nav class="sidebar-nav-unten" id="sidebarNavUnten">
+                <a href="/client-konfig.html" class="menu-item" id="nav-client-konfig" style="display: none;">
+                    <span class="material-icons">settings</span>
+                    <span class="menu-text">Client-Konfig</span>
+                </a>
+            </nav>
             <div class="sidebar-footer">
                 <button type="button" class="menu-item sidebar-collapse-btn" id="sidebarCollapseBtn" title="Navigation einklappen">
                     <span class="material-icons" id="sidebarCollapseIcon">keyboard_double_arrow_left</span>
@@ -670,6 +676,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- SERVER-CLUSTER (Hallen-Server mit CLUSTER_KNOTEN, siehe src/cluster/) ---
     // Menüpunkt "Cluster"; auf dem Secondary zusätzlich ein Hinweis, dass nur gelesen werden kann.
     if (syncRolle === 'server') {
+        // Kopplung neuer Client-Geräte (QR-Code + 6-stelliger Code) gibt es nur am Hallen-Server.
+        const clientKonfigLink = document.getElementById('nav-client-konfig');
+        if (clientKonfigLink) {
+            clientKonfigLink.style.display = '';
+            if (currentPath.includes('client-konfig.html')) clientKonfigLink.classList.add('active');
+        }
         // Button "Hallen-Server" in der Kopfzeile (links vom Logout) führt zur Cluster-Statusseite;
         // ohne CLUSTER_KNOTEN zeigt cluster.html einen entsprechenden Hinweis.
         const hallenServerBtn = document.getElementById('hallenServerBtn');

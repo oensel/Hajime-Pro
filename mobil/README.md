@@ -17,7 +17,7 @@ ist — auch ohne WLAN läuft die Waage weiter.
   Client-Logik wie der Node-Client (`src/shared/clientKern.js`: Turnier-DB in IndexedDB, Replikation zum
   Hallen-Server, Turnierwechsel, Mattenwahl, Offline-Kaskade) und dieselbe Lese-API
   (`src/shared/clientAntworten.js`). `datenzugriff.js` schreibt in die lokale DB.
-- **Kopplung** (`verbinden.html`): QR-Code auf `matten.html` scannen (oder Adresse + 6-stelligen Code
+- **Kopplung** (`verbinden.html`): QR-Code auf `client-konfig.html` scannen (oder Adresse + 6-stelligen Code
   eintragen). Der QR-Code ist eine URL `http://<IP>:<Port>/download#code=123456` — mit der Kamera-App
   gescannt öffnet er die Download-Seite, in der App koppelt er das Gerät (`src/shared/kopplungsQr.js`).
 - **Server-Seite:** `src/middleware/appCors.js` erlaubt der App-Herkunft (`localhost`) den Zugriff auf
