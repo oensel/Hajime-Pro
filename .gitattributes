@@ -2,3 +2,4 @@
 # mit CRLF laufen sie auf den Hallen-Servern nicht.
 deploy/linux/** text eol=lf
 *.sh text eol=lf
+.githooks/* text eol=lf
