@@ -1,7 +1,7 @@
 # Gestaffelte Pipeline: dev -> test -> qa (-> prod = release.yml, ruft diesen Workflow mit vollem Umfang auf).
 #   dev  : schnell und billig (Ubuntu): Plan/Pfadfilter, Unit-Tests, shellcheck. Rot = nichts Teureres startet.
 #   test : E2E-Kern (test:e2e, test:e2e:sync) auf Ubuntu.
-#   qa   : teure Plattform-/Infrastrukturläufe (Windows/macOS-Selbststart, Docker-Cluster, test:e2e:cluster).
+#   qa   : teure Plattform-/Infrastrukturläufe (Windows-Selbststart, macOS vorerst nur im Release, Docker-Cluster, test:e2e:cluster).
 # Pull Requests und Pushes auf main laufen mit Pfadfiltern (nur was die Änderung berührt). VOLLER Umfang ohne Filter:
 # Release (Tag v*, über workflow_call), nächtlicher Lauf (fängt Lücken der Pfadfilter ab) und manueller Start.
 # test:e2e:vollablauf läuft bewusst NICHT hier (schreibt in die echte Cloud-DB).
@@ -174,7 +174,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest]  # macOS vorerst ausgelassen (Kosten); Release baut es weiterhin
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

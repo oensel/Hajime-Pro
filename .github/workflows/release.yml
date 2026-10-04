@@ -141,7 +141,7 @@ jobs:
   server-paket:
     needs: [tests, pruefen, signieren]
     uses: ./.github/workflows/server-paket.yml
-    with: { client-dateien: true }
+    with: { client-dateien: true, macos: true }
 
   veroeffentlichen:
     needs: [signieren, server-paket]
