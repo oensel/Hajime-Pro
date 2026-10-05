@@ -31,7 +31,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
+        # macOS vorerst nicht (node-gyp baut canvas aus den Quellen und braucht pangocairo; der macOS-Zweig unten bleibt für später).
+        os: [windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -89,8 +90,14 @@ jobs:
         with: { python-version: '3.11' }
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: '21' }
-      - uses: android-actions/setup-android@v3
-      - run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
+      # Das Android-SDK ist auf dem Runner vorinstalliert; android-actions/setup-android scheitert an dessen sdkmanager
+      # ("Wrong version in preinstalled sdkmanager"), daher Lizenzen und Pakete direkt über den vorhandenen sdkmanager.
+      - name: Android-SDK-Pakete installieren
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$SDKMANAGER" || SDKMANAGER=$(ls -d $ANDROID_HOME/cmdline-tools/*/bin/sdkmanager | head -1)
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" "platforms;android-36" "build-tools;35.0.0"
       - run: npm ci
       - name: Keystore bereitstellen
         run: |
@@ -109,7 +116,7 @@ jobs:
           path: dist-android/*.apk
           if-no-files-found: error
 
-  # Alle Client-Dateien (Windows, macOS, Linux, Android) einmal signieren und version.json erzeugen. Das
+  # Alle Client-Dateien (Windows, Linux, Android; macOS derzeit nicht) einmal signieren und version.json erzeugen. Das
   # Ergebnis geht ins Server-Paket (wird dort mitgeliefert) und ins GitHub-Release.
   signieren:
     needs: [build, android]
@@ -128,9 +135,9 @@ jobs:
       - name: Signieren und version.json erzeugen
         run: node scripts/signiere-client.mjs release "${GITHUB_REF_NAME#v}"
         env: { CLIENT_SIGNATUR_SCHLUESSEL: '${{ secrets.CLIENT_SIGNATUR_SCHLUESSEL }}' }
-      - name: Alle vier Plattformen müssen enthalten sein
+      - name: Alle Plattformen (ohne macOS) müssen enthalten sein
         run: |
-          for p in win32-x64 darwin-universal linux-x64 android; do
+          for p in win32-x64 linux-x64 android; do
             node -e "const v=require('./release/version.json'); if(!v.dateien['$p']) { console.error('Plattform $p fehlt in version.json'); process.exit(1); }"
           done
       - uses: actions/upload-artifact@v4
@@ -144,7 +151,7 @@ jobs:
   server-paket:
     needs: [tests, pruefen, signieren]
     uses: ./.github/workflows/server-paket.yml
-    with: { client-dateien: true, macos: true }
+    with: { client-dateien: true, macos: false }
 
   veroeffentlichen:
     needs: [signieren, server-paket]

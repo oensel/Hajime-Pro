@@ -42,7 +42,10 @@ jobs:
       - name: Rauchtest erwartet mitgelieferte Client-Dateien
         if: inputs.client-dateien
         shell: bash
-        run: echo "HAJIME_CLIENT_DATEIEN_ERWARTET=1" >> "$GITHUB_ENV"
+        run: |
+          echo "HAJIME_CLIENT_DATEIEN_ERWARTET=1" >> "$GITHUB_ENV"
+          # Ohne macOS-Build (Eingabe macos) liefert das Release auch keine macOS-Client-Datei.
+          if [ "${{ inputs.macos }}" != "true" ]; then echo "HAJIME_CLIENT_PLATTFORMEN=win32-x64,linux-x64,android" >> "$GITHUB_ENV"; fi
 
       - name: Rauchtest (Windows)
         if: runner.os == 'Windows'

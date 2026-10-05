@@ -40,7 +40,7 @@ test('startet den Server mit eigener Datenbank, zeigt das Frontend und stoppt di
         expect(existsSync(postmaster)).toBe(true);
 
         // Release-Build: Das Paket bringt die signierten Client-Dateien mit (release.yml setzt die Variable). Der
-        // frisch gestartete Server kopiert sie selbst — danach bietet /download alle vier Plattformen an.
+        // frisch gestartete Server kopiert sie selbst — danach bietet /download alle erwarteten Plattformen an.
         if (process.env.HAJIME_CLIENT_DATEIEN_ERWARTET) {
             let vj = null;
             await expect.poll(async () => {
@@ -48,7 +48,9 @@ test('startet den Server mit eigener Datenbank, zeigt das Frontend und stoppt di
                 vj = r.ok ? await r.json() : null;
                 return !!vj;
             }, { timeout: 120_000 }).toBe(true);
-            for (const plattform of ['win32-x64', 'darwin-universal', 'linux-x64', 'android']) {
+            // Ohne macOS-Build (release.yml, solange macOS nicht gebaut wird) setzt server-paket.yml HAJIME_CLIENT_PLATTFORMEN.
+            const erwartet = (process.env.HAJIME_CLIENT_PLATTFORMEN || 'win32-x64,darwin-universal,linux-x64,android').split(',');
+            for (const plattform of erwartet) {
                 expect(vj.dateien[plattform], plattform).toBeTruthy();
                 const datei = await fetch(`http://localhost:${APP_PORT}/downloads/${vj.version}/${encodeURIComponent(vj.dateien[plattform].installieren.datei)}`);
                 expect(datei.ok, `${plattform}: ${vj.dateien[plattform].installieren.datei}`).toBe(true);
