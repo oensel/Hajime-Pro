@@ -8,10 +8,13 @@
 //  - Wird das Fenster geschlossen, läuft der Server im Tray weiter (Clients im LAN brauchen ihn);
 //    "Beenden" stoppt Server und Datenbank sauber.
 import { app, BrowserWindow, Menu, Tray, dialog, nativeImage, session, shell } from 'electron';
+import { spawn } from 'child_process';
+import { readFileSync } from 'fs';
 import net from 'net';
 import os from 'os';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
+import { merkeVersuch, pruefeUndLade } from './selbstUpdate.js';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const WURZEL = path.resolve(hier, '../..');
@@ -173,6 +176,58 @@ async function starteServer() {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Selbst-Update beim Start (nur Windows, nur installierte App)
+// ---------------------------------------------------------------------------------------------
+// Vor dem Start von Datenbank und Server: gibt es Internet und im neuesten GitHub-Release eine NEUERE Version,
+// wird deren (signierter) Installer still ausgeführt und die App startet damit neu. In jedem anderen Fall
+// (kein Netz, nichts Neueres, Fehler, Prüfung fehlgeschlagen) fährt der Server einfach normal hoch.
+// Abschalten: HAJIME_SELBSTUPDATE=false. Privates Repository: CLIENT_RELEASE_TOKEN oder "token" in <Profilordner>/update.json.
+function selbstUpdateAktiv() {
+    return app.isPackaged && process.platform === 'win32' && !eigenesProfil && process.env.HAJIME_SELBSTUPDATE !== 'false';
+}
+
+function liesUpdateKonfig() {
+    try { return JSON.parse(readFileSync(path.join(datenverzeichnis(), 'update.json'), 'utf8')) || {}; } catch { return {}; }
+}
+
+async function pruefeSelbstUpdate() {
+    if (!selbstUpdateAktiv()) return;
+    status('Suche nach Updates …');
+    const konfig = liesUpdateKonfig();
+    const versuchsDatei = path.join(datenverzeichnis(), 'selbstupdate.json');
+    let ergebnis;
+    try {
+        const { liesOeffentlichenSchluessel } = await import(pathToFileURL(path.join(WURZEL, 'src/sync/clientDateien.js')).href);
+        ergebnis = await pruefeUndLade({
+            repo: process.env.CLIENT_RELEASE_REPO || konfig.repo || 'oensel/Hajime-Pro',
+            token: process.env.CLIENT_RELEASE_TOKEN || konfig.token || '',
+            aktuelleVersion: app.getVersion(),
+            schluessel: liesOeffentlichenSchluessel(),
+            ...(process.env.HAJIME_RELEASE_API ? { apiBasis: process.env.HAJIME_RELEASE_API } : {}), // nur für Tests gegen ein Release-Double
+            zielVerzeichnis: path.join(datenverzeichnis(), 'updates'),
+            versuchsDatei
+        });
+    } catch (err) {
+        console.warn(`[Selbst-Update] Übersprungen: ${err.message}`);
+        return;
+    }
+    if (ergebnis.status !== 'bereit') {
+        if (ergebnis.status === 'fehler' || ergebnis.status === 'aufgegeben') console.warn(`[Selbst-Update] ${ergebnis.status}: ${ergebnis.grund || `Version ${ergebnis.version}`}`);
+        return;
+    }
+    status(`Installiere Version ${ergebnis.version} …`);
+    merkeVersuch(versuchsDatei, ergebnis.version);
+    // Der Installer ersetzt die laufende App: sie muss dafür beendet sein. cmd wartet auf den (still laufenden, per UAC
+    // erhöhten) Installer und startet die App danach in jedem Fall wieder — auch wenn die Installation scheitert oder
+    // abgelehnt wird, soll der Server nicht ausbleiben. Läuft die neue Version schon, verwirft die Einzelinstanz-Sperre den Zweitstart.
+    const befehl = `""${ergebnis.datei}" /S & start "" "${process.execPath}""`;
+    spawn('cmd.exe', ['/d', '/s', '/c', befehl], { detached: true, stdio: 'ignore', windowsVerbatimArguments: true }).unref();
+    beenden = true;
+    app.exit(0);
+    await new Promise(() => {}); // app.exit beendet den Prozess; nichts mehr starten
+}
+
+// ---------------------------------------------------------------------------------------------
 // Oberfläche
 // ---------------------------------------------------------------------------------------------
 function zeigeStartFenster() {
@@ -258,6 +313,7 @@ async function start() {
     sichereFenster();
     await zeigeStartFenster();
     try {
+        await pruefeSelbstUpdate();
         await starteServer();
     } catch (err) {
         console.error(err);

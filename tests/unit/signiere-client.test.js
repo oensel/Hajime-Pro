@@ -30,6 +30,16 @@ test('version.json ordnet Dateien den Plattformen zu und die Signaturen sind pr�
     assert.deepEqual(JSON.parse(readFileSync(path.join(dir, 'version.json'), 'utf8')), vj);
 });
 
+test('ausgabeName schreibt eine eigene Datei und lässt version.json unberührt (Server-Installer)', () => {
+    const { privateKey } = generateKeyPairSync('ed25519');
+    const dir = mkdtempSync(path.join(tmpdir(), 'signieren-'));
+    writeFileSync(path.join(dir, 'Hajime-Pro-Server-1.2.0-win-x64.exe'), 'S');
+    const vj = erzeugeVersionJson({ verzeichnis: dir, version: '1.2.0', privaterSchluessel: privateKey.export({ type: 'pkcs8', format: 'pem' }), ausgabeName: 'server-version.json' });
+    assert.equal(vj.dateien['win32-x64'].installieren.datei, 'Hajime-Pro-Server-1.2.0-win-x64.exe');
+    assert.deepEqual(JSON.parse(readFileSync(path.join(dir, 'server-version.json'), 'utf8')), vj);
+    assert.throws(() => readFileSync(path.join(dir, 'version.json')));
+});
+
 test('doppelt belegte Plattform/Rolle bricht mit klarer Meldung ab', () => {
     const { privateKey } = generateKeyPairSync('ed25519');
     const dir = mkdtempSync(path.join(tmpdir(), 'signieren-'));

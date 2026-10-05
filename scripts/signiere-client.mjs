@@ -16,7 +16,9 @@ const ZUORDNUNG = [
     { endung: '.apk', plattform: 'android', rollen: ['installieren'] }
 ];
 
-export function erzeugeVersionJson({ verzeichnis, version, privaterSchluessel }) {
+// ausgabeName: die Server-Installer bekommen eine eigene Datei (server-version.json), damit sie die version.json der
+// Client-Dateien im Release nicht überschreiben.
+export function erzeugeVersionJson({ verzeichnis, version, privaterSchluessel, ausgabeName = 'version.json' }) {
     const dateien = {};
     for (const datei of readdirSync(verzeichnis).sort()) {
         const regel = ZUORDNUNG.find(z => datei.endsWith(z.endung));
@@ -33,23 +35,23 @@ export function erzeugeVersionJson({ verzeichnis, version, privaterSchluessel })
         }
     }
     const inhalt = { version, dateien };
-    writeFileSync(path.join(verzeichnis, 'version.json'), JSON.stringify(inhalt, null, 2));
+    writeFileSync(path.join(verzeichnis, ausgabeName), JSON.stringify(inhalt, null, 2));
     return inhalt;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-    const [verzeichnis, version] = process.argv.slice(2);
+    const [verzeichnis, version, ausgabeName] = process.argv.slice(2);
     const schluessel = process.env.CLIENT_SIGNATUR_SCHLUESSEL;
     if (!verzeichnis || !version || !schluessel) {
-        console.error('Aufruf: CLIENT_SIGNATUR_SCHLUESSEL=<pem> node scripts/signiere-client.mjs <verzeichnis> <version>');
+        console.error('Aufruf: CLIENT_SIGNATUR_SCHLUESSEL=<pem> node scripts/signiere-client.mjs <verzeichnis> <version> [<ausgabedatei>]');
         process.exit(1);
     }
     let vj;
     try {
-        vj = erzeugeVersionJson({ verzeichnis, version, privaterSchluessel: schluessel });
+        vj = erzeugeVersionJson({ verzeichnis, version, privaterSchluessel: schluessel, ausgabeName: ausgabeName || undefined });
     } catch (err) {
         console.error(`Signieren abgebrochen: ${err.message}`);
         process.exit(1);
     }
-    console.log(`version.json für ${version}: ${Object.keys(vj.dateien).join(', ')}`);
+    console.log(`${ausgabeName || 'version.json'} für ${version}: ${Object.keys(vj.dateien).join(', ')}`);
 }

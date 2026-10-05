@@ -156,6 +156,13 @@ jobs:
       # Installation von Hand) und dürfen die Zuordnung je Plattform/Rolle in version.json nicht stören.
       - uses: actions/download-artifact@v4
         with: { path: release-server, pattern: 'server-*', merge-multiple: true }
+      # Der Windows-Server aktualisiert sich beim Start selbst (desktop/server/selbstUpdate.js): er prüft den Installer
+      # gegen diese Ed25519-Signatur, daher entsteht hier server-version.json (eigene Datei, nicht version.json).
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Server-Installer signieren (server-version.json)
+        run: node scripts/signiere-client.mjs release-server "${GITHUB_REF_NAME#v}" server-version.json
+        env: { CLIENT_SIGNATUR_SCHLUESSEL: '${{ secrets.CLIENT_SIGNATUR_SCHLUESSEL }}' }
       - name: Prüfsummen der Server-Installer
         run: (cd release-server && sha256sum * > SHA256SUMS-Server.txt)
       - name: GitHub-Release anlegen
