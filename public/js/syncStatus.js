@@ -18,9 +18,17 @@
         document.body.appendChild(leiste);
     }
 
+    const SPEICHER = 'hajime_sync_letzter_zustand';
+    function leseLetztenZustand() {
+        try { return JSON.parse(sessionStorage.getItem(SPEICHER)); } catch (e) { return null; }
+    }
+
     function zeige(zustand, text) {
+        if (zustand !== 'pruefung') {
+            try { sessionStorage.setItem(SPEICHER, JSON.stringify({ zustand, text })); } catch (e) { /* ohne Speicher: kein Übernehmen */ }
+        }
         if (!leiste) erzeugeLeiste();
-        const farben = { verbunden: '#2e7d32', offline: '#f9a825', fehler: '#c62828', wechsel: '#1565c0' };
+        const farben = { verbunden: '#2e7d32', offline: '#f9a825', fehler: '#c62828', wechsel: '#1565c0', pruefung: '#607d8b' };
         leiste.style.background = farben[zustand];
         leiste.dataset.zustand = zustand;
         leiste.textContent = text;
@@ -46,6 +54,14 @@
         else if (status.fehler) zeige('fehler', status.update_hinweis ? `${status.fehler} · ${status.update_hinweis}` : status.fehler);
         // Aufgegebenes Selbst-Update des Desktop-Clients: bleibt rot stehen, Verbindungsstatus davor.
         else if (status.update_hinweis) zeige('fehler', `${status.verbunden ? 'verbunden' : 'offline'} · ${status.update_hinweis}`);
+        // Direkt nach dem Seitenstart (die App lädt bei jedem Seitenwechsel neu) steht "nicht erreichbar" nur
+        // als Startwert fest: bis die erste Prüfung fertig ist, den letzten bekannten Zustand zeigen.
+        else if (status.verbindung_wird_geprueft && !status.verbunden) {
+            const letzter = leseLetztenZustand();
+            if (letzter) zeige(letzter.zustand, letzter.text);
+            else zeige('pruefung', 'Verbindung wird geprüft …');
+            return;
+        }
         else if (status.verbunden) zeige('verbunden', status.ausstehend ? `verbunden – ${status.ausstehend} werden übertragen` : 'verbunden');
         else zeige('offline', `offline – ${status.ausstehend} Änderung${status.ausstehend === 1 ? '' : 'en'} ausstehend`);
     }

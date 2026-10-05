@@ -36,12 +36,34 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // --- VEREINSWERTUNG: 1. Platz = 5 Punkte, 2. Platz = 3 Punkte, 3. Platz = 1 Punkt ---
+    // Vereinsnamen sind freier Text (Anmeldung, CSV-Import): "TSV Foo", "TSV  Foo", "tsv foo" oder
+    // "TSV Foo e.V." sind derselbe Verein und müssen in der Wertung EINE Zeile ergeben. Der Schlüssel
+    // ignoriert Groß-/Kleinschreibung, Leerraum, Punkte/Bindestriche und ein angehängtes "e.V.".
+    function vereinsSchluessel(name) {
+        return String(name)
+            .normalize('NFC')
+            .toLowerCase()
+            .replace(/[.,]/g, '')
+            .replace(/[-_/]/g, ' ')
+            .replace(/[\s]+/g, ' ')
+            .trim()
+            .replace(/(^|[\s])e[\s]?v$/, '')
+            .trim();
+    }
+
     function berechneVereinswertung(alleStandings) {
-        const punkteProVerein = new Map();
+        // Schlüssel -> { punkte, namen: Map(Schreibweise -> Häufigkeit) }
+        const proVerein = new Map();
 
         const addieren = (athlet, punkte) => {
             if (!athlet || !athlet.verein) return;
-            punkteProVerein.set(athlet.verein, (punkteProVerein.get(athlet.verein) || 0) + punkte);
+            const schluessel = vereinsSchluessel(athlet.verein);
+            if (!schluessel) return;
+            const eintrag = proVerein.get(schluessel) || { punkte: 0, namen: new Map() };
+            const anzeigename = String(athlet.verein).normalize('NFC').replace(/\s+/g, ' ').trim();
+            eintrag.punkte += punkte;
+            eintrag.namen.set(anzeigename, (eintrag.namen.get(anzeigename) || 0) + 1);
+            proVerein.set(schluessel, eintrag);
         };
 
         alleStandings.forEach(({ platz1, platz2, platz3 }) => {
@@ -50,8 +72,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             platz3.forEach(athlet => addieren(athlet, 1));
         });
 
-        return Array.from(punkteProVerein.entries())
-            .map(([verein, punkte]) => ({ verein, punkte }))
+        // Angezeigt wird die am häufigsten verwendete Schreibweise.
+        return Array.from(proVerein.values())
+            .map(({ punkte, namen }) => ({
+                verein: Array.from(namen.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'de'))[0][0],
+                punkte
+            }))
             .sort((a, b) => b.punkte - a.punkte || a.verein.localeCompare(b.verein, 'de'));
     }
 

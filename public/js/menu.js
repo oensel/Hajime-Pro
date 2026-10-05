@@ -351,7 +351,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     // Pools: erst auswählbar, sobald mindestens zwei Teilnehmer kampfbereit sind (weniger
-    // ergibt keine sinnvolle Poolbildung). Wird initial beim Seitenaufruf geprüft und danach
+    // ergibt keine sinnvolle Poolbildung) oder bereits Pools existieren. Wird initial beim Seitenaufruf geprüft und danach
     // erneut von teilnehmer.js nach jeder Statusänderung eines Teilnehmers.
     const pruefePoolsMenuSperre = async (tId) => {
         try {
@@ -361,7 +361,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                 ? teilnehmer.filter(t => t.status === 'kampfbereit').length
                 : 0;
 
+            // Auch mit bestehenden Pools bleibt der Punkt frei: sind die Kämpfe gelaufen, gelten die Teilnehmer
+            // nicht mehr als "kampfbereit", der Pool wartet aber auf Ergebnisprüfung/Abschluss (Warn-Badge).
+            let hatPools = false;
             if (kampfbereitAnzahl < 2) {
+                const pools = await fetch(`/api/pools/details?turnierId=${tId}`).then(r => r.json()).catch(() => []);
+                hatPools = Array.isArray(pools) && pools.length > 0;
+            }
+
+            if (kampfbereitAnzahl < 2 && !hatPools) {
                 sperreMenuePunkte(['nav-pools']);
             } else {
                 entsperreMenuePunkte(['nav-pools']);
