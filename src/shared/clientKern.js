@@ -25,7 +25,10 @@ export async function erzeugeClientKern({ konfig, PouchDB, oeffneDb, clientKonfi
         serverErreichbar: false,
         serverModus: null, // 'master' | 'secondary' laut /api/sync/status des Servers
         uhrOffsetMs: 0,
-        instanzwechselLaeuft: false
+        instanzwechselLaeuft: false,
+        // false, bis die erste Serverprüfung nach dem Start durch ist: vorher ist "nicht erreichbar" nur der
+        // Startwert, kein Befund (die Statusleiste zeigt dann nicht "offline").
+        ersteServerpruefungFertig: false
     };
     const beiNeuerDb = []; // Rückrufe (kaskadeLokal, clientApi-Caches), wenn die lokale DB wechselt
 
@@ -127,6 +130,7 @@ export async function erzeugeClientKern({ konfig, PouchDB, oeffneDb, clientKonfi
                 instanz_id: zustand.instanzId,
                 db_name: zustand.instanzId ? turnierDbName(zustand.instanzId) : null,
                 verbunden: zustand.serverErreichbar && !r.getrennt && !r.fehler,
+                verbindung_wird_geprueft: !zustand.ersteServerpruefungFertig,
                 ausstehend: r.ausstehend,
                 fehler: r.fehler,
                 // Gesetzt vom Desktop-Updater (desktop/updater.js), wenn ein Update aufgegeben wurde.
@@ -240,9 +244,13 @@ export async function erzeugeClientKern({ konfig, PouchDB, oeffneDb, clientKonfi
     // warteAufServer=false: nicht auf die erste Serverprüfung warten (Android-App: eine Seite soll
     // offline sofort mit den lokalen Daten starten, nicht erst nach dem Verbindungs-Timeout).
     dienst.starte = async function starte({ warteAufServer = true } = {}) {
+        // Spätestens nach Prüf-Timeout + Reserve gilt "nicht erreichbar" als Befund, auch wenn das Öffnen der
+        // lokalen DB oder der Replikationsstart offline länger dauert.
+        const frist = setTimeout(() => { zustand.ersteServerpruefungFertig = true; }, 5000);
+        if (frist.unref) frist.unref();
         const letzte = await clientKonfig.letzteInstanz();
         if (letzte) await oeffneInstanz(letzte);
-        const erstePruefung = pruefeSeriell();
+        const erstePruefung = pruefeSeriell().finally(() => { zustand.ersteServerpruefungFertig = true; });
         if (warteAufServer) await erstePruefung;
         const unref = (t) => { if (t && t.unref) t.unref(); };
         unref(setInterval(pruefeSeriell, PRUEF_INTERVALL_MS));
