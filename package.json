@@ -1,6 +1,6 @@
 {
   "name": "hajime-pro",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "type": "module",
   "main": "desktop/main.js",
   "scripts": {
@@ -9,7 +9,7 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:vollablauf": "playwright test --config=playwright.vollablauf.config.js",
     "ci:lokal": "node scripts/ci-lokal.mjs",
-    "test:unit":"node --test \"tests/unit/**/*.test.js\"",
+    "test:unit": "node --test \"tests/unit/**/*.test.js\"",
     "test:e2e:sync": "playwright test --config=playwright.sync.config.js",
     "test:e2e:cluster": "playwright test -c playwright.cluster.config.js",
     "test:e2e:mobil": "playwright test -c playwright.mobil.config.js",
