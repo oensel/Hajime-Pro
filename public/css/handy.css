@@ -1,0 +1,426 @@
+/* Oberfläche der Android-App (html.modus-app, gesetzt von mobil/web/js/mobil/boot.js; dazu modus-handy oder
+   modus-tablet): Top-Bar statt Seitenmenü (js/handy.js), Teilnehmer als Karten statt Tabelle, keine Kacheln, kein
+   Import, die Waage öffnet als Bogen von unten. Das Handy zeigt nur die Waage, das Tablet Waage, Kampf und
+   Scoreboard. Auf Desktop, Server und im Browser wird diese Datei nie geladen. */
+
+/* Icon-Schrift auch auf Seiten ohne common.css (Scoreboard). */
+@font-face {
+    font-family: 'Material Icons';
+    font-style: normal;
+    font-weight: 400;
+    src: url('/icons/material/material-icons.woff2') format('woff2');
+}
+
+#handyTopBar .material-icons,
+#handyMehrMenue .material-icons {
+    font-family: 'Material Icons';
+    font-weight: normal;
+    font-style: normal;
+    line-height: 1;
+    display: inline-block;
+    text-transform: none;
+    letter-spacing: normal;
+    white-space: nowrap;
+    -webkit-font-smoothing: antialiased;
+}
+
+html.modus-app body {
+    display: block;
+    min-height: 0;
+    padding: 64px 12px 24px;
+}
+
+html.modus-tablet body {
+    padding: 64px 20px 24px;
+}
+
+html.modus-app .app-sidebar,
+html.modus-app .top-header-bar,
+html.modus-app .kanji-left,
+html.modus-app .kanji-right,
+html.modus-app #zurueckMenue,
+html.modus-app #teilnehmerHauptkarte .form-title-area,
+html.modus-app .teilnehmer-stats-grid,
+html.modus-app .table-responsive,
+html.modus-app #importStatus,
+html.modus-app #importSkippedList,
+html.modus-app #importBtn,
+html.modus-app #bulkMarkWeighedBtn,
+html.modus-app #bulkMarkLizenzBtn,
+html.modus-app #bulkMarkPaidBtn,
+html.modus-app #bulkDeleteBtn,
+html.modus-app #syncStatusLeiste {
+    display: none !important;
+}
+
+/* --- Top-Bar --- */
+#handyTopBar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 52px;
+    background: #1a2744;
+    color: #fff;
+    font-family: Roboto, 'Segoe UI', sans-serif;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 10px;
+    box-sizing: border-box;
+    z-index: 200;
+}
+
+#handyTopBar .handy-zeichen {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+#handyTopBar .handy-zeichen img {
+    height: 26px;
+    width: auto;
+}
+
+#handyTopBar .handy-titel {
+    flex: 1;
+    font-size: 16px;
+    font-weight: 700;
+}
+
+#handyTopBar .handy-tabs {
+    flex: 1;
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+}
+
+#handyTopBar .handy-tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 18px;
+    color: #fff;
+    text-decoration: none;
+    font-size: 14px;
+    opacity: 0.85;
+    white-space: nowrap;
+}
+
+#handyTopBar .handy-tab.aktiv {
+    background: rgba(255, 255, 255, 0.2);
+    font-weight: 700;
+    opacity: 1;
+}
+
+#handyTopBar .handy-tab .material-icons {
+    font-size: 19px;
+}
+
+#handyMattenSlot {
+    display: none;
+    align-items: center;
+}
+
+#handyTopBar select {
+    margin: 0;
+    height: auto;
+    min-height: 0;
+    max-width: 190px;
+    padding: 6px 10px;
+    background: transparent;
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    border-radius: 16px;
+    font-size: 13px;
+    text-align: left;
+    text-align-last: left;
+}
+
+#handyTopBar select option {
+    color: #111;
+}
+
+#handyTopBar .handy-icon-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    background: transparent;
+    color: #fff;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+#handyTopBar .handy-icon-btn .material-icons {
+    font-size: 24px;
+}
+
+.handy-pop {
+    position: fixed;
+    top: 52px;
+    right: 8px;
+    min-width: 220px;
+    max-width: calc(100vw - 16px);
+    background: var(--bg-card, #fff);
+    color: var(--text-main, #111);
+    border: 1px solid var(--border, #ccc);
+    border-radius: 10px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+    z-index: 201;
+    display: none;
+    overflow: hidden;
+}
+
+#handyStatusPop {
+    padding: 14px 18px;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+#handyMehrMenue a,
+#handyMehrMenue button {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 14px 18px;
+    background: transparent;
+    border: none;
+    color: inherit;
+    text-decoration: none;
+    text-align: left;
+    font: 500 14px/1.2 inherit;
+    cursor: pointer;
+}
+
+#handyMehrMenue .material-icons {
+    font-size: 20px;
+}
+
+/* Scoreboard: unter der Top-Bar beginnen (die Seite selbst hat nur eigenes Padding). */
+html.modus-app body.padding-steuerung {
+    padding-top: 64px;
+}
+
+/* --- Liste --- */
+html.modus-app #teilnehmerHauptkarte {
+    width: 100%;
+    height: auto;
+    padding: 0;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    overflow: visible;
+}
+
+html.modus-app .teilnehmer-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+html.modus-app .teilnehmer-search {
+    flex: none;
+    max-width: none;
+}
+
+html.modus-app .teilnehmer-search input {
+    padding: 12px 12px 12px 42px;
+    font-size: 16px;
+    border-radius: 10px;
+}
+
+html.modus-app .teilnehmer-toolbar-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+html.modus-app #addBtn {
+    order: 1;
+}
+
+html.modus-app #scanBtn {
+    order: 2;
+}
+
+html.modus-app .teilnehmer-toolbar-buttons .toolbar-btn {
+    justify-content: center;
+    min-height: 46px;
+    font-size: 15px;
+    border-radius: 10px;
+}
+
+#handyKarten {
+    display: none;
+}
+
+html.modus-app #handyKarten {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Tablet im Querformat: Karten in zwei Spalten, Suche und Knöpfe in einer Zeile. */
+html.modus-tablet #handyKarten {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+html.modus-tablet .teilnehmer-toolbar {
+    flex-direction: row;
+    align-items: center;
+}
+
+html.modus-tablet .teilnehmer-search {
+    flex: 1;
+    min-width: 0;
+}
+
+html.modus-tablet .teilnehmer-toolbar-buttons {
+    display: flex;
+}
+
+html.modus-tablet .teilnehmer-toolbar-buttons .toolbar-btn {
+    padding: 0 22px;
+}
+
+.handy-karte {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+    background: var(--bg-card, #fff);
+    border: 1px solid var(--border, #ddd);
+    border-radius: 12px;
+    cursor: pointer;
+}
+
+.handy-karte-gesperrt {
+    opacity: 0.55;
+    cursor: default;
+}
+
+.handy-karte-text {
+    flex: 1;
+    min-width: 0;
+}
+
+.handy-karte-name {
+    font-size: 16px;
+    font-weight: 700;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.handy-karte-sub {
+    margin-top: 2px;
+    font-size: 12px;
+    color: var(--text-muted, #666);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.handy-chip {
+    flex-shrink: 0;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 5px 11px;
+    border-radius: 14px;
+}
+
+.handy-chip-gruen {
+    background: #e3f4e6;
+    color: #1b6b2c;
+}
+
+.handy-chip-gelb {
+    background: #fdf1d6;
+    color: #8a5a00;
+}
+
+.handy-chip-grau {
+    background: #e8e8e8;
+    color: #555;
+}
+
+.handy-leer {
+    text-align: center;
+    color: var(--text-muted, #666);
+    padding: 24px 0;
+    grid-column: 1 / -1;
+}
+
+/* --- Waage als Bogen von unten --- */
+html.modus-app #waageModal {
+    align-items: flex-end !important;
+}
+
+/* !important: die Karte trägt inline max-width/width/border-radius (teilnehmer.html). */
+html.modus-app #waageModal > .mdc-card {
+    max-width: none !important;
+    width: 100% !important;
+    max-height: 92vh !important;
+    border-radius: 20px 20px 0 0 !important;
+    padding-bottom: 24px !important;
+    box-sizing: border-box !important;
+}
+
+html.modus-tablet #waageModal > .mdc-card {
+    max-width: 640px !important;
+}
+
+html.modus-app #waageModal input,
+html.modus-app #waageModal select {
+    font-size: 16px;
+    min-height: 42px;
+}
+
+html.modus-app #waageModal .actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+html.modus-app #waageModal .actions .btn {
+    width: 100%;
+    min-height: 46px;
+}
+
+/* Bestehender Teilnehmer, noch nicht per Stift geöffnet: nur Name und Gewicht. */
+.waage-kompakt .grid-2:not(:has(#gewicht)) {
+    display: none;
+}
+
+.waage-kompakt .grid-2 {
+    grid-template-columns: 1fr;
+}
+
+.waage-kompakt .form-group:not(:has(#gewicht)) {
+    display: none;
+}
+
+.waage-kompakt #gewicht {
+    font-size: 24px;
+    font-weight: 700;
+}
+
+.waage-kompakt #resetBtn {
+    display: none;
+}

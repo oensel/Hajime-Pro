@@ -18,9 +18,9 @@
 
     const seite = location.pathname.split('/').pop() || 'index.html';
 
-    // Handy (kürzeste Bildschirmseite < HANDY_MAX_DP): nur Teilnehmer/Waage. Scoreboard, Mattenleitung
-    // und Anzeige sind für kleine Bildschirme nicht gedacht; Tablets bekommen alles und drehen frei.
-    // Der Umschalter auf der Startseite überschreibt die automatische Erkennung (Gerät merkt sich 'handy'/'tablet').
+    // Handy (kürzeste Bildschirmseite < HANDY_MAX_DP): nur die Waage (Teilnehmerliste). Tablet: Waage, Kampf und
+    // Scoreboard. Beide nutzen dieselbe Oberfläche (css/handy.css, js/handy.js: Top-Bar, Karten, Waage als Bogen);
+    // das Menü der Top-Bar überschreibt die automatische Erkennung (Gerät merkt sich 'handy'/'tablet').
     const HANDY_MAX_DP = 600;
     const MODUS_SCHLUESSEL = 'hajime_mobil_modus';
     const gespeicherterModus = (() => {
@@ -28,31 +28,21 @@
     })();
     const automatischHandy = Math.min(window.screen.width, window.screen.height) < HANDY_MAX_DP;
     const istHandy = gespeicherterModus ? gespeicherterModus === 'handy' : automatischHandy;
-    if (istHandy) {
-        if (['steuerung.html', 'kampf.html', 'anzeige.html', 'overlay.html'].includes(seite)) {
-            location.replace('/client.html');
-            return;
-        }
-        const stil = document.createElement('style');
-        stil.textContent = '#linkScoreboard, #linkMattenleitung, #nav-kampf, #nav-scoreboard { display: none !important; }';
-        document.head.appendChild(stil);
+    if (istHandy && ['steuerung.html', 'kampf.html', 'anzeige.html', 'overlay.html'].includes(seite)) {
+        location.replace('/client.html');
+        return;
     }
-    if (seite === 'client.html') {
-        document.addEventListener('DOMContentLoaded', () => {
-            const ziel = istHandy ? 'tablet' : 'handy';
-            const absatz = document.createElement('p');
-            absatz.style.cssText = 'text-align:center;margin:16px 0 0;';
-            const link = document.createElement('a');
-            link.href = '#';
-            link.textContent = istHandy ? 'Zum Tablet-Modus wechseln (alle Funktionen)' : 'Zum Handy-Modus wechseln (nur Waage)';
-            link.addEventListener('click', (e) => {
-                e.preventDefault();
-                try { localStorage.setItem(MODUS_SCHLUESSEL, ziel); } catch (err) { /* ohne Speicher: keine Umschaltung */ }
-                location.reload();
-            });
-            absatz.appendChild(link);
-            document.body.appendChild(absatz);
-        });
+    // Die Kopplungsseite und die eingebettete Anzeige-Vorschau behalten ihr eigenes Aussehen.
+    if (seite !== 'verbinden.html' && seite !== 'anzeige.html' && seite !== 'overlay.html') {
+        document.documentElement.classList.add('modus-app', istHandy ? 'modus-handy' : 'modus-tablet');
+        const stil = document.createElement('link');
+        stil.rel = 'stylesheet';
+        stil.href = '/css/handy.css';
+        document.head.appendChild(stil);
+        const skript = document.createElement('script');
+        skript.src = '/js/handy.js';
+        skript.defer = true;
+        document.head.appendChild(skript);
     }
 
     const verbindung = ladeVerbindung();

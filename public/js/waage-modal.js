@@ -284,6 +284,9 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        // Erst bei vollständiger Jahreszahl auswerten: beim Tippen ("2", "20", "201") würde sonst kurz eine
+        // falsche Klasse (z.B. "Männer") gewählt.
+        if (!/^[0-9]{4}$/.test(geburtsjahrFeld.value.trim())) return;
         const geburtsJahr = parseInt(geburtsjahrFeld.value, 10);
         const alter = wettkampfJahr - geburtsJahr;
         const geschlecht = geschlechtsSelect.value;
@@ -683,7 +686,9 @@ document.addEventListener('DOMContentLoaded', () => {
         uebernimmGewichtsklasse(parsedData.gewichtsklasse);
 
         aktualisiereSpeicherButtonStatus();
-        document.getElementById('verein').focus();
+        setzeKompakt(!!treffer, !!treffer);
+        // Handy: bekannter Teilnehmer -> direkt zum Gewicht (Wiegen), sonst wie bisher zum Vereinsfeld.
+        document.getElementById(istHandyModus && treffer ? 'gewicht' : 'verein').focus();
     };
 
     initialisiereScanner(verarbeiteGescannteDaten);
@@ -693,8 +698,26 @@ document.addEventListener('DOMContentLoaded', () => {
     const kampfbereitBtn = document.getElementById('kampfbereitBtn');
     const waageModalTitle = document.getElementById('waageModalTitle');
 
+    // Handy-Ansicht (html.modus-handy, css/handy.css): ein BESTEHENDER Teilnehmer (aus der Liste oder per Scan
+    // gefunden) erscheint kompakt — Name mit Stift und nur das Gewichtsfeld; der Stift blendet ALLE Felder zum
+    // Bearbeiten ein. Eine Neuanlage zeigt immer alle Felder. Auf Tablet/Desktop passiert hier nichts.
+    const istHandyModus = document.documentElement.classList.contains('modus-app');
+    const setzeKompakt = (kompakt, bestehend = !!(editId || scanMatchedId)) => {
+        if (!istHandyModus) return;
+        teilnehmerForm.classList.toggle('waage-kompakt', kompakt && bestehend);
+        const zeile = document.getElementById('waageNameZeile');
+        if (!zeile) return;
+        const name = `${document.getElementById('vorname').value} ${document.getElementById('nachname').value}`.trim();
+        document.getElementById('waageNameText').textContent = name;
+        zeile.style.display = bestehend && name ? 'flex' : 'none';
+        document.getElementById('waageStiftBtn').style.display = kompakt && bestehend ? 'flex' : 'none';
+    };
+    document.getElementById('waageStiftBtn')?.addEventListener('click', () => setzeKompakt(false));
+    if (istHandyModus) document.getElementById('submitBtn').textContent = 'Wiegen';
+
     const setzeFormularZurueck = () => {
         teilnehmerForm.reset();
+        setzeKompakt(false, false);
         document.getElementById('lizenz_ablauf').classList.remove('lizenz-valid', 'lizenz-expired');
         const startgeldCheckbox = document.getElementById('startgeld_bezahlt');
         if (startgeldCheckbox) startgeldCheckbox.checked = false;
@@ -719,6 +742,7 @@ document.addEventListener('DOMContentLoaded', () => {
             fuelleFormularFelder(athlet);
             await befuelleTeamNameFeld(id);
             aktualisiereSpeicherButtonStatus();
+            setzeKompakt(true);
         } catch (err) {
             window.zeigeNotification('Fehler beim Laden des Profils: ' + err.message, 'error');
         }
@@ -930,10 +954,11 @@ document.addEventListener('DOMContentLoaded', () => {
             // physisch am Wiegetisch erfasst -> Gewogen wird direkt gesetzt, ohne nachzufragen.
             const vorherigesGewicht = parseFloat(String(urspruenglichesGewicht ?? '').replace(',', '.')) || 0;
             const gewichtGeaendert = gewichtFormatiert > 0 && gewichtFormatiert !== vorherigesGewicht;
-            const gewogenNachfragen = gewichtFormatiert > 0 && (gewichtGeaendert || istWettkampftag());
+            // Handy-Ansicht: "Wiegen" ist die Einwiegung selbst — gewogen gilt mit dem Klick, auch ohne Rückfrage.
+            const gewogenNachfragen = gewichtFormatiert > 0 && (gewichtGeaendert || istWettkampftag() || istHandyModus);
 
             if (istGastgeberVerein && gewogenNachfragen) {
-                if (letzteAenderungViaScan) {
+                if (letzteAenderungViaScan || istHandyModus) {
                     payload.gewogen = true;
                 } else {
                     payload.gewogen = await window.zeigeZentraleBestaetigung(

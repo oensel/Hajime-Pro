@@ -26,8 +26,8 @@ async function koppleGeraet(page, request) {
     await page.locator('#serverEingabe').fill('localhost:3400');
     await page.locator('#codeEingabe').fill(code);
     await page.locator('#koppelnBtn').click();
-    await expect(page).toHaveURL(`${APP_URL}/client.html`, { timeout: 60_000 });
-    await expect(page.locator('#clientTurnier')).toContainText('Mobil App Cup');
+    // Die Startseite führt direkt in die Teilnehmerliste (Handy und Tablet).
+    await expect(page).toHaveURL(/[/]teilnehmer[.]html[?]turnierId=[0-9]+/, { timeout: 60_000 });
 }
 
 async function appStatus(page) {
@@ -43,6 +43,14 @@ async function warteBisSynchron(page) {
 
 test.describe.serial('Android-App', () => {
     let turnier;
+
+    // Das Testgerät (Pixel 7) ist ein Handy: die App startet dort automatisch in der Handy-Ansicht (nur Waage).
+    // Die übrigen Tests prüfen die Tablet-Funktionen (Mattenwahl, Scoreboard) und schalten deshalb auf Tablet;
+    // der Handy-Test lässt die automatische Erkennung arbeiten.
+    test.beforeEach(async ({ page }, testInfo) => {
+        if (testInfo.title.startsWith('Handy-Modus')) return;
+        await page.addInitScript(() => localStorage.setItem('hajime_mobil_modus', 'tablet'));
+    });
 
     test('ohne Kopplung führt jede App-Seite zur Kopplung', async ({ page }) => {
         for (const seite of ['/', '/client.html', '/teilnehmer.html', '/steuerung.html']) {
@@ -66,15 +74,100 @@ test.describe.serial('Android-App', () => {
 
         await page.locator('#codeEingabe').fill(`${code.slice(0, 3)} ${code.slice(3)}`);
         await page.locator('#koppelnBtn').click();
-        await expect(page).toHaveURL(`${APP_URL}/client.html`, { timeout: 60_000 });
-        await expect(page.locator('#clientTurnier')).toContainText('Mobil App Cup');
-        await expect(page.locator('#clientMatteSelect option')).toHaveCount(2); // Platzhalter + Matte 1
+        await expect(page).toHaveURL(/[/]teilnehmer[.]html[?]turnierId=[0-9]+/, { timeout: 60_000 });
+        await expect(page.locator('#handyKarten .handy-karte')).toHaveCount(8, { timeout: 30_000 });
 
         const status = await appStatus(page);
         expect(status).toMatchObject({ rolle: 'client', app: true, app_version: version, server_url: SERVER_URL });
         const server = await (await page.request.get(`${SERVER_URL}/api/sync/status`)).json();
         expect(status.instanz_id).toBe(server.instanz_id);
         await expect(page.locator('#syncStatusLeiste')).toHaveAttribute('data-zustand', 'verbunden');
+    });
+
+    test('Handy-Modus: nur Teilnehmerliste als Karten, Wiegen setzt gewogen, Stift öffnet alle Felder', async ({ page, request }) => {
+        test.setTimeout(120_000);
+        // Als ausrichtender Verein verlangt das Formular Judopass und gültige Lizenz.
+        for (const [i, id] of turnier.teilnehmerIds.entries()) {
+            const r = await request.put(`/api/teilnehmer/${id}`, { data: { judopass_id: `MA-${i}`, lizenz_ablauf: '2030-12-31' } });
+            expect(r.ok(), await r.text()).toBeTruthy();
+        }
+        await warteLeerlauf(request);
+        await koppleGeraet(page, request);
+
+        // Die Startseite führt direkt in die Teilnehmerliste (keine Mattenauswahl).
+        await page.goto(`${APP_URL}/client.html`);
+        await expect(page).toHaveURL(`${APP_URL}/teilnehmer.html?turnierId=${turnier.turnierId}`, { timeout: 30_000 });
+        await expect(page.locator('#handyTopBar')).toBeVisible();
+        await expect(page.locator('#handyTopBar img')).toBeVisible();
+        // Server-Status als Icon in der Top-Bar, Dunkelmodus und Moduswechsel im Menü; am Handy keine Reiter.
+        await expect(page.locator('#syncStatusLeiste')).toBeHidden();
+        await expect(page.locator('.handy-tab')).toHaveCount(0);
+        await expect(page.locator('#handyStatusIcon')).toHaveText('cloud_done', { timeout: 15_000 });
+        await page.locator('#handyStatusBtn').click();
+        await expect(page.locator('#handyStatusPop')).toContainText('verbunden');
+        await page.locator('#handyMehrBtn').click();
+        await expect(page.locator('#handyStatusPop')).toBeHidden();
+        await expect(page.locator('#handyDunkelBtn')).toBeVisible();
+        await page.locator('#handyDunkelBtn').click();
+        await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+        await page.locator('#handyDunkelBtn').click();
+        await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+        await expect(page.locator('#handyModusBtn')).toContainText('Tablet-Modus');
+        await page.locator('body').click({ position: { x: 5, y: 300 } });
+        await expect(page.locator('#handyMehrMenue')).toBeHidden();
+        for (const versteckt of ['.app-sidebar', '.teilnehmer-stats-grid', '#importBtn', '.table-responsive', '#vorlageXlsxLink']) {
+            await expect(page.locator(versteckt)).toBeHidden();
+        }
+        await expect(page.locator('#teilnehmerSearchInput')).toBeVisible();
+        await expect(page.locator('#addBtn')).toBeVisible();
+        await expect(page.locator('#scanBtn')).toBeVisible();
+        await expect(page.locator('#handyKarten .handy-karte')).toHaveCount(8, { timeout: 30_000 });
+
+        // Tippen auf eine Karte: kompakte Waage mit Namen und Stift, nur das Gewichtsfeld.
+        const karte = page.locator('#handyKarten .handy-karte').first();
+        const name = (await karte.locator('.handy-karte-name').innerText()).trim();
+        await karte.click();
+        await expect(page.locator('#waageNameText')).toHaveText(name);
+        await expect(page.locator('#waageStiftBtn')).toBeVisible();
+        await expect(page.locator('#gewicht')).toBeVisible();
+        await expect(page.locator('#vorname')).toBeHidden();
+        await expect(page.locator('#submitBtn')).toHaveText('Wiegen');
+
+        // Der Stift blendet alle Felder ein.
+        await page.locator('#waageStiftBtn').click();
+        await expect(page.locator('#vorname')).toBeVisible();
+        await expect(page.locator('#verein')).toBeVisible();
+        await expect(page.locator('#waageStiftBtn')).toBeHidden();
+
+        // "Wiegen": gewogen ohne Rückfrage, die Karte zeigt das Gewicht.
+        await page.locator('#gewicht').fill('41,5');
+        await expect(page.locator('#submitBtn')).toBeEnabled();
+        await page.locator('#submitBtn').click();
+        await expect(page.locator('#customConfirmModal')).toBeHidden();
+        await expect(page.locator('#handyKarten .handy-karte', { hasText: name }).locator('.handy-chip-gruen')).toContainText('41,50 kg', { timeout: 20_000 });
+
+        // Neuanlage zeigt immer alle Felder, ohne Namenszeile.
+        await page.locator('#addBtn').click();
+        await expect(page.locator('#vorname')).toBeVisible();
+        await expect(page.locator('#waageNameZeile')).toBeHidden();
+
+        // Geburtsjahr und Geschlecht wählen die passende Altersklasse (Alter im Turnierjahr: 11-12 U13, 15-17 U18).
+        const turnierJahr = new Date((await (await request.get(`/api/turniere/${turnier.turnierId}`)).json()).datum).getFullYear();
+        await page.locator('#geschlecht').selectOption('weiblich');
+        await page.locator('#geburtsjahr').fill(String(turnierJahr - 11));
+        await expect(page.locator('#altersklasse')).toHaveValue('U13');
+        await page.locator('#geburtsjahr').fill(String(turnierJahr - 16));
+        await expect(page.locator('#altersklasse')).toHaveValue('U18');
+        await page.locator('#geschlecht').selectOption('männlich');
+        await expect(page.locator('#altersklasse')).toHaveValue('U18');
+
+        // Der Wechsel zum Tablet-Modus zeigt die drei Reiter Waage, Kampf und Scoreboard.
+        await page.locator('#waageModalClose').click();
+        await page.locator('#handyMehrBtn').click();
+        await page.locator('#handyModusBtn').click();
+        await expect(page.locator('.handy-tab')).toHaveText(['scaleWaage', 'sports_kabaddiKampf', 'scoreboardScoreboard']);
+        await expect(page.locator('.handy-tab.aktiv')).toContainText('Waage');
+        await expect(page.locator('#handyMattenSlot')).toBeHidden();
     });
 
     test('Waage ohne Verbindung: 5 Wiegungen und 1 Nachmeldung, danach vollständig am Server', async ({ page, request }) => {
@@ -150,19 +243,26 @@ test.describe.serial('Android-App', () => {
         await expect(page.locator('#syncStatusLeiste')).toHaveAttribute('data-zustand', 'verbunden', { timeout: 15_000 });
     });
 
-    test('Tablet an der Matte: Matte wählen, Kämpfe der Matte und Scoreboard aus den lokalen Daten', async ({ page, request }) => {
+    test('Tablet an der Matte: Matte in der Top-Bar wählen, Kämpfe der Matte und Scoreboard aus den lokalen Daten', async ({ page, request }) => {
         test.setTimeout(90_000);
         await koppleGeraet(page, request);
-        await page.locator('#clientMatteSelect').selectOption(String(turnier.matId));
+        await expect(page.locator('.handy-tab')).toHaveCount(3);
+
+        // Kampf: die Mattenauswahl der Seite sitzt in der Top-Bar.
+        await page.locator('.handy-tab', { hasText: 'Kampf' }).click();
+        await expect(page).toHaveURL(new RegExp('kampf[.]html'));
+        await expect(page.locator('#handyMattenSlot #mattenSelect')).toBeVisible();
+        await page.locator('#mattenSelect').selectOption(String(turnier.matId));
         await expect.poll(async () => page.evaluate(() => fetch('/api/sync/client/matte').then(r => r.json())))
             .toEqual({ matte_id: turnier.matId });
-        await expect(page.locator('#linkScoreboard')).toHaveAttribute('href', new RegExp(`matId=${turnier.matId}`));
 
         // Offline: die Kämpfe der Matte (DK8-Pool, 11 Kämpfe) kommen aus der lokalen Datenbank.
         await warteBisSynchron(page);
         await page.context().route(SERVER_MUSTER, route => route.abort('connectionrefused'));
         await page.goto(`${APP_URL}/steuerung.html?turnierId=${turnier.turnierId}&matId=${turnier.matId}`);
         await page.waitForLoadState('networkidle');
+        await expect(page.locator('#handyMattenSlot #matSelect')).toBeVisible();
+        await expect(page.locator('.handy-tab.aktiv')).toContainText('Scoreboard');
         const kaempfe = await page.evaluate((matId) => fetch(`/api/kaempfe?kampfflaecheId=${matId}`).then(r => r.json()), turnier.matId);
         expect(kaempfe.length).toBe(11);
         // Die Mattenwahl überlebt den Neustart der App-Seite.
