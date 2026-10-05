@@ -17,6 +17,44 @@
     }
 
     const seite = location.pathname.split('/').pop() || 'index.html';
+
+    // Handy (kürzeste Bildschirmseite < HANDY_MAX_DP): nur Teilnehmer/Waage. Scoreboard, Mattenleitung
+    // und Anzeige sind für kleine Bildschirme nicht gedacht; Tablets bekommen alles und drehen frei.
+    // Der Umschalter auf der Startseite überschreibt die automatische Erkennung (Gerät merkt sich 'handy'/'tablet').
+    const HANDY_MAX_DP = 600;
+    const MODUS_SCHLUESSEL = 'hajime_mobil_modus';
+    const gespeicherterModus = (() => {
+        try { const m = localStorage.getItem(MODUS_SCHLUESSEL); return m === 'handy' || m === 'tablet' ? m : null; } catch (e) { return null; }
+    })();
+    const automatischHandy = Math.min(window.screen.width, window.screen.height) < HANDY_MAX_DP;
+    const istHandy = gespeicherterModus ? gespeicherterModus === 'handy' : automatischHandy;
+    if (istHandy) {
+        if (['steuerung.html', 'kampf.html', 'anzeige.html', 'overlay.html'].includes(seite)) {
+            location.replace('/client.html');
+            return;
+        }
+        const stil = document.createElement('style');
+        stil.textContent = '#linkScoreboard, #linkMattenleitung, #nav-kampf, #nav-scoreboard { display: none !important; }';
+        document.head.appendChild(stil);
+    }
+    if (seite === 'client.html') {
+        document.addEventListener('DOMContentLoaded', () => {
+            const ziel = istHandy ? 'tablet' : 'handy';
+            const absatz = document.createElement('p');
+            absatz.style.cssText = 'text-align:center;margin:16px 0 0;';
+            const link = document.createElement('a');
+            link.href = '#';
+            link.textContent = istHandy ? 'Zum Tablet-Modus wechseln (alle Funktionen)' : 'Zum Handy-Modus wechseln (nur Waage)';
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                try { localStorage.setItem(MODUS_SCHLUESSEL, ziel); } catch (err) { /* ohne Speicher: keine Umschaltung */ }
+                location.reload();
+            });
+            absatz.appendChild(link);
+            document.body.appendChild(absatz);
+        });
+    }
+
     const verbindung = ladeVerbindung();
     const mobil = window.HajimeMobil = {
         schluessel: SCHLUESSEL,
