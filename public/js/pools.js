@@ -1509,9 +1509,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         <tr class="pools-table-header">
                             <th class="pool-cell" style="width: 60px; text-align: left; padding: 8px; border-bottom: 2px solid var(--border);">Nr.</th>
                             ${isJederGegenJeden ? '' : `<th class="pool-cell" style="text-align: left; padding: 8px; border-bottom: 2px solid var(--border);">Typ / Runde</th>`}
-                            <th class="pool-cell" style="text-align: left; padding: 8px; border-bottom: 2px solid var(--border);">Kämpfer 1 (Rot)</th>
+                            <th class="pool-cell" style="text-align: left; padding: 8px; border-bottom: 2px solid var(--border);">Kämpfer 1 (Weiß)</th>
                             <th class="pool-cell" style="text-align: center; width: 40px; padding: 8px; border-bottom: 2px solid var(--border);">VS</th>
-                            <th class="pool-cell" style="text-align: left; padding: 8px; border-bottom: 2px solid var(--border);">Kämpfer 2 (Weiß)</th>
+                            <th class="pool-cell" style="text-align: left; padding: 8px; border-bottom: 2px solid var(--border);">Kämpfer 2 (Blau)</th>
                             <th class="pool-cell" style="text-align: right; width: 180px; padding: 8px; border-bottom: 2px solid var(--border);">Ergebnis</th>
                         </tr>
                     `;
@@ -1554,8 +1554,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (k.status === 'beendet') {
                         const min = Math.floor(k.kampfzeit_in_sekunden / 60);
                         const sec = String(k.kampfzeit_in_sekunden % 60).padStart(2, '0');
-                        // Kämpfer 1 = Rot, Kämpfer 2 = Weiß (siehe Tabellen-Header oben).
-                        ergebnis = `Sieger: ${k.sieger_id === k.kaempfer1_id ? 'Rot' : 'Weiß'} (${k.unterbewertung_kaempfer1}:${k.unterbewertung_kaempfer2} | ${min}:${sec})`;
+                        // Kämpfer 1 = Weiß, Kämpfer 2 = Blau (oder Rot, falls das Scoreboard für diesen Kampf Rot eingestellt hat,
+                        // siehe live_farbe) — wie im Scoreboard und auf der Kampf-Seite.
+                        const farbe2 = k.live_farbe === 'rot' ? 'Rot' : 'Blau';
+                        ergebnis = `Sieger: ${k.sieger_id === k.kaempfer1_id ? 'Weiß' : farbe2} (${k.unterbewertung_kaempfer1}:${k.unterbewertung_kaempfer2} | ${min}:${sec})`;
                     } else if (k.status === 'freilos') {
                         ergebnis = k.sieger_id ? 'Freilos (automatischer Sieg)' : 'Freilos';
                     } else if (k.status === 'gestartet') {

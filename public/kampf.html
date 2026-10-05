@@ -55,7 +55,7 @@
         <div id="currentTeamBanner" style="display: none; margin: -8px 0 12px; padding: 6px 14px; font-size: 12px; font-weight: 700; color: var(--text-muted); text-align: center;"></div>
 
         <div class="current-fight-fighters">
-            <div class="fighter-panel red">
+            <div class="fighter-panel white" id="currentPanel1">
                 <div class="fighter-name" id="currentFighter1Name">Kämpfer 1</div>
                 <div class="fighter-club" id="currentFighter1Club">Verein 1</div>
                 <div id="currentFighter1Substitute" style="margin-top: 8px;"></div>
@@ -63,7 +63,7 @@
 
             <div class="vs-divider">VS</div>
 
-            <div class="fighter-panel white">
+            <div class="fighter-panel blau" id="currentPanel2">
                 <div class="fighter-name" id="currentFighter2Name">Kämpfer 2</div>
                 <div class="fighter-club" id="currentFighter2Club">Verein 2</div>
                 <div id="currentFighter2Substitute" style="margin-top: 8px;"></div>
@@ -118,7 +118,7 @@
             
             <div class="grid-2" style="gap: 16px; margin-bottom: 16px;">
                 <div class="form-group">
-                    <label id="scoreLabel1" for="score1" style="font-weight: 700;">Score Kämpfer 1 (Rot)</label>
+                    <label id="scoreLabel1" for="score1" style="font-weight: 700;">Score Kämpfer 1 (Weiß)</label>
                     <select id="score1" required class="form-control">
                         <option value="0">0</option>
                         <option value="1">1</option>
@@ -128,7 +128,7 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label id="scoreLabel2" for="score2" style="font-weight: 700;">Score Kämpfer 2 (Weiß)</label>
+                    <label id="scoreLabel2" for="score2" style="font-weight: 700;">Score Kämpfer 2 (Blau)</label>
                     <select id="score2" required class="form-control">
                         <option value="0" selected>0</option>
                         <option value="1">1</option>

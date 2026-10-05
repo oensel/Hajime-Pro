@@ -168,6 +168,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             currentFighter1Name.textContent = name1 || 'noch offen';
             currentFighter1Club.textContent = currentFight.kaempfer1_verein || '';
             
+            const panel2 = document.getElementById('currentPanel2');
+            if (panel2) panel2.className = `fighter-panel ${farbeKaempfer2(currentFight) === 'rot' ? 'red' : 'blau'}`;
+
             // Name 2
             const name2 = formatFighterName(currentFight.kaempfer2_nachname, currentFight.kaempfer2_vorname);
             currentFighter2Name.textContent = name2 || 'noch offen';
@@ -421,8 +424,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    // Kämpfer 1 ist immer Weiß, Kämpfer 2 Blau oder Rot — je nach Einstellung "Farbe" im Scoreboard (live_farbe).
+    function farbeKaempfer2(kampf) {
+        return kampf && kampf.live_farbe === 'rot' ? 'rot' : 'blau';
+    }
+    const farbName = (farbe) => (farbe === 'rot' ? 'Rot' : 'Blau');
+
     // --- MODAL: KAMPFERGEBNIS EINTRAGEN ---
     function openResultModal(kampf) {
+        const farbe2 = farbeKaempfer2(kampf);
         modalKampfId.value = kampf.id;
         
         // Sieger-Auswahl befüllen
@@ -435,12 +445,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const opt2 = document.createElement('option');
         opt2.value = kampf.kaempfer2_id;
-        opt2.textContent = `Rot: ${formatFighterName(kampf.kaempfer2_nachname, kampf.kaempfer2_vorname)}`;
+        opt2.textContent = `${farbName(farbe2)}: ${formatFighterName(kampf.kaempfer2_nachname, kampf.kaempfer2_vorname)}`;
         siegerSelect.appendChild(opt2);
 
         // Labels für die Scores anpassen
         scoreLabel1.textContent = `Score Weiß (${kampf.kaempfer1_nachname || 'Kämpfer 1'})`;
-        scoreLabel2.textContent = `Score Rot (${kampf.kaempfer2_nachname || 'Kämpfer 2'})`;
+        scoreLabel2.textContent = `Score ${farbName(farbe2)} (${kampf.kaempfer2_nachname || 'Kämpfer 2'})`;
 
         // Default Werte zurücksetzen
         score1.value = 10;
