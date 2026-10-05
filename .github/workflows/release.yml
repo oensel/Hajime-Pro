@@ -6,8 +6,11 @@ on:
   push:
     tags: ['v*']
 
+# pull-requests: read braucht ci.yml (paths-filter); ein aufgerufener Workflow darf nicht mehr Rechte anfordern als der
+# aufrufende, sonst endet der Lauf sofort mit startup_failure.
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   tests:  # dev + test + qa im vollen Umfang (ci.yml, Tag => keine Pfadfilter)
