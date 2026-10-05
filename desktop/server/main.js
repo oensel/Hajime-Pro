@@ -176,12 +176,21 @@ async function starteServer() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Selbst-Update beim Start (nur Windows, nur installierte App)
+// Selbst-Update (nur Windows, nur installierte App)
 // ---------------------------------------------------------------------------------------------
-// Vor dem Start von Datenbank und Server: gibt es Internet und im neuesten GitHub-Release eine NEUERE Version,
-// wird deren (signierter) Installer still ausgeführt und die App startet damit neu. In jedem anderen Fall
-// (kein Netz, nichts Neueres, Fehler, Prüfung fehlgeschlagen) fährt der Server einfach normal hoch.
+// Läuft IM HINTERGRUND, nachdem der Server steht (der Installer ist über 600 MB groß: der Start darf nicht darauf
+// warten). Gibt es Internet und im neuesten GitHub-Release eine NEUERE Version, lädt der Server deren (signierten)
+// Installer mit Fortschritt (Tray-Tooltip und Menü "Server") und setzt einen abgebrochenen Download später fort. Erst
+// nach dem Laden fragt er, ob jetzt installiert werden soll: die Installation beendet den Server kurz und startet ihn
+// danach neu — bei laufendem Turnier wählt man "Später". Ohne Internet/ohne Neueres/bei Fehlern läuft der Server
+// einfach weiter; ein neuer Versuch folgt später.
 // Abschalten: HAJIME_SELBSTUPDATE=false. Privates Repository: CLIENT_RELEASE_TOKEN oder "token" in <Profilordner>/update.json.
+const UPDATE_WIEDERHOLUNG_MS = 10 * 60 * 1000; // nach unterbrochenem Download
+const UPDATE_PRUEFUNG_MS = 60 * 60 * 1000;     // erneute Suche, z.B. wenn beim Start noch kein Internet da war
+let updateStatus = { text: '', version: null, datei: null };
+let updateLaeuft = false;
+let updateTimer = null;
+
 function selbstUpdateAktiv() {
     return app.isPackaged && process.platform === 'win32' && !eigenesProfil && process.env.HAJIME_SELBSTUPDATE !== 'false';
 }
@@ -190,11 +199,35 @@ function liesUpdateKonfig() {
     try { return JSON.parse(readFileSync(path.join(datenverzeichnis(), 'update.json'), 'utf8')) || {}; } catch { return {}; }
 }
 
-async function pruefeSelbstUpdate() {
-    if (!selbstUpdateAktiv()) return;
-    status('Suche nach Updates …');
+function aktualisiereMenues() {
+    if (tray) tray.setContextMenu(baueMenue().trayMenue);
+    if (hauptFenster && !hauptFenster.isDestroyed()) hauptFenster.setMenu(baueMenue().dateiMenue);
+}
+
+function setzeUpdateStatus(text, zusatz = {}) {
+    updateStatus = { text, version: null, datei: null, ...zusatz };
+    if (text) console.log(`[Selbst-Update] ${text}`);
+    if (tray) tray.setToolTip(text ? `Hajime Pro Server – ${text}` : 'Hajime Pro Server');
+    aktualisiereMenues();
+}
+
+function planeUpdatePruefung(ms) {
+    clearTimeout(updateTimer);
+    if (beenden) return;
+    updateTimer = setTimeout(() => { pruefeSelbstUpdate().catch(() => {}); }, ms);
+    if (updateTimer.unref) updateTimer.unref();
+}
+
+const mb = (bytes) => Math.round(bytes / 1048576);
+
+async function pruefeSelbstUpdate({ manuell = false } = {}) {
+    if (!selbstUpdateAktiv() || updateLaeuft || beenden) return;
+    updateLaeuft = true;
+    clearTimeout(updateTimer);
+    aktualisiereMenues();
     const konfig = liesUpdateKonfig();
     const versuchsDatei = path.join(datenverzeichnis(), 'selbstupdate.json');
+    let letzteAnzeige = 0;
     let ergebnis;
     try {
         const { liesOeffentlichenSchluessel } = await import(pathToFileURL(path.join(WURZEL, 'src/sync/clientDateien.js')).href);
@@ -205,26 +238,83 @@ async function pruefeSelbstUpdate() {
             schluessel: liesOeffentlichenSchluessel(),
             ...(process.env.HAJIME_RELEASE_API ? { apiBasis: process.env.HAJIME_RELEASE_API } : {}), // nur für Tests gegen ein Release-Double
             zielVerzeichnis: path.join(datenverzeichnis(), 'updates'),
-            versuchsDatei
+            versuchsDatei,
+            beiFortschritt: ({ version, geladen, gesamt }) => {
+                if (Date.now() - letzteAnzeige < 1000) return;
+                letzteAnzeige = Date.now();
+                setzeUpdateStatus(gesamt
+                    ? `Update ${version}: lade ${mb(geladen)} von ${mb(gesamt)} MB (${Math.floor(geladen / gesamt * 100)} %)`
+                    : `Update ${version}: lade ${mb(geladen)} MB`, { version });
+            }
         });
     } catch (err) {
-        console.warn(`[Selbst-Update] Übersprungen: ${err.message}`);
-        return;
+        ergebnis = { status: 'fehler', grund: err.message };
+    } finally {
+        updateLaeuft = false;
     }
-    if (ergebnis.status !== 'bereit') {
-        if (ergebnis.status === 'fehler' || ergebnis.status === 'aufgegeben') console.warn(`[Selbst-Update] ${ergebnis.status}: ${ergebnis.grund || `Version ${ergebnis.version}`}`);
-        return;
+    const meldung = (titel, detail) => { if (manuell) dialog.showMessageBox({ type: 'info', title: 'Hajime Pro Server', message: titel, detail, buttons: ['OK'] }); };
+    switch (ergebnis.status) {
+        case 'bereit':
+            setzeUpdateStatus(`Version ${ergebnis.version} ist geladen und kann installiert werden`, { version: ergebnis.version, datei: ergebnis.datei });
+            frageUpdateInstallation();
+            return;
+        case 'aktuell':
+            setzeUpdateStatus('');
+            meldung('Der Server ist auf dem neuesten Stand.', `Installierte Version: ${app.getVersion()}`);
+            break;
+        case 'keine-verbindung':
+            if (ergebnis.version) {
+                setzeUpdateStatus(`Update ${ergebnis.version}: Download unterbrochen (${ergebnis.grund}) – neuer Versuch in 10 Minuten`, { version: ergebnis.version });
+                planeUpdatePruefung(UPDATE_WIEDERHOLUNG_MS);
+                meldung('Das Update konnte nicht fertig geladen werden.', `${ergebnis.grund}\nDer Download wird später fortgesetzt.`);
+                return;
+            }
+            setzeUpdateStatus('');
+            meldung('Keine Verbindung zu GitHub.', 'Es konnte nicht nach Updates gesucht werden.');
+            break;
+        case 'fehler':
+            setzeUpdateStatus(`Update ${ergebnis.version || ''} fehlgeschlagen: ${ergebnis.grund}`.replace('  ', ' '), { version: ergebnis.version || null });
+            meldung('Das Update ist fehlgeschlagen.', ergebnis.grund);
+            return;
+        case 'aufgegeben':
+            setzeUpdateStatus(`Update ${ergebnis.version} wurde nach mehreren Versuchen nicht installiert – bitte den Installer von Hand ausführen`, { version: ergebnis.version });
+            meldung('Das Update wurde nach mehreren Versuchen nicht installiert.', 'Lade Hajime-Pro-Server-<Version>-win-x64.exe aus dem GitHub-Release und führe sie aus.');
+            return;
+        default:
+            setzeUpdateStatus('');
     }
-    status(`Installiere Version ${ergebnis.version} …`);
-    merkeVersuch(versuchsDatei, ergebnis.version);
+    planeUpdatePruefung(UPDATE_PRUEFUNG_MS);
+}
+
+async function frageUpdateInstallation() {
+    const { version, datei } = updateStatus;
+    if (!datei) return;
+    const { response } = await dialog.showMessageBox(hauptFenster && !hauptFenster.isDestroyed() && hauptFenster.isVisible() ? hauptFenster : undefined, {
+        type: 'question',
+        title: 'Hajime Pro Server – Update',
+        message: `Version ${version} ist geladen. Jetzt installieren?`,
+        detail: 'Der Server wird dafür beendet und danach automatisch neu gestartet. Clients im Hallennetz verlieren etwa eine Minute die Verbindung. Bei laufendem Turnier besser „Später“ wählen — die Installation steht im Menü „Server“ jederzeit bereit.',
+        buttons: ['Jetzt installieren', 'Später'],
+        defaultId: 1,
+        cancelId: 1
+    });
+    if (response === 0) await installiereUpdate();
+}
+
+async function installiereUpdate() {
+    const { version, datei } = updateStatus;
+    if (!datei) return;
+    merkeVersuch(path.join(datenverzeichnis(), 'selbstupdate.json'), version);
+    setzeUpdateStatus(`Installiere Version ${version} …`, { version });
+    beenden = true;
+    clearTimeout(updateTimer);
+    await Promise.resolve(stoppeDatenbanken()).catch(() => {});
     // Der Installer ersetzt die laufende App: sie muss dafür beendet sein. cmd wartet auf den (still laufenden, per UAC
     // erhöhten) Installer und startet die App danach in jedem Fall wieder — auch wenn die Installation scheitert oder
     // abgelehnt wird, soll der Server nicht ausbleiben. Läuft die neue Version schon, verwirft die Einzelinstanz-Sperre den Zweitstart.
-    const befehl = `""${ergebnis.datei}" /S & start "" "${process.execPath}""`;
+    const befehl = `""${datei}" /S & start "" "${process.execPath}""`;
     spawn('cmd.exe', ['/d', '/s', '/c', befehl], { detached: true, stdio: 'ignore', windowsVerbatimArguments: true }).unref();
-    beenden = true;
     app.exit(0);
-    await new Promise(() => {}); // app.exit beendet den Prozess; nichts mehr starten
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -274,7 +364,13 @@ function beendeAlles() {
 }
 
 function baueMenue() {
+    const updateEintraege = [];
+    if (updateStatus.text) updateEintraege.push({ label: updateStatus.text, enabled: false });
+    if (updateStatus.datei && !beenden) updateEintraege.push({ label: `Version ${updateStatus.version} jetzt installieren …`, click: frageUpdateInstallation });
+    else if (selbstUpdateAktiv()) updateEintraege.push({ label: 'Nach Updates suchen', enabled: !updateLaeuft, click: () => { pruefeSelbstUpdate({ manuell: true }).catch(() => {}); } });
+    if (updateEintraege.length) updateEintraege.push({ type: 'separator' });
     const eintraege = [
+        ...updateEintraege,
         { label: 'Verbindungsdaten …', click: zeigeVerbindungsdaten },
         { label: 'Datenordner öffnen', click: () => shell.openPath(datenverzeichnis()) },
         { type: 'separator' },
@@ -313,7 +409,6 @@ async function start() {
     sichereFenster();
     await zeigeStartFenster();
     try {
-        await pruefeSelbstUpdate();
         await starteServer();
     } catch (err) {
         console.error(err);
@@ -328,6 +423,8 @@ async function start() {
     hauptFenster.maximize();
     hauptFenster.show();
     if (startFenster && !startFenster.isDestroyed()) startFenster.close();
+    // Erst jetzt, im Hintergrund: der Server steht, das Update lädt nebenher (Fortschritt im Tray/Menü).
+    pruefeSelbstUpdate().catch((err) => console.warn(`[Selbst-Update] Übersprungen: ${err.message}`));
 }
 
 if (einzigeInstanz) {

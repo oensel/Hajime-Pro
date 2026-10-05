@@ -19,16 +19,20 @@ export function sha256Hex(puffer) {
     return createHash('sha256').update(puffer).digest('hex');
 }
 
-export function pruefeDatei({ puffer, eintrag, version, oeffentlicherSchluessel }) {
-    if (sha256Hex(puffer) !== eintrag.sha256) return { ok: false, grund: 'sha256' };
-    let gueltig = false;
+// Nur die Signatur über Dateiname/Version/Prüfsumme (die Prüfsumme selbst muss der Aufrufer gegen die Datei prüfen,
+// z.B. beim Streamen großer Installer ohne sie komplett in den Speicher zu laden).
+export function pruefeSignatur({ eintrag, version, oeffentlicherSchluessel }) {
     try {
-        gueltig = verify(null, Buffer.from(signaturNachricht({ datei: eintrag.datei, version, sha256: eintrag.sha256 })),
+        return verify(null, Buffer.from(signaturNachricht({ datei: eintrag.datei, version, sha256: eintrag.sha256 })),
             oeffentlicherSchluessel, Buffer.from(String(eintrag.signatur), 'base64'));
     } catch {
-        gueltig = false;
+        return false;
     }
-    return gueltig ? { ok: true } : { ok: false, grund: 'signatur' };
+}
+
+export function pruefeDatei({ puffer, eintrag, version, oeffentlicherSchluessel }) {
+    if (sha256Hex(puffer) !== eintrag.sha256) return { ok: false, grund: 'sha256' };
+    return pruefeSignatur({ eintrag, version, oeffentlicherSchluessel }) ? { ok: true } : { ok: false, grund: 'signatur' };
 }
 
 // Versionskopplung: jede Abweichung ist ein Update (auch nach unten). Je Zielversion höchstens
