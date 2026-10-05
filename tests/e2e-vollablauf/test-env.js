@@ -23,7 +23,7 @@ export const pgDienstEnv = {
 };
 
 // Fester Testwert, NICHT aus process.env übernommen: der echte Online-Server legt beim Start
-// (ensureSuperAdmin, siehe src/utils/superAdmin.js) idempotent judo@bastian-haas.com an — auf der
+// (ensureSuperAdmin, siehe src/utils/superAdmin.js) idempotent das Super-Admin-Konto an — auf der
 // echten Cloud-DB existiert dieses Konto mit hoher Wahrscheinlichkeit bereits mit einem echten,
 // uns unbekannten Passwort, SUPER_ADMIN_INITIAL_PASSWORD hätte dann keine Wirkung (siehe Kommentar
 // in superAdmin.js: das Passwort wird nur beim allerersten Anlegen gesetzt). Der Testlauf loggt

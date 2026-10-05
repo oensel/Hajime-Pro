@@ -1,6 +1,5 @@
 // End-to-End: kompletter Turnierablauf über zwei echte Serverprozesse (Online gegen die echte
-// Cloud-Postgres-DB, Offline gegen ein eigenes eingebettetes PostgreSQL) — siehe Plan
-// C:\Users\Bastian\.claude\plans\swirling-booping-hamming.md für den vollständigen Kontext.
+// Cloud-Postgres-DB, Offline gegen ein eigenes eingebettetes PostgreSQL).
 //
 // Phase 1 (dieser Stand): jan@test.de meldet sich mit seinem bestehenden, bereits freigegebenen
 // Account bei JC Senden an und legt Turnier (U11m/U11w/U13m/U13w Einzel + U13m-Team/U13w-Team) an

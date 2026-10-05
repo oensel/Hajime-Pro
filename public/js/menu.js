@@ -141,7 +141,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     brandingBar.className = 'nav-shell-wrapper';
     brandingBar.innerHTML = `
         <div class="app-sidebar">
-            <div class="sidebar-brand" title="by Bastian Haas">
+            <div class="sidebar-brand" title="Hajime Pro">
                 <img src="hajime_pro.png" height="60">
             </div>
             <nav class="sidebar-nav" id="sidebarNavPrimary" style="visibility: hidden;">
