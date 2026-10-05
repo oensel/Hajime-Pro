@@ -398,7 +398,44 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    // Handy-Ansicht (html.modus-handy, siehe css/handy.css): dieselben Daten als Karten — Name, Verein,
+    // Jahrgang/Klasse und rechts "gewogen" (Gewicht) bzw. "offen". Tippen öffnet die Waage.
+    function renderHandyKarten(athleten) {
+        const container = document.getElementById('handyKarten');
+        if (!container) return;
+        if (athleten.length === 0) {
+            container.innerHTML = '<p class="handy-leer">Noch keine Teilnehmer.</p>';
+            return;
+        }
+        container.innerHTML = athleten.map(athlet => {
+            const { gewogen } = berechneStatus(athlet);
+            const gewichtFloat = parseFloat(athlet.gewicht) || 0;
+            const istZurueckgezogen = athlet.status === 'zurueckgezogen';
+            const chip = istZurueckgezogen
+                ? '<span class="handy-chip handy-chip-grau">zurückgezogen</span>'
+                : gewogen && gewichtFloat > 0
+                    ? `<span class="handy-chip handy-chip-gruen">${gewichtFloat.toFixed(2).replace('.', ',')} kg</span>`
+                    : '<span class="handy-chip handy-chip-gelb">offen</span>';
+            const klasse = formatiereAltersklasse(athlet);
+            const unterzeile = [athlet.verein, athlet.geburtsjahr, klasse].filter(Boolean).map(escapeHtml).join(' · ');
+            const klickbar = !istZurueckgezogen && !teilnehmerlisteGesperrt;
+            return `<div class="handy-karte${klickbar ? '' : ' handy-karte-gesperrt'}" ${klickbar ? `data-id="${athlet.id}"` : ''}>
+                <div class="handy-karte-text">
+                    <div class="handy-karte-name">${escapeHtml(athlet.vorname)} ${escapeHtml(athlet.nachname)}</div>
+                    <div class="handy-karte-sub">${unterzeile}</div>
+                </div>
+                ${chip}
+            </div>`;
+        }).join('');
+    }
+
+    document.getElementById('handyKarten')?.addEventListener('click', (e) => {
+        const karte = e.target.closest('.handy-karte[data-id]');
+        if (karte) window.oeffneWaageModal(Number(karte.dataset.id));
+    });
+
     function renderTabelle(athleten) {
+        if (document.documentElement.classList.contains('modus-app')) renderHandyKarten(athleten);
         if (athleten.length === 0) {
             tableBody.innerHTML = `<tr><td colspan="12" class="no-data">Noch keine Kämpfer für dieses Turnier eingewogen.</td></tr>`;
             updateBulkActionsBar();

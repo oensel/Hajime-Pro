@@ -78,6 +78,9 @@
     <span id="importStatus" style="display: block; margin: 0 0 8px 8px; font-size: 12px; color: var(--text-muted); font-weight: bold;"></span>
     <div id="importSkippedList" style="display: none; margin: 0 0 8px 8px; font-size: 12px; color: #b83232;"></div>
 
+    <!-- Nur in der Handy-Ansicht der Android-App (handy.css): Teilnehmer als Karten statt Tabelle -->
+    <div id="handyKarten"></div>
+
     <div class="table-responsive">
         <table class="judo-table">
             <thead>
@@ -247,6 +250,14 @@
                 </button>
                 <span class="material-icons" id="waageModalClose" style="cursor: pointer; color: var(--text-muted); font-size: 20px;" title="Schließen">close</span>
             </div>
+        </div>
+
+        <!-- Nur Handy-Ansicht: bestehender Teilnehmer mit Stift (alle Felder bearbeiten), siehe waage-modal.js -->
+        <div id="waageNameZeile" style="display: none; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px;">
+            <span id="waageNameText" style="font-size: 17px; font-weight: 700;"></span>
+            <button type="button" id="waageStiftBtn" class="theme-toggle" title="Alle Angaben bearbeiten" style="position: static; width: 40px; height: 40px; padding: 0; display: flex; align-items: center; justify-content: center;">
+                <span class="material-icons" style="font-size: 22px;">edit</span>
+            </button>
         </div>
 
         <!-- REAKTIVE WEBCAM SCANNER AREA -->

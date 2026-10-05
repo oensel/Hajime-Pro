@@ -60,6 +60,11 @@
 }
 
 .fighter-panel.white {
+    border-color: rgba(120, 120, 120, 0.45);
+    box-shadow: 0 0 10px rgba(120, 120, 120, 0.05);
+}
+
+.fighter-panel.blau {
     border-color: rgba(63, 81, 181, 0.4);
     box-shadow: 0 0 10px rgba(63, 81, 181, 0.05);
 }

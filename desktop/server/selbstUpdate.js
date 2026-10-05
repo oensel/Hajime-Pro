@@ -3,9 +3,10 @@
 // ist nichts Neueres veröffentlicht, liefert pruefeUndLade() einen Status ohne Datei und der Server startet normal.
 // Der Installer wird gegen die Ed25519-Signatur aus server-version.json geprüft (desktop/update-schluessel.pub),
 // derselbe Schlüssel und dasselbe Schema wie bei den Client-Dateien (desktop/updateLogik.js).
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync, existsSync } from 'fs';
+import { closeSync, createReadStream, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from 'fs';
+import { createHash } from 'crypto';
 import path from 'path';
-import { MAX_UPDATE_VERSUCHE, plattformSchluessel, pruefeDatei } from '../updateLogik.js';
+import { MAX_UPDATE_VERSUCHE, plattformSchluessel, pruefeSignatur } from '../updateLogik.js';
 
 export const VERSION_DATEI = 'server-version.json';
 
@@ -43,7 +44,7 @@ export function merkeVersuch(datei, version) {
 export async function pruefeUndLade({
     repo, token = '', aktuelleVersion, schluessel, zielVerzeichnis, versuchsDatei,
     platform = process.platform, arch = process.arch, fetchFn = fetch, apiBasis = 'https://api.github.com',
-    timeoutMs = 6000, log = console
+    timeoutMs = 6000, leerlaufMs = 60000, beiFortschritt = () => {}, log = console
 }) {
     const plattform = plattformSchluessel(platform, arch);
     // Nur Windows: der NSIS-Installer läuft still durch; AppImage/dmg lassen sich nicht ohne Weiteres austauschen.
@@ -81,21 +82,82 @@ export async function pruefeUndLade({
         const eintrag = vj.dateien && vj.dateien[plattform] && vj.dateien[plattform].installieren;
         const asset = eintrag && assets.find(a => a.name === eintrag.datei);
         if (!asset) return { status: 'fehler', version, grund: `Kein Installer für ${plattform} in Release v${version}` };
-
-        log.log(`[Selbst-Update] Lade Version ${version} (${eintrag.datei}) …`);
-        // Der Installer ist >100 MB: großzügiges Zeitlimit für den Download selbst.
-        const puffer = await lade(asset, 15 * 60 * 1000);
-        const pruefung = pruefeDatei({ puffer, eintrag, version, oeffentlicherSchluessel: schluessel });
-        if (!pruefung.ok) return { status: 'fehler', version, grund: `Installer ${eintrag.datei}: Prüfung fehlgeschlagen (${pruefung.grund})` };
+        // Eine ungültige Signatur gilt schon vor dem Download (kleine Datei) als Fehler.
+        if (!pruefeSignatur({ eintrag, version, oeffentlicherSchluessel: schluessel })) {
+            return { status: 'fehler', version, grund: `Installer ${eintrag.datei}: Prüfung fehlgeschlagen (signatur)` };
+        }
 
         mkdirSync(zielVerzeichnis, { recursive: true });
         const ziel = path.join(zielVerzeichnis, eintrag.datei);
-        if (existsSync(`${ziel}.teil`)) rmSync(`${ziel}.teil`);
-        writeFileSync(`${ziel}.teil`, puffer);
+        // Schon vollständig und geprüft geladen (z.B. "Später" im letzten Lauf): nicht erneut herunterladen.
+        if (existsSync(ziel) && (await sha256Datei(ziel)) === eintrag.sha256) return { status: 'bereit', version, datei: ziel };
+        if (existsSync(ziel)) rmSync(ziel);
+
+        log.log(`[Selbst-Update] Lade Version ${version} (${eintrag.datei}) …`);
+        try {
+            await ladeInDatei({ asset, kopf, ziel: `${ziel}.teil`, fetchFn, beiFortschritt: (stand) => beiFortschritt({ version, ...stand }), leerlaufMs });
+        } catch (err) {
+            // Verbindung riss ab o. Ä.: die Teildatei bleibt, der nächste Versuch setzt dort fort. Kein Fehlversuch.
+            return { status: 'keine-verbindung', version, grund: err.message };
+        }
+        if ((await sha256Datei(`${ziel}.teil`)) !== eintrag.sha256) {
+            rmSync(`${ziel}.teil`, { force: true });
+            return { status: 'fehler', version, grund: `Installer ${eintrag.datei}: Prüfung fehlgeschlagen (sha256)` };
+        }
         renameSync(`${ziel}.teil`, ziel);
         return { status: 'bereit', version, datei: ziel };
     } catch (err) {
-        // Verbindung riss mitten im Download ab o. Ä.: nicht als Fehlversuch zählen, nur nicht aktualisieren.
         return { status: 'keine-verbindung', version, grund: err.message };
+    }
+}
+
+export function sha256Datei(datei) {
+    return new Promise((resolve, reject) => {
+        const hash = createHash('sha256');
+        createReadStream(datei).on('data', d => hash.update(d)).on('error', reject).on('end', () => resolve(hash.digest('hex')));
+    });
+}
+
+// Lädt asset.url in die Datei `ziel` (Teildatei): direkt auf die Platte statt in den Arbeitsspeicher (der Installer ist
+// über 600 MB groß), mit Fortschritt und Wiederaufnahme per Range, falls schon ein Stück da ist. Bricht erst ab, wenn
+// `leerlaufMs` lang gar keine Daten kommen (nicht nach fester Gesamtzeit: langsame Leitungen dürfen lange brauchen).
+export async function ladeInDatei({ asset, kopf, ziel, fetchFn, beiFortschritt = () => {}, leerlaufMs = 60000 }) {
+    const vorhanden = existsSync(ziel) ? statSync(ziel).size : 0;
+    const steuerung = new AbortController();
+    let uhr = setTimeout(() => steuerung.abort(), leerlaufMs);
+    const lebenszeichen = () => { clearTimeout(uhr); uhr = setTimeout(() => steuerung.abort(), leerlaufMs); };
+    let fd = null;
+    try {
+        const header = { ...kopf, Accept: 'application/octet-stream', ...(vorhanden ? { Range: `bytes=${vorhanden}-` } : {}) };
+        const r = await fetchFn(asset.url, { headers: header, signal: steuerung.signal });
+        if (r.status === 416) return; // Teildatei ist schon vollständig; die Prüfsumme entscheidet
+        if (!r.ok) throw new Error(`${asset.name}: HTTP ${r.status}`);
+        const fortsetzen = vorhanden > 0 && r.status === 206;
+        const laenge = Number(r.headers && r.headers.get && r.headers.get('content-length')) || 0;
+        const gesamt = laenge ? laenge + (fortsetzen ? vorhanden : 0) : (asset.size || 0);
+        let geladen = fortsetzen ? vorhanden : 0;
+        fd = openSync(ziel, fortsetzen ? 'a' : 'w');
+        const schreibe = (stueck) => {
+            writeSync(fd, stueck);
+            geladen += stueck.length;
+            lebenszeichen();
+            beiFortschritt({ geladen, gesamt });
+        };
+        if (r.body && typeof r.body.getReader === 'function') {
+            const leser = r.body.getReader();
+            for (;;) {
+                const { done, value } = await leser.read();
+                if (done) break;
+                schreibe(Buffer.from(value));
+            }
+        } else {
+            schreibe(Buffer.from(await r.arrayBuffer()));
+        }
+    } catch (err) {
+        if (steuerung.signal.aborted) throw new Error(`Keine Daten mehr seit ${Math.round(leerlaufMs / 1000)} Sekunden`);
+        throw err;
+    } finally {
+        clearTimeout(uhr);
+        if (fd !== null) closeSync(fd);
     }
 }

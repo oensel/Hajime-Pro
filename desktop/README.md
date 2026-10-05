@@ -54,7 +54,7 @@ abzustürzen.
    signiert alle vier Client-Dateien einmal (`signieren`-Job, `version.json`) und baut danach das **Server-Paket**
    ("Hajime Pro Server", `server-paket.yml`) **mit diesen signierten Client-Dateien im Installer**. Dessen Installer
    (Windows `.exe`, macOS `.dmg`/`.zip` für Apple Silicon, Linux `.AppImage`) hängen mit `SHA256SUMS-Server.txt` am
-   selben Release, die Client-Dateien samt `version.json` ebenfalls. Die Server-Installer werden zusätzlich im Job `veroeffentlichen` mit demselben Schlüssel in eine eigene `server-version.json` signiert; der Windows-Server prüft damit beim Start, ob ein neueres Release vorliegt, und installiert es selbst (`desktop/server/selbstUpdate.js`, abschaltbar mit `HAJIME_SELBSTUPDATE=false`). Sie stehen nicht in `version.json`.
+   selben Release, die Client-Dateien samt `version.json` ebenfalls. Die Server-Installer werden zusätzlich im Job `veroeffentlichen` mit demselben Schlüssel in eine eigene `server-version.json` signiert; der Windows-Server prüft damit nach dem Start (im Hintergrund, der Start wartet nicht), ob ein neueres Release vorliegt, lädt den Installer mit Fortschritt (Tray-Tooltip und Menü „Server“; abgebrochene Downloads werden fortgesetzt) und fragt danach, ob er jetzt installieren soll — „Später“ lässt den Server unberührt laufen (`desktop/server/selbstUpdate.js`, abschaltbar mit `HAJIME_SELBSTUPDATE=false`; Menü „Nach Updates suchen“ für die manuelle Prüfung). Sie stehen nicht in `version.json`.
    Noch offen: Intel-Mac für das Server-Paket.
 4. **Am Hallen-Server ist nichts zu tun:** Das Server-Paket kopiert die mitgelieferten Client-Dateien beim ersten Start
    nach `client-downloads/<version>/` (`src/sync/clientDateien.js`, prüft jede Datei gegen die Signatur) — `/download`

@@ -115,3 +115,99 @@ test('andere Plattformen als Windows werden nicht angefasst', async () => {
         assert.equal(erg.status, 'nicht-unterstuetzt');
     }
 });
+
+// Release-Double mit Streaming-Antworten (Body als Web-Stream) und Range-Unterstützung.
+function baueStromRelease({ inhalt = Buffer.alloc(300_000, 7), tag = 'v1.2.0', geliefert = inhalt, mitRange = true, abbruchNach = Infinity } = {}) {
+    const { fetchFn: basisFetch } = baueRelease({ tag, inhalt });
+    const anfragen = [];
+    const fetchFn = async (url, opt = {}) => {
+        if (url !== 'u://installer') return basisFetch(url, opt);
+        const range = opt.headers && opt.headers.Range;
+        anfragen.push(range || null);
+        const von = range && mitRange ? Number(/bytes=(\d+)-/.exec(range)[1]) : 0;
+        const teil = geliefert.subarray(von);
+        let gesendet = 0;
+        const body = new ReadableStream({
+            pull(ctrl) {
+                if (gesendet >= teil.length) return ctrl.close();
+                const stueck = teil.subarray(gesendet, gesendet + 50_000);
+                gesendet += stueck.length;
+                if (gesendet + von > abbruchNach) { ctrl.error(new TypeError('terminated')); return; }
+                ctrl.enqueue(stueck);
+            }
+        });
+        return { ok: true, status: range && mitRange ? 206 : 200, headers: new Headers({ 'content-length': String(teil.length) }), body };
+    };
+    return { fetchFn, anfragen, inhalt };
+}
+
+test('Download läuft als Stream mit Fortschritt und legt den geprüften Installer ab', async () => {
+    const { fetchFn, inhalt } = baueStromRelease();
+    const env = umgebung();
+    const stand = [];
+    const erg = await pruefeUndLade({ ...basis, ...env, fetchFn, beiFortschritt: s => stand.push(s) });
+    assert.equal(erg.status, 'bereit');
+    assert.deepEqual(readFileSync(erg.datei), inhalt);
+    assert.ok(stand.length > 1, 'mehrere Fortschrittsmeldungen');
+    const letzte = stand[stand.length - 1];
+    assert.equal(letzte.geladen, inhalt.length);
+    assert.equal(letzte.gesamt, inhalt.length);
+    assert.equal(letzte.version, '1.2.0');
+});
+
+test('Abbruch im Download: Teildatei bleibt, der nächste Versuch setzt per Range fort', async () => {
+    const env = umgebung();
+    const inhalt = Buffer.alloc(300_000, 7);
+    const erster = baueStromRelease({ inhalt, abbruchNach: 120_000 });
+    const erg1 = await pruefeUndLade({ ...basis, ...env, fetchFn: erster.fetchFn });
+    assert.equal(erg1.status, 'keine-verbindung');
+    assert.deepEqual(liesVersuche(env.versuchsDatei), {}, 'kein Fehlversuch');
+    const zweiter = baueStromRelease({ inhalt });
+    const erg2 = await pruefeUndLade({ ...basis, ...env, fetchFn: zweiter.fetchFn });
+    assert.equal(erg2.status, 'bereit');
+    assert.match(zweiter.anfragen[0], /^bytes=\d+-$/);
+    assert.deepEqual(readFileSync(erg2.datei), inhalt);
+});
+
+test('Server ignoriert Range (200): Download beginnt von vorn und ist trotzdem korrekt', async () => {
+    const env = umgebung();
+    const inhalt = Buffer.alloc(300_000, 9);
+    await pruefeUndLade({ ...basis, ...env, fetchFn: baueStromRelease({ inhalt, abbruchNach: 100_000 }).fetchFn });
+    const erg = await pruefeUndLade({ ...basis, ...env, fetchFn: baueStromRelease({ inhalt, mitRange: false }).fetchFn });
+    assert.equal(erg.status, 'bereit');
+    assert.deepEqual(readFileSync(erg.datei), inhalt);
+});
+
+test('falsche Prüfsumme der geladenen Datei: Datei wird verworfen', async () => {
+    const env = umgebung();
+    const inhalt = Buffer.alloc(100_000, 1);
+    const { fetchFn } = baueStromRelease({ inhalt, geliefert: Buffer.alloc(100_000, 2) });
+    const erg = await pruefeUndLade({ ...basis, ...env, fetchFn });
+    assert.equal(erg.status, 'fehler');
+    assert.match(erg.grund, /sha256/);
+    assert.equal(existsSync(path.join(env.zielVerzeichnis, 'Hajime-Pro-Server-1.2.0-win-x64.exe.teil')), false);
+    assert.equal(existsSync(path.join(env.zielVerzeichnis, 'Hajime-Pro-Server-1.2.0-win-x64.exe')), false);
+});
+
+test('schon geladener, geprüfter Installer wird nicht erneut heruntergeladen', async () => {
+    const env = umgebung();
+    const erster = baueStromRelease();
+    await pruefeUndLade({ ...basis, ...env, fetchFn: erster.fetchFn });
+    const zweiter = baueStromRelease();
+    const erg = await pruefeUndLade({ ...basis, ...env, fetchFn: zweiter.fetchFn });
+    assert.equal(erg.status, 'bereit');
+    assert.equal(zweiter.anfragen.length, 0);
+});
+
+test('Leerlauf: keine Daten mehr -> Abbruch statt ewig warten', async () => {
+    const env = umgebung();
+    const { fetchFn: basisFetch } = baueStromRelease();
+    const haengt = async (url, opt) => {
+        if (url !== 'u://installer') return basisFetch(url, opt);
+        // Wie ein echter fetch-Body: ein Abbruch über das Signal beendet das hängende Lesen mit einem Fehler.
+        const body = new ReadableStream({ pull() { return new Promise((_, nein) => opt.signal.addEventListener('abort', () => nein(new DOMException('aborted', 'AbortError')))); } });
+        return { ok: true, status: 200, headers: new Headers({ 'content-length': '1000' }), body };
+    };
+    const erg = await pruefeUndLade({ ...basis, ...env, fetchFn: haengt, leerlaufMs: 150 });
+    assert.equal(erg.status, 'keine-verbindung');
+});

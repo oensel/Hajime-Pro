@@ -116,7 +116,10 @@ export async function getKaempfe(knex, req, res) {
             const mattenId = parseInt(kampfflaecheId);
             const pools = await knex('pools').where({ kampfflaeche_id: mattenId });
             const poolIds = pools.map(p => p.id);
-            const kaempfeDerMatte = poolIds.length ? await knex('kaempfe').whereIn('pool_id', poolIds) : [];
+            // Die Farbe von Kämpfer 2 (blau/rot) stellt das Scoreboard live ein (updateKampfColor); die Kampf-Seite zeigt sie an.
+            const liveFarben = global.liveColors || {};
+            const kaempfeDerMatte = (poolIds.length ? await knex('kaempfe').whereIn('pool_id', poolIds) : [])
+                .map(k => (liveFarben[k.id] ? { ...k, live_farbe: liveFarben[k.id] } : k));
             const teilnehmerIds = [...new Set(kaempfeDerMatte.flatMap(k => [k.kaempfer1_id, k.kaempfer2_id]).filter(Boolean))];
             const teilnehmer = teilnehmerIds.length ? await knex('turnier_teilnehmer').whereIn('id', teilnehmerIds) : [];
             const begegnungIds = [...new Set(kaempfeDerMatte.map(k => k.mannschaftskampf_id).filter(Boolean))];
