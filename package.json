@@ -28,7 +28,8 @@
     "test:electron": "playwright test -c playwright.electron.config.js",
     "desktop:server:start": "electron desktop/server/main.js",
     "desktop:server:build": "electron-builder --config desktop/electron-builder.server.yml",
-    "test:electron:server": "playwright test -c playwright.electron-server.config.js"
+    "test:electron:server": "playwright test -c playwright.electron-server.config.js",
+    "android:icon": "node scripts/erzeuge-android-icon.mjs"
   },
   "dependencies": {
     "@material-design-icons/font": "^0.14.15",
