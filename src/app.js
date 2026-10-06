@@ -39,6 +39,8 @@ import { ladeKopplung } from './sync/kopplung.js';
 import { getClientVerteilungRoutes } from './routes/clientVerteilungRoutes.js';
 import { starteAnkuendigung } from './sync/ankuendigung.js';
 import { starteWeiterleitung } from './sync/port80.js';
+import { dienstUpdateAktiv, pruefeUndAktualisiereDienst } from './utils/dienstUpdate.js';
+import { liesOeffentlichenSchluessel } from './sync/clientDateien.js';
 
 dotenv.config({ quiet: true });
 
@@ -56,6 +58,21 @@ if (bm.fehler.length) {
     console.error('[Betriebsmodus] Server wird nicht gestartet.');
     process.exit(1);
 }
+
+// Linux-Dienst (systemd): beim Start auf ein neueres GitHub-Release prüfen und es installieren (src/utils/dienstUpdate.js).
+// Nach dem Austausch beendet sich der Prozess, systemd (Restart=always) startet die neue Version.
+if (dienstUpdateAktiv()) {
+    const installDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+    const aktuelleVersion = JSON.parse(readFileSync(path.join(installDir, 'package.json'), 'utf8')).version;
+    const ergebnis = await pruefeUndAktualisiereDienst({
+        installDir, aktuelleVersion,
+        schluessel: liesOeffentlichenSchluessel(),
+        repo: process.env.CLIENT_RELEASE_REPO || 'oensel/Hajime-Pro',
+        token: process.env.CLIENT_RELEASE_TOKEN || process.env.GITHUB_TOKEN || ''
+    });
+    if (ergebnis === 'neustart') process.exit(0);
+}
+
 const syncKonfig = liesSyncKonfig();
 // Server-Cluster nur für Hallen-Server (SYNC_ROLLE=server) mit CLUSTER_KNOTEN.
 const clusterKonfig = syncKonfig.istServer ? liesClusterKonfig() : { aktiv: false };

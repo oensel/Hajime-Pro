@@ -44,11 +44,13 @@ export function merkeVersuch(datei, version) {
 export async function pruefeUndLade({
     repo, token = '', aktuelleVersion, schluessel, zielVerzeichnis, versuchsDatei,
     platform = process.platform, arch = process.arch, fetchFn = fetch, apiBasis = 'https://api.github.com',
+    // Standard: Windows-Installer des Server-Pakets. Der Linux-Dienst (src/utils/dienstUpdate.js) übergibt seinen eigenen Schlüssel.
+    plattformName = null, unterstuetzt = ['win32-x64', 'linux-x64'],
     timeoutMs = 6000, leerlaufMs = 60000, beiFortschritt = () => {}, log = console
 }) {
-    const plattform = plattformSchluessel(platform, arch);
-    // Nur Windows: der NSIS-Installer läuft still durch; AppImage/dmg lassen sich nicht ohne Weiteres austauschen.
-    if (plattform !== 'win32-x64') return { status: 'nicht-unterstuetzt' };
+    const plattform = plattformName || plattformSchluessel(platform, arch);
+    // Standard Windows (NSIS-Installer läuft still durch) und Linux (AppImage lässt sich ersetzen); macOS-Bundles nicht.
+    if (!unterstuetzt.includes(plattform)) return { status: 'nicht-unterstuetzt' };
 
     const kopf = { Accept: 'application/vnd.github+json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
     const mitZeitlimit = (url, extra = {}) => fetchFn(url, { ...extra, signal: AbortSignal.timeout(timeoutMs) });

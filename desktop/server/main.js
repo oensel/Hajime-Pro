@@ -9,12 +9,13 @@
 //    "Beenden" stoppt Server und Datenbank sauber.
 import { app, BrowserWindow, Menu, Tray, dialog, nativeImage, session, shell } from 'electron';
 import { spawn } from 'child_process';
-import { readFileSync } from 'fs';
+import { accessSync, constants, readFileSync } from 'fs';
 import net from 'net';
 import os from 'os';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { merkeVersuch, pruefeUndLade } from './selbstUpdate.js';
+import { starteLoesgeloest, startBefehl, tauscheAppImage } from '../updater.js';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const WURZEL = path.resolve(hier, '../..');
@@ -191,8 +192,17 @@ let updateStatus = { text: '', version: null, datei: null };
 let updateLaeuft = false;
 let updateTimer = null;
 
+// Windows: NSIS-Installer; Linux: die laufende AppImage wird ersetzt (nur wenn ihr Ordner beschreibbar ist).
+function plattformUnterstuetzt() {
+    if (process.platform === 'win32') return true;
+    if (process.platform === 'linux' && process.env.APPIMAGE) {
+        try { accessSync(path.dirname(process.env.APPIMAGE), constants.W_OK); return true; } catch { return false; }
+    }
+    return false;
+}
+
 function selbstUpdateAktiv() {
-    return app.isPackaged && process.platform === 'win32' && !eigenesProfil && process.env.HAJIME_SELBSTUPDATE !== 'false';
+    return app.isPackaged && plattformUnterstuetzt() && !eigenesProfil && process.env.HAJIME_SELBSTUPDATE !== 'false';
 }
 
 function liesUpdateKonfig() {
@@ -278,7 +288,7 @@ async function pruefeSelbstUpdate({ manuell = false } = {}) {
             return;
         case 'aufgegeben':
             setzeUpdateStatus(`Update ${ergebnis.version} wurde nach mehreren Versuchen nicht installiert – bitte den Installer von Hand ausführen`, { version: ergebnis.version });
-            meldung('Das Update wurde nach mehreren Versuchen nicht installiert.', 'Lade Hajime-Pro-Server-<Version>-win-x64.exe aus dem GitHub-Release und führe sie aus.');
+            meldung('Das Update wurde nach mehreren Versuchen nicht installiert.', `Lade ${process.platform === 'win32' ? 'Hajime-Pro-Server-<Version>-win-x64.exe' : 'die neue AppImage'} aus dem GitHub-Release und installiere sie von Hand.`);
             return;
         default:
             setzeUpdateStatus('');
@@ -309,6 +319,21 @@ async function installiereUpdate() {
     beenden = true;
     clearTimeout(updateTimer);
     await Promise.resolve(stoppeDatenbanken()).catch(() => {});
+    if (process.platform === 'linux') {
+        // Neue AppImage an die Stelle der laufenden kopieren (atomar umbenennen) und nach dem Ende dieses Prozesses starten.
+        try {
+            const ziel = process.env.APPIMAGE;
+            tauscheAppImage({ quelle: datei, ziel });
+            const [prog, args, optionen] = startBefehl({ plattform: 'linux-x64', appImage: ziel, env: process.env, pid: process.pid });
+            await starteLoesgeloest(prog, args, optionen);
+        } catch (err) {
+            console.error('[Selbst-Update] Austausch der AppImage fehlgeschlagen:', err);
+            // Der Server (und seine Datenbank) sind schon beendet: mit der vorhandenen Version neu starten, damit er nicht ausbleibt.
+            app.relaunch({ execPath: process.env.APPIMAGE });
+        }
+        app.exit(0);
+        return;
+    }
     // Der Installer ersetzt die laufende App: sie muss dafür beendet sein. cmd wartet auf den (still laufenden, per UAC
     // erhöhten) Installer und startet die App danach in jedem Fall wieder — auch wenn die Installation scheitert oder
     // abgelehnt wird, soll der Server nicht ausbleiben. Läuft die neue Version schon, verwirft die Einzelinstanz-Sperre den Zweitstart.
