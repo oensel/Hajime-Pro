@@ -2,7 +2,6 @@
 #   dev  : schnell und billig (Ubuntu): Plan/Pfadfilter, Unit-Tests, shellcheck. Rot = nichts Teureres startet.
 #   test : E2E-Kern (test:e2e, test:e2e:sync) auf Ubuntu.
 #   qa   : teure Plattform-/Infrastrukturläufe (Windows-Selbststart, macOS vorerst nur im Release, Docker-Cluster, test:e2e:cluster).
-#          Startet parallel zu test (nur dev muss grün sein): die Laufzeit ist so der längste Einzeljob statt Summe der Stufen.
 # Pull Requests und Pushes auf main laufen mit Pfadfiltern (nur was die Änderung berührt). VOLLER Umfang ohne Filter:
 # Release (Tag v*, über workflow_call), nächtlicher Lauf (fängt Lücken der Pfadfilter ab) und manueller Start.
 # test:e2e:vollablauf läuft bewusst NICHT hier (schreibt in die echte Cloud-DB).
@@ -175,7 +174,7 @@ jobs:
   # Instanz anlegen, migrieren, sauber beenden, neu starten, Absturz der App überstehen.
   server-selbststart:
     name: qa / selbststart (${{ matrix.os }})
-    needs: [plan, unit]
+    needs: [plan, e2e]
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.plattform == 'true' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
@@ -195,7 +194,7 @@ jobs:
   # Failover). VRRP über Docker-Netz; echte Hardware-Abnahme: deploy/linux/README.md.
   cluster-installation:
     name: qa / cluster-installation
-    needs: [plan, unit]
+    needs: [plan, e2e]
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.cluster == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -205,7 +204,7 @@ jobs:
 
   e2e-cluster:
     name: qa / test:e2e:cluster
-    needs: [plan, unit]
+    needs: [plan, e2e]
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.cluster == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -235,7 +234,7 @@ jobs:
   # baut release.yml es selbst (mit den signierten Client-Dateien), im Nachtlauf wäre es unnötig teuer.
   server-paket:
     name: qa / server-paket
-    needs: [plan, unit]
+    needs: [plan, e2e]
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.paket == 'true' && !startsWith(github.ref, 'refs/tags/') && github.event_name != 'schedule' }}
     uses: ./.github/workflows/server-paket.yml
 

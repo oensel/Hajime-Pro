@@ -1,6 +1,6 @@
 # Stage prod: Release bei Tag v* (npm version <patch|minor|major> && git push --follow-tags):
-# Tests und Builds laufen parallel (Tests gelten als Tor vor dem Veröffentlichen); Kette: Build je Plattform
-# (+ Rauchtest) + Android-APK -> signieren -> Server-Paket (mit den signierten Client-Dateien) -> GitHub-Release.
+# Tests -> Versionsprüfung -> Build je Plattform (+ Rauchtest) + Android-APK -> signieren -> Server-Paket (mit den
+# signierten Client-Dateien) -> GitHub-Release.
 name: Release
 on:
   push:
@@ -26,7 +26,7 @@ jobs:
           test "v$VERSION" = "$GITHUB_REF_NAME" || { echo "Tag $GITHUB_REF_NAME passt nicht zu Version $VERSION"; exit 1; }
 
   build:
-    needs: [pruefen]
+    needs: [tests, pruefen]
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -77,7 +77,7 @@ jobs:
   # `npm run android:schluessel`) — ohne ihn gäbe es nur eine Debug-APK, über die sich später keine neue Version
   # installieren ließe, daher bricht der Job dann ab.
   android:
-    needs: [pruefen]
+    needs: [tests, pruefen]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -148,7 +148,7 @@ jobs:
   # Server-Paket "Hajime Pro Server" (Notebook als Hallen-Server): Build + Rauchtest je Plattform, gleiche Version wie der
   # Client. Enthält die signierten Client-Dateien — ein frisch installierter Server stellt sie ohne Internet bereit.
   server-paket:
-    needs: [pruefen, signieren]
+    needs: [tests, pruefen, signieren]
     uses: ./.github/workflows/server-paket.yml
     with: { client-dateien: true, macos: false }
 
@@ -173,7 +173,7 @@ jobs:
           if-no-files-found: error
 
   veroeffentlichen:
-    needs: [tests, signieren, server-paket, dienst-paket]
+    needs: [signieren, server-paket, dienst-paket]
     runs-on: ubuntu-latest
     permissions:
       contents: write
