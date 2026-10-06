@@ -14,6 +14,11 @@ on:
     - cron: '17 2 * * *'
   workflow_dispatch:
   workflow_call:
+    inputs:
+      # true, wenn release.yml aufruft: Server-Paket und Android-APK baut das Release selbst (kein doppelter Lauf).
+      release:
+        type: boolean
+        default: false
 
 # Veraltete Läufe desselben Branches/PRs abbrechen; main, Nachtlauf und Tags laufen immer zu Ende.
 concurrency:
@@ -235,7 +240,7 @@ jobs:
   server-paket:
     name: qa / server-paket
     needs: [plan, e2e]
-    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.paket == 'true' && !startsWith(github.ref, 'refs/tags/') && github.event_name != 'schedule' }}
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.paket == 'true' && !startsWith(github.ref, 'refs/tags/') && github.event_name != 'schedule' && !inputs.release }}
     uses: ./.github/workflows/server-paket.yml
 
   # Android-App kompilieren (Debug-APK ohne Release-Schlüssel): fängt Fehler im nativen Teil (mobil/android, z.B. das
@@ -243,7 +248,7 @@ jobs:
   android-apk:
     name: qa / android-apk
     needs: [plan, unit]
-    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.android == 'true' && !startsWith(github.ref, 'refs/tags/') && github.event_name != 'schedule' }}
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.android == 'true' && !startsWith(github.ref, 'refs/tags/') && github.event_name != 'schedule' && !inputs.release }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
