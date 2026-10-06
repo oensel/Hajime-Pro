@@ -75,7 +75,7 @@ Lesehilfe:
   danach ab. Der Server wird per mDNS (`turnier.local`) gefunden, sonst Adresse manuell eintragen.
 - **Android:** Handy = nur Waage (Judopass-QR, wiegen, nachmelden). Tablet = Waage, Kampf, Scoreboard und
   Mattenleitung. Die App sucht den Server nicht selbst (kein mDNS): Adresse oder QR-Code verwenden, im
-  Cluster die feste Cluster-Adresse (VIP) eintragen. Updates der APK erfolgen manuell.
+  Cluster die feste Cluster-Adresse (VIP) eintragen. Die App aktualisiert sich beim Start gegen den Server: gibt er eine neuere Version aus, lädt sie die APK und öffnet den Installationsdialog (bestätigen; einmalig „Installation unbekannter Apps“ erlauben).
 - **Kein Client nötig:** Ein Browser im selben Netz reicht für Verwaltung und Anzeigen, nur ohne
   Offline-Betrieb.
 - **Cluster:** Zwei Server, einer führt (Master), der andere (Secondary) übernimmt bei Ausfall. Ein Cluster

@@ -153,8 +153,28 @@ jobs:
     uses: ./.github/workflows/server-paket.yml
     with: { client-dateien: true, macos: false }
 
+  # Quellpaket für den Linux-Dienst ohne Desktop (deploy/linux/install.sh, systemd): src/node_modules-frei, der Dienst baut es
+  # beim Selbst-Update mit npm ci auf (src/utils/dienstUpdate.js). Wird in server-version.json mitsigniert.
+  dienst-paket:
+    needs: [pruefen]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dienst-Paket packen
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p dienst
+          tar czf "dienst/Hajime-Pro-Dienst-${VERSION}.tar.gz" --transform 's,^,hajime-pro/,' \
+            src public migrations knexfile.cjs package.json package-lock.json deploy \
+            desktop/updateLogik.js desktop/update-schluessel.pub desktop/server/selbstUpdate.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-Dienst
+          path: dienst/*.tar.gz
+          if-no-files-found: error
+
   veroeffentlichen:
-    needs: [signieren, server-paket]
+    needs: [signieren, server-paket, dienst-paket]
     runs-on: ubuntu-latest
     permissions:
       contents: write

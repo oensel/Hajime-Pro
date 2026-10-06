@@ -39,6 +39,8 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Selbst-Update: die geladene APK über den Android-Installationsdialog öffnen (AppUpdatePlugin). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Kamera: QR-Scan des Judopasses an der Waage und Kopplung. Nicht zwingend (Geräte ohne Kamera
          können Adresse und Code eintragen). -->
     <uses-permission android:name="android.permission.CAMERA" />

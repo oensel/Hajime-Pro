@@ -13,7 +13,9 @@ const ZUORDNUNG = [
     { endung: '.dmg', plattform: 'darwin-universal', rollen: ['installieren'] },
     { endung: '.zip', plattform: 'darwin-universal', rollen: ['aktualisieren'] },
     { endung: '.AppImage', plattform: 'linux-x64', rollen: ['installieren', 'aktualisieren'] },
-    { endung: '.apk', plattform: 'android', rollen: ['installieren'] }
+    { endung: '.apk', plattform: 'android', rollen: ['installieren'] },
+    // Linux-Dienst ohne Desktop (systemd, deploy/linux/install.sh): Quellpaket, nur im Server-Verzeichnis (server-version.json)
+    { endung: '.tar.gz', plattform: 'linux-dienst', rollen: ['installieren'] }
 ];
 
 // ausgabeName: die Server-Installer bekommen eine eigene Datei (server-version.json), damit sie die version.json der

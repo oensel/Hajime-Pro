@@ -7,6 +7,8 @@ import { erzeugeClientKern } from '/js/shared/clientKern.js';
 import { erzeugeClientKonfig } from '/js/shared/clientKonfig.js';
 import { beantworteClientAnfrage, NUR_AM_SERVER } from '/js/shared/clientAntworten.js';
 import { APP_VERSION } from '/js/mobil/appVersion.js';
+import { waehleAndroidUpdate } from '/js/shared/appUpdate.js';
+import { MELDUNG, fortschrittsZeile } from '/js/shared/updateAnzeige.js';
 
 function antwort(status, body) {
     return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -73,17 +75,46 @@ export async function starteLaufzeit(mobil) {
     // Offline sofort mit den lokalen Daten starten; die Serverprüfung läuft im Hintergrund weiter.
     await kern.starte({ warteAufServer: false });
 
-    // Client und Server sind versionsgekoppelt (wie beim Desktop-Client): weicht die Serverversion
-    // von der installierten App ab, erscheint ein Hinweis in der Statusleiste.
+    // Client und Server sind versionsgekoppelt (wie beim Desktop-Client). Gibt der Server eine NEUERE App-Version aus,
+    // lädt die App die APK vom Server (SHA-256 aus dessen version.json), öffnet den Android-Installationsdialog und der
+    // Nutzer bestätigt. Pro App-Sitzung höchstens ein Versuch je Version (die Seiten laden sich bei jedem Wechsel neu).
+    // Weicht die Version anders ab (Server älter) oder geht es nicht (kein Plugin, Download-Fehler), bleibt der Hinweis
+    // in der Statusleiste.
     (async () => {
         try {
+            versionsHinweis = MELDUNG.suche;
             const resp = await mobil.echteFetch(`${konfig.serverUrl}/api/client/version`, { signal: AbortSignal.timeout(4000) });
-            if (!resp.ok) return;
-            const { version } = await resp.json();
-            if (version && version !== APP_VERSION) {
-                versionsHinweis = `Server hat Version ${version}, diese App ${APP_VERSION} – neue App unter ${konfig.serverUrl}/download laden`;
+            if (!resp.ok) { versionsHinweis = null; return; }
+            const versionJson = await resp.json();
+            const version = versionJson && versionJson.version;
+            if (!version || version === APP_VERSION) { versionsHinweis = null; return; }
+            versionsHinweis = `Server hat Version ${version}, diese App ${APP_VERSION} – neue App unter ${konfig.serverUrl}/download laden`;
+            const update = waehleAndroidUpdate({ versionJson, appVersion: APP_VERSION });
+            const plugin = window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()
+                ? window.Capacitor.registerPlugin('AppUpdate') : null;
+            if (!update || !plugin) return;
+            const marke = `hajime_update_versucht_${update.version}`;
+            if (sessionStorage.getItem(marke)) return;
+            sessionStorage.setItem(marke, '1');
+            versionsHinweis = MELDUNG.holeServer(update.version);
+            // Fortschritt des Downloads (Ereignis des nativen Plugins) in der Statusleiste.
+            const hoerer = await plugin.addListener('fortschritt', ({ geladen, gesamt }) => {
+                versionsHinweis = fortschrittsZeile({ text: `Hole Update ${update.version} vom Server …`, geladen, gesamt });
+            });
+            let ergebnis;
+            try {
+                ergebnis = await plugin.installiere({ url: `${konfig.serverUrl}${update.pfad}`, sha256: update.sha256 });
+            } finally {
+                if (hoerer && hoerer.remove) hoerer.remove();
             }
-        } catch (e) { /* offline: kein Hinweis */ }
+            versionsHinweis = ergebnis && ergebnis.status === 'erlaubnis'
+                ? `Update ${update.version}: bitte „Installation unbekannter Apps“ für Hajime Pro erlauben und die App neu starten`
+                : `Update ${update.version} geladen – Installation wird geöffnet, bitte bestätigen. Die App wird danach neu gestartet.`;
+        } catch (e) {
+            // Offline bei der Suche: kein Hinweis. Scheitert dagegen der Download, bleibt der Hinweis auf die manuelle APK.
+            if (versionsHinweis && /Suche nach/.test(versionsHinweis)) versionsHinweis = null;
+            else if (versionsHinweis && /Hole Update/.test(versionsHinweis)) versionsHinweis = `Update fehlgeschlagen (${e.message || e}) – neue App unter ${konfig.serverUrl}/download laden`;
+        }
     })();
 
     async function sync(methode, pfad, query, body) {

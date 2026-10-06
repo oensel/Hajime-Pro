@@ -8,6 +8,7 @@ import { spawn, execFileSync } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { plattformSchluessel, entscheideUpdate, pruefeDatei } from './updateLogik.js';
+import { MELDUNG, ladeText } from '../src/shared/updateAnzeige.js';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 
@@ -26,7 +27,7 @@ export const DOWNLOAD_ZEITLIMITS = { kopfMs: 10 * 1000, leerlaufMs: 30 * 1000, g
 
 // Download mit Leerlauf-Überwachung: ohne Antwortkopf binnen kopfMs oder ohne neues Datenstück binnen
 // leerlaufMs wird abgebrochen (hängendes WLAN), gesamtMs bleibt die Obergrenze.
-async function ladeDatei(url, status, zeitlimits = DOWNLOAD_ZEITLIMITS) {
+async function ladeDatei(url, status, zeitlimits = DOWNLOAD_ZEITLIMITS, version = '') {
     const { kopfMs, leerlaufMs, gesamtMs } = { ...DOWNLOAD_ZEITLIMITS, ...zeitlimits };
     const steuerung = new AbortController();
     let leerlauf = null;
@@ -47,7 +48,8 @@ async function ladeDatei(url, status, zeitlimits = DOWNLOAD_ZEITLIMITS) {
             wache(leerlaufMs, 'Download hängt');
             teile.push(teil);
             geladen += teil.length;
-            if (laenge) status(`Lade Update … ${Math.round(geladen / laenge * 100)} %`);
+            // status(text, anteil): das Start-Fenster zeigt neben dem Text einen Fortschrittsbalken.
+            if (laenge) status(`Hole Update${version ? ` ${version}` : ''} vom Server … ${Math.floor(geladen / laenge * 100)} % (${ladeText({ geladen, gesamt: laenge })})`, geladen / laenge);
         }
         return Buffer.concat(teile);
     } catch (err) {
@@ -137,6 +139,9 @@ export function startBefehl({ plattform, datei, appImage, env, pid }) {
 }
 
 async function tauscheAus({ app, plattform, datei, version, status }) {
+    // Nur ein Hinweis im Fenster (kein Dialog): kurz stehen lassen, bevor die App sich beendet.
+    status(`Version ${version} ist bereit – Hajime Pro wird neu gestartet …`, null);
+    await new Promise((r) => setTimeout(r, 2000));
     if (plattform === 'win32-x64') {
         // Installer pro Benutzer, ohne Admin (electron-builder.yml: oneClick, perMachine: false).
         const [befehl, args] = startBefehl({ plattform, datei });
@@ -182,7 +187,7 @@ async function pruefeUndAktualisiereIntern({ serverUrl, einstellungen, status, a
     try { rmSync(path.join(app.getPath('userData'), 'updates'), { recursive: true, force: true }); } catch { /* belegt – nächster Start */ }
     if (!app.isPackaged) return 'weiter'; // Entwicklungsstart: nie selbst ersetzen
 
-    status('Prüfe auf Updates …');
+    status(MELDUNG.suche);
     const vj = await holeServerVersion(serverUrl);
     const entscheidung = entscheideUpdate({ eigeneVersion, serverVersion: vj && vj.version, versuche: einstellungen.lade().updateVersuche });
     if (entscheidung === 'kein') return 'weiter';
@@ -216,7 +221,8 @@ async function pruefeUndAktualisiereIntern({ serverUrl, einstellungen, status, a
     const versuche = einstellungen.lade().updateVersuche;
     einstellungen.speichere({ updateVersuche: { ...versuche, [vj.version]: (versuche[vj.version] || 0) + 1 } });
     try {
-        const puffer = await ladeDatei(`${serverUrl}/downloads/${encodeURIComponent(vj.version)}/${encodeURIComponent(eintrag.datei)}`, status, downloadZeitlimits);
+        status(MELDUNG.holeServer(vj.version), 0);
+        const puffer = await ladeDatei(`${serverUrl}/downloads/${encodeURIComponent(vj.version)}/${encodeURIComponent(eintrag.datei)}`, status, downloadZeitlimits, vj.version);
         const schluessel = readFileSync(schluesselPfad, 'utf8');
         const pruefung = pruefeDatei({ puffer, eintrag, version: vj.version, oeffentlicherSchluessel: schluessel });
         if (!pruefung.ok) {
@@ -228,7 +234,7 @@ async function pruefeUndAktualisiereIntern({ serverUrl, einstellungen, status, a
         mkdirSync(ordner, { recursive: true });
         const datei = path.join(ordner, path.basename(eintrag.datei));
         writeFileSync(datei, puffer);
-        status(`Installiere Version ${vj.version} …`);
+        status(`Installiere Version ${vj.version} …`, null);
         await tausche({ app, plattform, datei, version: vj.version, status });
         return 'neustart';
     } catch (err) {

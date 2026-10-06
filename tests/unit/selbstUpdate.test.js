@@ -110,7 +110,7 @@ test('nach zwei Versuchen für dieselbe Version wird aufgegeben', async () => {
 
 test('andere Plattformen als Windows werden nicht angefasst', async () => {
     const fetchFn = async () => { throw new Error('darf nicht aufgerufen werden'); };
-    for (const [platform, arch] of [['linux', 'x64'], ['darwin', 'arm64'], ['win32', 'arm64']]) {
+    for (const [platform, arch] of [['darwin', 'arm64'], ['win32', 'arm64']]) {
         const erg = await pruefeUndLade({ ...basis, ...umgebung(), platform, arch, fetchFn });
         assert.equal(erg.status, 'nicht-unterstuetzt');
     }

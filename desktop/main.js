@@ -33,8 +33,9 @@ let hauptFenster = null;
 let lokaleOrigin = null; // http://127.0.0.1:<port>, sobald der Client-Knoten läuft
 const einstellungen = erzeugeEinstellungen(path.join(app.getPath('userData'), 'einstellungen.json'));
 
-function status(text) {
-    if (startFenster && !startFenster.isDestroyed()) startFenster.webContents.send('status', text);
+// anteil (0..1): Fortschrittsbalken im Start-Fenster; null/fehlend blendet ihn aus.
+function status(text, anteil = null) {
+    if (startFenster && !startFenster.isDestroyed()) startFenster.webContents.send('status', text, anteil);
 }
 
 function freierPort() {

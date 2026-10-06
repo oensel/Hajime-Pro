@@ -17,6 +17,8 @@ files:
   - desktop/build/icon.png
   # Der Server prüft die mitgelieferten Client-Dateien gegen die Update-Signatur (src/sync/clientDateien.js).
   - desktop/updateLogik.js
+  # Selbst-Update unter Linux (AppImage tauschen, neu starten): desktop/server/main.js importiert Bausteine daraus.
+  - desktop/updater.js
   - desktop/update-schluessel.pub
   - src/**
   - public/**

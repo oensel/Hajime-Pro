@@ -60,7 +60,7 @@ log "Anwendung nach $INSTALL_DIR kopieren"
 id "$APP_USER" >/dev/null 2>&1 || useradd --system --create-home --home-dir "$INSTALL_DIR" --shell /usr/sbin/nologin "$APP_USER"
 mkdir -p "$INSTALL_DIR"
 rsync -a --delete \
-    --exclude '.git' --exclude 'node_modules' --exclude 'data' --exclude '.env' \
+    --exclude '.git' --exclude 'node_modules' --exclude 'data' --exclude '.env' --exclude '.update' \
     --exclude 'dist-desktop' --exclude 'test-results' --exclude 'playwright-report' \
     "$QUELLE"/ "$INSTALL_DIR"/
 mkdir -p "$INSTALL_DIR/data/dokumente" "$INSTALL_DIR/data/client-downloads"
