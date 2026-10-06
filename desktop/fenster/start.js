@@ -10,7 +10,11 @@ const MANUELL_NACH_MS = 15000;
 function zeigeManuell() { manuell.style.display = 'block'; }
 setTimeout(() => { if (form.style.display !== 'block') zeigeManuell(); }, MANUELL_NACH_MS);
 
-window.hajime.onStatus((text) => { status.textContent = text; });
+const balken = document.getElementById('balken');
+window.hajime.onStatus((text, anteil) => {
+    status.textContent = text;
+    if (typeof anteil === 'number') { balken.hidden = false; balken.value = anteil; } else { balken.hidden = true; }
+});
 window.hajime.onKopplungNoetig((grund) => {
     if (grund) document.getElementById('kopplungGrund').textContent = grund;
     form.style.display = 'block';

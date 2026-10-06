@@ -27,6 +27,8 @@ import java.security.MessageDigest;
  * Installation ohne Geräteverwaltung); ob die APK zur App passt (gleiche Signatur), prüft Android selbst.
  *
  * Aufruf aus der Web-Schicht: Capacitor.registerPlugin('AppUpdate').installiere({ url, sha256 })
+ * Während des Ladens meldet das Plugin den Stand als Ereignis "fortschritt" { geladen, gesamt } (Bytes; gesamt = 0, wenn der
+ * Server die Größe nicht nennt), die Web-Schicht zeigt daraus den Fortschritt in der Statusleiste.
  * Ergebnis: { status: 'installer' } (Dialog geöffnet) oder { status: 'erlaubnis' } (Nutzer muss erst
  * "Installation unbekannter Apps" für diese App erlauben; die Einstellungsseite wurde geöffnet).
  */
@@ -54,13 +56,29 @@ public class AppUpdatePlugin extends Plugin {
                 verbindung.setReadTimeout(30000);
                 if (verbindung.getResponseCode() != 200) throw new IOException("Server antwortet mit HTTP " + verbindung.getResponseCode());
                 MessageDigest hash = MessageDigest.getInstance("SHA-256");
+                final long gesamt = verbindung.getContentLengthLong() > 0 ? verbindung.getContentLengthLong() : 0;
+                long geladen = 0;
+                long letzteMeldung = 0;
                 try (InputStream ein = verbindung.getInputStream(); FileOutputStream aus = new FileOutputStream(ziel)) {
                     byte[] puffer = new byte[64 * 1024];
                     int n;
                     while ((n = ein.read(puffer)) > 0) {
                         aus.write(puffer, 0, n);
                         hash.update(puffer, 0, n);
+                        geladen += n;
+                        long jetzt = System.currentTimeMillis();
+                        if (jetzt - letzteMeldung >= 300) {
+                            letzteMeldung = jetzt;
+                            JSObject stand = new JSObject();
+                            stand.put("geladen", geladen);
+                            stand.put("gesamt", gesamt);
+                            notifyListeners("fortschritt", stand);
+                        }
                     }
+                    JSObject ende = new JSObject();
+                    ende.put("geladen", geladen);
+                    ende.put("gesamt", gesamt > 0 ? gesamt : geladen);
+                    notifyListeners("fortschritt", ende);
                 } finally {
                     verbindung.disconnect();
                 }

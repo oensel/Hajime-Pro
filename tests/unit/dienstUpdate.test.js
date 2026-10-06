@@ -7,6 +7,7 @@ import path from 'path';
 import { dienstUpdateAktiv, installiereDienstPaket, pruefeUndAktualisiereDienst } from '../../src/utils/dienstUpdate.js';
 
 const stumm = { log() {}, warn() {}, error() {} };
+function stummeAnzeige(meldungen = []) { return { meldung: (t) => meldungen.push(t), fortschritt() {}, ende() {}, meldungen }; }
 const hatTar = (() => { try { execFileSync('tar', ['--version'], { stdio: 'ignore' }); return true; } catch { return false; } })();
 
 test('dienstUpdateAktiv: nur Hallen-Server unter systemd, kein Cluster, nicht abgeschaltet', () => {
@@ -98,7 +99,7 @@ test('installiereDienstPaket: unvollständiges Paket wird abgelehnt', { skip: !h
 test('pruefeUndAktualisiereDienst: Ergebnis der Prüfung entscheidet über Neustart oder Weiterlaufen', async () => {
     const { installDir } = baue();
     const mit = (status, extra = {}, installiere = async () => ({ alt: '/alt' })) => pruefeUndAktualisiereDienst({
-        installDir, aktuelleVersion: '1.0.0', schluessel: 'k', log: stumm, installiere,
+        installDir, aktuelleVersion: '1.0.0', schluessel: 'k', log: stumm, installiere, anzeige: stummeAnzeige(), neustartSekunden: 0,
         pruefeUndLadeFn: async (opt) => {
             assert.equal(opt.plattformName, 'linux-dienst');
             assert.deepEqual(opt.unterstuetzt, ['linux-dienst']);
@@ -114,4 +115,37 @@ test('pruefeUndAktualisiereDienst: Ergebnis der Prüfung entscheidet über Neust
     // Fehlversuche werden gezählt, damit ein kaputtes Update nicht bei jedem Start wiederholt wird.
     const zaehler = JSON.parse(readFileSync(path.join(installDir, 'data/selbstupdate.json'), 'utf8'));
     assert.equal(zaehler['2.0.0'], 2);
+});
+
+test('Anzeige: Meldungen in der Reihenfolge Suche, Hole aus git, Installationsschritte, Neustart', { skip: !hatTar }, async () => {
+    const { installDir, paket } = baue();
+    const anzeige = stummeAnzeige();
+    const erg = await pruefeUndAktualisiereDienst({
+        installDir, aktuelleVersion: '1.0.0', schluessel: 'k', log: stumm, anzeige, neustartSekunden: 0,
+        pruefeUndLadeFn: async (opt) => {
+            opt.beiFortschritt({ version: '2.0.0', geladen: 1, gesamt: 2 });
+            return { status: 'bereit', version: '2.0.0', datei: paket };
+        },
+        installiere: (opt) => installiereDienstPaket({ ...opt, fuehreAus: fuehreAusDouble() })
+    });
+    assert.equal(erg, 'neustart');
+    const m = anzeige.meldungen;
+    assert.equal(m[0], 'Suche nach Updates …');
+    assert.match(m[1], /Hole Update 2\.0\.0 aus git/);
+    assert.match(m[2], /^\(1\/4\) Entpacke/);
+    assert.match(m[3], /^\(2\/4\) Installiere Abhängigkeiten/);
+    assert.match(m[4], /^\(3\/4\) Migriere/);
+    assert.match(m[5], /^\(4\/4\) Tausche/);
+    assert.match(m.at(-2), /installiert/);
+    assert.match(m.at(-1), /Neustart in 0 Sekunden/);
+});
+
+test('Anzeige: aktuell und keine Verbindung werden gemeldet', async () => {
+    const { installDir } = baue();
+    for (const [status, erwartet] of [['aktuell', /Kein Update: Version 1\.0\.0 ist aktuell/], ['keine-verbindung', /Keine Verbindung zu GitHub/]]) {
+        const anzeige = stummeAnzeige();
+        await pruefeUndAktualisiereDienst({ installDir, aktuelleVersion: '1.0.0', schluessel: 'k', log: stumm, anzeige, pruefeUndLadeFn: async () => ({ status }) });
+        assert.equal(anzeige.meldungen[0], 'Suche nach Updates …');
+        assert.match(anzeige.meldungen[1], erwartet);
+    }
 });
