@@ -10,7 +10,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'fs';
 import { execFile } from 'child_process';
 import path from 'path';
-import { merkeVersuch, pruefeUndLade } from '../../desktop/server/selbstUpdate.js';
 import { MELDUNG, erzeugeKonsolenAnzeige, schrittZeile } from '../shared/updateAnzeige.js';
 
 export const DIENST_PLATTFORM = 'linux-dienst';
@@ -94,15 +93,18 @@ export async function installiereDienstPaket({
  */
 export async function pruefeUndAktualisiereDienst({
     installDir, aktuelleVersion, schluessel, repo = 'oensel/Hajime-Pro', token = '', fehlerAusgabe = null,
-    pruefeUndLadeFn = pruefeUndLade, installiere = installiereDienstPaket, log = console,
+    pruefeUndLadeFn = null, installiere = installiereDienstPaket, log = console,
     anzeige = erzeugeKonsolenAnzeige(), neustartSekunden = 3, warte = (ms) => new Promise((r) => setTimeout(r, ms))
 }) {
     try {
+        // Erst hier geladen: desktop/ fehlt im Cloud-Docker-Image (.dockerignore), dieses Modul wird aber von src/app.js importiert.
+        const { merkeVersuch, pruefeUndLade } = await import('../../desktop/server/selbstUpdate.js');
+        const lade = pruefeUndLadeFn || pruefeUndLade;
         const zielVerzeichnis = path.join(installDir, '.update', 'download');
         const versuchsDatei = path.join(installDir, 'data', 'selbstupdate.json');
         anzeige.meldung(MELDUNG.suche);
         let geholt = false;
-        const ergebnis = await pruefeUndLadeFn({
+        const ergebnis = await lade({
             repo, token, aktuelleVersion, schluessel, zielVerzeichnis, versuchsDatei,
             plattformName: DIENST_PLATTFORM, unterstuetzt: [DIENST_PLATTFORM],
             log: { log() {}, warn() {} },   // die Anzeige übernimmt die Meldungen
