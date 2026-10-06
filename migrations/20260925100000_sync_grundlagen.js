@@ -1,5 +1,5 @@
 // Grundlagen für die Synchronisierung mit der Dokument-DB (CouchDB-Umbau, siehe
-// docs/superpowers/specs/2026-09-25-couchdb-umbau-design.md):
+// docs/specs/2026-09-25-couchdb-umbau-design.md):
 //  - turniere.instanz_id: Kennung der Turnier-Instanz auf dem Hallen-Server. Die Dokument-DB heißt
 //    turnier_<instanz_id>; bei jedem neu angelegten/eingelesenen Turnier entsteht eine neue
 //    Kennung, damit Clients mit altem Stand nie in die neue DB zurückreplizieren.

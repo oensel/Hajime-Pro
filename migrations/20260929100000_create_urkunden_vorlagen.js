@@ -1,4 +1,4 @@
-// Urkunden-Vorlagen je Verein (docs/superpowers/specs/2026-09-29-urkunden-generator-design.md):
+// Urkunden-Vorlagen je Verein (docs/specs/2026-09-29-urkunden-generator-design.md):
 // Blanko-PDF, Textfelder (JSON, pt, Ursprung oben links) und Voreinstellungen für den Druck.
 export async function up(knex) {
     await knex.schema.createTable('urkunden_vorlagen', (table) => {

@@ -24,7 +24,7 @@
 //   sonst                                      -> cloud
 // So laufen bestehende .env-Dateien und Test-Suiten unverändert weiter.
 //
-// Als CommonJS geschrieben, damit auch knexfile.cjs/db.js (CommonJS) es nutzen können; ES-Module
+// Als CommonJS geschrieben, damit auch knexfile.cjs (CommonJS) es nutzen können; ES-Module
 // importieren es per Default-Import.
 
 const MODI = ['cloud', 'server', 'client'];

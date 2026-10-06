@@ -1,5 +1,5 @@
 // Einheitlicher Datenzugriff für Waage, Scoreboard und Mattenleitung (CouchDB-Umbau, siehe
-// docs/superpowers/specs/2026-09-25-couchdb-umbau-design.md). Zwei Backends mit identischer
+// docs/specs/2026-09-25-couchdb-umbau-design.md). Zwei Backends mit identischer
 // Schnittstelle:
 //  - 'rest': heutiges Verhalten (Cloud, Betrieb ohne Sync) — exakt die bisherigen fetch-Aufrufe.
 //  - 'dokumente': der Knoten hat eine Dokument-DB (/api/sync/status liefert db_name). Schreib-

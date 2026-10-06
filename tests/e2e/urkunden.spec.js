@@ -1,4 +1,4 @@
-// Urkunden-Generator (docs/superpowers/specs/2026-09-29-urkunden-generator-design.md):
+// Urkunden-Generator (docs/specs/2026-09-29-urkunden-generator-design.md):
 // Vorlagen-API, Generierung (Seitenzahl je Platzbereich), Designer (urkunden-designer.html),
 // Generieren mit Vorlagen-Popup (urkunden.html) und das Druck-Angebot nach "Pool abschließen". Die Tests bauen seriell aufeinander auf.
 import { test, expect } from '@playwright/test';
