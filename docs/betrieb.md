@@ -1,6 +1,6 @@
 # Betrieb, Installation und Release
 
-Aus `CLAUDE.md` ausgelagert (Stand v1.0.10). Hinweise zu Betriebsmodi, DB und Tests stehen weiter in `CLAUDE.md`.
+Übersicht, welche Geräte Server oder Client sind: [`betriebsarten.md`](betriebsarten.md). Aus `CLAUDE.md` ausgelagert (Stand v1.0.10). Hinweise zu Betriebsmodi, DB und Tests stehen weiter in `CLAUDE.md`.
 
 - **Server-Cluster (zwei Hallen-Server, Master/Secondary):** zusätzlich zu `BETRIEBSMODUS=server` (PostgreSQL ist dort Standard): `SYNC_SECRET` (Pflicht im Cluster, auf beiden Servern gleich — ohne verweigert der Server den Start, `clusterSecretFehler` in `src/cluster/konfig.js`), `CLUSTER_KNOTEN` (`server1`|`server2`), `CLUSTER_PARTNER_URL` (feste Adresse des anderen Servers), optional `CLUSTER_VIP` (Anzeige), `CLUSTER_ZEUGE` (IP → Ping, URL → GET; leer = Default-Gateway), `CLUSTER_RUECKSTUFEN_BEFEHL` (Standard `sudo -n /usr/local/bin/hajime-rueckstufen.sh`). Ohne `CLUSTER_KNOTEN` ist der Server wie bisher immer Master. Betrieb (PostgreSQL-Replikation, keepalived, Skripte, Abnahme-Checkliste): `deploy/linux/README.md`
 - **Neuen Hallen-Server aufsetzen (ein Befehl):** `sudo bash deploy/linux/install.sh` auf frischem Debian/Ubuntu (Node.js, PostgreSQL, `.env` mit Zufallsgeheimnissen, Migrationen, systemd-Autostart, ufw); wiederholbar als Update, kein Cluster (siehe `deploy/linux/README.md`)
