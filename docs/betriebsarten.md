@@ -17,22 +17,41 @@ ihm nicht anlegen.
 Der Cloud-Server ist **kein** Ersatz für den Hallen-Server: Clients koppeln sich nur an einen Hallen-Server.
 Turniere wandern per Export/Import zwischen Cloud und Hallen-Server.
 
-## Matrix: Geräte und Einsatz
+## Matrix: Server-Betriebsweise × Clients
 
-| Gerät / Aufbau | Rolle | Ist Server? | Server nötig? | Clients nutzbar? | Einrichtung |
+Links die Betriebsweise des **Servers** (ohne ihn läuft kein Client), oben die Clients, die daran
+arbeiten können.
+
+| Server-Betriebsweise | ausfallsicher | Windows-Client | Linux-Client | Android Handy | Android Tablet |
 |---|---|---|---|---|---|
-| **Linux-Server** (1×) | `server` | ja | – (ist der Server) | **ja**: Desktop-Clients (Windows/macOS/Linux), Android, jeder Browser im LAN | `sudo bash deploy/linux/install.sh` |
-| **2× Linux-Server** (Cluster) | `server`, Master + Secondary | ja, ausfallsicher | – (sind die Server) | **ja**, folgen beim Ausfall dem neuen Master; Android mit fester Adresse/VIP | `sudo bash deploy/linux/install-cluster.sh` auf beiden |
-| **Windows-Notebook als Server + Frontend** | `server` (Server-Paket) | ja | – | **ja**, im selben WLAN/LAN | Installer „Hajime Pro Server“ |
-| **Windows-Notebook nur als Client** | `client` (Desktop-Client) | nein | **ja**, ein Hallen-Server im Netz | – | Installer „Hajime Pro“, vom Server unter `/download` |
-| **Linux-Notebook als Server + Frontend** | `server` (Server-Paket) | ja | – | **ja** | Paket „Hajime Pro Server“ (Linux) |
-| **Linux-Notebook nur als Client** | `client` (Desktop-Client) | nein | **ja** | – | Client-Paket, vom Server unter `/download` |
-| **Android-Handy** | Client (App) | nein | **ja** | – (nur Waage) | APK vom Server unter `/download`, Kopplung per QR |
-| **Android-Tablet** | Client (App) | nein | **ja** | – (Waage, Kampf, Scoreboard) | wie Handy |
-| **Cloud-Server** (Internet) | `cloud` | ja, aber nur zur Vorbereitung | – | **nein**, Clients koppeln nur an Hallen-Server | Docker/Supabase |
+| **1× Linux-Server** (`install.sh`) | nein | ja | ja | ja (nur Waage) | ja (Waage, Kampf, Scoreboard) |
+| **2× Linux-Server** (Cluster, `install-cluster.sh`) | **ja** (Master/Secondary, Übernahme bei Ausfall) | ja | ja | ja (nur Waage), feste Adresse/VIP eintragen | ja, feste Adresse/VIP eintragen |
+| **Windows-Notebook** (Server-Paket, Server + Frontend) | nein | ja | ja | ja (nur Waage) | ja |
+| **Linux-Notebook** (Server-Paket, Server + Frontend) | nein | ja | ja | ja (nur Waage) | ja |
 
-macOS verhält sich wie Windows und Linux (Server-Paket und Client-Paket vorhanden). iOS wird nicht
-unterstützt.
+Lesehilfe:
+- **Jede Zeile ist ein Server.** Die Clients der Spalten sind zusätzliche Geräte an Matte oder Waage und
+  immer an genau einen Server gekoppelt. Ein Client ersetzt den Server nie.
+- **ausfallsicher** heißt: Fällt ein Server aus, übernimmt automatisch der zweite. Nur der Cluster kann das.
+  Bei allen anderen Zeilen steht das Turnier auf einem einzigen Rechner. Clients arbeiten bei einem
+  Verbindungsabbruch lokal weiter und gleichen danach ab, aber ein ausgefallener Server selbst bleibt aus.
+- **Windows-/Linux-Client** sind der Desktop-Client auf einem weiteren Notebook. Ein Notebook, das selbst
+  Server ist, braucht keinen Client, es zeigt die Oberfläche selbst.
+- **Android Handy** ist nur die Waage (Judopass-QR, wiegen, nachmelden), **Android Tablet** zusätzlich Kampf,
+  Scoreboard und Mattenleitung.
+- macOS verhält sich wie Windows und Linux (Server- und Client-Paket vorhanden), iOS wird nicht unterstützt.
+- Der **Cloud-Server** (`cloud`, Internet) steht nicht in der Matrix: Er dient nur zur Vorbereitung. Clients
+  koppeln sich nicht an ihn, Turniere wandern per Export/Import zum Hallen-Server.
+
+### Einrichtung je Zeile und Spalte
+
+| | Wie einrichten |
+|---|---|
+| 1× Linux-Server | `sudo bash deploy/linux/install.sh` auf Debian/Ubuntu |
+| 2× Linux-Server | `sudo bash deploy/linux/install-cluster.sh` auf beiden Servern |
+| Windows-/Linux-Notebook als Server | Installer bzw. AppImage „Hajime Pro Server“ |
+| Windows-/Linux-Client | Installer „Hajime Pro“, vom Server unter `/download` |
+| Android | APK vom Server unter `/download`, Kopplung per QR-Code |
 
 ## Was die Einträge praktisch bedeuten
 
