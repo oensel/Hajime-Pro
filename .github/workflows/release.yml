@@ -1,10 +1,21 @@
-# Stage prod: Release bei Tag v* (npm version <patch|minor|major> && git push --follow-tags):
+# Stage prod: Release bei Tag v* (npm version <patch|minor|major> && git push --follow-tags) ODER per Hand im Browser
+# (Actions -> Release -> Run workflow, Branch main, Version z.B. 1.0.11): dann legt die Pipeline den Tag am Ende selbst an.
 # Tests -> Versionsprüfung -> Build je Plattform (+ Rauchtest) + Android-APK -> signieren -> Server-Paket (mit den
 # signierten Client-Dateien) -> GitHub-Release.
 name: Release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version ohne v (muss package.json auf dem gewählten Branch entsprechen), z.B. 1.0.11'
+        required: true
+        type: string
+
+# Tag des Releases: beim Tag-Push dessen Name, beim manuellen Start v<Eingabe> (der Tag entsteht erst mit dem Release).
+env:
+  RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || format('v{0}', inputs.version) }}
 
 # pull-requests: read braucht ci.yml (paths-filter); ein aufgerufener Workflow darf nicht mehr Rechte anfordern als der
 # aufrufende, sonst endet der Lauf sofort mit startup_failure.
@@ -15,6 +26,7 @@ permissions:
 jobs:
   tests:  # dev + test + qa im vollen Umfang (ci.yml, Tag => keine Pfadfilter)
     uses: ./.github/workflows/ci.yml
+    with: { release: true }
 
   pruefen:
     runs-on: ubuntu-latest
@@ -23,7 +35,12 @@ jobs:
       - name: Tag muss package.json-Version entsprechen
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          test "v$VERSION" = "$GITHUB_REF_NAME" || { echo "Tag $GITHUB_REF_NAME passt nicht zu Version $VERSION"; exit 1; }
+          test "v$VERSION" = "$RELEASE_TAG" || { echo "Tag $RELEASE_TAG passt nicht zu Version $VERSION"; exit 1; }
+          # Manueller Start: nur vom Branch main und nur, wenn es den Tag noch nicht gibt (sonst würde er ein Release überschreiben).
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            test "$GITHUB_REF" = "refs/heads/main" || { echo "Manueller Release nur vom Branch main (gewählt: $GITHUB_REF)"; exit 1; }
+            if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then echo "Tag $RELEASE_TAG existiert schon"; exit 1; fi
+          fi
 
   build:
     needs: [tests, pruefen]
@@ -133,7 +150,7 @@ jobs:
           test -n "$CLIENT_SIGNATUR_SCHLUESSEL" || { echo "Secret CLIENT_SIGNATUR_SCHLUESSEL fehlt (Settings -> Secrets and variables -> Actions), siehe desktop/README.md."; exit 1; }
         env: { CLIENT_SIGNATUR_SCHLUESSEL: '${{ secrets.CLIENT_SIGNATUR_SCHLUESSEL }}' }
       - name: Signieren und version.json erzeugen
-        run: node scripts/signiere-client.mjs release "${GITHUB_REF_NAME#v}"
+        run: node scripts/signiere-client.mjs release "${RELEASE_TAG#v}"
         env: { CLIENT_SIGNATUR_SCHLUESSEL: '${{ secrets.CLIENT_SIGNATUR_SCHLUESSEL }}' }
       - name: Alle Plattformen (ohne macOS) müssen enthalten sein
         run: |
@@ -162,7 +179,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Dienst-Paket packen
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${RELEASE_TAG#v}"
           mkdir -p dienst
           tar czf "dienst/Hajime-Pro-Dienst-${VERSION}.tar.gz" --transform 's,^,hajime-pro/,' \
             src public migrations knexfile.cjs package.json package-lock.json deploy \
@@ -191,10 +208,11 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - name: Server-Installer signieren (server-version.json)
-        run: node scripts/signiere-client.mjs release-server "${GITHUB_REF_NAME#v}" server-version.json
+        run: node scripts/signiere-client.mjs release-server "${RELEASE_TAG#v}" server-version.json
         env: { CLIENT_SIGNATUR_SCHLUESSEL: '${{ secrets.CLIENT_SIGNATUR_SCHLUESSEL }}' }
       - name: Prüfsummen der Server-Installer
         run: (cd release-server && sha256sum * > SHA256SUMS-Server.txt)
       - name: GitHub-Release anlegen
-        run: gh release create "$GITHUB_REF_NAME" release/* release-server/* --title "Hajime Pro $GITHUB_REF_NAME" --generate-notes
+        # --target: beim manuellen Start entsteht der Tag hier, auf genau dem Commit, der getestet und gebaut wurde.
+        run: gh release create "$RELEASE_TAG" release/* release-server/* --title "Hajime Pro $RELEASE_TAG" --generate-notes --target "$GITHUB_SHA"
         env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }
