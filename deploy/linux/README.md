@@ -6,7 +6,7 @@ Master aus oder verliert er die Verbindung zum Hallen-Router, übernimmt der Sec
 Scoreboard, Mattenleitung) arbeiten in der Zeit offline weiter und synchronisieren danach über
 dieselbe virtuelle IP (VIP) mit dem neuen Master.
 
-Hintergrund und Entscheidungen: `docs/superpowers/specs/2026-09-25-couchdb-umbau-design.md`, Abschnitt 9.
+Hintergrund und Entscheidungen: `docs/specs/2026-09-25-couchdb-umbau-design.md`, Abschnitt 9.
 
 ## Schnellstart: einzelner Hallen-Server (ein Befehl)
 

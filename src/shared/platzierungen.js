@@ -1,5 +1,5 @@
 // Platzierungen je Pool — gemeinsame Berechnung für Siegerliste (Browser) und Urkunden (Server).
-// Regeln: docs/superpowers/specs/2026-09-29-urkunden-generator-design.md, "Platzierungen je Modus".
+// Regeln: docs/specs/2026-09-29-urkunden-generator-design.md, "Platzierungen je Modus".
 // Ein Platz wird gesetzt, sobald der entscheidende Kampf fertig ist; offene Plätze bleiben null.
 import { berechneGruppenRangliste } from './gruppenUeberkreuzProgression.js';
 

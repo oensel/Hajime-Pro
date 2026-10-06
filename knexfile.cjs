@@ -7,7 +7,6 @@ function onlineKonfig(migration) {
     connection: baueVerbindung(process.env, { migration }),
     pool: { min: 2, max: poolGroesse() },
     migrations: { directory: './migrations' },
-    seeds: { directory: './seeds' }
   };
 }
 

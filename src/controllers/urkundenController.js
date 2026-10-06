@@ -1,5 +1,5 @@
 // Urkunden-Vorlagen (je Verein) und Generierung des Urkunden-PDFs.
-// Spec: docs/superpowers/specs/2026-09-29-urkunden-generator-design.md
+// Spec: docs/specs/2026-09-29-urkunden-generator-design.md
 // Zugriff: requireAuth + requireTournamentEditAccess an der Route (turnierId in Query/Body);
 // eine Vorlage darf nur zusammen mit einem Turnier ihres Vereins verwendet werden.
 import fs from 'node:fs/promises';

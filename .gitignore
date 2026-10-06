@@ -43,3 +43,7 @@ data/
 /client-dateien/*
 !/client-dateien/.gitkeep
 /android-schluessel/
+
+# Playwright-Ausgaben (lokal erzeugt)
+playwright-report/
+test-results/
