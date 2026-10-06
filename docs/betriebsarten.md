@@ -29,9 +29,18 @@ arbeiten können.
 | **Windows** (Server-Paket, Server + Frontend, mit Desktop) | nein | **ja** | ja | ja | ja (nur Waage) | ja |
 | **Linux** (Server-Paket, Server + Frontend, mit Desktop) | nein | **ja** | ja | ja | ja (nur Waage) | ja |
 
+> **Netzwerk:** Alle Clients (Windows, Linux, Android) müssen den Server per **LAN oder WLAN** erreichen
+> können, also im selben Netz wie der Server sein (oder ihn über eine feste Adresse/VIP erreichen). Ohne
+> Netzwerkverbindung zum Server kann sich ein Client weder koppeln noch abgleichen; einmal gekoppelt, arbeitet
+> er bei einem Abbruch lokal weiter und gleicht nach der Wiederverbindung ab. Auch ein autarker Server
+> (Windows/Linux mit Desktop) braucht für zusätzliche Clients ein gemeinsames LAN/WLAN, für den Betrieb allein
+> aber kein Netzwerk.
+
 Lesehilfe:
 - **Jede Zeile ist ein Server.** Die Clients der Spalten sind zusätzliche Geräte an Matte oder Waage und
   immer an genau einen Server gekoppelt. Ein Client ersetzt den Server nie.
+- **Netzwerk (LAN/WLAN):** Clients sprechen nur über das Netzwerk mit dem Server (mDNS `turnier.local` oder feste
+  Adresse). Fehlt die Verbindung beim ersten Start, lässt sich der Client nicht koppeln.
 - **ausfallsicher** heißt: Fällt ein Server aus, übernimmt automatisch der zweite. Nur der Cluster kann das.
   Bei allen anderen Zeilen steht das Turnier auf einem einzigen Rechner. Clients arbeiten bei einem
   Verbindungsabbruch lokal weiter und gleichen danach ab, aber ein ausgefallener Server selbst bleibt aus.
