@@ -36,6 +36,7 @@ jobs:
       plattform: ${{ steps.ergebnis.outputs.plattform }}
       shell: ${{ steps.ergebnis.outputs.shell }}
       paket: ${{ steps.ergebnis.outputs.paket }}
+      android: ${{ steps.ergebnis.outputs.android }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -78,6 +79,11 @@ jobs:
             shell:
               - 'deploy/linux/**'
               - 'scripts/*.sh'
+            android:
+              - 'mobil/**'
+              - 'scripts/baue-android-*.mjs'
+              - 'src/shared/appUpdate.js'
+              - '.github/workflows/ci.yml'
             paket:
               - 'desktop/server/**'
               - 'desktop/build/**'
@@ -96,11 +102,12 @@ jobs:
           F_PLATTFORM: ${{ steps.f.outputs.plattform }}
           F_SHELL: ${{ steps.f.outputs.shell }}
           F_PAKET: ${{ steps.f.outputs.paket }}
+          F_ANDROID: ${{ steps.f.outputs.android }}
         run: |
           voll=false
           case "$EREIGNIS" in schedule|workflow_dispatch) voll=true ;; esac
           case "$REF" in refs/tags/*) voll=true ;; esac
-          for n in kern cluster plattform shell paket; do
+          for n in kern cluster plattform shell paket android; do
             v=$(eval echo "\$F_$(echo $n | tr a-z A-Z)")
             if [ "$voll" = true ] || [ "$v" = true ]; then echo "$n=true" >> "$GITHUB_OUTPUT"; else echo "$n=false" >> "$GITHUB_OUTPUT"; fi
           done
@@ -230,3 +237,28 @@ jobs:
     needs: [plan, e2e]
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.paket == 'true' && !startsWith(github.ref, 'refs/tags/') && github.event_name != 'schedule' }}
     uses: ./.github/workflows/server-paket.yml
+
+  # Android-App kompilieren (Debug-APK ohne Release-Schlüssel): fängt Fehler im nativen Teil (mobil/android, z.B. das
+  # Update-Plugin) ab, bevor sie erst beim Release auffallen. Bei Tag baut release.yml die signierte APK selbst.
+  android-apk:
+    name: qa / android-apk
+    needs: [plan, unit]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.android == 'true' && !startsWith(github.ref, 'refs/tags/') && github.event_name != 'schedule' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '21' }
+      - name: Android-SDK-Pakete installieren
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$SDKMANAGER" || SDKMANAGER=$(ls -d $ANDROID_HOME/cmdline-tools/*/bin/sdkmanager | head -1)
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" "platforms;android-36" "build-tools;35.0.0"
+      - run: npm ci
+      - run: npm run android:apk

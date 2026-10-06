@@ -19,7 +19,7 @@ git clone <repo-url> Hajime-Pro && cd Hajime-Pro && sudo bash deploy/linux/insta
 `install.sh` installiert Node.js 22 und PostgreSQL, legt Systembenutzer `hajime`, Datenbank,
 `/opt/hajime-pro/.env` (mit zufälligen Passwörtern/Geheimnissen), Migrationen, systemd-Dienst
 (Autostart) und ufw-Regeln an und zeigt am Ende Adresse und Passwörter an. Erneutes Ausführen
-nach `git pull` = Update (`.env` und Daten bleiben). CouchDB ist nicht nötig: die Dokument-DB
+nach `git pull` = Update (`.env` und Daten bleiben). **Automatisch:** der Dienst prüft bei jedem Start auf ein neueres GitHub-Release und installiert es selbst (Paket laden, Signatur prüfen, `npm ci`, Migration, Neustart; vorherige Version unter `/opt/hajime-pro/.update/alt-<version>/`). Im Cluster aus, dort von Hand; abschalten mit `HAJIME_SELBSTUPDATE=false` in der `.env`; privates Repository: `CLIENT_RELEASE_TOKEN`. CouchDB ist nicht nötig: die Dokument-DB
 für die Client-Geräte ist in die App eingebaut. Den Zwei-Server-Cluster richtet das nächste Skript ein.
 
 ## Schnellstart: Zwei-Server-Cluster (geführt)

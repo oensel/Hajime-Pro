@@ -81,7 +81,12 @@ Browser — die gebaute APK selbst wird nicht auf einem Gerät/Emulator ausgefü
 - **Serversuche per mDNS** fehlt: Android löst `turnier.local` in Apps nicht zuverlässig auf, deshalb
   koppelt der QR-Code über die IP-Adresse. Ändert sich die IP des Servers, muss das Gerät neu gekoppelt
   werden („Mit anderem Hallen-Server koppeln“ auf der Startseite).
-- **Updates** laufen von Hand: weicht die Serverversion von der App ab, zeigt die Statusleiste einen
-  Hinweis; die neue APK lädt man über `/download` und installiert sie über die alte.
+- **Updates:** Gibt der Hallen-Server eine NEUERE App-Version aus, lädt die App die APK vom Server (SHA-256 aus dessen
+  `version.json`) und öffnet den Android-Installationsdialog (`AppUpdatePlugin`); die Installation bestätigt der Nutzer
+  (Android erlaubt ohne Geräteverwaltung keine stille Installation), beim ersten Mal muss „Installation unbekannter Apps“
+  für Hajime Pro erlaubt werden. Android prüft selbst, dass die APK mit demselben Schlüssel signiert ist. Ist der Server
+  älter als die App oder gibt es keine APK, zeigt die Statusleiste nur einen Hinweis (neue APK über `/download`).
+  Nicht auf einem Gerät/Emulator getestet (siehe Test-Abschnitt oben): die Web-Schicht ist durch Unit-Tests
+  (`tests/unit/appUpdate.test.js`) abgedeckt, der native Teil wird von CI nur kompiliert.
 - Die Seiten sind Einzelseiten: die Replikation startet bei jedem Seitenwechsel neu (Fortsetzung ab dem
   letzten Stand, nicht übertragene Änderungen bleiben erhalten).
