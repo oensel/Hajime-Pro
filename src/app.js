@@ -40,7 +40,6 @@ import { getClientVerteilungRoutes } from './routes/clientVerteilungRoutes.js';
 import { starteAnkuendigung } from './sync/ankuendigung.js';
 import { starteWeiterleitung } from './sync/port80.js';
 import { dienstUpdateAktiv, pruefeUndAktualisiereDienst } from './utils/dienstUpdate.js';
-import { liesOeffentlichenSchluessel } from './sync/clientDateien.js';
 
 dotenv.config({ quiet: true });
 
@@ -62,6 +61,8 @@ if (bm.fehler.length) {
 // Linux-Dienst (systemd): beim Start auf ein neueres GitHub-Release prüfen und es installieren (src/utils/dienstUpdate.js).
 // Nach dem Austausch beendet sich der Prozess, systemd (Restart=always) startet die neue Version.
 if (dienstUpdateAktiv()) {
+    // Erst hier geladen: clientDateien.js braucht desktop/ (Signaturprüfung), das im Cloud-Docker-Image fehlt.
+    const { liesOeffentlichenSchluessel } = await import('./sync/clientDateien.js');
     const installDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
     const aktuelleVersion = JSON.parse(readFileSync(path.join(installDir, 'package.json'), 'utf8')).version;
     const ergebnis = await pruefeUndAktualisiereDienst({
