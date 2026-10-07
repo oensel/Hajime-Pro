@@ -37,3 +37,12 @@ test('Reihenfolge: siegerehrung ist der alte Name von absteigend', () => {
     assert.equal(normalisiereReihenfolge('absteigend'), 'absteigend');
     assert.equal(normalisiereReihenfolge('siegerehrung'), 'absteigend');
 });
+
+test('pruefeFelder: Feldtyp ist nur ein bekannter eigener Typ (kein Zugriff auf Object.prototype)', () => {
+    const ok = { x: 10, y: 10, breite: 100, hoehe: 20, text: 'x' };
+    for (const typ of ['constructor', 'hasOwnProperty', 'toString', '__proto__', 'valueOf']) {
+        assert.equal(pruefeFelder([{ ...ok, typ }], 595, 842), 'Unbekannter Feldtyp.', typ);
+    }
+    assert.equal(pruefeFelder([{ ...ok, typ: ['text'] }], 595, 842), 'Unbekannter Feldtyp.');
+    assert.equal(pruefeFelder([{ ...ok, typ: { a: 1 } }], 595, 842), 'Unbekannter Feldtyp.');
+});

@@ -547,6 +547,40 @@ async function vorlagenAktion(aktion) {
     } catch (e) { melde(e.message, 'error'); }
 }
 
+// Export: lädt die gewählte Vorlage als .hajime-urkunde.json herunter (Format siehe
+// src/services/urkundenVorlagenDatei.js).
+async function exportiereVorlage() {
+    const v = state.vorlage;
+    if (!v) return melde('Bitte zuerst eine Vorlage wählen.', 'error');
+    try {
+        const blob = await (await api(`/api/urkunden/vorlagen/export?ids=${v.id}`)).blob();
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `${v.name.replace(/[^\p{L}\p{N}._-]+/gu, '_') || 'vorlage'}.hajime-urkunde.json`;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    } catch (e) { melde(e.message, 'error'); }
+}
+
+async function importiereVorlage(datei) {
+    let inhalt;
+    try {
+        inhalt = JSON.parse(await datei.text());
+    } catch {
+        return melde('Die Datei ist keine gültige Vorlagendatei.', 'error');
+    }
+    try {
+        const ergebnis = await (await api('/api/urkunden/vorlagen/import', { method: 'POST', body: { datei: inhalt } })).json();
+        await ladeVorlagen(ergebnis.angelegt[0]?.id);
+        if (ergebnis.angelegt.length > 0) {
+            melde(`Importiert: ${ergebnis.angelegt.map(a => `„${a.name}“`).join(', ')}`);
+        }
+        if (ergebnis.abgelehnt.length > 0) {
+            melde(`Nicht importiert: ${ergebnis.abgelehnt.map(a => `„${a.name}“ (${a.grund})`).join('; ')}`, 'error');
+        }
+    } catch (e) { melde(e.message, 'error'); }
+}
+
 // --- Start ---
 async function start() {
     if (!turnierId) {
@@ -575,6 +609,13 @@ async function start() {
     $('btnVorlageDuplizieren').addEventListener('click', () => vorlagenAktion('duplizieren'));
     $('btnVorlageUmbenennen').addEventListener('click', () => vorlagenAktion('umbenennen'));
     $('btnVorlageLoeschen').addEventListener('click', () => vorlagenAktion('loeschen'));
+    $('btnVorlageExport').addEventListener('click', exportiereVorlage);
+    $('btnVorlageImport').addEventListener('click', () => $('importDatei').click());
+    $('importDatei').addEventListener('change', e => {
+        const datei = e.target.files[0];
+        e.target.value = '';
+        if (datei) importiereVorlage(datei);
+    });
     $('btnFeldPlatzhalter').addEventListener('click', () => neuesTextFeld('{Name}'));
     $('btnFeldText').addEventListener('click', () => neuesTextFeld('Text'));
     $('btnFeldLinie').addEventListener('click', neueLinie);
