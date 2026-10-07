@@ -175,6 +175,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         return { lizenzGueltig, startgeldBezahlt, gewichtEingetragen, gewogen, judopassVorhanden, altersklasseGueltig, statusGruen };
     }
 
+    // "bereit" gilt nur, solange der Teilnehmer auch tatsächlich gewogen, die Lizenz bestätigt UND das
+    // Startgeld bezahlt ist — sonst fällt die Anzeige auf "Angemeldet" zurück, auch wenn der gespeicherte
+    // status noch 'kampfbereit' ist. Gemeinsam genutzt von Sortierung und Tabellen-Rendering.
+    function istEffektivKampfbereit(athlet) {
+        if (athlet.status !== 'kampfbereit') return false;
+        const lizenzDatumRoh = athlet.lizenz_ablauf ? String(athlet.lizenz_ablauf).split('T')[0] : null;
+        const lizenzBestaetigt = !!lizenzDatumRoh && lizenzDatumRoh !== '1970-01-01';
+        return !!athlet.gewogen && lizenzBestaetigt && !!athlet.startgeld_bezahlt;
+    }
+
     // --- GRADUIERUNGEN (Gürtelfarben) ---
     let graduierungenMap = {};
 
@@ -339,19 +349,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function sortiereAthleten(daten, sortKey, richtung) {
         const sorted = [...daten].sort((a, b) => {
-            const statusA = berechneStatus(a).statusGruen;
-            const statusB = berechneStatus(b).statusGruen;
-            if (statusA !== statusB) {
-                return statusA ? 1 : -1; // Rote (nicht startberechtigt) stehen immer oben
+            // Kampfbereite stehen immer ganz unten (unabhängig von Spalte und Richtung), darüber folgt
+            // die gewählte Sortierung, bei Gleichstand nach Name.
+            const bereitA = istEffektivKampfbereit(a);
+            const bereitB = istEffektivKampfbereit(b);
+            if (bereitA !== bereitB) {
+                return bereitA ? 1 : -1;
             }
+
+            const nachName = (x, y) => `${x.nachname} ${x.vorname}`.localeCompare(`${y.nachname} ${y.vorname}`, 'de', { sensitivity: 'base' });
 
             let valA, valB;
 
             switch (sortKey) {
                 case 'nachname':
-                    valA = `${a.nachname} ${a.vorname}`.toLowerCase();
-                    valB = `${b.nachname} ${b.vorname}`.toLowerCase();
-                    break;
+                    return richtung === 'asc' ? nachName(a, b) : -nachName(a, b);
                 case 'verein':
                     valA = (a.verein || '').toLowerCase();
                     valB = (b.verein || '').toLowerCase();
@@ -376,12 +388,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                     valB = parseFloat(String(b.gewicht ?? '').replace(',', '.')) || 0;
                     break;
                 default:
-                    return 0;
+                    return nachName(a, b);
             }
 
             if (valA < valB) return richtung === 'asc' ? -1 : 1;
             if (valA > valB) return richtung === 'asc' ? 1 : -1;
-            return 0;
+            return nachName(a, b);
         });
 
         return sorted;
@@ -426,7 +438,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const klickbar = !istZurueckgezogen && !teilnehmerlisteGesperrt;
             return `<div class="handy-karte${klickbar ? '' : ' handy-karte-gesperrt'}" ${klickbar ? `data-id="${athlet.id}"` : ''}>
                 <div class="handy-karte-text">
-                    <div class="handy-karte-name">${escapeHtml(athlet.vorname)} ${escapeHtml(athlet.nachname)}</div>
+                    <div class="handy-karte-name">${escapeHtml(athlet.nachname)}, ${escapeHtml(athlet.vorname)}</div>
                     <div class="handy-karte-sub">${unterzeile}</div>
                 </div>
                 ${chip}
@@ -484,7 +496,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             // nachträglich per Icon zurückgenommen (siehe startgeldBezahltRoh oben), fällt die
             // Anzeige auf "Angemeldet" zurück, auch wenn der gespeicherte status noch
             // 'kampfbereit' ist.
-            const effektiverStatus = (athlet.status === 'kampfbereit' && !(gewogen && lizenzBestaetigt && startgeldBezahltRoh))
+            const effektiverStatus = (athlet.status === 'kampfbereit' && !istEffektivKampfbereit(athlet))
                 ? 'angemeldet'
                 : athlet.status;
             const { text: teilnehmerStatusText, farbe: teilnehmerStatusFarbe } = TEILNEHMER_STATUS_LABELS[effektiverStatus] || { text: effektiverStatus || '', farbe: 'grau' };
@@ -1305,6 +1317,32 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Global exponiert, damit waage-modal.js (Popup zum Anlegen/Bearbeiten eines Teilnehmers)
     // die Liste nach dem Speichern ohne vollständigen Reload aktualisieren kann.
     window.ladeTeilnehmerListe = ladeTeilnehmer;
+
+    // Client-Geräte (Desktop-Client, Android-App) lesen aus der lokalen Dokument-DB, die erst nach und
+    // nach vom Hallen-Server repliziert wird (nach jedem Seitenstart bzw. Turnierwechsel, später auch
+    // laufend). Die Liste würde sonst nur den Stand beim Öffnen der Seite zeigen und Teilnehmer fehlen.
+    // Daher im Hintergrund nachladen und nur bei einer Änderung neu zeichnen — nicht, solange das
+    // Waage-Popup offen ist oder Zeilen markiert sind (die Auswahl ginge sonst verloren).
+    async function aktualisiereListeImHintergrund() {
+        try {
+            if (document.hidden) return;
+            const modal = document.getElementById('waageModal');
+            if (modal && modal.style.display !== 'none' && modal.style.display !== '') return;
+            if (document.querySelector('.row-checkbox:checked')) return;
+            const response = await fetch(`/api/teilnehmer?turnierId=${turnierId}`, { cache: 'no-store' });
+            if (!response.ok) return;
+            const neu = await response.json();
+            if (JSON.stringify(neu) === JSON.stringify(athletenDaten)) return;
+            athletenDaten = neu;
+            sortiereUndRendere();
+            renderStatsKacheln();
+        } catch (err) {
+            // Hintergrundabgleich: Fehler still ignorieren, der nächste Durchlauf versucht es erneut.
+        }
+    }
+    if (window.Datenzugriff && window.Datenzugriff.rolle && window.Datenzugriff.rolle() === 'client') {
+        setInterval(aktualisiereListeImHintergrund, 3000);
+    }
 
     // Global exponiert, damit waage-modal.js nach dem manuellen Zuordnen/Ändern einer
     // Mannschafts-Mitgliedschaft (Team-Name-Feld) die Team-Spalte ohne vollständigen Reload

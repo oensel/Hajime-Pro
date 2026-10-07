@@ -2,6 +2,7 @@
 // Ehemals eigene Seite waage.html — Formularlogik und Feld-/Klassenermittlung unverändert
 // übernommen, nur der Navigations-/Ladezyklus wurde auf ein Modal umgestellt.
 import { initialisiereScanner } from './qr-scanner.js';
+import { ermittleJahrAusWert, findeTeilnehmerZuPass } from '/js/shared/passAbgleich.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -604,14 +605,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const istWettkampftag = () => !!turnierDatum && turnierDatum === lokalesDatum(new Date());
 
-    // Extrahiert das Geburtsjahr aus einem gescannten Wert — akzeptiert ein volles Datum (z.B.
-    // "2012-05-01" aus einem DokuMe-Judopass-QR) ebenso wie eine bereits reine Jahreszahl.
-    const ermittleJahrAusWert = (wert) => {
-        const str = String(wert || '').trim();
-        const jahresMatch = str.match(/^\d{4}/);
-        return jahresMatch ? jahresMatch[0] : '';
-    };
-
     // --- QR-DATA-MAPPING & WEBCAM INTERFACE ---
     const verarbeiteGescannteDaten = async (parsedData, istDokuMe) => {
         // Ob Treffer oder Neuanlage: der Judoka stand gerade physisch am Scanner -> beim
@@ -624,7 +617,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (istDokuMe) {
             scanVorname = parsedData.FN || '';
             scanNachname = parsedData.LN || '';
-            scanJudopassId = parsedData.NO || '';
+            scanJudopassId = String(parsedData.NO ?? '');
             scanGeburtsjahr = ermittleJahrAusWert(parsedData.DOB);
             scanVerein = parsedData.TM || '';
             if (parsedData.exp) {
@@ -633,7 +626,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             scanVorname = parsedData.vorname || '';
             scanNachname = parsedData.nachname || '';
-            scanJudopassId = parsedData.judopass_id || parsedData.judopassId || '';
+            scanJudopassId = String(parsedData.judopass_id ?? parsedData.judopassId ?? '');
             scanGeburtsjahr = ermittleJahrAusWert(parsedData.geburtsjahr || parsedData.geburtsdatum);
             scanVerein = parsedData.verein || '';
             scanLizenzAblauf = parsedData.lizenz_ablauf || '';
@@ -641,25 +634,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // --- ABGLEICH MIT BEREITS VORHANDENEN TEILNEHMERN DES TURNIERS ---
         let treffer = null;
+        let trefferUeberName = false;
         try {
             const response = await fetch(`/api/teilnehmer?turnierId=${turnierId}`);
             if (response.ok) {
-                const bestehendeTeilnehmer = await response.json();
-
-                // 1. Suche über die Judopass-Nr
-                if (scanJudopassId) {
-                    treffer = bestehendeTeilnehmer.find(t =>
-                        (t.judopass_id || '').toString().trim() === scanJudopassId.trim()
-                    );
-                }
-
-                // 2. Kein Treffer über die Judopass-Nr -> über Vorname, Name und Geburtsjahr suchen
-                if (!treffer && scanVorname && scanNachname && scanGeburtsjahr) {
-                    treffer = bestehendeTeilnehmer.find(t =>
-                        (t.vorname || '').trim().toLowerCase() === scanVorname.trim().toLowerCase() &&
-                        (t.nachname || '').trim().toLowerCase() === scanNachname.trim().toLowerCase() &&
-                        String(t.geburtsjahr || '') === scanGeburtsjahr
-                    );
+                // 1. Suche über die Judopass-Nr, 2. ersatzweise über Vorname, Name und Geburtsjahr
+                // (z.B. wenn in der Teilnehmerliste noch keine Judopass-IDs hinterlegt sind).
+                const gefunden = findeTeilnehmerZuPass(await response.json(), {
+                    judopassId: scanJudopassId,
+                    vorname: scanVorname,
+                    nachname: scanNachname,
+                    geburtsjahr: scanGeburtsjahr
+                });
+                if (gefunden) {
+                    treffer = gefunden.teilnehmer;
+                    trefferUeberName = gefunden.ueber === 'name';
                 }
             }
         } catch (err) {
@@ -674,6 +663,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (scanJudopassId) document.getElementById('judopass_id').value = scanJudopassId;
             setzeLizenzAusScan(scanLizenzAblauf, `${treffer.vorname} ${treffer.nachname}`);
+
+            if (trefferUeberName) {
+                const ergaenzt = [scanJudopassId && 'Judopass-Nr.', scanLizenzAblauf && istPrivilegiertFuerLizenzUndStartgeld && 'Lizenz'].filter(Boolean).join(' und ');
+                window.zeigeNotification?.(
+                    `${treffer.vorname} ${treffer.nachname} (${treffer.geburtsjahr}) gefunden${ergaenzt ? ` — ${ergaenzt} ergänzt (mit „Speichern“ übernehmen)` : ''}.`,
+                    'info'
+                );
+            }
         } else {
             // Kein Treffer -> Formular komplett mit den QR-Daten befüllen (Neuanlage)
             scanMatchedId = null;
@@ -717,7 +714,7 @@ document.addEventListener('DOMContentLoaded', () => {
         teilnehmerForm.classList.toggle('waage-kompakt', kompakt && bestehend);
         const zeile = document.getElementById('waageNameZeile');
         if (!zeile) return;
-        const name = `${document.getElementById('vorname').value} ${document.getElementById('nachname').value}`.trim();
+        const name = [document.getElementById('nachname').value, document.getElementById('vorname').value].map(s => s.trim()).filter(Boolean).join(', ');
         document.getElementById('waageNameText').textContent = name;
         zeile.style.display = bestehend && name ? 'flex' : 'none';
         document.getElementById('waageStiftBtn').style.display = kompakt && bestehend ? 'flex' : 'none';
