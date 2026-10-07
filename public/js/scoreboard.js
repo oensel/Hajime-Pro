@@ -1833,8 +1833,8 @@ async function pruefeUndZeigePausenwarnung() {
         }
 
         const namenProId = {
-            [naechster.kaempfer1_id]: `${naechster.kaempfer1_vorname || ''} ${naechster.kaempfer1_nachname || ''}`.trim(),
-            [naechster.kaempfer2_id]: `${naechster.kaempfer2_vorname || ''} ${naechster.kaempfer2_nachname || ''}`.trim()
+            [naechster.kaempfer1_id]: formatFighterNameSteuerung(naechster.kaempfer1_nachname, naechster.kaempfer1_vorname),
+            [naechster.kaempfer2_id]: formatFighterNameSteuerung(naechster.kaempfer2_nachname, naechster.kaempfer2_vorname)
         };
         const details = pruefung.kaempfer.map(k => {
             const minuten = Math.ceil(k.fehlendeSekunden / 60);
