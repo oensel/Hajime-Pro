@@ -30,6 +30,24 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
+    // --- TURNIER-KOPFZEILE FÜR DEN AUSDRUCK (Name, Ort, Datum) ---
+    let turnierInfoPromise = null;
+    function ladeTurnierInfoText() {
+        if (!turnierInfoPromise) {
+            turnierInfoPromise = fetch(`/api/turniere/${encodeURIComponent(turnierId)}`)
+                .then(r => (r.ok ? r.json() : null))
+                .then(t => {
+                    if (!t) return '';
+                    const datum = t.datum
+                        ? new Date(t.datum).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                        : '';
+                    return [t.bezeichnung, t.ort, datum].filter(Boolean).join(' · ');
+                })
+                .catch(() => '');
+        }
+        return turnierInfoPromise;
+    }
+
     // --- DOM ELEMENTE ---
     const generatePoolsBtn = document.getElementById('generatePoolsBtn');
     const regeneratePoolsBtn = document.getElementById('regeneratePoolsBtn');
@@ -774,88 +792,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- KAMPFPLAN FÜR EINEN POOL ANSEHEN / DRUCKEN ---
-    function renderMatrix(pool, matrixContainer = document.getElementById('matrixContainer')) {
-        if (!matrixContainer) return;
-
-        if (pool.teilnehmer && pool.teilnehmer.length === 1) {
-            const athlete = pool.teilnehmer[0];
-            const tableColsHeaders = `
-                <th style="padding: 8px; border: 1px solid var(--border); text-align: center; width: 50px;">1</th>
-                <th style="padding: 8px; border: 1px solid var(--border); text-align: center; width: 50px;">2</th>
-                <th style="padding: 8px; border: 1px solid var(--border); text-align: center; width: 50px;">3</th>
-            `;
-            const rowsHtml = `
-                <tr style="border-bottom: 1px solid var(--border); white-space: nowrap;">
-                    <td style="padding: 8px; border: 1px solid var(--border); font-weight: bold; text-align: center;">1</td>
-                    <td style="padding: 8px; border: 1px solid var(--border); font-weight: bold; white-space: nowrap;">${escapeHtml(athlete.nachname)}, ${escapeHtml(athlete.vorname)}</td>
-                    <td style="padding: 8px; border: 1px solid var(--border); color: var(--text-muted); font-size: 11px; white-space: nowrap;">${escapeHtml(athlete.verein || '')}</td>
-                    <td style="background-color: var(--border) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; border: 1px solid var(--border);"></td>
-                    <td style="text-align: center; font-weight: bold; border: 1px solid var(--border);">-</td>
-                    <td style="text-align: center; font-weight: bold; border: 1px solid var(--border);">-</td>
-                    <td style="padding: 8px; border: 1px solid var(--border); text-align: center; font-weight: bold; color: var(--primary);">0</td>
-                    <td style="padding: 8px; border: 1px solid var(--border); text-align: center; font-weight: bold;">0</td>
-                    <td style="padding: 8px; border: 1px solid var(--border); text-align: center; font-weight: bold; color: #ff9800;">1 🥇</td>
-                </tr>
-                <tr style="border-bottom: 1px solid var(--border); white-space: nowrap;">
-                    <td style="padding: 8px; border: 1px solid var(--border); font-weight: bold; text-align: center;">2</td>
-                    <td style="padding: 8px; border: 1px solid var(--border); font-style: italic; color: var(--text-muted); white-space: nowrap;">(frei)</td>
-                    <td style="padding: 8px; border: 1px solid var(--border); color: var(--text-muted); font-size: 11px; white-space: nowrap;">-</td>
-                    <td style="text-align: center; font-weight: bold; border: 1px solid var(--border);">-</td>
-                    <td style="background-color: var(--border) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; border: 1px solid var(--border);"></td>
-                    <td style="text-align: center; font-weight: bold; border: 1px solid var(--border);">-</td>
-                    <td style="padding: 8px; border: 1px solid var(--border); text-align: center; font-weight: bold; color: var(--primary);">-</td>
-                    <td style="padding: 8px; border: 1px solid var(--border); text-align: center; font-weight: bold;">-</td>
-                    <td style="padding: 8px; border: 1px solid var(--border); text-align: center; font-weight: bold; color: #ff9800;">-</td>
-                </tr>
-                <tr style="border-bottom: 1px solid var(--border); white-space: nowrap;">
-                    <td style="padding: 8px; border: 1px solid var(--border); font-weight: bold; text-align: center;">3</td>
-                    <td style="padding: 8px; border: 1px solid var(--border); font-style: italic; color: var(--text-muted); white-space: nowrap;">(frei)</td>
-                    <td style="padding: 8px; border: 1px solid var(--border); color: var(--text-muted); font-size: 11px; white-space: nowrap;">-</td>
-                    <td style="text-align: center; font-weight: bold; border: 1px solid var(--border);">-</td>
-                    <td style="text-align: center; font-weight: bold; border: 1px solid var(--border);">-</td>
-                    <td style="background-color: var(--border) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; border: 1px solid var(--border);"></td>
-                    <td style="padding: 8px; border: 1px solid var(--border); text-align: center; font-weight: bold; color: var(--primary);">-</td>
-                    <td style="padding: 8px; border: 1px solid var(--border); text-align: center; font-weight: bold;">-</td>
-                    <td style="padding: 8px; border: 1px solid var(--border); text-align: center; font-weight: bold; color: #ff9800;">-</td>
-                </tr>
-            `;
-
-            matrixContainer.innerHTML = `
-                <div class="matrix-title" style="margin-bottom: 8px; font-weight: bold; font-size: 14px; text-transform: uppercase; border-bottom: 2px solid var(--border); padding-bottom: 6px;">
-                    Pool-Kreuztabelle (Matrix)
-                </div>
-                <table class="matrix-table" style="width: 100%; border-collapse: collapse; margin-bottom: 16px; border: 1px solid var(--border); font-size: 12px;">
-                    <thead>
-                        <tr style="background-color: var(--bg-card); border-bottom: 2px solid var(--border); white-space: nowrap;">
-                            <th style="padding: 8px; border: 1px solid var(--border); text-align: center; width: 30px;">Nr.</th>
-                            <th style="padding: 8px; border: 1px solid var(--border); text-align: left; white-space: nowrap;">Name</th>
-                            <th style="padding: 8px; border: 1px solid var(--border); text-align: left; width: 140px; white-space: nowrap;">Verein</th>
-                            ${tableColsHeaders}
-                            <th style="padding: 8px; border: 1px solid var(--border); text-align: center; width: 50px; font-weight: bold; white-space: nowrap;">Siege</th>
-                            <th style="padding: 8px; border: 1px solid var(--border); text-align: center; width: 60px; font-weight: bold; white-space: nowrap;">Punkte</th>
-                            <th style="padding: 8px; border: 1px solid var(--border); text-align: center; width: 50px; font-weight: bold; white-space: nowrap;">Platz</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${rowsHtml}
-                    </tbody>
-                </table>
-            `;
-            matrixContainer.style.display = 'block';
-            return;
-        }
-
-        const modus = pool.modus;
-        const isJederGegenJeden = modus === 'Jeder-gegen-Jeden' || modus === 'Jeder gegen Jeden' || (pool.teilnehmer && pool.teilnehmer.length === 1);
-        if (!isJederGegenJeden || !pool.teilnehmer || pool.teilnehmer.length === 0) {
-            matrixContainer.style.display = 'none';
-            matrixContainer.innerHTML = '';
-            return;
-        }
-
+    // Kampfbogen (DJB-Formular) für eine Teilnehmerliste und deren Kämpfe — gemeinsam genutzt für
+    // Jeder-gegen-Jeden-Pools und die Gruppen A/B beim Gruppen-Überkreuz.
+    function baueKampfbogenHtml(pool, titel) {
         // Sort participants by weight ascending (official order)
         const participants = [...pool.teilnehmer].sort((a, b) => Number(a.gewicht) - Number(b.gewicht));
-        const n = participants.length;
 
         // Calculate wins, points, and place for each participant
         const standings = participants.map(t => {
@@ -903,58 +844,83 @@ document.addEventListener('DOMContentLoaded', () => {
             if (hasAnyFinished) {
                 s.platz = sortedStandings.findIndex(x => x.id === s.id) + 1;
             } else {
-                s.platz = '<span class="print-empty">-</span>';
+                s.platz = '';
             }
         });
 
-        // Generate table HTML
-        let tableColsHeaders = '';
-        for (let i = 1; i <= n; i++) {
-            tableColsHeaders += `<th style="padding: 8px; border: 1px solid var(--border); text-align: center; width: 50px;">${i}</th>`;
-        }
+        // Kampfbogen-Darstellung (wie das DJB-Formular): Spalten = Kämpfe in Reihenfolge der Kampfnummer,
+        // je Kampf zwei Teilzellen (Punkte | Ubw.) für die beiden beteiligten Kämpfer:innen, alle übrigen
+        // Zeilen sind in dieser Spalte geschwärzt. "Punkte" = Siegpunkt (1 je Sieg), "Ubw." = Unterbewertung.
+        // Maßgeblich ist die tatsächliche Reihenfolge an der Matte (matten_reihenfolge: Pausenregel-Planung
+        // bzw. manueller Tausch); ohne Mattenzuordnung gilt die Grundreihenfolge (reihenfolge_nummer).
+        const kampfSpalten = [...pool.kaempfe].sort((a, b) => {
+            const mA = a.matten_reihenfolge ?? Number.MAX_SAFE_INTEGER;
+            const mB = b.matten_reihenfolge ?? Number.MAX_SAFE_INTEGER;
+            if (mA !== mB) return mA - mB;
+            const numA = parseInt(a.reihenfolge_nummer, 10);
+            const numB = parseInt(b.reihenfolge_nummer, 10);
+            if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+            return a.id - b.id;
+        });
+
+        const zellStil = 'border: 1px solid var(--border); text-align: center; font-weight: bold; padding: 4px 0;';
+        const dunkelStil = 'border: 1px solid var(--border); background-color: #333333 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact;';
+
+        // Namensspalte: längster Name/Verein (gemessen in der Druckschrift) + ca. 0,5cm Abstand rechts
+        // (die Zelle hat links/rechts je 6px Innenabstand, daher +13px; feste Tabellenbreite, siehe pools.css)
+        const messCtx = document.createElement('canvas').getContext('2d');
+        const textBreite = (text, schrift) => {
+            messCtx.font = schrift;
+            return messCtx.measureText(text).width;
+        };
+        const laengsteBreite = standings.reduce((max, t) => Math.max(
+            max,
+            textBreite([t.nachname, t.vorname].filter(Boolean).join(', '), 'bold 14px Arial'),
+            textBreite(t.verein || '', '12px Arial')
+        ), textBreite('Kämpfername', 'bold 11px Arial'));
+        const nameBreitePx = Math.ceil(laengsteBreite + 13);
+
+        let kopfKaempfe = '';
+        kampfSpalten.forEach((_, i) => {
+            kopfKaempfe += `<th colspan="2" style="padding: 8px; border: 1px solid var(--border); text-align: center;">${i + 1}</th>`;
+        });
 
         let rowsHtml = '';
         standings.forEach((athleteI, idxI) => {
             let cellsHtml = '';
-            standings.forEach((athleteJ, idxJ) => {
-                if (idxI === idxJ) {
-                    // Diagonal blacked out
-                    cellsHtml += `<td data-gegner-id="${athleteJ.id}" style="background-color: var(--border) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; border: 1px solid var(--border);"></td>`;
-                } else {
-                    // Find fight
-                    const fight = pool.kaempfe.find(k => 
-                        (k.kaempfer1_id === athleteI.id && k.kaempfer2_id === athleteJ.id) ||
-                        (k.kaempfer1_id === athleteJ.id && k.kaempfer2_id === athleteI.id)
-                    );
-
-                    let cellText = '<span class="print-empty">-</span>';
-                    let cellStyle = 'text-align: center; font-weight: bold; border: 1px solid var(--border);';
-                    
-                    if (fight && fight.status === 'beendet') {
-                        if (fight.sieger_id === athleteI.id) {
-                            const score = fight.kaempfer1_id === athleteI.id 
-                                ? fight.unterbewertung_kaempfer1 
-                                : fight.unterbewertung_kaempfer2;
-                            cellText = String(score);
-                            cellStyle += ' background-color: rgba(46, 125, 50, 0.15) !important; color: #2e7d32; -webkit-print-color-adjust: exact; print-color-adjust: exact;'; // Light green for win
-                        } else if (fight.sieger_id === athleteJ.id) {
-                            cellText = '0';
-                            cellStyle += ' color: #b83232;'; // Red for loss
-                        }
-                    }
-                    
-                    cellsHtml += `<td data-gegner-id="${athleteJ.id}" style="${cellStyle}">${cellText}</td>`;
+            kampfSpalten.forEach(k => {
+                const istK1 = k.kaempfer1_id === athleteI.id;
+                const istK2 = k.kaempfer2_id === athleteI.id;
+                if (!istK1 && !istK2) {
+                    cellsHtml += `<td colspan="2" class="kampf-zelle" data-kampf-id="${k.id}" data-beteiligt="nein" style="${dunkelStil}"></td>`;
+                    return;
                 }
+                // Ohne Ergebnis bleiben die Zellen leer (zum Ausfüllen per Hand beim Ausdruck).
+                let punkteText = '';
+                let ubwText = '';
+                let gewonnen = false;
+                if (k.status === 'beendet') {
+                    gewonnen = k.sieger_id === athleteI.id;
+                    punkteText = gewonnen ? '1' : '0';
+                    ubwText = String(Number(istK1 ? k.unterbewertung_kaempfer1 : k.unterbewertung_kaempfer2) || 0);
+                }
+                const siegStil = gewonnen
+                    ? ' background-color: rgba(46, 125, 50, 0.15) !important; color: #2e7d32; -webkit-print-color-adjust: exact; print-color-adjust: exact;'
+                    : '';
+                cellsHtml += `<td class="kampf-zelle" data-kampf-id="${k.id}" data-feld="punkte" style="${zellStil}${siegStil}">${punkteText}</td>`
+                    + `<td class="kampf-zelle" data-kampf-id="${k.id}" data-feld="ubw" style="${zellStil}${siegStil}">${ubwText}</td>`;
             });
 
-            const siegeHtml = hasAnyFinished ? athleteI.wins : '<span class="print-empty">0</span>';
-            const punkteHtml = hasAnyFinished ? athleteI.points : '<span class="print-empty">0</span>';
+            const siegeHtml = hasAnyFinished ? athleteI.wins : '';
+            const punkteHtml = hasAnyFinished ? athleteI.points : '';
 
             rowsHtml += `
-                <tr data-teilnehmer-id="${athleteI.id}" style="border-bottom: 1px solid var(--border); white-space: nowrap;">
+                <tr data-teilnehmer-id="${athleteI.id}" style="height: 60px; white-space: nowrap;">
                     <td style="padding: 8px; border: 1px solid var(--border); font-weight: bold; text-align: center;">${idxI + 1}</td>
-                    <td style="padding: 8px; border: 1px solid var(--border); font-weight: bold; white-space: nowrap;">${escapeHtml(athleteI.nachname)}, ${escapeHtml(athleteI.vorname)}</td>
-                    <td style="padding: 8px; border: 1px solid var(--border); color: var(--text-muted); font-size: 11px; white-space: nowrap;">${escapeHtml(athleteI.verein || '')}</td>
+                    <td style="width: 1%; padding: 6px 8px; border: 1px solid var(--border); white-space: nowrap;">
+                        <div style="font-weight: bold; font-size: 14px;">${escapeHtml([athleteI.nachname, athleteI.vorname].filter(Boolean).join(', '))}</div>
+                        <div style="color: var(--text-muted); font-size: 12px;">${escapeHtml(athleteI.verein || '')}</div>
+                    </td>
                     ${cellsHtml}
                     <td class="matrix-siege" style="padding: 8px; border: 1px solid var(--border); text-align: center; font-weight: bold; color: var(--primary);">${siegeHtml}</td>
                     <td class="matrix-punkte" style="padding: 8px; border: 1px solid var(--border); text-align: center; font-weight: bold;">${punkteHtml}</td>
@@ -963,28 +929,117 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
         });
 
-        matrixContainer.innerHTML = `
+        let zeitZellen = '';
+        kampfSpalten.forEach(k => {
+            let zeit = '';
+            if (k.status === 'beendet' && k.kampfzeit_in_sekunden) {
+                const sek = Number(k.kampfzeit_in_sekunden);
+                zeit = `${Math.floor(sek / 60)}:${String(sek % 60).padStart(2, '0')}`;
+            }
+            zeitZellen += `<td colspan="2" data-kampf-id="${k.id}" data-feld="zeit" style="border: 1px solid var(--border); text-align: center; padding: 6px;">${zeit}</td>`;
+        });
+
+        return `
             <div class="matrix-title" style="margin-bottom: 8px; font-weight: bold; font-size: 14px; text-transform: uppercase; border-bottom: 2px solid var(--border); padding-bottom: 6px;">
-                Pool-Kreuztabelle (Matrix)
+                ${escapeHtml(titel)}
             </div>
-            <table class="matrix-table" style="width: 100%; border-collapse: collapse; margin-bottom: 24px; border: 1px solid var(--border); font-size: 12px;">
+            <table class="matrix-table" style="width: 100%; table-layout: fixed; border-collapse: collapse; margin-bottom: 24px; border: 1px solid var(--border); font-size: 12px;">
                 <thead>
                     <tr style="background-color: var(--bg-card); border-bottom: 2px solid var(--border); white-space: nowrap;">
-                        <th style="padding: 8px; border: 1px solid var(--border); text-align: center; width: 30px;">Nr.</th>
-                        <th style="padding: 8px; border: 1px solid var(--border); text-align: left; white-space: nowrap;">Name</th>
-                        <th style="padding: 8px; border: 1px solid var(--border); text-align: left; width: 140px; white-space: nowrap;">Verein</th>
-                        ${tableColsHeaders}
-                        <th style="padding: 8px; border: 1px solid var(--border); text-align: center; width: 50px; font-weight: bold; white-space: nowrap;">Siege</th>
-                        <th style="padding: 8px; border: 1px solid var(--border); text-align: center; width: 60px; font-weight: bold; white-space: nowrap;">Punkte</th>
-                        <th style="padding: 8px; border: 1px solid var(--border); text-align: center; width: 50px; font-weight: bold; white-space: nowrap;">Platz</th>
+                        <th style="padding: 8px 2px; border: 1px solid var(--border); text-align: center; width: 44px;">Start-<br>Nr.</th>
+                        <th style="width: ${nameBreitePx}px; padding: 8px; border: 1px solid var(--border); text-align: left; white-space: nowrap;">Kämpfername<br>Verein</th>
+                        ${kopfKaempfe}
+                        <th style="width: 58px; padding: 8px 2px; border: 1px solid var(--border); text-align: center;">Punkte</th>
+                        <th style="width: 58px; padding: 8px 2px; border: 1px solid var(--border); text-align: center;">Unter-<br>bew.</th>
+                        <th style="width: 50px; padding: 8px 2px; border: 1px solid var(--border); text-align: center;">Platz</th>
                     </tr>
                 </thead>
                 <tbody>
                     ${rowsHtml}
+                    <tr style="white-space: nowrap;">
+                        <td style="border: 0; background: transparent;"></td>
+                        <td style="padding: 8px; border: 1px solid var(--border); font-weight: bold; text-align: center;">Kampfzeit</td>
+                        ${zeitZellen}
+                        <td colspan="3" style="border: 0; background: transparent;"></td>
+                    </tr>
                 </tbody>
             </table>
         `;
+    }
+
+    function renderMatrix(pool, matrixContainer = document.getElementById('matrixContainer')) {
+        if (!matrixContainer) return;
+
+        // Ein einzelner angemeldeter Judoka: kein Kampf, nur eine Zeile mit "kampflos"
+        if (pool.teilnehmer && pool.teilnehmer.length === 1) {
+            const athlete = pool.teilnehmer[0];
+            const name = [athlete.nachname, athlete.vorname].filter(Boolean).join(', ');
+            const messCtx = document.createElement('canvas').getContext('2d');
+            const textBreite = (text, schrift) => {
+                messCtx.font = schrift;
+                return messCtx.measureText(text).width;
+            };
+            const breitePx = Math.ceil(Math.max(
+                textBreite(name, 'bold 14px Arial'),
+                textBreite(athlete.verein || '', '12px Arial'),
+                textBreite('Kämpfername', 'bold 11px Arial')
+            ) + 13);
+            matrixContainer.innerHTML = `
+                <div class="matrix-title" style="margin-bottom: 8px; font-weight: bold; font-size: 14px; text-transform: uppercase; border-bottom: 2px solid var(--border); padding-bottom: 6px;">
+                    Pool-Kampfbogen
+                </div>
+                <table class="matrix-table" style="width: 100%; table-layout: fixed; border-collapse: collapse; margin-bottom: 24px; border: 1px solid var(--border); font-size: 12px;">
+                    <thead>
+                        <tr style="background-color: var(--bg-card); border-bottom: 2px solid var(--border); white-space: nowrap;">
+                            <th style="padding: 8px 2px; border: 1px solid var(--border); text-align: center; width: 44px;">Start-<br>Nr.</th>
+                            <th style="width: ${breitePx}px; padding: 8px; border: 1px solid var(--border); text-align: left; white-space: nowrap;">Kämpfername<br>Verein</th>
+                            <th style="padding: 8px; border: 1px solid var(--border); text-align: center;">Ergebnis</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr data-teilnehmer-id="${athlete.id}" style="height: 60px; white-space: nowrap;">
+                            <td style="padding: 8px; border: 1px solid var(--border); font-weight: bold; text-align: center;">1</td>
+                            <td style="padding: 6px 8px; border: 1px solid var(--border); white-space: nowrap;">
+                                <div style="font-weight: bold; font-size: 14px;">${escapeHtml(name)}</div>
+                                <div style="color: var(--text-muted); font-size: 12px;">${escapeHtml(athlete.verein || '')}</div>
+                            </td>
+                            <td class="matrix-kampflos" style="padding: 8px; border: 1px solid var(--border); text-align: center; font-weight: bold; font-size: 14px;">kampflos</td>
+                        </tr>
+                    </tbody>
+                </table>
+            `;
+            matrixContainer.style.display = 'block';
+            return;
+        }
+
+        const modus = pool.modus;
+        const isJederGegenJeden = modus === 'Jeder-gegen-Jeden' || modus === 'Jeder gegen Jeden' || (pool.teilnehmer && pool.teilnehmer.length === 1);
+        if (!isJederGegenJeden || !pool.teilnehmer || pool.teilnehmer.length === 0) {
+            matrixContainer.style.display = 'none';
+            matrixContainer.innerHTML = '';
+            return;
+        }
+
+        matrixContainer.innerHTML = baueKampfbogenHtml(pool, 'Pool-Kampfbogen');
         matrixContainer.style.display = 'block';
+    }
+
+    // Kurzbezeichnung eines Quellkampfs, wie sie auch in den Kartenüberschriften erscheint
+    // (z.B. Doppel-KO-8: H1 → VF1, H5 → HF1), statt der internen Kampfnummer.
+    const PLATZHALTER_KAMPFNAMEN = {
+        'Doppel-KO-8': { H1: 'VF1', H2: 'VF2', H3: 'VF3', H4: 'VF4', H5: 'HF1', H6: 'HF2' },
+        'Doppel-KO-16': {
+            ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8].map(i => [`H${i}`, `AF${i}`])),
+            H9: 'VF1', H10: 'VF2', H11: 'VF3', H12: 'VF4', H13: 'HF1', H14: 'HF2'
+        },
+        'Doppel-KO-32': {
+            ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8].map(i => [`H${i + 16}`, `AF${i}`])),
+            H25: 'VF1', H26: 'VF2', H27: 'VF3', H28: 'VF4', H29: 'HF1', H30: 'HF2'
+        }
+    };
+
+    function platzhalterKampfName(kampfNr) {
+        return PLATZHALTER_KAMPFNAMEN[activePoolModus]?.[kampfNr] || kampfNr;
     }
 
     function getPlaceholderName(fightNr, compIndex) {
@@ -1004,7 +1059,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const eintrag = topologie?.[fightNr];
         if (eintrag) {
             const [quelleNr, quelleTyp] = compIndex === 1 ? eintrag.k1 : eintrag.k2;
-            return `${quelleTyp === 'sieger' ? 'Sieger' : 'Verlierer'} ${quelleNr}`;
+            return `${quelleTyp === 'sieger' ? 'Sieger' : 'Verlierer'} ${platzhalterKampfName(quelleNr)}`;
         }
 
         return 'noch offen';
@@ -1030,11 +1085,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const isLaufend = fight.status === 'gestartet';
         const winnerId = fight.sieger_id;
         
-        const isK1Winner = isFinished && winnerId === fight.kaempfer1_id;
-        const isK2Winner = isFinished && winnerId === fight.kaempfer2_id;
+        // Freilos: weder Sieger-Hervorhebung noch Unterbewertung (kein echter Kampf).
+        const istFreilos = fight.status === 'freilos';
+        const isK1Winner = isFinished && !istFreilos && winnerId === fight.kaempfer1_id;
+        const isK2Winner = isFinished && !istFreilos && winnerId === fight.kaempfer2_id;
         
-        const score1 = isFinished ? fight.unterbewertung_kaempfer1 : '';
-        const score2 = isFinished ? fight.unterbewertung_kaempfer2 : '';
+        const score1 = isFinished && !istFreilos ? fight.unterbewertung_kaempfer1 : '';
+        const score2 = isFinished && !istFreilos ? fight.unterbewertung_kaempfer2 : '';
         
         let medal1 = '';
         let medal2 = '';
@@ -1068,7 +1125,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let badgeHtml = '';
         if (isLaufend) {
             badgeHtml = `<span class="bracket-match-badge laufend">Laufend</span>`;
-        } else if (isFinished) {
+        } else if (isFinished && !istFreilos) {
             badgeHtml = `<span class="bracket-match-badge beendet">Beendet</span>`;
         } else {
             let labelText = `Kampf ${fight.reihenfolge_nummer}`;
@@ -1083,7 +1140,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 else if (fight.reihenfolge_nummer === 'T3') labelText = 'kleines Finale 1';
                 else if (fight.reihenfolge_nummer === 'T4') labelText = 'kleines Finale 2';
             } else if (activePoolModus === 'Doppel-KO-16') {
-                if (fight.reihenfolge_nummer === 'H9') labelText = 'Kampf Viertelfinale 1';
+                if (/^H[1-8]$/.test(fight.reihenfolge_nummer)) labelText = `Kampf AF${fight.reihenfolge_nummer.slice(1)}`;
+                else if (fight.reihenfolge_nummer === 'H9') labelText = 'Kampf Viertelfinale 1';
                 else if (fight.reihenfolge_nummer === 'H10') labelText = 'Kampf Viertelfinale 2';
                 else if (fight.reihenfolge_nummer === 'H11') labelText = 'Kampf Viertelfinale 3';
                 else if (fight.reihenfolge_nummer === 'H12') labelText = 'Kampf Viertelfinale 4';
@@ -1093,7 +1151,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 else if (fight.reihenfolge_nummer === 'T11') labelText = 'kleines Finale 1';
                 else if (fight.reihenfolge_nummer === 'T12') labelText = 'kleines Finale 2';
             } else if (activePoolModus === 'Doppel-KO-32') {
-                if (fight.reihenfolge_nummer === 'H25') labelText = 'Kampf Viertelfinale 1';
+                if (/^H(1[7-9]|2[0-4])$/.test(fight.reihenfolge_nummer)) labelText = `Kampf AF${Number(fight.reihenfolge_nummer.slice(1)) - 16}`;
+                else if (fight.reihenfolge_nummer === 'H25') labelText = 'Kampf Viertelfinale 1';
                 else if (fight.reihenfolge_nummer === 'H26') labelText = 'Kampf Viertelfinale 2';
                 else if (fight.reihenfolge_nummer === 'H27') labelText = 'Kampf Viertelfinale 3';
                 else if (fight.reihenfolge_nummer === 'H28') labelText = 'Kampf Viertelfinale 4';
@@ -1111,7 +1170,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         return `
-            <div class="bracket-match-card ${isLaufend ? 'laufend-card' : ''} ${isFinished ? 'beendet-card' : ''}" data-reihenfolge-nummer="${fight.reihenfolge_nummer}" data-status="${fight.status}">
+            <div class="bracket-match-card ${isLaufend ? 'laufend-card' : ''} ${isFinished && !istFreilos ? 'beendet-card' : ''}" data-reihenfolge-nummer="${fight.reihenfolge_nummer}" data-status="${fight.status}">
                 <div class="bracket-match-header">
                     ${badgeHtml}
                 </div>
@@ -1227,6 +1286,26 @@ document.addEventListener('DOMContentLoaded', () => {
         }).join('');
     }
 
+    // Pools, deren Druck zwei Seiten füllt (Hauptrunde bzw. Gruppen | Trostrunde bzw. Finalrunde).
+    // Die zweite Seite bekommt einen eigenen Kopf, die erste das Suffix "(1/2)".
+    function druckSeitenAnzahl(modus) {
+        return ['Doppel-KO-8', 'Doppel-KO-16', 'Gruppen-Überkreuz', 'Gruppen-ueberkreuz'].includes(modus) ? 2 : 1;
+    }
+    let druckTurnierInfoText = '';
+    let druckMatteAusgeloest = false;
+    let druckMatteName = '';
+
+    function druckSeitenkopfHtml(pool) {
+        const bezeichnung = pool.bezeichnung || activeFightplanPoolName || '';
+        return `
+            <div class="print-seitenkopf">
+                ${druckMatteName ? `<div class="print-matte-label">${escapeHtml(druckMatteName)}</div>` : ''}
+                <div class="print-seitenkopf-info">${escapeHtml(druckTurnierInfoText)}</div>
+                <h1>${escapeHtml(bezeichnung)} (2/2)</h1>
+            </div>
+        `;
+    }
+
     function renderBracket(pool, bracketContainer = document.getElementById('bracketContainer')) {
         if (!bracketContainer) return;
         activePoolModus = pool.modus;
@@ -1250,6 +1329,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const loserHtml = `
             <div class="bracket-loser-section">
+                ${druckSeitenAnzahl(pool.modus) === 2 ? druckSeitenkopfHtml(pool) : ''}
                 <div class="bracket-section-title" style="margin-top: 32px;">Trostrunde (Loser Bracket)</div>
                 <div class="bracket-rounds loser-bracket">
                     ${buildAlignedRoundsHtml(roundDefs.loser, fightMap, athleteMap)}
@@ -1258,121 +1338,12 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
 
         bracketContainer.innerHTML = `
-            <div class="bracket-wrapper">
+            <div class="bracket-wrapper bracket-${pool.modus.toLowerCase()}">
                 ${winnerHtml}
                 ${loserHtml}
             </div>
         `;
         bracketContainer.style.display = 'block';
-    }
-
-    function buildMiniMatrixHtml(groupName, athletes, fights) {
-        // athletes is an array of 3 players
-        // fights is an array of fights for this group
-        let colsHeader = '';
-        athletes.forEach((ath, idx) => {
-            colsHeader += `<th style="padding: 6px; border: 1px solid var(--border); text-align: center; width: 32px;">${idx + 1}</th>`;
-        });
-        
-        const stats = athletes.map(ath => ({ id: ath.id, siege: 0, punkte: 0 }));
-        const cells = {};
-        const hasAnyGroupFinished = fights.some(f => f.status === 'beendet');
-        
-        athletes.forEach((rowAth, rIdx) => {
-            athletes.forEach((colAth, cIdx) => {
-                if (rIdx === cIdx) {
-                    cells[`${rIdx}_${cIdx}`] = `<td style="background-color: var(--border); border: 1px solid var(--border);"></td>`;
-                    return;
-                }
-                
-                const fight = fights.find(f => 
-                    (f.kaempfer1_id === rowAth.id && f.kaempfer2_id === colAth.id) ||
-                    (f.kaempfer1_id === colAth.id && f.kaempfer2_id === rowAth.id)
-                );
-                
-                if (!fight || fight.status !== 'beendet') {
-                    cells[`${rIdx}_${cIdx}`] = `<td style="text-align: center; color: var(--text-muted); padding: 6px; border: 1px solid var(--border);"><span class="print-empty">-</span></td>`;
-                    return;
-                }
-                
-                const isRowKaempfer1 = fight.kaempfer1_id === rowAth.id;
-                const rowScore = isRowKaempfer1 ? fight.unterbewertung_kaempfer1 : fight.unterbewertung_kaempfer2;
-                const colScore = isRowKaempfer1 ? fight.unterbewertung_kaempfer2 : fight.unterbewertung_kaempfer1;
-                
-                if (fight.sieger_id === rowAth.id) {
-                    cells[`${rIdx}_${cIdx}`] = `<td style="text-align: center; font-weight: bold; padding: 6px; border: 1px solid var(--border); background-color: rgba(46, 125, 50, 0.15) !important; color: #2e7d32; -webkit-print-color-adjust: exact; print-color-adjust: exact;">${rowScore}</td>`;
-                    const stat = stats.find(s => s.id === rowAth.id);
-                    if (stat) {
-                        stat.siege += 1;
-                        stat.punkte += rowScore;
-                    }
-                } else if (fight.sieger_id === colAth.id) {
-                    cells[`${rIdx}_${cIdx}`] = `<td style="text-align: center; padding: 6px; border: 1px solid var(--border); color: #b83232; font-weight: bold;">0</td>`;
-                } else {
-                    cells[`${rIdx}_${cIdx}`] = `<td style="text-align: center; color: var(--text-muted); padding: 6px; border: 1px solid var(--border);">${rowScore}</td>`;
-                    const stat = stats.find(s => s.id === rowAth.id);
-                    if (stat) {
-                        stat.punkte += rowScore;
-                    }
-                }
-            });
-        });
-        
-        const sortedStats = [...stats].sort((a, b) => {
-            if (b.siege !== a.siege) return b.siege - a.siege;
-            return b.punkte - a.punkte;
-        });
-        
-        let rowsHtml = '';
-        athletes.forEach((ath, rIdx) => {
-            let cellsHtml = '';
-            athletes.forEach((_, cIdx) => {
-                cellsHtml += cells[`${rIdx}_${cIdx}`];
-            });
-            
-            const stat = stats.find(s => s.id === ath.id);
-            const rank = sortedStats.findIndex(s => s.id === ath.id) + 1;
-            
-            const siegeHtml = hasAnyGroupFinished ? stat.siege : '<span class="print-empty">0</span>';
-            const punkteHtml = hasAnyGroupFinished ? stat.punkte : '<span class="print-empty">0</span>';
-            const rankHtml = hasAnyGroupFinished ? `${rank}.` : '<span class="print-empty">-</span>';
-
-            rowsHtml += `
-                <tr style="border-bottom: 1px solid var(--border); white-space: nowrap;">
-                    <td style="padding: 6px; border: 1px solid var(--border); text-align: center; font-weight: bold;">${rIdx + 1}</td>
-                    <td style="padding: 6px; border: 1px solid var(--border); font-weight: 600; white-space: nowrap;">${escapeHtml(ath.nachname)}, ${escapeHtml(ath.vorname)}</td>
-                    <td style="padding: 6px; border: 1px solid var(--border); color: var(--text-muted); white-space: nowrap;">${escapeHtml(ath.verein || '')}</td>
-                    ${cellsHtml}
-                    <td style="padding: 6px; border: 1px solid var(--border); text-align: center; font-weight: bold;">${siegeHtml}</td>
-                    <td style="padding: 6px; border: 1px solid var(--border); text-align: center;">${punkteHtml}</td>
-                    <td style="padding: 6px; border: 1px solid var(--border); text-align: center; font-weight: bold; background-color: var(--bg-body);">${rankHtml}</td>
-                </tr>
-            `;
-        });
-        
-        return `
-            <div class="mini-matrix-box" style="flex: 1; min-width: 320px; border: 1px solid var(--border); border-radius: 6px; background-color: var(--bg-card); padding: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                <div style="font-weight: bold; font-size: 13px; text-transform: uppercase; margin-bottom: 8px; border-bottom: 2px solid var(--border); padding-bottom: 4px; color: var(--primary);">
-                    Gruppe ${groupName}
-                </div>
-                <table class="matrix-table" style="width: 100%; border-collapse: collapse; font-size: 11px;">
-                    <thead>
-                        <tr style="background-color: var(--bg-body); border-bottom: 2px solid var(--border); white-space: nowrap;">
-                            <th style="padding: 6px; border: 1px solid var(--border); text-align: center; width: 20px;">Nr.</th>
-                            <th style="padding: 6px; border: 1px solid var(--border); text-align: left; white-space: nowrap;">Name</th>
-                            <th style="padding: 6px; border: 1px solid var(--border); text-align: left; white-space: nowrap;">Verein</th>
-                            ${colsHeader}
-                            <th style="padding: 6px; border: 1px solid var(--border); text-align: center; width: 30px; font-weight: bold;">S</th>
-                            <th style="padding: 6px; border: 1px solid var(--border); text-align: center; width: 30px; font-weight: bold;">P</th>
-                            <th style="padding: 6px; border: 1px solid var(--border); text-align: center; width: 30px; font-weight: bold;">Pl.</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${rowsHtml}
-                    </tbody>
-                </table>
-            </div>
-        `;
     }
 
     function renderUeberKreuz(pool, ueberKreuzContainer = document.getElementById('ueberKreuzContainer')) {
@@ -1384,29 +1355,31 @@ document.addEventListener('DOMContentLoaded', () => {
         const kleinesFinale = fightMap.get('F2');
         halbfinalVerliererSindDritte = !kleinesFinale;
 
-        const sortedTeilnehmer = [...pool.teilnehmer].sort((a, b) => Number(a.gewicht) - Number(b.gewicht));
-        const poolA = [];
-        const poolB = [];
-        sortedTeilnehmer.forEach((athlet, index) => {
-            if (index % 2 === 0) {
-                poolA.push(athlet);
-            } else {
-                poolB.push(athlet);
-            }
-        });
-
         const groupAFights = pool.kaempfe.filter(f => f.reihenfolge_nummer?.startsWith('V_A_'));
         const groupBFights = pool.kaempfe.filter(f => f.reihenfolge_nummer?.startsWith('V_B_'));
 
+        // Gruppenzugehörigkeit kommt aus den Vorrundenkämpfen (die Aufteilung des Managers ist
+        // nicht einfach "jeder Zweite"); Reihenfolge wie beim Anlegen: Gewicht aufsteigend.
+        const gruppeAusKaempfen = (kaempfe) => {
+            const ids = new Set();
+            kaempfe.forEach(f => { ids.add(f.kaempfer1_id); ids.add(f.kaempfer2_id); });
+            return pool.teilnehmer
+                .filter(t => ids.has(t.id))
+                .sort((a, b) => Number(a.gewicht) - Number(b.gewicht));
+        };
+        const poolA = gruppeAusKaempfen(groupAFights);
+        const poolB = gruppeAusKaempfen(groupBFights);
+
         const matricesHtml = `
-            <div class="print-row-block" style="display: flex; flex-wrap: wrap; gap: 24px; margin-bottom: 32px;">
-                ${buildMiniMatrixHtml('A', poolA, groupAFights)}
-                ${buildMiniMatrixHtml('B', poolB, groupBFights)}
+            <div style="margin-bottom: 32px;">
+                ${poolA.length ? baueKampfbogenHtml({ teilnehmer: poolA, kaempfe: groupAFights }, 'Gruppe A – Kampfbogen') : ''}
+                ${poolB.length ? baueKampfbogenHtml({ teilnehmer: poolB, kaempfe: groupBFights }, 'Gruppe B – Kampfbogen') : ''}
             </div>
         `;
 
         const bracketHtml = `
             <div class="bracket-loser-section ueberkreuz-final-section">
+                ${druckSeitenkopfHtml(pool)}
                 <div class="bracket-section-title">Finalrunde (Überkreuz-Spiele & Platzierungen)</div>
                 <div class="bracket-rounds" style="height: 420px;">
                     <div class="bracket-round">
@@ -1457,6 +1430,11 @@ document.addEventListener('DOMContentLoaded', () => {
             
             modalPoolTitle.textContent = `Kampfplan: ${poolName}`;
             printPoolTitleHeader.textContent = poolName;
+            ladeTurnierInfoText().then(text => {
+                druckTurnierInfoText = text;
+                document.getElementById('printTurnierInfo').textContent = text;
+                document.querySelectorAll('.print-seitenkopf-info').forEach(el => { el.textContent = text; });
+            });
             fightplanTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:16px;">Kämpfe werden geladen...</td></tr>';
 
             try {
@@ -1464,6 +1442,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 const pool = await response.json();
 
                 if (!response.ok) throw new Error(pool.error || 'Fehler beim Laden des Kampfplans.');
+
+                if (druckSeitenAnzahl(pool.modus) === 2) {
+                    printPoolTitleHeader.textContent = `${poolName} (1/2)`;
+                }
 
                 if (confirmFightplanBtn) {
                     confirmFightplanBtn.style.display = pool.status === 'kaempfe_beendet' ? 'flex' : 'none';
@@ -1672,87 +1654,131 @@ document.addEventListener('DOMContentLoaded', () => {
             };
         }
 
-        const printAllPoolsBtn = document.getElementById('printAllPoolsBtn');
-        if (printAllPoolsBtn) {
-            printAllPoolsBtn.onclick = async () => {
-                try {
-                    const response = await fetch(`/api/pools/details?turnierId=${encodeURIComponent(turnierId)}`);
-                    const responseText = await response.text();
-                    
-                    let pools;
-                    try {
-                        pools = JSON.parse(responseText);
-                    } catch (parseError) {
-                        throw new Error(`Ungültige Serverantwort: ${responseText}`);
-                    }
-                    
-                    if (!response.ok) throw new Error(pools.error || 'Fehler beim Laden der Pools.');
-                    if (pools.length === 0) {
-                        zeigeNotification('Keine Pools vorhanden.', 'error');
-                        return;
-                    }
-                    
-                    const originalPrintAreaHtml = document.getElementById('printArea').innerHTML;
-                    let allPoolsPrintHtml = '';
-                    
-                    const tempDiv = document.createElement('div');
-                    tempDiv.style.display = 'none';
-                    document.body.appendChild(tempDiv);
-                    
-                    pools.forEach((pool) => {
-                        const isJederGegenJeden = pool.modus === 'Jeder-gegen-Jeden' || pool.modus === 'Jeder gegen Jeden' || pool.teilnehmer.length === 1;
-                        const isDoppelKo = pool.modus === 'Doppel-KO-8' || pool.modus === 'Doppel-KO-16' || pool.modus === 'Doppel-KO-32';
-                        const isUeberKreuz = pool.modus === 'Gruppen-Überkreuz' || pool.modus === 'Gruppen-ueberkreuz';
-                        
-                        let visualHtml = '';
-                        
-                        if (isJederGegenJeden) {
-                            const mDiv = document.createElement('div');
-                            tempDiv.appendChild(mDiv);
-                            renderMatrix(pool, mDiv);
-                            visualHtml = mDiv.innerHTML;
-                            tempDiv.removeChild(mDiv);
-                        } else if (isDoppelKo) {
-                            const bDiv = document.createElement('div');
-                            tempDiv.appendChild(bDiv);
-                            renderBracket(pool, bDiv);
-                            visualHtml = bDiv.innerHTML;
-                            tempDiv.removeChild(bDiv);
-                        } else if (isUeberKreuz) {
-                            const uDiv = document.createElement('div');
-                            tempDiv.appendChild(uDiv);
-                            renderUeberKreuz(pool, uDiv);
-                            visualHtml = uDiv.innerHTML;
-                            tempDiv.removeChild(uDiv);
-                        }
-                        
-                        allPoolsPrintHtml += `
-                            <div class="single-pool-print-container">
-                                <div class="print-only-header" style="margin-bottom: 16px; display: block !important;">
-                                    <h1 style="margin: 0 0 4px 0; font-size: 24px; font-weight: bold; text-transform: uppercase;">${escapeHtml(pool.bezeichnung)}</h1>
-                                    <div style="font-size: 12px; color: #555555;">Hajime Pro Turniermanager</div>
-                                </div>
-                                <div style="margin-bottom: 24px;">
-                                    ${visualHtml}
-                                </div>
-                            </div>
-                        `;
-                    });
-                    
-                    document.body.removeChild(tempDiv);
-                    document.getElementById('printArea').innerHTML = allPoolsPrintHtml;
-                    
-                    fightplanModal.classList.add('print-all-active');
-                    
-                    window.print();
-                    
-                    fightplanModal.classList.remove('print-all-active');
-                    document.getElementById('printArea').innerHTML = originalPrintAreaHtml;
-                    
-                } catch (err) {
-                    zeigeNotification(err.message, 'error');
+        // Druck der Pools je Kampffläche (Aufruf aus matten.html über ?druckMatte=<id>|alle):
+        // matteId = Kampfflächen-ID (nur diese Matte) oder 'alle' (alle Matten nacheinander).
+        // Nicht auf einer Matte eingeplante Pools werden nie gedruckt; jede Seite trägt oben
+        // rechts den Namen ihrer Matte.
+        async function druckePools(matteId) {
+            try {
+
+            const response = await fetch(`/api/pools/details?turnierId=${encodeURIComponent(turnierId)}`);
+            const responseText = await response.text();
+            
+            let pools;
+            try {
+                pools = JSON.parse(responseText);
+            } catch (parseError) {
+                throw new Error(`Ungültige Serverantwort: ${responseText}`);
+            }
+            
+            if (!response.ok) throw new Error(pools.error || 'Fehler beim Laden der Pools.');
+            const mattenResponse = await fetch(`/api/pools/kampfflaechen?turnierId=${encodeURIComponent(turnierId)}`);
+            const mattenDaten = await mattenResponse.json();
+            if (!mattenResponse.ok) throw new Error(mattenDaten.error || 'Fehler beim Laden der Kampfflächen.');
+            const matten = (mattenDaten.kampfflaechen || [])
+                .filter(kf => matteId === 'alle' || String(kf.id) === String(matteId));
+
+            // Reihenfolge: Matte für Matte, innerhalb der Matte wie eingeplant
+            const druckListe = [];
+            matten.forEach(kf => {
+                pools
+                    .filter(p => p.kampfflaeche_id === kf.id)
+                    .sort((x, y) => (x.matte_reihenfolge ?? 0) - (y.matte_reihenfolge ?? 0))
+                    .forEach(pool => druckListe.push({ pool, matteName: kf.bezeichnung }));
+            });
+            if (druckListe.length === 0) {
+                meldeDruckFehler('Es sind keine Pools auf Matten verteilt.');
+                return;
+            }
+
+            const turnierInfoText = await ladeTurnierInfoText();
+            druckTurnierInfoText = turnierInfoText;
+            const originalPrintAreaHtml = document.getElementById('printArea').innerHTML;
+            let allPoolsPrintHtml = '';
+            
+            const tempDiv = document.createElement('div');
+            tempDiv.style.display = 'none';
+            document.body.appendChild(tempDiv);
+            
+            druckListe.forEach(({ pool, matteName }) => {
+                druckMatteName = matteName;
+                const isJederGegenJeden = pool.modus === 'Jeder-gegen-Jeden' || pool.modus === 'Jeder gegen Jeden' || pool.teilnehmer.length === 1;
+                const isDoppelKo = pool.modus === 'Doppel-KO-8' || pool.modus === 'Doppel-KO-16' || pool.modus === 'Doppel-KO-32';
+                const isUeberKreuz = pool.modus === 'Gruppen-Überkreuz' || pool.modus === 'Gruppen-ueberkreuz';
+                
+                let visualHtml = '';
+                
+                if (isJederGegenJeden) {
+                    const mDiv = document.createElement('div');
+                    tempDiv.appendChild(mDiv);
+                    renderMatrix(pool, mDiv);
+                    visualHtml = mDiv.innerHTML;
+                    tempDiv.removeChild(mDiv);
+                } else if (isDoppelKo) {
+                    const bDiv = document.createElement('div');
+                    tempDiv.appendChild(bDiv);
+                    renderBracket(pool, bDiv);
+                    visualHtml = bDiv.innerHTML;
+                    tempDiv.removeChild(bDiv);
+                } else if (isUeberKreuz) {
+                    const uDiv = document.createElement('div');
+                    tempDiv.appendChild(uDiv);
+                    renderUeberKreuz(pool, uDiv);
+                    visualHtml = uDiv.innerHTML;
+                    tempDiv.removeChild(uDiv);
                 }
-            };
+                
+                allPoolsPrintHtml += `
+                    <div class="single-pool-print-container">
+                        <div class="print-matte-label">${escapeHtml(matteName)}</div>
+                        <div class="print-only-header" style="margin-bottom: 16px; display: block !important;">
+                            <div class="print-turnier-info" style="font-size: 12px; color: #555555;">${escapeHtml(turnierInfoText)}</div>
+                            <h1 style="margin: 0 0 4px 0; font-size: 24px; font-weight: bold; text-transform: uppercase;">${escapeHtml(pool.bezeichnung)}${druckSeitenAnzahl(pool.modus) === 2 ? ' (1/2)' : ''}</h1>
+                        </div>
+                        <div style="margin-bottom: 24px;">
+                            ${visualHtml}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            document.body.removeChild(tempDiv);
+            druckMatteName = '';
+            document.getElementById('printArea').innerHTML = allPoolsPrintHtml;
+            
+            fightplanModal.classList.add('print-all-active');
+            
+            window.print();
+            
+            fightplanModal.classList.remove('print-all-active');
+            document.getElementById('printArea').innerHTML = originalPrintAreaHtml;
+            meldeDruckFertig();
+            
+            } catch (err) {
+                meldeDruckFehler(err.message);
+            }
+        }
+
+        // Läuft die Seite als unsichtbarer Rahmen in matten.html, gehen Meldungen dorthin
+        // (hier wäre sie nicht sichtbar).
+        function meldeDruckFehler(text) {
+            if (window.parent !== window) {
+                window.parent.postMessage({ hajimeDruck: 'fehler', text }, window.location.origin);
+            } else {
+                zeigeNotification(text, 'error');
+            }
+        }
+        function meldeDruckFertig() {
+            if (window.parent !== window) {
+                window.parent.postMessage({ hajimeDruck: 'fertig' }, window.location.origin);
+            }
+        }
+
+        // ?druckMatte=<id>|alle (Link aus matten.html): Druck genau einmal beim Laden
+        const druckMatte = urlParams.get('druckMatte');
+        if (druckMatte && !druckMatteAusgeloest) {
+            druckMatteAusgeloest = true;
+            druckePools(druckMatte);
         }
 
     }

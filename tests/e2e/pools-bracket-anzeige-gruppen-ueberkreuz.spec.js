@@ -68,7 +68,7 @@ test('Bracket-Ansicht (pools.html) zeigt für ein Gruppen-Überkreuz-Turnier vor
 
     // Nur die 3 Halbfinal-/Final-Karten laufen über buildMatchCardHtml()/getPlaceholderName() --
     // die Vorrunden-Kämpfe (V_A_1 etc.) werden als eigene Mini-Matrix gerendert, nicht als
-    // Bracket-Karte (siehe buildMiniMatrixHtml() in pools.js).
+    // Bracket-Karte (siehe baueKampfbogenHtml() in pools.js).
     for (const reihenfolgeNummer of ['HF1', 'HF2', 'F1']) {
         const kampf = pool.kaempfe.find(k => k.reihenfolge_nummer === reihenfolgeNummer);
         const karte = page.locator(`.bracket-match-card[data-reihenfolge-nummer="${reihenfolgeNummer}"]`);

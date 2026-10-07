@@ -211,6 +211,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     function formatiereAltersklasse(athlet) {
         const istSonderklasse = athlet.altersklasse === 'Männer' || athlet.altersklasse === 'Frauen'
             || athlet.altersklasse === 'Mixed' || athlet.geschlecht === 'mixed';
+        // Als "mixed_<AK>" angelegte Klassen werden gemeinsam gepoolt (siehe poolController.js) —
+        // dort kein m/w-Kürzel, sondern "x".
+        if (!istSonderklasse && turnierAltersklassenKeys && turnierAltersklassenKeys.includes(`mixed_${athlet.altersklasse}`)) {
+            return `${athlet.altersklasse}x`;
+        }
         const geschlechtsKuerzel = istSonderklasse ? '' : (athlet.geschlecht === 'weiblich' ? 'w' : 'm');
         return `${athlet.altersklasse}${geschlechtsKuerzel}`;
     }

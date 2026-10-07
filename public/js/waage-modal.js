@@ -182,7 +182,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Gemischte Klassen werden nach Gewichtsnähe gepoolt statt nach festen DJB-Gewichtsklassen —
         // bei mixed gibt es deshalb immer "gewichtsnah", vorausgewählt und unabhängig vom Gewicht.
-        if (gewaehltesGeschlecht === 'mixed' && gewaehlteAltersklasseID) {
+        const istMixedKlasse = gewaehltesGeschlecht === 'mixed'
+            || !!(turnierAltersklassen && turnierAltersklassen.includes(`mixed_${gewaehlteAltersklasseID}`));
+        if (istMixedKlasse && gewaehlteAltersklasseID) {
             const gewichtsnahOpt = document.createElement('option');
             gewichtsnahOpt.value = GEWICHTSKLASSE_GEWICHTSNAH;
             gewichtsnahOpt.innerText = GEWICHTSKLASSE_GEWICHTSNAH;
@@ -214,7 +216,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const gewichtsEingabe = document.getElementById('gewicht').value.trim();
         const aktuellesGewicht = parseFloat(gewichtsEingabe.replace(',', '.'));
 
-        if (!isNaN(aktuellesGewicht) && aktuellesGewicht > 0 && gewaehltesGeschlecht !== 'mixed') {
+        if (!isNaN(aktuellesGewicht) && aktuellesGewicht > 0 && !istMixedKlasse) {
             let gefundeneKlasse = "";
 
             const plusKlasse = selektierteKlasse.gewichtsklassen.find(g => g.startsWith('+'));
@@ -253,7 +255,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         klassenFuerGeschlecht.forEach(klasse => {
             const key = `${gewaehltesGeschlecht}_${klasse.id}`;
-            if (turnierAltersklassen && !turnierAltersklassen.includes(key) && !turnierAltersklassen.includes(klasse.id)) {
+            // Gemischte Turnierklassen (mixed_U11 …) gelten für jedes Geschlecht, wie in
+            // istAltersklasseAusgetragen (teilnehmer.js) und bestimmeUndWaehleAltersklasse.
+            if (turnierAltersklassen && !turnierAltersklassen.includes(key) && !turnierAltersklassen.includes(`mixed_${klasse.id}`) && !turnierAltersklassen.includes(klasse.id)) {
                 return;
             }
             const opt = document.createElement('option');
@@ -292,7 +296,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const geschlecht = geschlechtsSelect.value;
 
         let standardKandidat = "";
-        if (alter >= 5 && alter <= 7) {
+        // U9 = alles unterhalb der U11 (NWJV: U11 beginnt mit 8 Jahren), also keine Untergrenze.
+        if (alter >= 0 && alter <= 7) {
             standardKandidat = "U9";
         } else if (alter >= 8 && alter <= 10) {
             standardKandidat = "U11";
@@ -336,6 +341,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 ermittelteKlasseID = besteUKlasse.id;
             } else if (besteVeteranenKlasse) {
                 ermittelteKlasseID = besteVeteranenKlasse.id;
+            }
+            // U21 nicht ausgetragen, aber Männer/Frauen/Mixed: Start in der Erwachsenenklasse.
+            if (!ermittelteKlasseID && standardKandidat === 'U21') {
+                const erwachsenenKlasse = geschlecht === 'weiblich' ? 'Frauen' : (geschlecht === 'mixed' ? 'Mixed' : 'Männer');
+                if (istAktiviert(erwachsenenKlasse)) ermittelteKlasseID = erwachsenenKlasse;
             }
             // Nichts Passendes gefunden: NICHT auf die (nicht aktivierte) Standardklasse
             // zurückfallen — das Turnier bietet sie nicht an.

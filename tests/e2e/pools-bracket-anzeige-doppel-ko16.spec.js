@@ -33,14 +33,14 @@ test('Bracket-Ansicht (pools.html) zeigt für ein Doppel-KO-16-Turnier vor Aufl�
     // Hüllen. Genau diese drei Kampfnummern kollidierten vor der Mode-Trennung mit Gruppen-
     // Überkreuz bzw. Doppel-KO-8 -- siehe Kommentar am Dateianfang.
     const f1VorAuflösung = page.locator('.bracket-match-card[data-reihenfolge-nummer="F1"]');
-    await expect(f1VorAuflösung.locator('[data-kaempfer-slot="1"] .fighter-name')).toHaveText('Sieger H13');
-    await expect(f1VorAuflösung.locator('[data-kaempfer-slot="2"] .fighter-name')).toHaveText('Sieger H14');
+    await expect(f1VorAuflösung.locator('[data-kaempfer-slot="1"] .fighter-name')).toHaveText('Sieger HF1');
+    await expect(f1VorAuflösung.locator('[data-kaempfer-slot="2"] .fighter-name')).toHaveText('Sieger HF2');
     const t3VorAufloesung = page.locator('.bracket-match-card[data-reihenfolge-nummer="T3"]');
-    await expect(t3VorAufloesung.locator('[data-kaempfer-slot="1"] .fighter-name')).toHaveText('Verlierer H5');
-    await expect(t3VorAufloesung.locator('[data-kaempfer-slot="2"] .fighter-name')).toHaveText('Verlierer H6');
+    await expect(t3VorAufloesung.locator('[data-kaempfer-slot="1"] .fighter-name')).toHaveText('Verlierer AF5');
+    await expect(t3VorAufloesung.locator('[data-kaempfer-slot="2"] .fighter-name')).toHaveText('Verlierer AF6');
     const t4VorAufloesung = page.locator('.bracket-match-card[data-reihenfolge-nummer="T4"]');
-    await expect(t4VorAufloesung.locator('[data-kaempfer-slot="1"] .fighter-name')).toHaveText('Verlierer H7');
-    await expect(t4VorAufloesung.locator('[data-kaempfer-slot="2"] .fighter-name')).toHaveText('Verlierer H8');
+    await expect(t4VorAufloesung.locator('[data-kaempfer-slot="1"] .fighter-name')).toHaveText('Verlierer AF7');
+    await expect(t4VorAufloesung.locator('[data-kaempfer-slot="2"] .fighter-name')).toHaveText('Verlierer AF8');
 
     // Doppel-KO-16 braucht (Achtelfinale -> Trostrunde R1 -> Viertelfinale -> Trostrunde R2 ->
     // Halbfinale -> Trostrunde R3 -> Finale/Bronze) mehr Runden als der Default für Doppel-KO-8.

@@ -46,7 +46,7 @@ function loeseSlotAuf(aktuellerWert, quelleKampfId, quelleTyp, byId) {
         return { bekannt: false, wert: null };
     }
     const wert = quelleTyp === 'sieger' ? quelle.sieger_id : holeVerliererId(quelle);
-    return { bekannt: true, wert };
+    return { bekannt: true, wert, ausFreilos: quelle.status === 'freilos' };
 }
 
 /**
@@ -77,7 +77,16 @@ export function berechneKaempferPatches(kaempfe) {
         const slot2 = loeseSlotAuf(kampf.kaempfer2_id, kampf.kaempfer2_quelle_kampf_id, kampf.kaempfer2_quelle_typ, byId);
 
         // Beide Quellen müssen feststehen, bevor dieser Kampf überhaupt angefasst wird.
-        if (!slot1.bekannt || !slot2.bekannt) continue;
+        if (!slot1.bekannt || !slot2.bekannt) {
+            // Ausnahme: Der Sieger eines Freilos steht endgültig fest (kann nie korrigiert werden)
+            // und rückt sofort in den Folgekampf nach, ohne auf den anderen Quellkampf zu warten.
+            // Der Folgekampf bleibt dabei im Status 'angelegt'.
+            const teil = { id: kampf.id };
+            if (slot1.bekannt && slot1.ausFreilos && slot1.wert !== null && kampf.kaempfer1_id !== slot1.wert) teil.kaempfer1_id = slot1.wert;
+            if (slot2.bekannt && slot2.ausFreilos && slot2.wert !== null && kampf.kaempfer2_id !== slot2.wert) teil.kaempfer2_id = slot2.wert;
+            if (Object.keys(teil).length > 1) patches.push(teil);
+            continue;
+        }
 
         const patch = { id: kampf.id };
         let hatAenderung = false;
@@ -95,8 +104,6 @@ export function berechneKaempferPatches(kaempfe) {
             const sieger = slot1.wert !== null ? slot1.wert : slot2.wert;
             patch.status = 'freilos';
             patch.sieger_id = sieger;
-            patch.unterbewertung_kaempfer1 = slot1.wert !== null ? 10 : 0;
-            patch.unterbewertung_kaempfer2 = slot2.wert !== null ? 10 : 0;
             hatAenderung = true;
         } else if (kampf.status === 'angelegt') {
             // Beide Slots sind jetzt echte Kämpfer -> der Platzhalter wird zum echten,
