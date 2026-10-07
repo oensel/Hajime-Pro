@@ -68,7 +68,9 @@ export function pruefeFelder(felder, seitenBreite, seitenHoehe, bildIds = null) 
     if (felder.length > MAX_FELDER) return `Höchstens ${MAX_FELDER} Felder pro Vorlage.`;
     for (const f of felder) {
         if (!f || ![f.x, f.y, f.breite].every(istZahl)) return 'Ungültiges Feld.';
-        const pruefe = FELD_PRUEFUNGEN[f.typ ?? 'text'];
+        // Nur eigene Einträge: ein Typ wie "constructor" oder "hasOwnProperty" darf nicht auf Object.prototype landen.
+        const typ = f.typ ?? 'text';
+        const pruefe = typeof typ === 'string' && Object.hasOwn(FELD_PRUEFUNGEN, typ) ? FELD_PRUEFUNGEN[typ] : null;
         if (!pruefe) return 'Unbekannter Feldtyp.';
         const { fehler, unten } = pruefe(f, bildIds);
         if (fehler) return fehler;
