@@ -1,6 +1,6 @@
 import express from 'express';
 import {
-    listeVorlagen, holeVorlagenPdf, holeVorlagenVorschau, legeVorlageAn, dupliziereVorlage, aktualisiereVorlage, loescheVorlage, ladeBildHoch, holeBild,
+    listeVorlagen, holeVorlagenPdf, holeVorlagenVorschau, legeVorlageAn, dupliziereVorlage, exportiereVorlagenDatei, importiereVorlagenDatei, aktualisiereVorlage, loescheVorlage, ladeBildHoch, holeBild,
     holeUebersicht, holeAbschlussAngebot, generiereUrkunden, holePoolPdf, loeschePoolPdf
 } from '../controllers/urkundenController.js';
 import { requireAuth, requireTournamentEditAccess } from '../middleware/auth.js';
@@ -11,6 +11,8 @@ export function getUrkundenRoutes(knex) {
     router.use(requireAuth, requireTournamentEditAccess(knex));
 
     router.get('/vorlagen', (req, res) => listeVorlagen(knex, req, res));
+    router.get('/vorlagen/export', (req, res) => exportiereVorlagenDatei(knex, req, res));
+    router.post('/vorlagen/import', (req, res) => importiereVorlagenDatei(knex, req, res));
     router.get('/vorlagen/:id/pdf', (req, res) => holeVorlagenPdf(knex, req, res));
     router.get('/vorlagen/:id/vorschau', (req, res) => holeVorlagenVorschau(knex, req, res));
     router.post('/vorlagen', (req, res) => legeVorlageAn(knex, req, res));

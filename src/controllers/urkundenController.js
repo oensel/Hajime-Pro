@@ -11,6 +11,7 @@ import { ladeUrkundenDatenJePool, ladeUebersicht, zaehleUrkunden, BEISPIEL } fro
 import {
     MAX_BILDER, erkenneBildTyp, leseBilder, neueBildId, bereinigeBilder, pruefeBild
 } from '../services/urkundenBilder.js';
+import { baueVorlagenDatei, leseVorlagenDatei, legeVorlagenAn, FehlerUngueltigeDatei } from '../services/urkundenVorlagenDatei.js';
 
 const MAX_PDF_BYTES = 10 * 1024 * 1024;
 const RAHMEN_VERZEICHNIS = new URL('../../public/urkunden-rahmen/', import.meta.url);
@@ -205,6 +206,48 @@ export async function dupliziereVorlage(knex, req, res) {
         const [eingefuegt] = await knex('urkunden_vorlagen')
             .insert({ ...kopie, name, bei_abschluss_anbieten: false }).returning('id');
         return res.json({ success: true, id: neueId(eingefuegt) });
+    } catch (error) { return fehler500(res, error); }
+}
+
+// Export als Datei (Format: services/urkundenVorlagenDatei.js). Ohne ids alle Vorlagen des Vereins.
+export async function exportiereVorlagenDatei(knex, req, res) {
+    try {
+        const turnier = await ladeTurnier(knex, req);
+        if (!turnier) return res.status(404).json({ success: false, error: 'Turnier nicht gefunden.' });
+        const q = knex('urkunden_vorlagen').where({ verein_id: turnier.verein_id || -1 }).orderBy('name');
+        if (req.query.ids) {
+            const ids = String(req.query.ids).split(',').map(Number).filter(Number.isInteger);
+            q.whereIn('id', ids);
+        }
+        const zeilen = await q;
+        if (zeilen.length === 0) return res.status(404).json({ success: false, error: 'Keine Vorlage zum Exportieren gefunden.' });
+        const dateiname = zeilen.length === 1
+            ? zeilen[0].name.replace(/[^\p{L}\p{N}._-]+/gu, '_').slice(0, 80) || 'vorlage'
+            : 'urkunden-vorlagen';
+        res.set({
+            'Content-Disposition': `attachment; filename="${dateiname}.hajime-urkunde.json"; filename*=UTF-8''${encodeURIComponent(dateiname)}.hajime-urkunde.json`,
+            'Cache-Control': 'no-store'
+        });
+        return res.type('application/json').send(JSON.stringify(baueVorlagenDatei(zeilen)));
+    } catch (error) { return fehler500(res, error); }
+}
+
+// Import aus einer Datei (body.datei = geparstes JSON). Überschreibt nie: Namenskonflikte bekommen
+// einen Zähler. Ungültige Vorlagen der Datei werden mit Grund gemeldet, gültige trotzdem angelegt.
+export async function importiereVorlagenDatei(knex, req, res) {
+    try {
+        const turnier = await ladeTurnier(knex, req);
+        if (!turnier) return res.status(404).json({ success: false, error: 'Turnier nicht gefunden.' });
+        if (!turnier.verein_id) return res.status(400).json({ success: false, error: 'Das Turnier hat keinen ausrichtenden Verein.' });
+        let gelesen;
+        try {
+            gelesen = await leseVorlagenDatei(req.body.datei);
+        } catch (err) {
+            if (err instanceof FehlerUngueltigeDatei) return res.status(400).json({ success: false, error: err.message });
+            throw err;
+        }
+        const angelegt = await legeVorlagenAn(knex, turnier.verein_id, gelesen.gueltig);
+        return res.json({ success: true, angelegt, abgelehnt: gelesen.abgelehnt });
     } catch (error) { return fehler500(res, error); }
 }
 
