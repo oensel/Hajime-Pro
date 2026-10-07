@@ -25,10 +25,6 @@
             <span class="material-icons">refresh</span>
             <span>Aktualisieren</span>
         </button>
-        <button type="button" class="toolbar-btn" id="printAllPoolsBtn" title="Alle Pools drucken">
-            <span class="material-icons">print</span>
-            <span>Alle drucken</span>
-        </button>
         <button type="button" class="toolbar-btn toolbar-btn-danger" id="regeneratePoolsBtn" title="Pools neu generieren">
             <span class="material-icons">restart_alt</span>
             <span>Neu generieren</span>
@@ -78,8 +74,8 @@
         <div id="printArea" style="flex: 1; overflow-y: auto; margin-bottom: 20px;">
             <!-- Dieser Header wird nur beim Drucken oben angezeigt -->
             <div class="print-only-header" style="margin-bottom: 16px; display: none;">
+                <div class="print-turnier-info" id="printTurnierInfo" style="font-size: 12px; color: #555555;"></div>
                 <h1 id="printPoolTitleHeader" style="margin: 0 0 4px 0; font-size: 24px; font-weight: bold; text-transform: uppercase;">U13 weiblich -28.4kg</h1>
-                <div style="font-size: 12px; color: #555555;">Hajime Pro Turniermanager</div>
             </div>
             
             <!-- Matrix Platzhalter (Dynamisch) -->
@@ -114,6 +110,7 @@
             </button>
             <button type="button" class="btn btn-outlined" id="closeFightplanBtn" style="padding: 8px 24px; font-size: 12px;">Schließen</button>
         </div>
+        <div class="print-fusszeile">Erzeugt mit Hajime Pro</div>
     </div>
 </div>
 

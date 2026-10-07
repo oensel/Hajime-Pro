@@ -378,16 +378,17 @@
    Print / Druck-Layout
    ========================================================================== */
 @page {
-    size: auto;
-    margin: 0; /* Entfernt Browser-Header (URL, Seitenzahl) und Footer (Datum, Uhrzeit) */
+    size: A4 landscape; /* Querformat: der Kampfbogen (viele Kampfspalten) und die Turnierbäume brauchen die Breite */
+    margin: 0; /* Kein Seitenrand, damit der Browser keine Kopf-/Fußzeile (Datum, Seitenzahl) druckt; der 2cm-Rand oben/links/rechts kommt aus dem Inhalt */
 }
 
 @media print {
     html, body {
-        padding-top: 0 !important;
+        /* Auch links/rechts/unten: common.css reserviert dort Platz für Seitenleiste und Abstand */
+        padding: 0 !important;
     }
     body {
-        margin: 1cm 1.5cm 1.5cm 1.5cm !important; /* Genau 1cm Abstand nach oben */
+        margin: 0 !important;
     }
     .print-empty {
         color: transparent !important;
@@ -402,16 +403,25 @@
     #fightplanModal {
         display: block !important;
         position: static !important;
+        box-sizing: border-box !important;
         width: 100% !important;
         height: auto !important;
         background: transparent !important;
-        padding: 0 !important;
+        padding: 0 2cm !important; /* ca. 2cm links/rechts */
         margin: 0 !important;
+        /* backdrop-filter/transform würden position:fixed (Fußzeile) auf das Modal statt auf die Seite beziehen */
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        filter: none !important;
+        transform: none !important;
     }
     
     /* Karte zurücksetzen */
     #fightplanModal .mdc-card {
         display: block !important;
+        backdrop-filter: none !important;
+        filter: none !important;
+        transform: none !important;
         border: none !important;
         box-shadow: none !important;
         background: transparent !important;
@@ -424,8 +434,23 @@
     
     /* Header und Footer des Modals (Schließen- & Drucken-Buttons) verstecken */
     #fightplanModal .mdc-card > div:first-child,
-    #fightplanModal .mdc-card > div:last-child {
+    #fightplanModal .mdc-card > div:nth-last-child(2) {
         display: none !important;
+    }
+    /* Fest am Seitenrand: wiederholt sich auf jeder gedruckten Seite, unten rechts */
+    #fightplanModal .print-fusszeile {
+        display: block !important;
+        position: fixed !important;
+        right: 2cm !important;
+        bottom: 0.8cm !important;
+        font-size: 10px !important;
+        color: #555555 !important;
+    }
+    #printArea .print-turnier-info {
+        display: block !important;
+        margin-bottom: 4px !important;
+        font-size: 17px !important;
+        color: #000000 !important;
     }
 
     #printArea {
@@ -433,7 +458,7 @@
         overflow: visible !important;
         max-height: none !important;
         margin: 0 !important;
-        padding: 0 !important;
+        padding: 2cm 0 0 0 !important; /* ca. 2cm oben */
         width: 100% !important;
         color: #000000 !important;
         background: #ffffff !important;
@@ -443,8 +468,11 @@
     #printArea .print-only-header {
         display: block !important;
     }
-    #printArea .print-only-header div {
+    #printArea .print-only-header div:not(.print-turnier-info) {
         display: none !important;
+    }
+    #printArea .print-only-header h1 {
+        font-size: 31px !important;
     }
     #printArea .matrix-title {
         display: none !important;
@@ -453,6 +481,14 @@
     #printArea table {
         border-collapse: collapse !important;
         width: 100% !important;
+    }
+    /* Kampfbogen: feste Spaltenbreiten, damit die Tabelle nie über den rechten Rand hinausläuft */
+    #printArea table.matrix-table {
+        table-layout: fixed !important;
+    }
+    #printArea table.matrix-table td.kampf-zelle {
+        padding: 2px 0 !important;
+        overflow: hidden !important;
     }
     
     #printArea th, #printArea td {
@@ -688,14 +724,62 @@
     .bracket-fighter-row .fighter-verein {
         display: none !important;
     }
+    /* Karten dürfen nie über einen Seitenumbruch geteilt werden */
+    .bracket-match-slot,
+    .bracket-match-card {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+    }
+    .bracket-section-title {
+        break-after: avoid !important;
+    }
+    /* Doppel-KO-16: Die Hauptrunde (8 Kämpfe in der ersten Runde) ist höher als eine A4-Querformat-
+       Seite. Absolut positionierte Karten lassen sich nicht sauber umbrechen, daher wird die
+       Hauptrunde im Druck verkleinert, bis sie samt Überschriften auf eine Seite passt. */
+    .bracket-wrapper.bracket-doppel-ko-16 .winner-bracket {
+        zoom: 0.6;
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+    }
     .bracket-loser-section {
         page-break-before: always !important;
         break-before: page !important;
     }
+    /* Gruppen-Überkreuz: Finalrunde beginnt auf der zweiten Seite */
     .ueberkreuz-final-section {
-        page-break-before: avoid !important;
-        break-before: avoid !important;
-        margin-top: 16px !important;
+        page-break-before: always !important;
+        break-before: page !important;
+        margin-top: 0 !important;
+    }
+    /* Mattenname oben rechts auf jeder Seite */
+    .single-pool-print-container,
+    .print-seitenkopf {
+        position: relative;
+    }
+    .print-matte-label {
+        position: absolute;
+        top: 0.7cm;
+        right: 0;
+        font-size: 20px;
+        font-weight: bold;
+        color: #000000;
+    }
+    /* Kopf der zweiten Seite (Pool-Bezeichnung + "(2/2)"), auf dem Bildschirm unsichtbar */
+    .print-seitenkopf {
+        display: block !important;
+        padding-top: 2cm;
+        margin-bottom: 16px;
+        color: #000000;
+    }
+    .print-seitenkopf-info {
+        margin-bottom: 4px;
+        font-size: 17px;
+    }
+    .print-seitenkopf h1 {
+        margin: 0 0 4px 0;
+        font-size: 31px;
+        font-weight: bold;
+        text-transform: uppercase;
     }
     .print-only-header {
         margin-top: 0 !important;
@@ -727,6 +811,9 @@
         page-break-after: always !important;
         break-after: page !important;
         margin-top: 0 !important;
+        padding-top: 2cm !important; /* ca. 2cm oben auf jeder Seite (jeder Pool beginnt eine neue Seite) */
+    }
+    #fightplanModal.print-all-active #printArea {
         padding-top: 0 !important;
     }
     .single-pool-print-container:last-child {
@@ -742,6 +829,7 @@
 
 /* Screen-only override for Print All Pools */
 @media screen {
+    .print-seitenkopf { display: none; }
     #fightplanModal.print-all-active {
         display: none !important;
     }
@@ -796,3 +884,7 @@
     cursor: not-allowed !important;
 }
 
+/* Fußzeile: nur im Druck sichtbar */
+@media screen {
+    .print-fusszeile { display: none; }
+}

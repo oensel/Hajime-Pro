@@ -175,7 +175,7 @@ export async function legeTeilnehmerAn(knex, daten, kontext) {
     // mitgeschickt (z.B. eigener API-Aufruf ohne die waage.js-Dropdown-Logik), serverseitig
     // aus Gewicht/Geschlecht/Altersklasse herleiten (identische Logik zum CSV-Import) statt
     // mit einem rohen SQL-NOT-NULL-Fehler abzustürzen.
-    const ermittelteGewichtsklasse = gewichtsklasse || ermittleGewichtsklasse(geschlecht, ermittelteAltersklasse, gewichtGeparst);
+    const ermittelteGewichtsklasse = gewichtsklasse || ermittleGewichtsklasse(geschlecht, ermittelteAltersklasse, gewichtGeparst, 'einzel', ermittleTurnierAltersklassenKeys(turnier));
     if (!ermittelteGewichtsklasse) {
         throw new FachFehler(400, 'Die Gewichtsklasse konnte nicht ermittelt werden. Bitte Gewicht angeben oder die Gewichtsklasse manuell wählen.');
     }
@@ -911,7 +911,8 @@ function ermittleAltersklasse(geburtsjahr, geschlecht, wettkampfJahr, turnierAlt
     const alter = wettkampfJahr - geburtsJahr;
 
     let standardKandidat = '';
-    if (alter >= 5 && alter <= 7) standardKandidat = 'U9';
+    // U9 = alles unterhalb der U11 (NWJV: U11 beginnt mit 8 Jahren), also keine Untergrenze.
+    if (alter >= 0 && alter <= 7) standardKandidat = 'U9';
     else if (alter >= 8 && alter <= 10) standardKandidat = 'U11';
     else if (alter >= 11 && alter <= 12) standardKandidat = 'U13';
     else if (alter >= 13 && alter <= 14) standardKandidat = 'U15';
@@ -961,6 +962,12 @@ function ermittleAltersklasse(geburtsjahr, geschlecht, wettkampfJahr, turnierAlt
     if (besteUKlasse) return besteUKlasse.id;
     if (besteVeteranenKlasse) return besteVeteranenKlasse.id;
 
+    // U21 nicht ausgetragen, aber Männer/Frauen/Mixed: die Jugendlichen starten in der Erwachsenenklasse.
+    if (standardKandidat === 'U21') {
+        const erwachsenenKlasse = geschlecht === 'weiblich' ? 'Frauen' : (geschlecht === 'mixed' ? 'Mixed' : 'Männer');
+        if (istAktiviert(erwachsenenKlasse)) return erwachsenenKlasse;
+    }
+
     // Nichts Passendes unter den aktivierten Klassen gefunden: trotzdem die alters-typische
     // Standardklasse zurückgeben (statt komplett leer zu bleiben) — sonst zeigt die
     // Teilnehmerliste beim Import nur noch das Geschlecht ohne jede Alters-/Gewichtsklasse an.
@@ -978,7 +985,12 @@ function ermittleAltersklasse(geburtsjahr, geschlecht, wettkampfJahr, turnierAlt
 // (z.B. U15/U18 mit nur 4 Positionen statt der vollen Einzelwettkampf-Staffelung) und fällt sonst
 // auf die Einzelwettkampf-Liste zurück — identische Herleitung wie
 // ermittleGewichtsklassenVorschlag() in public/js/mannschaften.js.
-function ermittleGewichtsklasse(geschlecht, altersklasse, gewicht, ziel = 'einzel') {
+// Ist die Altersklasse im Turnier als "mixed_<AK>" angelegt (Einzel), gilt für alle Geschlechter
+// "gewichtsnah" (wie im Teilnehmer-Dialog, siehe befehleGewichtsklassenDropdown in waage-modal.js).
+function ermittleGewichtsklasse(geschlecht, altersklasse, gewicht, ziel = 'einzel', turnierAltersklassenKeys = null) {
+    if (ziel === 'einzel' && altersklasse && turnierAltersklassenKeys && turnierAltersklassenKeys.includes(`mixed_${altersklasse}`)) {
+        return 'gewichtsnah';
+    }
     if (!gewicht || gewicht <= 0) return '';
 
     let selektierteKlasse = null;
@@ -1089,7 +1101,7 @@ function verarbeiteImportZeile(record, ctx) {
     if (fehlerFelder.length === 0) {
         // Altersklasse anhand des Geburtsjahres ermitteln (analog zu waage.html)
         altersklasse = ermittleAltersklasse(felder.geburtsjahr, felder.geschlecht, ctx.wettkampfJahr, ctx.turnierAltersklassenKeys);
-        gewichtsklasse = ermittleGewichtsklasse(felder.geschlecht, altersklasse, gewicht, ctx.ziel);
+        gewichtsklasse = ermittleGewichtsklasse(felder.geschlecht, altersklasse, gewicht, ctx.ziel, ctx.turnierAltersklassenKeys);
     }
 
     return { felder, gewicht, altersklasse, gewichtsklasse, fehlerFelder };

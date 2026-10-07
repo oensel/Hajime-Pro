@@ -117,8 +117,6 @@ export class DoppelKo32Manager {
                 const sieger = k1 || k2;
                 neuerKampf.status = 'freilos';
                 neuerKampf.sieger_id = sieger.id;
-                neuerKampf.unterbewertung_kaempfer1 = k1 ? 10 : 0;
-                neuerKampf.unterbewertung_kaempfer2 = k2 ? 10 : 0;
             }
             neueKaempfe.push(neuerKampf);
         }

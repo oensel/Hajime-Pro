@@ -25,6 +25,19 @@ test('Matrix-Ansicht (pools.html) zeigt für ein Jeder-gegen-Jeden-Turnier nach 
     // Anders als bei den Doppel-KO-Modi entsteht bei Jeder-gegen-Jeden KEINE Kaskade (alle Kämpfe
     // starten bereits 'bereit', keine Folgekämpfe werden nachträglich befüllt) -- die Schleife in
     // spieleBracketKomplettDurch() läuft hier also einfach nur eine Runde.
+    // Vor dem ersten Kampf ist der Bogen komplett leer (zum Ausfüllen per Hand beim Ausdruck).
+    await page.goto(`/pools.html?turnierId=${turnierId}`);
+    await page.locator(`.btn-view-fightplan[data-id="${poolId}"]`).click();
+    await expect(page.locator('#matrixContainer')).toBeVisible();
+    for (const klasse of ['.matrix-siege', '.matrix-punkte', '.matrix-platz']) {
+        for (const zelle of await page.locator(`#matrixContainer ${klasse}`).all()) {
+            await expect(zelle).toHaveText('');
+        }
+    }
+    for (const zelle of await page.locator('#matrixContainer td[data-feld]').all()) {
+        await expect(zelle).toHaveText('');
+    }
+
     await spieleBracketKomplettDurch(request, poolId);
 
     // Live-Zustand aus derselben API laden, aus der auch pools.js seine Matrix befüllt (siehe
@@ -58,13 +71,22 @@ test('Matrix-Ansicht (pools.html) zeigt für ein Jeder-gegen-Jeden-Turnier nach 
         await expect(zeile.locator('.matrix-platz')).toHaveText(erwartet.platz);
     }
 
-    // Eine konkrete Kreuz-Zelle stichprobenartig prüfen: Anna (Sieg, Ippon = 10 Punkte) gegen
-    // Diana (Niederlage, per Konvention immer '0' -- siehe renderMatrix() in pools.js).
-    const annaZeile = page.locator(`tr[data-teilnehmer-id="${idByVorname.get('Anna')}"]`);
-    await expect(annaZeile.locator(`td[data-gegner-id="${idByVorname.get('Diana')}"]`)).toHaveText('10');
-    const dianaZeile = page.locator(`tr[data-teilnehmer-id="${idByVorname.get('Diana')}"]`);
-    await expect(dianaZeile.locator(`td[data-gegner-id="${idByVorname.get('Anna')}"]`)).toHaveText('0');
+    // Kampfbogen: eine Spalte je Kampf (Kampfnummer = Reihenfolge), je Kampf Teilzellen Punkte | Ubw.
+    // Stichprobe: Anna (Sieg, Ippon = 10) gegen Diana (Niederlage). Beide Zellen stehen im selben Kampf.
+    const annaId = idByVorname.get('Anna');
+    const dianaId = idByVorname.get('Diana');
+    const annaGegenDiana = pool.kaempfe.find(k =>
+        [k.kaempfer1_id, k.kaempfer2_id].includes(annaId) && [k.kaempfer1_id, k.kaempfer2_id].includes(dianaId));
+    const annaZeile = page.locator(`tr[data-teilnehmer-id="${annaId}"]`);
+    const dianaZeile = page.locator(`tr[data-teilnehmer-id="${dianaId}"]`);
+    const zelle = (zeile, feld) => zeile.locator(`td[data-kampf-id="${annaGegenDiana.id}"][data-feld="${feld}"]`);
+    await expect(zelle(annaZeile, 'punkte')).toHaveText('1');
+    await expect(zelle(annaZeile, 'ubw')).toHaveText('10');
+    await expect(zelle(dianaZeile, 'punkte')).toHaveText('0');
+    await expect(zelle(dianaZeile, 'ubw')).toHaveText('0');
 
-    // Diagonale (gegen sich selbst) bleibt leer/geschwärzt.
-    await expect(annaZeile.locator(`td[data-gegner-id="${idByVorname.get('Anna')}"]`)).toHaveText('');
+    // Kampfspalten: 6 Köpfe (1..6) in Reihenfolge, Kämpfe ohne Beteiligung sind geschwärzt und leer.
+    await expect(page.locator('#matrixContainer thead th[colspan="2"]')).toHaveText(['1', '2', '3', '4', '5', '6']);
+    const unbeteiligt = pool.kaempfe.find(k => ![k.kaempfer1_id, k.kaempfer2_id].includes(annaId));
+    await expect(annaZeile.locator(`td[data-kampf-id="${unbeteiligt.id}"][data-beteiligt="nein"]`)).toHaveText('');
 });

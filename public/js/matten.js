@@ -19,6 +19,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const mattenContainer = document.getElementById('mattenContainer');
     const aufteilenBtn = document.getElementById('aufteilenBtn');
     const alleZuordnungenLoeschenBtn = document.getElementById('alleZuordnungenLoeschenBtn');
+    const alleDruckenBtn = document.getElementById('alleDruckenBtn');
 
     // --- UTILITIES ---
     const zeigeNotification = (nachricht, typ = 'info') => {
@@ -122,6 +123,65 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Event-Handler anbinden
         initialisiereCollapse();
         initialisiereDragAndDrop();
+        aktualisiereDruckZustand();
+    }
+
+    // --- DRUCK: nur möglich, wenn Pools auf Matten verteilt sind ---
+    // Matten-Druckknopf je Matte nur mit mindestens einem Pool auf dieser Matte, "Alle Pools
+    // drucken" nur, wenn irgendeine Matte Pools hat. Wird nach jeder Änderung der Zuordnung
+    // (auch dem lokalen DOM-Update ohne Neuladen) neu bewertet.
+    function aktualisiereDruckZustand() {
+        let pools = 0;
+        mattenContainer.querySelectorAll('.matte-box').forEach(box => {
+            const n = box.querySelectorAll('.matte-drop-zone .pool-card').length;
+            pools += n;
+            const icon = box.querySelector('.matte-druck-icon');
+            if (icon) {
+                icon.style.opacity = n > 0 ? '' : '0.3';
+                icon.style.pointerEvents = n > 0 ? '' : 'none';
+            }
+        });
+        if (alleDruckenBtn) alleDruckenBtn.disabled = pools === 0;
+    }
+
+    // Der Druck läuft über pools.html (dort liegt die Darstellung der Kampfbögen/Turnierbäume),
+    // aber in einem unsichtbaren Rahmen: der Nutzer bleibt auf der Matten-Seite.
+    let druckRahmen = null;
+    function entferneDruckRahmen() {
+        if (druckRahmen) {
+            druckRahmen.remove();
+            druckRahmen = null;
+        }
+    }
+
+    function oeffneDruck(matteId) {
+        entferneDruckRahmen();
+        druckRahmen = document.createElement('iframe');
+        druckRahmen.setAttribute('aria-hidden', 'true');
+        // Außerhalb des sichtbaren Bereichs, aber mit echter Größe, damit der Druck sauber layoutet
+        druckRahmen.style.cssText = 'position: fixed; left: -10000px; top: 0; width: 1100px; height: 800px; border: 0;';
+        druckRahmen.src = `/pools.html?turnierId=${encodeURIComponent(turnierId)}&druckMatte=${encodeURIComponent(matteId)}`;
+        document.body.appendChild(druckRahmen);
+    }
+
+    window.addEventListener('message', (e) => {
+        if (e.origin !== window.location.origin || !druckRahmen || e.source !== druckRahmen.contentWindow) return;
+        if (e.data?.hajimeDruck === 'fehler') {
+            zeigeNotification(e.data.text || 'Drucken nicht möglich.', 'error');
+        }
+        if (e.data?.hajimeDruck === 'fehler' || e.data?.hajimeDruck === 'fertig') {
+            entferneDruckRahmen();
+        }
+    });
+
+    if (alleDruckenBtn) {
+        alleDruckenBtn.addEventListener('click', () => {
+            const nichtZugeordnet = mattenContainer.querySelectorAll('.unzugeordnet-body .pool-card').length;
+            if (nichtZugeordnet > 0) {
+                zeigeNotification(`${nichtZugeordnet} Pool(s) ohne Matte werden nicht gedruckt.`, 'info');
+            }
+            oeffneDruck('alle');
+        });
     }
 
     // --- UNZUGEORDNET-BEREICH ---
@@ -168,6 +228,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <span class="matte-name">${escapeHtml(kf.bezeichnung)}</span>
                     <span class="pool-status-badge ${mattenStatusKlasse}" style="margin-left: 8px;">${mattenStatusText}</span>
                     <span class="matte-total-time">${gesamtMinuten} Min.</span>
+                    <span class="material-icons matte-druck-icon" data-kampflaeche-id="${kf.id}" title="Pools dieser Matte drucken" style="cursor: pointer; font-size: 18px; margin-left: 8px;">print</span>
                     <span class="material-icons matte-action-icon" data-action="${istPausiert ? 'fortsetzen' : 'pausieren'}" data-kampflaeche-id="${kf.id}" title="${istPausiert ? 'Matte fortsetzen' : 'Matte pausieren'}" style="cursor: pointer; font-size: 18px; margin-left: 8px; ${istGesperrt ? 'opacity: 0.3; pointer-events: none;' : ''}">${istPausiert ? 'play_circle' : 'pause_circle'}</span>
                     <span class="material-icons matte-action-icon" data-action="${istGesperrt ? 'entsperren' : 'sperren'}" data-kampflaeche-id="${kf.id}" title="${istGesperrt ? 'Matte entsperren' : 'Matte sperren'}" style="cursor: pointer; font-size: 18px; margin-left: 4px;">${istGesperrt ? 'lock_open' : 'lock'}</span>
                 </div>
@@ -330,6 +391,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function aktualisiereZoneLeerZustand(zone) {
         if (!zone) return;
+        aktualisiereDruckZustand();
         const hatKarten = zone.querySelector('.pool-card') !== null;
         const zoneType = zone.getAttribute('data-drop-zone');
         let hint = zone.querySelector('.matte-empty-hint, .unzugeordnet-empty');
@@ -556,6 +618,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- API: MATTE PAUSIEREN/FORTSETZEN/SPERREN/ENTSPERREN ---
     mattenContainer.addEventListener('click', async (e) => {
+        // Pools der Matte drucken: pools.html öffnet den Druckdialog für genau diese Kampffläche
+        const druckIcon = e.target.closest('.matte-druck-icon');
+        if (druckIcon) {
+            e.stopPropagation();
+            const matteId = druckIcon.getAttribute('data-kampflaeche-id');
+            if (!mattenContainer.querySelector(`.matte-drop-zone[data-kampflaeche-id="${matteId}"] .pool-card`)) {
+                zeigeNotification('Dieser Kampffläche sind keine Pools zugeordnet.', 'error');
+                return;
+            }
+            oeffneDruck(matteId);
+            return;
+        }
+
         const icon = e.target.closest('.matte-action-icon');
         if (!icon) return;
         e.stopPropagation();
