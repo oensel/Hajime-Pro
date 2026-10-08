@@ -63,32 +63,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     let turnierKontoinhaber = '';
     let turnierVerwendungszweck = '';
 
-    // --- SPERRE DER TEILNEHMERLISTE, SOBALD POOLS EXISTIEREN ---
+    // --- SPERRE DER TEILNEHMER JE ALTERSKLASSE, SOBALD IHRE POOLS ECHTE KÄMPFE HABEN ---
+    // (Waage in Runden: andere Altersklassen bleiben bearbeitbar.) teilnehmerlisteGesperrt = mindestens
+    // eine Altersklasse gesperrt (Alias wie in /api/pools/vorhanden).
     let teilnehmerlisteGesperrt = false;
+    let gesperrteAltersklassen = new Set();
+    const istTeilnehmerGesperrt = (athlet) => gesperrteAltersklassen.has(athlet.altersklasse);
 
     async function pruefeTeilnehmerlisteSperre() {
         try {
             const resp = await fetch(`/api/pools/vorhanden?turnierId=${turnierId}`);
             if (!resp.ok) return;
             const data = await resp.json();
-            teilnehmerlisteGesperrt = !!data.gesperrt;
+            // Ältere Server liefern nur `gesperrt` (turnierweit).
+            gesperrteAltersklassen = new Set(Array.isArray(data.gesperrteAltersklassen) ? data.gesperrteAltersklassen : []);
+            teilnehmerlisteGesperrt = gesperrteAltersklassen.size > 0 || !!data.gesperrt;
 
             const banner = document.getElementById('teilnehmerGesperrtBanner');
             const link = document.getElementById('teilnehmerGesperrtPoolsLink');
+            const klassenText = document.getElementById('teilnehmerGesperrtKlassen');
             if (link) link.href = `/pools.html?turnierId=${turnierId}`;
+            if (klassenText) {
+                klassenText.textContent = gesperrteAltersklassen.size > 0
+                    ? `Gesperrt (Kämpfe haben begonnen): ${[...gesperrteAltersklassen].join(', ')}. Die übrigen Altersklassen lassen sich weiter bearbeiten.`
+                    : 'Die Teilnehmerliste ist gesperrt, da für dieses Turnier bereits Kämpfe stattgefunden haben.';
+            }
             if (banner) banner.style.display = teilnehmerlisteGesperrt ? 'flex' : 'none';
 
-            const importBtn = document.getElementById('importBtn');
-            if (importBtn) importBtn.style.display = teilnehmerlisteGesperrt ? 'none' : 'inline-flex';
-
-            const addBtn = document.getElementById('addBtn');
-            if (addBtn) addBtn.style.display = teilnehmerlisteGesperrt ? 'none' : 'inline-flex';
-
-            const scanBtn = document.getElementById('scanBtn');
-            if (scanBtn) scanBtn.style.display = teilnehmerlisteGesperrt ? 'none' : 'inline-flex';
-
-            // bulkDeleteBtn selbst wird ausschließlich von updateBulkActionsBar gesteuert (dort
-            // fließt teilnehmerlisteGesperrt zusammen mit der Auswahl in eine Bedingung ein).
+            // Anmelden/Import/Scan bleiben sichtbar: nur bereits ausgeloste Altersklassen weist der
+            // Server ab. bulkDeleteBtn wird ausschließlich von updateBulkActionsBar gesteuert.
             updateBulkActionsBar();
         } catch (err) {
             console.error('Fehler beim Prüfen der Teilnehmerlisten-Sperre:', err);
@@ -445,7 +448,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     : '<span class="handy-chip handy-chip-gelb">offen</span>';
             const klasse = formatiereAltersklasse(athlet);
             const unterzeile = [athlet.verein, athlet.geburtsjahr, klasse].filter(Boolean).map(escapeHtml).join(' · ');
-            const klickbar = !istZurueckgezogen && !teilnehmerlisteGesperrt;
+            const klickbar = !istZurueckgezogen && !istTeilnehmerGesperrt(athlet);
             return `<div class="handy-karte${klickbar ? '' : ' handy-karte-gesperrt'}" ${klickbar ? `data-id="${athlet.id}"` : ''}>
                 <div class="handy-karte-text">
                     <div class="handy-karte-name">${escapeHtml(athlet.nachname)}, ${escapeHtml(athlet.vorname)}</div>
@@ -514,7 +517,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             return `
                 <tr${istZurueckgezogen ? ' style="opacity: 0.5;"' : ''}>
                     <td style="text-align: center; vertical-align: middle;">
-                        <input type="checkbox" class="row-checkbox" data-id="${athlet.id}" style="transform: scale(1.2); cursor: pointer;" ${istZurueckgezogen ? 'disabled' : ''}>
+                        <input type="checkbox" class="row-checkbox" data-id="${athlet.id}" style="transform: scale(1.2); cursor: pointer;" ${istZurueckgezogen || istTeilnehmerGesperrt(athlet) ? 'disabled' : ''}>
                     </td>
                     <td>
                         <strong>${athlet.nachname}</strong>, ${athlet.vorname}
@@ -547,8 +550,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                     </td>
                     <td>
                         <div class="action-buttons">
-                            ${teilnehmerlisteGesperrt ? `
-                                <span class="material-icons action-icon" style="color: var(--text-muted); opacity: 0.3; cursor: not-allowed;" title="Gesperrt: Es existieren bereits Pools für dieses Turnier">lock</span>
+                            ${istTeilnehmerGesperrt(athlet) ? `
+                                <span class="material-icons action-icon" style="color: var(--text-muted); opacity: 0.3; cursor: not-allowed;" title="Gesperrt: Die Kämpfe dieser Altersklasse haben bereits begonnen">lock</span>
                             ` : `
                                 <span class="material-icons action-icon icon-edit" title="Eintrag bearbeiten" onclick="window.oeffneWaageModal(${athlet.id})">edit</span>
                                 <span class="material-icons action-icon icon-delete" data-id="${athlet.id}" data-name="${athlet.vorname} ${athlet.nachname}">delete</span>
@@ -607,6 +610,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const toggleType = e.target.getAttribute('data-toggle');
                 const athlet = athletenDaten.find(a => a.id === id);
                 if (!athlet) return;
+                if (istTeilnehmerGesperrt(athlet) && toggleType === 'gewogen') {
+                    window.zeigeNotification('Gesperrt: Die Kämpfe dieser Altersklasse haben bereits begonnen.', 'error');
+                    return;
+                }
 
                 let payload;
                 let ladeNachricht = null;
@@ -712,7 +719,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // (siehe pruefeTeilnehmerlisteSperre) — beide Bedingungen werden hier gemeinsam
         // ausgewertet, damit updateBulkActionsBar die einzige Quelle für seine Sichtbarkeit ist.
         if (bulkDeleteBtn) {
-            const bulkDeleteVerborgen = keineAuswahl || teilnehmerlisteGesperrt;
+            const bulkDeleteVerborgen = keineAuswahl;
             bulkDeleteBtn.disabled = bulkDeleteVerborgen;
             bulkDeleteBtn.style.display = bulkDeleteVerborgen ? 'none' : '';
 

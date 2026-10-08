@@ -13,6 +13,7 @@ import { MannschaftJederGegenJedenManager } from '../services/MannschaftJederGeg
 import { MannschaftDoppelKo8Manager } from '../services/MannschaftDoppelKo8Manager.js';
 import { MannschaftDoppelKo16Manager } from '../services/MannschaftDoppelKo16Manager.js';
 import { ermittlePausensekunden } from '../shared/pausenRegel.js';
+import { verteilePoolsAufMatten } from '../services/mattenVerteilung.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -362,15 +363,18 @@ export async function synchronisiereMattenStatus(knex, kampflaecheId) {
     }
 }
 
-async function loeschePoolZuordnungenFuerTurnier(knex, turnierId) {
+// altersklassen (optional): nur die Einzel-Pools dieser Altersklassen räumen (Waage in Runden);
+// ohne Angabe das ganze Turnier.
+async function loeschePoolZuordnungenFuerTurnier(knex, turnierId, altersklassen = null) {
     // Nur Einzelwettkampf-Pools betroffen: diese Funktion räumt vor einer (Neu-)Auslosung durch
     // generierePools()/loescheAllePools() auf, beides ausschließlich Aktionen der
     // Einzelwettkampf-Seite (pools.html). Mannschafts-Pools werden unabhängig davon auf der
     // Mannschaften-Seite verwaltet und dürfen hierdurch nicht mitgelöscht werden.
-    const altePools = await knex('pools')
+    const altePoolsQuery = knex('pools')
         .where({ turnier_id: turnierId })
-        .andWhereNot({ typ: 'mannschaft' })
-        .select('id', 'kampfflaeche_id');
+        .andWhereNot({ typ: 'mannschaft' });
+    if (altersklassen) altePoolsQuery.whereIn('altersklasse', altersklassen);
+    const altePools = await altePoolsQuery.select('id', 'kampfflaeche_id');
 
     const altePoolIds = altePools.map(pool => pool.id);
     // Betroffene Matten merken, bevor ihre Pools gleich gelöscht werden — sonst bleibt ihr
@@ -384,9 +388,15 @@ async function loeschePoolZuordnungenFuerTurnier(knex, turnierId) {
             .del();
     }
 
-    await knex('turnier_teilnehmer')
-        .where({ turnier_id: turnierId })
-        .update({ pool_id: null });
+    if (!altersklassen) {
+        await knex('turnier_teilnehmer')
+            .where({ turnier_id: turnierId })
+            .update({ pool_id: null });
+    } else if (altePoolIds.length > 0) {
+        await knex('turnier_teilnehmer')
+            .whereIn('pool_id', altePoolIds)
+            .update({ pool_id: null });
+    }
 
     if (altePoolIds.length > 0) {
         await knex('pools').whereIn('id', altePoolIds).del();
@@ -419,6 +429,29 @@ export async function turnierHatEchteKaempfe(knex, turnierId) {
         if (await poolHatBereitsEchteKaempfe(knex, pool.id)) return true;
     }
     return false;
+}
+
+// Waage in Runden: Zustand je Altersklasse aus den Einzel-Pools abgeleitet.
+// ausgelost = es gibt einen Einzel-Pool dieser Altersklasse mit Teilnehmern, gesperrt = einer davon hat echte Kämpfe.
+export async function ermittleAltersklassenPoolZustand(knex, turnierId) {
+    const pools = await knex('pools')
+        .where({ turnier_id: turnierId })
+        .andWhereNot({ typ: 'mannschaft' })
+        .select('id', 'altersklasse');
+    const mitTeilnehmern = new Set(
+        await knex('turnier_teilnehmer').where({ turnier_id: turnierId }).whereNotNull('pool_id').pluck('pool_id')
+    );
+    const ausgelost = new Set();
+    const gesperrt = new Set();
+    for (const pool of pools) {
+        if (!pool.altersklasse) continue;
+        // Ein von Hand angelegter, noch leerer Pool zählt nicht als Auslosung (Anmeldungen laufen weiter).
+        if (mitTeilnehmern.has(pool.id)) ausgelost.add(pool.altersklasse);
+        if (!gesperrt.has(pool.altersklasse) && await poolHatBereitsEchteKaempfe(knex, pool.id)) {
+            gesperrt.add(pool.altersklasse);
+        }
+    }
+    return { ausgelosteAltersklassen: [...ausgelost].sort(), gesperrteAltersklassen: [...gesperrt].sort() };
 }
 
 async function regeneriereKampfplanFuerPool(knex, poolId) {
@@ -659,13 +692,21 @@ function istTeilnehmerStartberechtigt(athlet, turnier, turnierAltersklassenKeys)
 
 export async function generierePools(knex, req, res) {
     try {
-        const { turnierId } = req.body;
+        const { turnierId, neuGenerieren } = req.body;
+        // Waage in Runden: nur die gewählten Altersklassen auslosen; ohne Angabe alle (wie bisher).
+        const gewaehlteAltersklassen = Array.isArray(req.body.altersklassen) ? req.body.altersklassen.map(String) : null;
+        if (gewaehlteAltersklassen && gewaehlteAltersklassen.length === 0) {
+            return res.status(400).json({ success: false, error: 'Bitte mindestens eine Altersklasse wählen.' });
+        }
 
         const turnier = await knex('turniere').where({ id: turnierId }).first();
         if (!turnier) return res.status(404).json({ success: false, error: 'Turnier nicht gefunden.' });
 
         // Zurückgezogene Anmeldungen sind für die Auslosung irrelevant und dürfen sie nicht blockieren.
-        const teilnehmer = await knex('turnier_teilnehmer').where({ turnier_id: turnierId }).whereNot({ status: 'zurueckgezogen' });
+        let teilnehmer = await knex('turnier_teilnehmer').where({ turnier_id: turnierId }).whereNot({ status: 'zurueckgezogen' });
+        if (gewaehlteAltersklassen) {
+            teilnehmer = teilnehmer.filter(t => gewaehlteAltersklassen.includes(t.altersklasse));
+        }
         if (teilnehmer.length === 0) {
             return res.status(400).json({ success: false, error: 'Keine Teilnehmer für dieses Turnier vorhanden.' });
         }
@@ -709,24 +750,39 @@ export async function generierePools(knex, req, res) {
         }
 
         // Schutz: bestehende echte Kampfergebnisse dürfen durch eine Neu-Generierung nicht
-        // verloren gehen (Freilose zählen dabei nicht als "echter Kampf").
-        const bestehendePools = await knex('pools').where({ turnier_id: turnierId }).select('id');
-        for (const p of bestehendePools) {
-            if (await poolHatBereitsEchteKaempfe(knex, p.id)) {
+        // verloren gehen (Freilose zählen dabei nicht als "echter Kampf"). Je Altersklasse:
+        // bereits ausgeloste Klassen anderer Runden bleiben unberührt.
+        const poolZustand = await ermittleAltersklassenPoolZustand(knex, turnierId);
+        const betroffeneAltersklassen = gewaehlteAltersklassen
+            || [...new Set(teilnehmer.map(t => t.altersklasse))];
+        const gesperrtBetroffen = poolZustand.gesperrteAltersklassen.filter(a => gewaehlteAltersklassen
+            ? gewaehlteAltersklassen.includes(a)
+            : true);
+        if (gesperrtBetroffen.length > 0) {
+            return res.status(409).json({
+                success: false,
+                error: 'Pools können nicht neu generiert werden, da mindestens ein Pool bereits echte Kampfergebnisse enthält.'
+            });
+        }
+        if (gewaehlteAltersklassen && !neuGenerieren) {
+            const schonAusgelost = poolZustand.ausgelosteAltersklassen.filter(a => gewaehlteAltersklassen.includes(a));
+            if (schonAusgelost.length > 0) {
                 return res.status(409).json({
                     success: false,
-                    error: 'Pools können nicht neu generiert werden, da mindestens ein Pool bereits echte Kampfergebnisse enthält.'
+                    error: `Altersklasse schon ausgelost: ${schonAusgelost.join(', ')}.`
                 });
             }
         }
 
         // Zustand "nicht_erschienen": wer bis zum Start der Pool-Zuteilung nicht am Wiegetisch
-        // als kampfbereit bestätigt wurde, nimmt nicht an der Auslosung teil.
-        await knex('turnier_teilnehmer')
-            .where({ turnier_id: turnierId, status: 'angemeldet' })
-            .update({ status: 'nicht_erschienen', updated_at: knex.fn.now() });
+        // als kampfbereit bestätigt wurde, nimmt nicht an der Auslosung teil. Mit Altersklassen-
+        // Auswahl nur für die gewählten Klassen — die übrigen wiegen noch.
+        const nichtErschienenQuery = knex('turnier_teilnehmer')
+            .where({ turnier_id: turnierId, status: 'angemeldet' });
+        if (gewaehlteAltersklassen) nichtErschienenQuery.whereIn('altersklasse', gewaehlteAltersklassen);
+        await nichtErschienenQuery.update({ status: 'nicht_erschienen', updated_at: knex.fn.now() });
 
-        await loeschePoolZuordnungenFuerTurnier(knex, turnierId);
+        await loeschePoolZuordnungenFuerTurnier(knex, turnierId, gewaehlteAltersklassen ? betroffeneAltersklassen : null);
 
         let djbKlassen = { weiblich: [], männlich: [], mixed: [] };
         try {
@@ -916,19 +972,72 @@ export async function generierePools(knex, req, res) {
     }
 }
 
-// Leichtgewichtiger Check, ob die Teilnehmerliste eines Turniers gerade gesperrt ist (= mind.
-// ein Pool hatte bereits einen echten, nicht Freilos-Kampf) — bewusst OHNE
+// Leichtgewichtiger Check, welche Altersklassen eines Turniers gesperrt (= mind. ein Pool der
+// Altersklasse hatte bereits einen echten, nicht Freilos-Kampf) bzw. ausgelost sind — bewusst OHNE
 // requireTournamentEditAccess (siehe poolRoutes.js), da auch Nicht-Ausrichter-Vereinsmitglieder
 // (die z.B. nur eigene Teilnehmer anmelden) das wissen müssen, ohne selbst Bearbeitungsrechte
-// auf die Pools zu haben.
+// auf die Pools zu haben. `gesperrt` bleibt als Alias für ältere Clients.
 export async function pruefeTeilnehmerlisteGesperrt(knex, req, res) {
     try {
         const { turnierId } = req.query;
         if (!turnierId) {
             return res.status(400).json({ success: false, error: 'turnierId ist erforderlich.' });
         }
-        const gesperrt = await turnierHatEchteKaempfe(knex, turnierId);
-        return res.json({ gesperrt });
+        const { gesperrteAltersklassen, ausgelosteAltersklassen } = await ermittleAltersklassenPoolZustand(knex, turnierId);
+        return res.json({
+            gesperrt: gesperrteAltersklassen.length > 0,
+            gesperrteAltersklassen,
+            ausgelosteAltersklassen
+        });
+    } catch (error) {
+        return res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+// Waage in Runden: je Altersklasse mit Einzel-Teilnehmern die Zahlen für den Generieren-Dialog.
+export async function getAltersklassenStatus(knex, req, res) {
+    try {
+        const { turnierId } = req.query;
+        if (!turnierId) {
+            return res.status(400).json({ success: false, error: 'turnierId ist erforderlich.' });
+        }
+        const teilnehmer = await knex('turnier_teilnehmer')
+            .where({ turnier_id: turnierId })
+            .whereNot({ status: 'zurueckgezogen' })
+            .select('id', 'altersklasse', 'status', 'auch_einzelwettkampf');
+        const mannschaftsMitgliedIds = new Set(
+            await knex('mannschaft_mitglieder')
+                .join('mannschaften', 'mannschaft_mitglieder.mannschaft_id', 'mannschaften.id')
+                .where('mannschaften.turnier_id', turnierId)
+                .pluck('mannschaft_mitglieder.turnier_teilnehmer_id')
+        );
+        const { gesperrteAltersklassen, ausgelosteAltersklassen } = await ermittleAltersklassenPoolZustand(knex, turnierId);
+
+        const proKlasse = new Map();
+        for (const t of teilnehmer) {
+            if (!t.altersklasse) continue;
+            if (mannschaftsMitgliedIds.has(t.id) && !t.auch_einzelwettkampf) continue;
+            if (!proKlasse.has(t.altersklasse)) {
+                proKlasse.set(t.altersklasse, { altersklasse: t.altersklasse, kampfbereit: 0, angemeldet: 0, gesamt: 0 });
+            }
+            const eintrag = proKlasse.get(t.altersklasse);
+            eintrag.gesamt++;
+            if (t.status === 'kampfbereit') eintrag.kampfbereit++;
+            if (t.status === 'angemeldet') eintrag.angemeldet++;
+        }
+        // Ausgeloste Klassen ohne (aktive) Teilnehmer sollen im Neu-Generieren-Dialog nicht fehlen.
+        for (const ak of ausgelosteAltersklassen) {
+            if (!proKlasse.has(ak)) proKlasse.set(ak, { altersklasse: ak, kampfbereit: 0, angemeldet: 0, gesamt: 0 });
+        }
+
+        const status = [...proKlasse.values()]
+            .map(e => ({
+                ...e,
+                ausgelost: ausgelosteAltersklassen.includes(e.altersklasse),
+                hatEchteKaempfe: gesperrteAltersklassen.includes(e.altersklasse)
+            }))
+            .sort((a, b) => a.altersklasse.localeCompare(b.altersklasse, 'de', { numeric: true }));
+        return res.json({ success: true, altersklassen: status });
     } catch (error) {
         return res.status(500).json({ success: false, error: error.message });
     }
@@ -1402,10 +1511,13 @@ export async function setzeKampfflaecheReihenfolge(knex, req, res) {
     }
 }
 
-// Pools automatisch auf Kampfflächen verteilen (Bin Packing)
+// Pools automatisch auf Kampfflächen verteilen (Bin Packing, Algorithmus in services/mattenVerteilung.js).
+// modus 'neue' (Standard): nur Pools ohne Matte, an die bestehenden Zuordnungen angehängt (Waage in
+// Runden); modus 'alle': alle Pools ohne echte Kämpfe neu verteilen.
 export async function verteilePools(knex, req, res) {
     try {
         const { turnierId } = req.body;
+        const modus = req.body.modus === 'alle' ? 'alle' : 'neue';
 
         if (!turnierId) {
             return res.status(400).json({ success: false, error: 'turnierId ist erforderlich.' });
@@ -1432,258 +1544,95 @@ export async function verteilePools(knex, req, res) {
                 gesperrtePoolIds.add(pool.id);
             }
         }
-        const verteilbarePools = pools.filter(p => !gesperrtePoolIds.has(p.id));
-        // Mannschafts-Pools laufen NICHT durch den unten stehenden Gewichts-/Altersklassen-
-        // Bin-Packing-Algorithmus mit (der ist für Einzelwettkampf-Pools gebaut: Gruppierung nach
-        // Gewichtsklasse, "jüngste weibliche Altersklasse zuerst" usw. ergeben für Mannschaften
-        // keinen Sinn) — sie werden weiter unten separat verteilt und je Matte ans Ende gehängt.
-        const verteilbareEinzelPools = verteilbarePools.filter(p => p.typ !== 'mannschaft');
-        const verteilbareMannschaftsPools = verteilbarePools.filter(p => p.typ === 'mannschaft');
+        // Modus 'neue': bereits zugeordnete Pools bleiben unberührt, ihre Restdauer belastet die Matte.
+        const verteilbarePools = pools.filter(p => !gesperrtePoolIds.has(p.id)
+            && (modus === 'alle' || !p.kampfflaeche_id));
 
-        // Filter pools mit min. 1 Kämpfen
-        const activePools = [];
-        for (const pool of verteilbareEinzelPools) {
-            const teilnehmer = await knex('turnier_teilnehmer').where({ pool_id: pool.id });
-            const kaempfe = await knex('kaempfe').where({ pool_id: pool.id });
-            const n = teilnehmer.length;
-
-            const freilose = kaempfe.filter(kampf => kampf.status === 'freilos').length;
-
-            const bruttoKaempfe = schaetzeBruttoKaempfe(pool.modus, n);
-            const gesamtKaempfe = Math.max(0, bruttoKaempfe - freilose);
-
-            if (gesamtKaempfe > 0) {
-                pool.gesamt_kaempfe = gesamtKaempfe;
-                pool.dauer_minuten = Math.ceil((gesamtKaempfe * pool.kampfzeit_sekunden) / 60);
-                activePools.push(pool);
+        // Anfangslast je Matte (nur 'neue'): Restdauer der schon zugeordneten Pools
+        // (nicht beendete Kämpfe mal Kampfzeit) und deren Anzahl als Start der Reihenfolge.
+        const startLasten = {};
+        if (modus === 'neue') {
+            const belegtePools = pools.filter(p => p.kampfflaeche_id);
+            for (const pool of belegtePools) {
+                const offeneKaempfe = await knex('kaempfe')
+                    .where({ pool_id: pool.id })
+                    .whereNotIn('status', ['beendet', 'freilos'])
+                    .count({ anzahl: '*' })
+                    .first();
+                const dauer = Math.ceil((Number(offeneKaempfe.anzahl) * pool.kampfzeit_sekunden) / 60);
+                const last = startLasten[pool.kampfflaeche_id] || { dauer: 0, anzahl: 0 };
+                last.dauer += dauer;
+                last.anzahl = pool.matte_reihenfolge == null
+                    ? last.anzahl + 1
+                    : Math.max(last.anzahl, Number(pool.matte_reihenfolge) + 1);
+                startLasten[pool.kampfflaeche_id] = last;
             }
         }
 
+        // Pools mit min. 1 Kampf. Einzelwettkampf-Pools: Kämpfe aus der Teilnehmerzahl geschätzt.
         // Mannschafts-Pools: keine Teilnehmerzahl-Schätzung (Einzelkämpfer hängen nie direkt per
         // pool_id an einem Mannschafts-Pool, sondern über mannschaften.pool_id) — stattdessen die
         // zu diesem Zeitpunkt bereits erzeugten echten Einzelkämpfe der Begegnungen zählen (siehe
         // mannschaftsBegegnungEngine.js, läuft bereits bei Team-Zuordnung/Automatisch verteilen).
-        const activeMannschaftsPools = [];
-        for (const pool of verteilbareMannschaftsPools) {
+        const aktivePools = [];
+        for (const pool of verteilbarePools) {
             const kaempfe = await knex('kaempfe').where({ pool_id: pool.id });
             const freilose = kaempfe.filter(kampf => kampf.status === 'freilos').length;
-            const gesamtKaempfe = Math.max(0, kaempfe.length - freilose);
+            let gesamtKaempfe;
+            if (pool.typ === 'mannschaft') {
+                gesamtKaempfe = Math.max(0, kaempfe.length - freilose);
+            } else {
+                const n = await knex('turnier_teilnehmer').where({ pool_id: pool.id }).count({ anzahl: '*' }).first();
+                gesamtKaempfe = Math.max(0, schaetzeBruttoKaempfe(pool.modus, Number(n.anzahl)) - freilose);
+            }
 
             if (gesamtKaempfe > 0) {
                 pool.gesamt_kaempfe = gesamtKaempfe;
                 pool.dauer_minuten = Math.ceil((gesamtKaempfe * pool.kampfzeit_sekunden) / 60);
-                activeMannschaftsPools.push(pool);
+                aktivePools.push(pool);
             }
         }
 
-        if (activePools.length === 0 && activeMannschaftsPools.length === 0) {
-            return res.status(400).json({ success: false, error: 'Es gibt keine aktiven Pools mit Kämpfen zum Verteilen.' });
-        }
-
-        // Gewichtsklassen-Parser Hilfsfunktion
-        const parseWeight = (w) => {
-            // Entfernt alle Zeichen außer Ziffern und Punkt, um absolute Werte (z. B. "64.5" aus "-64.5kg") zu erhalten.
-            const cleaned = String(w || '').replace(/[^0-9.]/g, '');
-            return parseFloat(cleaned) || 0;
-        };
-
-        // Gruppierung nach Geschlecht und Altersklasse
-        const groups = {};
-        for (const p of activePools) {
-            const key = `${p.geschlecht}_${p.altersklasse}`;
-            if (!groups[key]) groups[key] = [];
-            groups[key].push(p);
-        }
-
-        // Sortierung innerhalb der Gruppen nach Gewicht aufsteigend
-        for (const key in groups) {
-            groups[key].sort((a, b) => parseWeight(a.gewichtsklasse) - parseWeight(b.gewichtsklasse));
-        }
-
-        // Altersklassen-Ranking Hilfsfunktion
-        const parseAgeClassRank = (ac) => {
-            const cleaned = String(ac || '').toLowerCase();
-            if (cleaned.includes('u11')) return 11;
-            if (cleaned.includes('u13')) return 13;
-            if (cleaned.includes('u15')) return 15;
-            if (cleaned.includes('u17')) return 17;
-            if (cleaned.includes('u18')) return 18;
-            if (cleaned.includes('u21')) return 21;
-            if (cleaned.includes('sen') || cleaned.includes('männer') || cleaned.includes('frauen') || cleaned.includes('erwachsene')) return 100;
-            const match = cleaned.match(/\d+/);
-            return match ? parseInt(match[0], 10) : 999;
-        };
-
-        // Finde die jüngste weibliche Altersklasse
-        let youngestFemaleKey = null;
-        let minFemaleAgeRank = Infinity;
-        for (const p of activePools) {
-            if (p.geschlecht === 'weiblich') {
-                const rank = parseAgeClassRank(p.altersklasse);
-                if (rank < minFemaleAgeRank) {
-                    minFemaleAgeRank = rank;
-                    youngestFemaleKey = `${p.geschlecht}_${p.altersklasse}`;
-                }
-            }
-        }
-
-        // Matten-Zustand initialisieren
-        const totalDuration = activePools.reduce((sum, p) => sum + p.dauer_minuten, 0);
-        const avgDuration = totalDuration / mats.length;
-        // Schwellenwert: Maximal 30 Minuten oder 25% der durchschnittlichen Last (je nachdem, was größer ist)
-        const threshold = Math.max(30, avgDuration * 0.25);
-
-        // Erstelle partitionierbare Items (anfangs ganze Kategorien)
-        let items = Object.keys(groups).map(key => ({
-            key,
-            originalCategoryKey: key,
-            pools: [...groups[key]],
-            duration: groups[key].reduce((sum, p) => sum + p.dauer_minuten, 0)
-        }));
-
-        let matLoads = [];
-        let iteration = 0;
-        const maxIterations = 15; // Sicherheitslimit gegen Endlosschleifen
-
-        while (iteration < maxIterations) {
-            iteration++;
-            // Items nach Dauer absteigend sortieren
-            const sortedItems = [...items].sort((a, b) => b.duration - a.duration);
-            matLoads = mats.map(m => ({ id: m.id, duration: 0, pools: [] }));
-
-            for (const item of sortedItems) {
-                // Jüngste weibliche Altersklasse (oder deren leichtester Teil) wird fest der ersten Kampffläche zugewiesen
-                const isYoungestFemaleStart = youngestFemaleKey && (
-                    item.key === youngestFemaleKey || 
-                    item.key.startsWith(youngestFemaleKey + '_part1')
-                );
-
-                if (isYoungestFemaleStart) {
-                    const firstMat = matLoads.find(m => m.id === mats[0].id);
-                    if (firstMat) {
-                        firstMat.pools.push(...item.pools);
-                        firstMat.duration += item.duration;
-                        continue;
-                    }
-                }
-
-                // Finde die Matte mit der geringsten aktuellen Belastung
-                matLoads.sort((a, b) => a.duration - b.duration);
-                matLoads[0].pools.push(...item.pools);
-                matLoads[0].duration += item.duration;
-            }
-
-            // Berechne aktuelle Differenz (Imbalance)
-            const loads = matLoads.map(m => m.duration);
-            const maxLoad = Math.max(...loads);
-            const minLoad = Math.min(...loads);
-            const imbalance = maxLoad - minLoad;
-
-            // Falls die Verteilung gut genug ist (unter dem Schwellenwert), aufhören
-            if (imbalance <= threshold) {
-                break;
-            }
-
-            // Andernfalls: Finde das größte Item mit mehr als 1 Pool, um es weiter aufzuteilen (zu verfeinern)
-            const splittableItems = items
-                .filter(item => item.pools.length > 1)
-                .sort((a, b) => b.duration - a.duration);
-
-            if (splittableItems.length === 0) {
-                // Keine weiteren Aufteilungen möglich
-                break;
-            }
-
-            // Das größte splittbare Item in zwei Hälften aufteilen (kontinuierlich nach Gewicht)
-            const itemToSplit = splittableItems[0];
-            const mid = Math.ceil(itemToSplit.pools.length / 2);
-            const pools1 = itemToSplit.pools.slice(0, mid);
-            const pools2 = itemToSplit.pools.slice(mid);
-
-            const splitPart1 = {
-                key: `${itemToSplit.key}_part1`,
-                originalCategoryKey: itemToSplit.originalCategoryKey,
-                pools: pools1,
-                duration: pools1.reduce((sum, p) => sum + p.dauer_minuten, 0)
-            };
-            const splitPart2 = {
-                key: `${itemToSplit.key}_part2`,
-                originalCategoryKey: itemToSplit.originalCategoryKey,
-                pools: pools2,
-                duration: pools2.reduce((sum, p) => sum + p.dauer_minuten, 0)
-            };
-
-            // Ersetze das alte Item in der Liste durch die zwei neuen Hälften
-            items = items.filter(it => it.key !== itemToSplit.key);
-            items.push(splitPart1, splitPart2);
-        }
-
-        // Altersklassen/Geschlechts-Sortierfunktion für das Endrendering
-        const compareCategories = (catA, catB) => {
-            const [geschlechtA, altersklasseA] = catA.split('_');
-            const [geschlechtB, altersklasseB] = catB.split('_');
-
-            // 1. Weiblich kommt vor Männlich
-            if (geschlechtA !== geschlechtB) {
-                return geschlechtA === 'weiblich' ? -1 : 1;
-            }
-
-            // 2. Jüngere Altersklasse zuerst
-            const rankA = parseAgeClassRank(altersklasseA);
-            const rankB = parseAgeClassRank(altersklasseB);
-            return rankA - rankB;
-        };
-
-        // Nach der Verteilung: Sortiere die Pools auf jeder Matte, um zu gewährleisten,
-        // dass Pools derselben Alters-/Geschlechtsklasse zusammenliegen und nach Gewicht aufsteigend sortiert sind.
-        for (const mat of matLoads) {
-            mat.pools.sort((a, b) => {
-                const catA = `${a.geschlecht}_${a.altersklasse}`;
-                const catB = `${b.geschlecht}_${b.altersklasse}`;
-                if (catA !== catB) {
-                    return compareCategories(catA, catB);
-                }
-                return parseWeight(a.gewichtsklasse) - parseWeight(b.gewichtsklasse);
+        if (aktivePools.length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: modus === 'neue'
+                    ? 'Es gibt keine neuen Pools ohne Matte zum Verteilen.'
+                    : 'Es gibt keine aktiven Pools mit Kämpfen zum Verteilen.'
             });
         }
 
-        // Mannschafts-Pools separat verteilen (einfaches Greedy-Load-Balancing über die aktuelle
-        // Matten-Auslastung durch die Einzelwettkampf-Pools) und je Matte ANS ENDE anhängen — sie
-        // werden erst eingeplant, wenn planeKaempfeFuerKampfflaeche() alle Pools mit niedrigerer
-        // matte_reihenfolge auf dieser Matte durchhat (siehe dortige "aktives Fenster"-Logik).
-        const mannschaftsPoolsSortiert = [...activeMannschaftsPools].sort((a, b) => b.dauer_minuten - a.dauer_minuten);
-        for (const pool of mannschaftsPoolsSortiert) {
-            matLoads.sort((a, b) => a.duration - b.duration);
-            matLoads[0].pools.push(pool);
-            matLoads[0].duration += pool.dauer_minuten;
-        }
+        const zuordnung = verteilePoolsAufMatten({ pools: aktivePools, matten: mats, startLasten });
 
         // Zuordnungen in der Datenbank aktualisieren (Transaktion)
         await knex.transaction(async (trx) => {
-            // Zuerst alle noch verteilbaren (nicht gesperrten) Pools dieses Turniers von den
-            // Matten lösen — gesperrte Pools (echte Kämpfe bereits gestartet/beendet) bleiben
-            // unangetastet auf ihrer bisherigen Matte stehen.
-            let wipeQuery = trx('pools').where({ turnier_id: parseInt(turnierId) });
-            if (gesperrtePoolIds.size > 0) {
-                wipeQuery = wipeQuery.whereNotIn('id', Array.from(gesperrtePoolIds));
+            if (modus === 'alle') {
+                // Zuerst alle noch verteilbaren (nicht gesperrten) Pools dieses Turniers von den
+                // Matten lösen — gesperrte Pools (echte Kämpfe bereits gestartet/beendet) bleiben
+                // unangetastet auf ihrer bisherigen Matte stehen.
+                let wipeQuery = trx('pools').where({ turnier_id: parseInt(turnierId) });
+                if (gesperrtePoolIds.size > 0) {
+                    wipeQuery = wipeQuery.whereNotIn('id', Array.from(gesperrtePoolIds));
+                }
+                await wipeQuery.update({
+                    kampfflaeche_id: null,
+                    matte_reihenfolge: null
+                });
             }
-            await wipeQuery.update({
-                kampfflaeche_id: null,
-                matte_reihenfolge: null
-            });
 
-            for (const mat of matLoads) {
+            for (const mat of zuordnung) {
                 for (let i = 0; i < mat.pools.length; i++) {
                     await trx('pools').where({ id: mat.pools[i].id }).update({
                         kampfflaeche_id: mat.id,
-                        matte_reihenfolge: i
+                        matte_reihenfolge: mat.startReihenfolge + i
                     });
                 }
             }
         });
 
-        // Nach der Verteilung die Kämpfe für jede Matte neu planen!
-        for (const mat of matLoads) {
+        // Nach der Verteilung die Kämpfe der betroffenen Matten neu planen!
+        for (const mat of zuordnung) {
+            if (mat.pools.length === 0 && modus === 'neue') continue;
             await planeKaempfeFuerKampfflaeche(knex, mat.id);
             for (const p of mat.pools) {
                 await aktualisierePoolStatusNachAuslosung(knex, p.id);
@@ -1691,7 +1640,12 @@ export async function verteilePools(knex, req, res) {
             await synchronisiereMattenStatus(knex, mat.id);
         }
 
-        return res.json({ success: true, message: 'Pools erfolgreich auf Kampfflächen aufgeteilt.' });
+        const anzahl = aktivePools.length;
+        return res.json({
+            success: true,
+            verteiltePools: anzahl,
+            message: `${anzahl} ${anzahl === 1 ? 'Pool' : 'Pools'} erfolgreich auf Kampfflächen aufgeteilt.`
+        });
     } catch (error) {
         console.error('[Pool-Aufteilungs-Fehler]:', error);
         return res.status(500).json({ success: false, error: error.message });

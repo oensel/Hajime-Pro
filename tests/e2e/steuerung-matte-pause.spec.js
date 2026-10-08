@@ -21,6 +21,9 @@ async function richteTurnierEin(request) {
         data: { turnier_id: turnierId, bezeichnung: 'Pause Pool', altersklasse: 'U18', geschlecht: 'männlich', gewichtsklasse: '-73kg' }
     });
     const { poolId } = await poolResp.json();
+    // Erst alle anmelden, dann in den Pool verschieben: ein Pool mit Teilnehmern gilt als ausgeloste
+    // Altersklasse, in die nicht mehr nachgemeldet werden kann (Waage in Runden).
+    const teilnehmerIds = [];
     for (const t of TEILNEHMER) {
         const tResp = await request.post('/api/teilnehmer', {
             data: {
@@ -28,7 +31,9 @@ async function richteTurnierEin(request) {
                 geburtsjahr: 2009, geschlecht: 'männlich', gewicht: t.gewicht, altersklasse: 'U18', gewichtsklasse: '-73kg'
             }
         });
-        const { teilnehmerId } = await tResp.json();
+        teilnehmerIds.push((await tResp.json()).teilnehmerId);
+    }
+    for (const teilnehmerId of teilnehmerIds) {
         expect((await request.post('/api/pools/verschieben', { data: { teilnehmerId, zielPoolId: poolId } })).ok()).toBeTruthy();
     }
     const zuordnen = await request.put('/api/pools/kampfflaeche-zuordnen', { data: { poolId, kampflaecheId: matId, position: 1 } });

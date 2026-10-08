@@ -71,6 +71,25 @@ async function richteTurnierMitDreiMattenEin(request) {
     const kampfflaechen = await mattenResp.json();
     expect(kampfflaechen).toHaveLength(3);
 
+    // Erst alle Teilnehmer anmelden, dann in die Pools verschieben: ein Pool mit Teilnehmern gilt als
+    // ausgeloste Altersklasse, in die nicht mehr nachgemeldet werden kann (Waage in Runden).
+    const angemeldet = [];
+    for (const fixtur of MATTEN_FIXTUR) {
+        const ids = [];
+        for (const t of fixtur.teilnehmer) {
+            const tResp = await request.post('/api/teilnehmer', {
+                data: {
+                    turnier_id: turnierId, vorname: t.vorname, nachname: t.nachname, verein: t.verein,
+                    geburtsjahr: 2009, geschlecht: 'männlich', gewicht: t.gewicht,
+                    altersklasse: 'U18', gewichtsklasse: '-73kg'
+                }
+            });
+            expect(tResp.ok(), await tResp.text()).toBeTruthy();
+            ids.push((await tResp.json()).teilnehmerId);
+        }
+        angemeldet.push(ids);
+    }
+
     const matten = [];
     for (let i = 0; i < MATTEN_FIXTUR.length; i++) {
         const fixtur = MATTEN_FIXTUR[i];
@@ -82,17 +101,7 @@ async function richteTurnierMitDreiMattenEin(request) {
         expect(poolResp.ok(), await poolResp.text()).toBeTruthy();
         const { poolId } = await poolResp.json();
 
-        for (const t of fixtur.teilnehmer) {
-            const tResp = await request.post('/api/teilnehmer', {
-                data: {
-                    turnier_id: turnierId, vorname: t.vorname, nachname: t.nachname, verein: t.verein,
-                    geburtsjahr: 2009, geschlecht: 'männlich', gewicht: t.gewicht,
-                    altersklasse: 'U18', gewichtsklasse: '-73kg'
-                }
-            });
-            expect(tResp.ok(), await tResp.text()).toBeTruthy();
-            const { teilnehmerId } = await tResp.json();
-
+        for (const teilnehmerId of angemeldet[i]) {
             const moveResp = await request.post('/api/pools/verschieben', { data: { teilnehmerId, zielPoolId: poolId } });
             expect(moveResp.ok(), await moveResp.text()).toBeTruthy();
         }

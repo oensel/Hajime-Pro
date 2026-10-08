@@ -38,7 +38,7 @@ test('Waage offline: 5 Wiegungen und 1 Nachmeldung, danach vollständig am Serve
         }
         r.push(await window.Datenzugriff.speichereTeilnehmer(null, {
             turnier_id: turnierId, vorname: 'Nora', nachname: 'Nachzügler', verein: 'JC Spät', judopass_id: 'NZ-1',
-            geburtsjahr: 2009, geschlecht: 'männlich', gewicht: 72.3, altersklasse: 'U18', gewichtsklasse: '-73kg', gewogen: true
+            geburtsjahr: 2009, geschlecht: 'männlich', gewicht: 72.3, altersklasse: 'U21', gewichtsklasse: '-81kg', gewogen: true
         }));
         return r;
     }, { ids: teilnehmerIds, turnierId });

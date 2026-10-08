@@ -3,7 +3,7 @@ import { readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { resolveUserVereinName, hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
-import { turnierHatEchteKaempfe } from './poolController.js';
+import { turnierHatEchteKaempfe, ermittleAltersklassenPoolZustand } from './poolController.js';
 import { FachFehler } from '../utils/fachFehler.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 const { istEinzelbenutzerBetrieb } = betriebsmodus;
@@ -53,6 +53,24 @@ function ermittleEffektivenStatus(turnier, { hatEchteKaempfe = false } = {}) {
 // (siehe poolHatBereitsEchteKaempfe/turnierHatEchteKaempfe in poolController.js). Erst nach dem
 // ersten echten Kampf gilt die Auslosung als endgültig.
 const TEILNEHMERLISTE_GESPERRT_FEHLER = 'Die Teilnehmerliste ist gesperrt, da für dieses Turnier bereits Kämpfe stattgefunden haben.';
+
+// Waage in Runden: die Sperre gilt je Altersklasse. Bestehende Teilnehmer sind gesperrt, sobald ein
+// Pool ihrer Altersklasse echte Kämpfe hat; neue Anmeldungen schon, sobald die Altersklasse
+// ausgelost ist (Zustand wird aus den Pools abgeleitet).
+const ALTERSKLASSE_GESPERRT_FEHLER = 'Die Teilnehmer dieser Altersklasse sind gesperrt, da für sie bereits Kämpfe stattgefunden haben.';
+const ALTERSKLASSE_AUSGELOST_FEHLER = 'Die Altersklasse ist bereits ausgelost.';
+
+async function istAltersklasseGesperrt(knex, turnierId, altersklasse) {
+    if (!altersklasse) return false;
+    const { gesperrteAltersklassen } = await ermittleAltersklassenPoolZustand(knex, turnierId);
+    return gesperrteAltersklassen.includes(altersklasse);
+}
+
+async function istAltersklasseAusgelost(knex, turnierId, altersklasse) {
+    if (!altersklasse) return false;
+    const { ausgelosteAltersklassen } = await ermittleAltersklassenPoolZustand(knex, turnierId);
+    return ausgelosteAltersklassen.includes(altersklasse);
+}
 
 // Stichtag der Lizenzprüfung: die Lizenz muss am Wettkampftag noch gültig sein (nicht nur heute). Liegt der
 // Wettkampftag nicht in der Zukunft, gilt heute. Als "YYYY-MM-DD" (lexikografisch vergleichbar).
@@ -124,9 +142,6 @@ export async function legeTeilnehmerAn(knex, daten, kontext) {
     }
 
     const hatEchteKaempfe = await turnierHatEchteKaempfe(knex, turnier.id);
-    if (hatEchteKaempfe) {
-        throw new FachFehler(409, TEILNEHMERLISTE_GESPERRT_FEHLER);
-    }
 
     const istGastgeberVerein = kontext.istGastgeberVerein;
     const userVereinName = kontext.userVereinName;
@@ -180,6 +195,10 @@ export async function legeTeilnehmerAn(knex, daten, kontext) {
         turnier.datum ? new Date(turnier.datum).getFullYear() : new Date().getFullYear(),
         ermittleTurnierAltersklassenKeys(turnier)
     );
+
+    if (await istAltersklasseAusgelost(knex, turnier.id, ermittelteAltersklasse)) {
+        throw new FachFehler(409, ALTERSKLASSE_AUSGELOST_FEHLER);
+    }
 
     // Gewicht robust parsen (deutsches Komma-Dezimaltrennzeichen wie beim CSV-Import zulassen).
     const gewichtGeparst = parseFloat(String(gewicht ?? '').replace(',', '.')) || 0.00;
@@ -304,8 +323,8 @@ export async function deleteTeilnehmer(knex, req, res) {
         const turnier = await knex('turniere').where({ id: athlet.turnier_id }).first();
 
         const hatEchteKaempfe = await turnierHatEchteKaempfe(knex, athlet.turnier_id);
-        if (hatEchteKaempfe) {
-            return res.status(409).json({ success: false, error: TEILNEHMERLISTE_GESPERRT_FEHLER });
+        if (await istAltersklasseGesperrt(knex, athlet.turnier_id, athlet.altersklasse)) {
+            return res.status(409).json({ success: false, error: ALTERSKLASSE_GESPERRT_FEHLER });
         }
 
         const istGastgeberVerein = istEinzelbenutzerBetrieb() || hatVereinsZugriffAufTurnier(user, turnier);
@@ -337,8 +356,8 @@ export async function ziehZurueck(knex, req, res) {
         const turnier = await knex('turniere').where({ id: athlet.turnier_id }).first();
 
         const hatEchteKaempfe = await turnierHatEchteKaempfe(knex, athlet.turnier_id);
-        if (hatEchteKaempfe) {
-            return res.status(409).json({ success: false, error: TEILNEHMERLISTE_GESPERRT_FEHLER });
+        if (await istAltersklasseGesperrt(knex, athlet.turnier_id, athlet.altersklasse)) {
+            return res.status(409).json({ success: false, error: ALTERSKLASSE_GESPERRT_FEHLER });
         }
 
         const userVereinName = await resolveUserVereinName(knex, user);
@@ -382,8 +401,13 @@ export async function aktualisiereTeilnehmerDaten(knex, id, daten, kontext) {
     const turnier = await knex('turniere').where({ id: athlet.turnier_id }).first();
 
     const hatEchteKaempfe = await turnierHatEchteKaempfe(knex, athlet.turnier_id);
-    if (hatEchteKaempfe) {
-        throw new FachFehler(409, TEILNEHMERLISTE_GESPERRT_FEHLER);
+    if (await istAltersklasseGesperrt(knex, athlet.turnier_id, athlet.altersklasse)) {
+        throw new FachFehler(409, ALTERSKLASSE_GESPERRT_FEHLER);
+    }
+    // Wechsel in eine bereits ausgeloste Altersklasse wäre eine Nachmeldung durch die Hintertür.
+    if (altersklasse && altersklasse !== athlet.altersklasse
+        && await istAltersklasseAusgelost(knex, athlet.turnier_id, altersklasse)) {
+        throw new FachFehler(409, ALTERSKLASSE_AUSGELOST_FEHLER);
     }
 
     const istGastgeberVerein = kontext.istGastgeberVerein;
@@ -1136,7 +1160,9 @@ async function ladeImportKontext(knex, req) {
     }
 
     const hatEchteKaempfe = await turnierHatEchteKaempfe(knex, turnier.id);
-    if (hatEchteKaempfe) {
+    // Einzel-Import: Sperre je Altersklasse (Zeilenprüfung in importTeilnehmer); Mannschaften behalten
+    // die turnierweite Sperre.
+    if (hatEchteKaempfe && req.body.ziel === 'mannschaft') {
         return { fehler: { status: 409, body: { success: false, error: TEILNEHMERLISTE_GESPERRT_FEHLER } } };
     }
 
@@ -1232,6 +1258,9 @@ export async function importTeilnehmer(knex, req, res) {
         // Cache: (verein, bezeichnung) -> mannschaft_id, damit mehrere Zeilen desselben Teams
         // innerhalb eines Imports nur eine einzige Mannschaft anlegen statt einer pro Zeile.
         const mannschaftCache = new Map();
+        const ausgelosteAltersklassen = ziel === 'einzel'
+            ? new Set((await ermittleAltersklassenPoolZustand(knex, turnier.id)).ausgelosteAltersklassen)
+            : new Set();
 
         for (const { rowNumber, record } of records) {
             const { felder, gewicht, altersklasse, gewichtsklasse, fehlerFelder } = verarbeiteImportZeile(record, ctx);
@@ -1239,6 +1268,11 @@ export async function importTeilnehmer(knex, req, res) {
             if (fehlerFelder.length > 0) {
                 const feldLabels = fehlerFelder.map(f => IMPORT_SYSTEMFELDER.find(sf => sf.feld === f)?.label || f);
                 skipped.push({ row: rowNumber, reason: `Pflichtfeld(er) fehlen oder ungültig: ${feldLabels.join(', ')}.` });
+                continue;
+            }
+
+            if (ausgelosteAltersklassen.has(altersklasse)) {
+                skipped.push({ row: rowNumber, reason: `${ALTERSKLASSE_AUSGELOST_FEHLER} (${altersklasse})` });
                 continue;
             }
 

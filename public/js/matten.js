@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- DOM ELEMENTE ---
     const mattenContainer = document.getElementById('mattenContainer');
     const aufteilenBtn = document.getElementById('aufteilenBtn');
+    const alleNeuVerteilenBtn = document.getElementById('alleNeuVerteilenBtn');
     const alleZuordnungenLoeschenBtn = document.getElementById('alleZuordnungenLoeschenBtn');
     const alleDruckenBtn = document.getElementById('alleDruckenBtn');
 
@@ -532,25 +533,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // --- API: AUTOMATISCH AUFTEILEN ---
-    if (aufteilenBtn) {
-        aufteilenBtn.addEventListener('click', async () => {
-            const bestaetigt = await zeigeBestaetigung(
-                'Möchten Sie die Pools wirklich neu verteilen? Alle vorherigen Zuteilungen werden dabei gelöscht.',
-                'Pools aufteilen',
-                'auto_awesome'
-            );
-
-            if (!bestaetigt) return;
-
+    // modus 'neue': nur Pools ohne Matte werden an die bestehenden Zuordnungen angehängt (Waage in
+    // Runden); 'alle': Zuordnungen aller Pools ohne begonnene Kämpfe verwerfen und neu verteilen.
+    async function fuehreAufteilenAus(modus, knopf, knopfHtml) {
+        {
             try {
-                aufteilenBtn.setAttribute('disabled', 'true');
-                aufteilenBtn.innerHTML = `<span class="material-icons icon-spin">sync</span>`;
+                knopf.setAttribute('disabled', 'true');
+                knopf.innerHTML = `<span class="material-icons icon-spin">sync</span>`;
                 if (window.zeigeLadeModal) window.zeigeLadeModal('Pools werden aufgeteilt…');
 
                 const response = await fetch('/api/pools/aufteilen', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ turnierId: parseInt(turnierId, 10) })
+                    body: JSON.stringify({ turnierId: parseInt(turnierId, 10), modus })
                 });
 
                 const result = await response.json();
@@ -569,10 +564,36 @@ document.addEventListener('DOMContentLoaded', async () => {
             } catch (err) {
                 zeigeNotification('Netzwerkfehler beim Aufteilen.', 'error');
             } finally {
-                aufteilenBtn.removeAttribute('disabled');
-                aufteilenBtn.innerHTML = `<span class="material-icons" style="font-size: 18px;">auto_awesome</span>Pools aufteilen`;
+                knopf.removeAttribute('disabled');
+                knopf.innerHTML = knopfHtml;
                 if (window.versteckeLadeModal) window.versteckeLadeModal();
             }
+        }
+    }
+
+    if (aufteilenBtn) {
+        const html = aufteilenBtn.innerHTML;
+        aufteilenBtn.addEventListener('click', async () => {
+            const bestaetigt = await zeigeBestaetigung(
+                'Die noch keiner Matte zugeordneten Pools werden auf die Matten verteilt. Bereits zugeordnete Pools bleiben unverändert.',
+                'Pools aufteilen',
+                'auto_awesome'
+            );
+            if (!bestaetigt) return;
+            await fuehreAufteilenAus('neue', aufteilenBtn, html);
+        });
+    }
+
+    if (alleNeuVerteilenBtn) {
+        const html = alleNeuVerteilenBtn.innerHTML;
+        alleNeuVerteilenBtn.addEventListener('click', async () => {
+            const bestaetigt = await zeigeBestaetigung(
+                'Möchten Sie die Pools wirklich neu verteilen? Alle vorherigen Zuteilungen (außer Pools mit begonnenen Kämpfen) werden dabei gelöscht.',
+                'Alle neu verteilen',
+                'shuffle'
+            );
+            if (!bestaetigt) return;
+            await fuehreAufteilenAus('alle', alleNeuVerteilenBtn, html);
         });
     }
 

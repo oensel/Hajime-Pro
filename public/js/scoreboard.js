@@ -339,12 +339,11 @@ function triggerKikenGachiWin(winnerColor) {
     update();
 }
 
-// durchHaltegriff: Ippon, weil das Osaekomi die Zeit erreicht hat — dann der Signalton statt der Hupe.
+// durchHaltegriff: Ippon, weil das Osaekomi die Zeit erreicht hat — nur dann der Signalton; ein direkt vergebener Ippon bleibt ohne Ton.
 function triggerIpponWin(durchHaltegriff = false) {
     stopAllTimers();
     state.overlayMode = "ippon";
     if (durchHaltegriff) playDing();
-    else playHorn();
     update();
 }
 

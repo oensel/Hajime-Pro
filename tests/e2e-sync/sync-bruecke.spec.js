@@ -21,7 +21,7 @@ test.describe.serial('Brücke: Dokument-Änderungen landen über die Fachlogik i
         const neu = {
             _id: 'teilnehmer:u-11111111-1111-4111-8111-111111111111', dokumenttyp: 'teilnehmer', sql_id: null, bearbeitet_von: 'test',
             turnier_id: turnierId, vorname: 'Nina', nachname: 'Nach', verein: 'JC Neu', judopass_id: 'NP-1',
-            geburtsjahr: 2009, geschlecht: 'männlich', gewicht: 70, altersklasse: 'U18', gewichtsklasse: '-73kg'
+            geburtsjahr: 2009, geschlecht: 'männlich', gewicht: 70, altersklasse: 'U21', gewichtsklasse: '-81kg'
         };
         await schreibeDokument(request, dbName, neu);
         await warteLeerlauf(request);

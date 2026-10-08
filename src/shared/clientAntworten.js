@@ -128,12 +128,25 @@ export async function beantworteClientAnfrage({ methode, pfad, query = {}, body 
         // Mannschaftszuordnung an der Waage gibt es nur am Server (Spec Abschnitt 4).
         if (pfad === '/mannschaften') return ok([]);
 
-        // Teilnehmerliste gesperrt, sobald echte Kämpfe laufen (gleiche Regel wie poolController).
+        // Teilnehmerliste je Altersklasse gesperrt/ausgelost (gleiche Regel wie poolController,
+        // ermittleAltersklassenPoolZustand); `gesperrt` bleibt als Alias für ältere Clients.
         if (pfad === '/pools/vorhanden') {
             const docs = await dokumenteNachTyp(db);
-            const poolIds = new Set((docs.pool || []).filter(p => String(p.turnier_id) === String(query.turnierId)).map(p => p.id));
-            const gesperrt = (docs.kampf || []).some(k => poolIds.has(k.pool_id) && ['gestartet', 'beendet'].includes(k.status));
-            return ok({ gesperrt });
+            const pools = (docs.pool || []).filter(p => String(p.turnier_id) === String(query.turnierId) && p.typ !== 'mannschaft');
+            const ausgelost = new Set();
+            const gesperrt = new Set();
+            for (const pool of pools) {
+                if (!pool.altersklasse) continue;
+                ausgelost.add(pool.altersklasse);
+                if ((docs.kampf || []).some(k => k.pool_id === pool.id && ['gestartet', 'beendet'].includes(k.status))) {
+                    gesperrt.add(pool.altersklasse);
+                }
+            }
+            return ok({
+                gesperrt: gesperrt.size > 0,
+                gesperrteAltersklassen: [...gesperrt].sort(),
+                ausgelosteAltersklassen: [...ausgelost].sort()
+            });
         }
 
         return { status: 404, body: { success: false, error: NUR_AM_SERVER } };

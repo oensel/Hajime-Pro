@@ -38,12 +38,17 @@ async function richteTurnierEin(request, bezeichnung, anzahl) {
     });
     expect(poolResp.ok(), await poolResp.text()).toBeTruthy();
     const { poolId } = await poolResp.json();
+    // Erst alle anmelden, dann in den Pool verschieben: ein Pool mit Teilnehmern gilt als ausgeloste
+    // Altersklasse, in die nicht mehr nachgemeldet werden kann (Waage in Runden).
+    const teilnehmerIds = [];
     for (const [i, [vorname, nachname, verein]] of TEILNEHMER.slice(0, anzahl).entries()) {
         const tResp = await request.post('/api/teilnehmer', {
             data: { turnier_id: turnierId, vorname, nachname, verein, geburtsjahr: 2009, geschlecht: 'männlich', gewicht: 60 + i, altersklasse: 'U18', gewichtsklasse: '-73kg' }
         });
         expect(tResp.ok(), await tResp.text()).toBeTruthy();
-        const { teilnehmerId } = await tResp.json();
+        teilnehmerIds.push((await tResp.json()).teilnehmerId);
+    }
+    for (const teilnehmerId of teilnehmerIds) {
         const r = await request.post('/api/pools/verschieben', { data: { teilnehmerId, zielPoolId: poolId } });
         expect(r.ok(), await r.text()).toBeTruthy();
     }

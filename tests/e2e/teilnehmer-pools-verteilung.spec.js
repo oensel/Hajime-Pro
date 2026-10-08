@@ -334,6 +334,10 @@ test.describe.serial('Pool-Verteilung nach Alters-/Gewichtsklasse und Wettkampfs
         await expect(generateBtn).toBeVisible();
         await generateBtn.click();
 
+        // Altersklassen-Auswahl (Waage in Runden): alle angebotenen Klassen bleiben angehakt.
+        await expect(page.locator('#altersklassenDialog')).toBeVisible();
+        await page.locator('#altersklassenBestaetigen').click();
+
         // Da bereits alle Teilnehmer kampfbereit sind, entfällt die Warnung vor nicht
         // kampfbereiten Teilnehmern (siehe warneVorNichtKampfbereitenTeilnehmern in pools.js) — nur
         // die zweite, immer erscheinende Bestätigung ("Waage schließen & Auslosen") muss bestätigt
@@ -682,7 +686,7 @@ test.describe.serial('Pool-Verteilung nach Alters-/Gewichtsklasse und Wettkampfs
         await page.locator('#aufteilenBtn').click();
         await expect(page.locator('#customConfirmModal')).toBeVisible();
         await page.locator('#modalConfirmBtn').click();
-        await expect(page.locator('#snackbarText')).toHaveText('Pools erfolgreich auf Kampfflächen aufgeteilt.');
+        await expect(page.locator('#snackbarText')).toHaveText(/^9 Pools erfolgreich auf Kampfflächen aufgeteilt\.$/);
 
         const daten = await holeKampfflaechenMitPools();
         expect(daten.unzugeordnet).toHaveLength(0);
