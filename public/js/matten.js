@@ -536,38 +536,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     // modus 'neue': nur Pools ohne Matte werden an die bestehenden Zuordnungen angehängt (Waage in
     // Runden); 'alle': Zuordnungen aller Pools ohne begonnene Kämpfe verwerfen und neu verteilen.
     async function fuehreAufteilenAus(modus, knopf, knopfHtml) {
-        {
-            try {
-                knopf.setAttribute('disabled', 'true');
-                knopf.innerHTML = `<span class="material-icons icon-spin">sync</span>`;
-                if (window.zeigeLadeModal) window.zeigeLadeModal('Pools werden aufgeteilt…');
+        try {
+            knopf.setAttribute('disabled', 'true');
+            knopf.innerHTML = `<span class="material-icons icon-spin">sync</span>`;
+            if (window.zeigeLadeModal) window.zeigeLadeModal('Pools werden aufgeteilt…');
 
-                const response = await fetch('/api/pools/aufteilen', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ turnierId: parseInt(turnierId, 10), modus })
-                });
+            const response = await fetch('/api/pools/aufteilen', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ turnierId: parseInt(turnierId, 10), modus })
+            });
 
-                const result = await response.json();
-                if (result.success) {
-                    zeigeNotification(result.message || 'Pools erfolgreich auf Kampfflächen verteilt.', 'success');
-                    await ladeDaten();
+            const result = await response.json();
+            if (result.success) {
+                zeigeNotification(result.message || 'Pools erfolgreich auf Kampfflächen verteilt.', 'success');
+                await ladeDaten();
 
-                    // Kampf-Menüpunkt live neu bewerten: durch die automatische Verteilung
-                    // könnten Matten gerade ihre ersten Pools erhalten haben.
-                    if (window.hajimeAktualisiereMenueSperren) {
-                        window.hajimeAktualisiereMenueSperren(['kampf']);
-                    }
-                } else {
-                    zeigeNotification(result.error || 'Fehler beim Aufteilen.', result.keineNeuenPools ? 'info' : 'error');
+                // Kampf-Menüpunkt live neu bewerten: durch die automatische Verteilung
+                // könnten Matten gerade ihre ersten Pools erhalten haben.
+                if (window.hajimeAktualisiereMenueSperren) {
+                    window.hajimeAktualisiereMenueSperren(['kampf']);
                 }
-            } catch (err) {
-                zeigeNotification('Netzwerkfehler beim Aufteilen.', 'error');
-            } finally {
-                knopf.removeAttribute('disabled');
-                knopf.innerHTML = knopfHtml;
-                if (window.versteckeLadeModal) window.versteckeLadeModal();
+            } else {
+                zeigeNotification(result.error || 'Fehler beim Aufteilen.', result.keineNeuenPools ? 'info' : 'error');
             }
+        } catch (err) {
+            zeigeNotification('Netzwerkfehler beim Aufteilen.', 'error');
+        } finally {
+            knopf.removeAttribute('disabled');
+            knopf.innerHTML = knopfHtml;
+            if (window.versteckeLadeModal) window.versteckeLadeModal();
         }
     }
 

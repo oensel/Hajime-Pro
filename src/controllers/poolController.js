@@ -440,6 +440,17 @@ export async function turnierHatEchteKaempfe(knex, turnierId) {
     return Boolean(kampf);
 }
 
+// Mannschaften sind erst gesperrt (Teams und Mitglieder nicht mehr änderbar), wenn ein Mannschafts-Pool
+// des Turniers echte Kämpfe hatte — Einzelkämpfe anderer Pools sperren sie nicht.
+export async function mannschaftsPoolsHabenEchteKaempfe(knex, turnierId) {
+    const kampf = await knex('kaempfe')
+        .join('pools', 'pools.id', 'kaempfe.pool_id')
+        .where({ 'pools.turnier_id': turnierId, 'pools.typ': 'mannschaft' })
+        .whereIn('kaempfe.status', ['gestartet', 'beendet'])
+        .first('kaempfe.id');
+    return Boolean(kampf);
+}
+
 // Waage in Runden: Zustand je Altersklasse aus den Einzel-Pools abgeleitet.
 // ausgelost = es gibt einen Einzel-Pool dieser Altersklasse mit Teilnehmern, gesperrt = einer davon hat echte Kämpfe.
 export async function ermittleAltersklassenPoolZustand(knex, turnierId) {
@@ -1007,7 +1018,8 @@ export async function pruefeTeilnehmerlisteGesperrt(knex, req, res) {
         return res.json({
             gesperrt: gesperrteAltersklassen.length > 0,
             gesperrteAltersklassen,
-            ausgelosteAltersklassen
+            ausgelosteAltersklassen,
+            mannschaftenGesperrt: await mannschaftsPoolsHabenEchteKaempfe(knex, turnierId)
         });
     } catch (error) {
         return res.status(500).json({ success: false, error: error.message });

@@ -132,7 +132,8 @@ export async function beantworteClientAnfrage({ methode, pfad, query = {}, body 
         // ermittleAltersklassenPoolZustand); `gesperrt` bleibt als Alias für ältere Clients.
         if (pfad === '/pools/vorhanden') {
             const docs = await dokumenteNachTyp(db);
-            const pools = (docs.pool || []).filter(p => String(p.turnier_id) === String(query.turnierId) && p.typ !== 'mannschaft');
+            const turnierPools = (docs.pool || []).filter(p => String(p.turnier_id) === String(query.turnierId));
+            const pools = turnierPools.filter(p => p.typ !== 'mannschaft');
             // Wie ermittleAltersklassenPoolZustand: "ausgelost" erst mit mindestens einem Teilnehmer im Pool.
             const poolIdsMitTeilnehmern = new Set((docs.teilnehmer || []).filter(t => t.pool_id != null).map(t => String(t.pool_id)));
             const poolIdsMitEchtenKaempfen = new Set((docs.kampf || [])
@@ -145,7 +146,9 @@ export async function beantworteClientAnfrage({ methode, pfad, query = {}, body 
                 if (poolIdsMitTeilnehmern.has(String(pool.id))) ausgelost.add(pool.altersklasse);
                 if (poolIdsMitEchtenKaempfen.has(String(pool.id))) gesperrt.add(pool.altersklasse);
             }
+            const mannschaftsPoolIds = new Set(turnierPools.filter(p => p.typ === 'mannschaft').map(p => String(p.id)));
             return ok({
+                mannschaftenGesperrt: [...mannschaftsPoolIds].some(id => poolIdsMitEchtenKaempfen.has(id)),
                 gesperrt: gesperrt.size > 0,
                 gesperrteAltersklassen: [...gesperrt].sort(),
                 ausgelosteAltersklassen: [...ausgelost].sort()

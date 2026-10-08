@@ -2,7 +2,7 @@ import { readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { resolveUserVereinName, hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
-import { turnierHatEchteKaempfe, poolHatBereitsEchteKaempfe, regeneriereMannschaftsPool, ermittleGoldenScoreEinstellungen } from './poolController.js';
+import { mannschaftsPoolsHabenEchteKaempfe, poolHatBereitsEchteKaempfe, regeneriereMannschaftsPool, ermittleGoldenScoreEinstellungen } from './poolController.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 const { istEinzelbenutzerBetrieb } = betriebsmodus;
 
@@ -14,7 +14,7 @@ const DJB_ALTERSKLASSEN = JSON.parse(readFileSync(path.join(__dirname, '../confi
 // requireTournamentEditAccess auf den Mannschafts-Routen): Mitglieder des ausrichtenden
 // Vereins dürfen alles, Gastvereine dürfen ausschließlich ihre eigene Mannschaft anlegen/
 // pflegen — ein Gastverein braucht sonst keine Bearbeitungsrechte auf das gesamte Turnier.
-const TEILNEHMERLISTE_GESPERRT_FEHLER = 'Mannschaften können nicht mehr geändert werden, da für dieses Turnier bereits Kämpfe stattgefunden haben.';
+const TEILNEHMERLISTE_GESPERRT_FEHLER = 'Mannschaften können nicht mehr geändert werden, da für dieses Turnier bereits Mannschaftskämpfe stattgefunden haben.';
 
 // Ordnet ein Gewicht der passenden Gewichtsklassen-Position EINES KONKRETEN POOLS zu (kleinste
 // "-X"-Position, die das Gewicht noch aufnimmt, sonst die "+X"-Schwergewichts-Position) — anders
@@ -80,7 +80,7 @@ export async function createMannschaft(knex, req, res) {
             return res.status(404).json({ success: false, error: 'Turnier nicht gefunden.' });
         }
 
-        const hatEchteKaempfe = await turnierHatEchteKaempfe(knex, turnier.id);
+        const hatEchteKaempfe = await mannschaftsPoolsHabenEchteKaempfe(knex, turnier.id);
         if (hatEchteKaempfe) {
             return res.status(409).json({ success: false, error: TEILNEHMERLISTE_GESPERRT_FEHLER });
         }
@@ -239,7 +239,7 @@ export async function deleteMannschaft(knex, req, res) {
         const zugriff = await pruefeMannschaftZugriff(knex, req, mannschaft);
         if (!zugriff.erlaubt) return res.status(zugriff.status).json({ success: false, error: zugriff.error });
 
-        const hatEchteKaempfe = await turnierHatEchteKaempfe(knex, mannschaft.turnier_id);
+        const hatEchteKaempfe = await mannschaftsPoolsHabenEchteKaempfe(knex, mannschaft.turnier_id);
         if (hatEchteKaempfe) {
             return res.status(409).json({ success: false, error: TEILNEHMERLISTE_GESPERRT_FEHLER });
         }
@@ -471,7 +471,7 @@ export async function verteileMannschaftenAutomatisch(knex, req, res) {
             return res.status(404).json({ success: false, error: 'Turnier nicht gefunden.' });
         }
 
-        const hatEchteKaempfe = await turnierHatEchteKaempfe(knex, turnier.id);
+        const hatEchteKaempfe = await mannschaftsPoolsHabenEchteKaempfe(knex, turnier.id);
         if (hatEchteKaempfe) {
             return res.status(409).json({ success: false, error: TEILNEHMERLISTE_GESPERRT_FEHLER });
         }

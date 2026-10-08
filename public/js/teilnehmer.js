@@ -68,7 +68,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // eine Altersklasse gesperrt (Alias wie in /api/pools/vorhanden).
     let teilnehmerlisteGesperrt = false;
     let gesperrteAltersklassen = new Set();
-    const istTeilnehmerGesperrt = (athlet) => gesperrteAltersklassen.has(athlet.altersklasse);
+    // Mannschaftsmitglieder sind erst gesperrt, wenn ein Mannschafts-Pool echte Kämpfe hatte (wie am Server).
+    let mannschaftenGesperrt = false;
+    const istTeilnehmerGesperrt = (athlet) => gesperrteAltersklassen.has(athlet.altersklasse)
+        || (mannschaftenGesperrt && teamInfoByTeilnehmerId.has(athlet.id));
 
     async function pruefeTeilnehmerlisteSperre() {
         try {
@@ -77,15 +80,19 @@ document.addEventListener('DOMContentLoaded', async () => {
             const data = await resp.json();
             // Ältere Server liefern nur `gesperrt` (turnierweit).
             gesperrteAltersklassen = new Set(Array.isArray(data.gesperrteAltersklassen) ? data.gesperrteAltersklassen : []);
-            teilnehmerlisteGesperrt = gesperrteAltersklassen.size > 0 || !!data.gesperrt;
+            mannschaftenGesperrt = !!data.mannschaftenGesperrt;
+            teilnehmerlisteGesperrt = gesperrteAltersklassen.size > 0 || !!data.gesperrt || mannschaftenGesperrt;
 
             const banner = document.getElementById('teilnehmerGesperrtBanner');
             const link = document.getElementById('teilnehmerGesperrtPoolsLink');
             const klassenText = document.getElementById('teilnehmerGesperrtKlassen');
             if (link) link.href = `/pools.html?turnierId=${turnierId}`;
             if (klassenText) {
-                klassenText.textContent = gesperrteAltersklassen.size > 0
-                    ? `Gesperrt (Kämpfe haben begonnen): ${[...gesperrteAltersklassen].join(', ')}. Die übrigen Altersklassen lassen sich weiter bearbeiten.`
+                const teile = [];
+                if (gesperrteAltersklassen.size > 0) teile.push(`Gesperrt (Kämpfe haben begonnen): ${[...gesperrteAltersklassen].join(', ')}.`);
+                if (mannschaftenGesperrt) teile.push('Mannschaftsmitglieder sind gesperrt, da Mannschaftskämpfe begonnen haben.');
+                klassenText.textContent = teile.length > 0
+                    ? `${teile.join(' ')} Die übrigen Teilnehmer lassen sich weiter bearbeiten.`
                     : 'Die Teilnehmerliste ist gesperrt, da für dieses Turnier bereits Kämpfe stattgefunden haben.';
             }
             if (banner) banner.style.display = teilnehmerlisteGesperrt ? 'flex' : 'none';

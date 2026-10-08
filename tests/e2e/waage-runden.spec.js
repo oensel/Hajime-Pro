@@ -135,6 +135,14 @@ test.describe.serial('Waage in Runden', () => {
         const vorhanden = await (await request.get(`/api/pools/vorhanden?turnierId=${turnierId}`)).json();
         expect(vorhanden.gesperrteAltersklassen).toEqual(['U11']);
         expect(vorhanden.gesperrt).toBe(true);
+        expect(vorhanden.mannschaftenGesperrt).toBe(false);
+    });
+
+    test('Laufende Einzelkämpfe sperren Mannschaften nicht (erst ein laufender Mannschafts-Pool)', async ({ request }) => {
+        const resp = await request.post('/api/mannschaften', {
+            data: { turnier_id: turnierId, bezeichnung: 'Team Runden', verein: 'JC Runden' }
+        });
+        expect(resp.status(), await resp.text()).toBe(201);
     });
 
     test('Teilnehmer gesperrter Klassen sind gesperrt, offene Klassen bleiben bearbeitbar', async ({ request }) => {

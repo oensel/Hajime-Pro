@@ -22,7 +22,7 @@ auf die Matten kommen und kämpfen, während die Waage für die übrigen Altersk
 
 - Nachzügler in eine bereits ausgeloste Altersklasse: gibt es fachlich nicht (die Altersklasse ist nach der
   Waage abgeschlossen). Das Generieren und das Anmelden weisen sie ab.
-- Mannschaften: ihre Sperre (`mannschaftController.js`) und die manuelle Pool-Anlage bleiben unverändert.
+- Mannschaften: die manuelle Pool-Anlage bleibt unverändert; ihre Sperre hängt nur an laufenden Mannschafts-Pools.
 - Neue Datenbankspalten: der Zustand einer Altersklasse wird aus den Pools abgeleitet.
 
 ## Begriffe
@@ -89,7 +89,7 @@ Daten, ruft sie auf und schreibt das Ergebnis.
   ist (erste Runde: Ergebnis wie heute).
 - **Modus `alle`** („Alle neu verteilen“, eigener Knopf mit Rückfrage): wie das bisherige `verteilePools`;
   Pools mit echten Kämpfen bleiben unberührt.
-- `POST /api/pools/verteilen` bekommt `modus: 'neue' | 'alle'` (Standard `neue`).
+- `POST /api/pools/aufteilen` bekommt `modus: 'neue' | 'alle'` (Standard `neue`).
 - Danach wie bisher: `planeKaempfeFuerKampfflaeche`, `aktualisierePoolStatusNachAuslosung`,
   `synchronisiereMattenStatus` für die betroffenen Matten.
 
@@ -111,7 +111,8 @@ Heute sperrt `turnierHatEchteKaempfe` die gesamte Teilnehmerliste ab dem ersten 
 - `teilnehmer.js`: Banner nennt die gesperrten Altersklassen; Bearbeiten-, Wiegen- und Lösch-Aktionen nur für
   deren Teilnehmer deaktivieren. Client-Geräte: `src/shared/clientAntworten.js` (Berechnung von `gesperrt`
   aus den Dokumenten) auf dieselbe Struktur umstellen.
-- Mannschaften (`mannschaftController.js`) behalten die turnierweite Sperre.
+- Mannschaften (`mannschaftController.js`) und Mannschaftsmitglieder sind erst gesperrt, wenn ein Mannschafts-Pool
+  des Turniers echte Kämpfe hatte (`mannschaftsPoolsHabenEchteKaempfe`); Einzelkämpfe sperren sie nicht.
 
 ### 4. Abgrenzung und Sicherheitsnetz
 

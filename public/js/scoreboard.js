@@ -213,7 +213,7 @@ function playHorn() {
 }
 
 // Signalton "dingding" (public/sounds/dingding.mp3) am Kampftisch: Ende der regulären Kampfzeit, Ende des Golden Score
-// und Ippon durch Haltegriff (Osaekomi). Alle anderen Entscheidungen behalten die Hupe (playHorn). Nur in der
+// und Ippon durch Haltegriff (Osaekomi). Ein direkt vergebener Ippon bleibt ohne Ton, alle anderen Entscheidungen behalten die Hupe (playHorn). Nur in der
 // Steuerung vorgeladen, die Anzeigetafel braucht den Ton nicht.
 const dingAudio = (typeof Audio !== 'undefined' && document.getElementById('matchDuration'))
     ? Object.assign(new Audio('/sounds/dingding.mp3'), { preload: 'auto' })
