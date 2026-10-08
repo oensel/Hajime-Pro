@@ -33,7 +33,7 @@ test.describe.serial('Datenzugriff im Browser (Dokument-Backend)', () => {
         await ladeModul(page);
         const ergebnis = await page.evaluate((t) => window.Datenzugriff.speichereTeilnehmer(null, {
             turnier_id: t, vorname: 'Paul', nachname: 'Probe', verein: 'JC P', judopass_id: 'PP-1',
-            geburtsjahr: 2009, geschlecht: 'männlich', gewicht: 72, altersklasse: 'U18', gewichtsklasse: '-73kg', gewogen: true
+            geburtsjahr: 2009, geschlecht: 'männlich', gewicht: 72, altersklasse: 'U21', gewichtsklasse: '-81kg', gewogen: true
         }), turnierId);
         expect(ergebnis.ok).toBe(true);
         expect(ergebnis.teilnehmerId).toBeGreaterThan(0);

@@ -168,6 +168,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (drawActionArea) drawActionArea.style.display = 'none';
             if (regenerateActionArea) regenerateActionArea.style.display = 'flex';
+            aktualisiereWeitereRundeKnopf();
 
             // Rendert das HTML-Tabellengerüst (Schnittstelle zu Teil 2)
             const sortierteNachAK = [...pools].sort(vergleichePools);
@@ -657,7 +658,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- AUTOMATISCHE POOL-GENERIERUNG NACH REGLEMENT ---
-    async function fuehrePoolGenerierungAus({ neuGenerieren = false } = {}) {
+    async function fuehrePoolGenerierungAus({ neuGenerieren = false, altersklassen = null } = {}) {
         const button = neuGenerieren ? regeneratePoolsBtn : generatePoolsBtn;
         const urspruenglicherButtonText = button ? button.innerHTML : '';
 
@@ -679,7 +680,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     turnierId: parseInt(turnierId, 10),
-                    neuGenerieren
+                    neuGenerieren,
+                    ...(altersklassen ? { altersklassen } : {})
                 })
             });
 
@@ -688,7 +690,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (result.success) {
                 await ladePools();
                 zeigeNotification(
-                    neuGenerieren ? 'Pools wurden vollständig neu generiert.' : 'Pools erfolgreich generiert und ausgelost!',
+                    neuGenerieren ? 'Pools wurden neu generiert.' : 'Pools erfolgreich generiert und ausgelost!',
                     'success'
                 );
             } else {
@@ -721,49 +723,147 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function warneVorNichtKampfbereitenTeilnehmern() {
-        const nichtBereite = await ermittleNichtKampfbereiteTeilnehmer();
+    async function warneVorNichtKampfbereitenTeilnehmern(altersklassen) {
+        const nichtBereite = (await ermittleNichtKampfbereiteTeilnehmer())
+            .filter(t => !altersklassen || altersklassen.includes(t.altersklasse));
         if (nichtBereite.length === 0) return true;
 
         return zeigeBestaetigung(
-            `${nichtBereite.length} Teilnehmer ${nichtBereite.length === 1 ? 'ist' : 'sind'} noch nicht als kampfbereit bestätigt und daher nicht für die Zuordnung in Pools zugelassen. ${nichtBereite.length === 1 ? 'Dieser wird' : 'Diese werden'} bei der Pool-Bildung ignoriert. Trotzdem fortfahren?`,
+            `${nichtBereite.length} Teilnehmer der gewählten Altersklassen ${nichtBereite.length === 1 ? 'ist' : 'sind'} noch nicht als kampfbereit bestätigt und daher nicht für die Zuordnung in Pools zugelassen. ${nichtBereite.length === 1 ? 'Dieser wird' : 'Diese werden'} bei der Pool-Bildung ignoriert. Trotzdem fortfahren?`,
             'Nicht kampfbereite Teilnehmer',
             'warning'
         );
     }
 
+    // --- WAAGE IN RUNDEN: ALTERSKLASSEN-AUSWAHL ---
+    // Je Altersklasse: Zahlen aus GET /api/pools/altersklassen-status (kampfbereit, angemeldet,
+    // ausgelost, hatEchteKaempfe). Der Server leitet den Zustand aus den Pools ab.
+    async function ladeAltersklassenStatus() {
+        try {
+            const response = await fetch(`/api/pools/altersklassen-status?turnierId=${encodeURIComponent(turnierId)}`);
+            if (!response.ok) return [];
+            const result = await response.json();
+            return Array.isArray(result.altersklassen) ? result.altersklassen : [];
+        } catch (err) {
+            console.error('Fehler beim Laden des Altersklassen-Status:', err);
+            return [];
+        }
+    }
+
+    const istOffeneAltersklasse = (e) => !e.ausgelost && e.kampfbereit >= 1;
+    const istNeuAuslosbareAltersklasse = (e) => e.ausgelost && !e.hatEchteKaempfe;
+
+    const maskiereAttribut = (text) => String(text ?? '').replace(/[&<>"']/g, c => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+
+    function waehleAltersklassen({ titel, hinweis, eintraege, bestaetigenText }) {
+        return new Promise(resolve => {
+            const wrapper = document.createElement('div');
+            wrapper.id = 'altersklassenDialog';
+            wrapper.className = 'modal-wrapper';
+            wrapper.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 10000; display: flex; align-items: center; justify-content: center;';
+
+            const zeilen = eintraege.map((e, i) => `
+                <label class="altersklassen-zeile" style="display: flex; align-items: center; gap: 12px; padding: 8px 4px; cursor: pointer;">
+                    <input type="checkbox" class="altersklassen-checkbox" value="${maskiereAttribut(e.altersklasse)}" id="altersklasseWahl_${i}" checked>
+                    <strong>${maskiereAttribut(e.altersklasse)}</strong>
+                    <span style="color: var(--text-muted);">${e.kampfbereit} eingewogen${e.angemeldet ? `, ${e.angemeldet} noch nicht gewogen` : ''}</span>
+                </label>`).join('');
+
+            wrapper.innerHTML = `
+                <div class="mdc-card" style="width: 95%; max-width: 520px; max-height: 85vh; overflow: auto; padding: 24px; border-radius: 4px; border: 2px solid var(--border); background-color: var(--bg-card);">
+                    <h3 style="margin: 0 0 8px 0;">${maskiereAttribut(titel)}</h3>
+                    <p style="margin: 0 0 12px 0; color: var(--text-muted);">${maskiereAttribut(hinweis)}</p>
+                    <div>${zeilen}</div>
+                    <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px;">
+                        <button type="button" class="btn" id="altersklassenAbbrechen">Abbrechen</button>
+                        <button type="button" class="btn btn-raised" id="altersklassenBestaetigen">${maskiereAttribut(bestaetigenText)}</button>
+                    </div>
+                </div>`;
+            document.body.appendChild(wrapper);
+
+            const schliessen = (wert) => { wrapper.remove(); resolve(wert); };
+            const bestaetigen = wrapper.querySelector('#altersklassenBestaetigen');
+            const boxen = Array.from(wrapper.querySelectorAll('.altersklassen-checkbox'));
+            const aktualisiere = () => { bestaetigen.disabled = !boxen.some(b => b.checked); };
+            boxen.forEach(b => b.addEventListener('change', aktualisiere));
+            wrapper.querySelector('#altersklassenAbbrechen').addEventListener('click', () => schliessen(null));
+            bestaetigen.addEventListener('click', () => schliessen(boxen.filter(b => b.checked).map(b => b.value)));
+        });
+    }
+
+    // Knöpfe "Pools generieren" (vor der Auslosung und als weitere Runde in der Toolbar).
+    async function starteAuslosungDerGewaehltenAltersklassen() {
+        const eintraege = (await ladeAltersklassenStatus()).filter(istOffeneAltersklasse);
+        if (eintraege.length === 0) {
+            zeigeNotification('Keine Altersklasse mit eingewogenen Teilnehmern.', 'warning');
+            return;
+        }
+
+        const gewaehlt = await waehleAltersklassen({
+            titel: 'Pools generieren',
+            hinweis: 'Welche Altersklassen sind fertig gewogen und sollen jetzt ausgelost werden?',
+            eintraege,
+            bestaetigenText: 'Weiter'
+        });
+        if (!gewaehlt) return;
+
+        if (!await warneVorNichtKampfbereitenTeilnehmern(gewaehlt)) return;
+
+        const waageSchliessen = await zeigeBestaetigung(
+            'Waage für die gewählten Altersklassen schließen und auslosen? Die Pools dieser Altersklassen werden berechnet; nicht gewogene Teilnehmer dieser Klassen gelten als nicht erschienen.',
+            'Waage schließen & Auslosen',
+            'lock_clock'
+        );
+        if (!waageSchliessen) return;
+
+        await fuehrePoolGenerierungAus({ neuGenerieren: false, altersklassen: gewaehlt });
+    }
+
     // --- GLOBALER AKKREDITIERUNGS-AUSLOSUNGSTRIGGER ---
     if (generatePoolsBtn) {
-        generatePoolsBtn.addEventListener('click', async () => {
-            const fortfahren = await warneVorNichtKampfbereitenTeilnehmern();
-            if (!fortfahren) return;
+        generatePoolsBtn.addEventListener('click', starteAuslosungDerGewaehltenAltersklassen);
+    }
+    const generateMorePoolsBtn = document.getElementById('generateMorePoolsBtn');
+    if (generateMorePoolsBtn) {
+        generateMorePoolsBtn.addEventListener('click', starteAuslosungDerGewaehltenAltersklassen);
+    }
 
-            const waageSchliessen = await zeigeBestaetigung(
-                'Sind alle Teilnehmer gewogen und registriert? Die Waage wird hiermit geschlossen und die Pools werden unwiderruflich berechnet.',
-                'Waage schließen & Auslosen',
-                'lock_clock'
-            );
-
-            if (!waageSchliessen) return;
-
-            await fuehrePoolGenerierungAus({ neuGenerieren: false });
-        });
+    // Weitere Runde: der Toolbar-Knopf erscheint, solange eine Altersklasse mit Eingewogenen
+    // noch nicht ausgelost ist.
+    async function aktualisiereWeitereRundeKnopf() {
+        if (!generateMorePoolsBtn) return;
+        const offen = (await ladeAltersklassenStatus()).some(istOffeneAltersklasse);
+        generateMorePoolsBtn.style.display = offen ? '' : 'none';
     }
 
     if (regeneratePoolsBtn) {
         regeneratePoolsBtn.addEventListener('click', async () => {
-            const fortfahren = await warneVorNichtKampfbereitenTeilnehmern();
-            if (!fortfahren) return;
+            const eintraege = (await ladeAltersklassenStatus()).filter(istNeuAuslosbareAltersklasse);
+            if (eintraege.length === 0) {
+                zeigeNotification('Keine Altersklasse kann neu generiert werden (alle haben bereits echte Kämpfe).', 'warning');
+                return;
+            }
+
+            const gewaehlt = await waehleAltersklassen({
+                titel: 'Pools neu generieren',
+                hinweis: 'Für welche Altersklassen sollen die Pools verworfen und neu ausgelost werden? Nur Altersklassen ohne echte Kämpfe stehen zur Wahl.',
+                eintraege,
+                bestaetigenText: 'Weiter'
+            });
+            if (!gewaehlt) return;
+
+            if (!await warneVorNichtKampfbereitenTeilnehmern(gewaehlt)) return;
 
             const bestaetigt = await zeigeBestaetigung(
-                'Wollen Sie wirklich alle Pools neu generieren?',
+                'Wollen Sie die Pools der gewählten Altersklassen wirklich neu generieren?',
                 'Pools neu generieren',
                 'restart_alt'
             );
-
             if (!bestaetigt) return;
 
-            await fuehrePoolGenerierungAus({ neuGenerieren: true });
+            await fuehrePoolGenerierungAus({ neuGenerieren: true, altersklassen: gewaehlt });
         });
     }
 
@@ -1683,7 +1783,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // matteId = Kampfflächen-ID (nur diese Matte) oder 'alle' (alle Matten nacheinander).
         // Nicht auf einer Matte eingeplante Pools werden nie gedruckt; jede Seite trägt oben
         // rechts den Namen ihrer Matte.
-        async function druckePools(matteId) {
+        // klassen (optional, Schlüssel "<Altersklasse>|<Geschlecht>"): nur diese Klassen drucken.
+        async function druckePools(matteId, klassen = null) {
             try {
 
             const response = await fetch(`/api/pools/details?turnierId=${encodeURIComponent(turnierId)}`);
@@ -1708,6 +1809,7 @@ document.addEventListener('DOMContentLoaded', () => {
             matten.forEach(kf => {
                 pools
                     .filter(p => p.kampfflaeche_id === kf.id)
+                    .filter(p => !klassen || klassen.includes(`${p.altersklasse || ''}|${p.geschlecht || ''}`))
                     .sort((x, y) => (x.matte_reihenfolge ?? 0) - (y.matte_reihenfolge ?? 0))
                     .forEach(pool => druckListe.push({ pool, matteName: kf.bezeichnung }));
             });
@@ -1803,7 +1905,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const druckMatte = urlParams.get('druckMatte');
         if (druckMatte && !druckMatteAusgeloest) {
             druckMatteAusgeloest = true;
-            druckePools(druckMatte);
+            const druckKlassen = urlParams.get('druckKlassen');
+            druckePools(druckMatte, druckKlassen ? druckKlassen.split(',') : null);
         }
 
     }

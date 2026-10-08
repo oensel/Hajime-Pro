@@ -503,7 +503,11 @@ export async function generierePoolsUndPruefeKampflos(page, baseUrl, request, tu
     await expect(page.locator('#generatePoolsBtn')).toBeVisible({ timeout: 15_000 });
     await page.locator('#generatePoolsBtn').click();
 
-    // "Sind alle Teilnehmer gewogen und registriert? ..." (kein vorheriger Warn-Dialog, da alle
+    // Altersklassen-Auswahl (Waage in Runden): alle angebotenen Klassen bleiben angehakt.
+    await expect(page.locator('#altersklassenDialog')).toBeVisible();
+    await page.locator('#altersklassenBestaetigen').click();
+
+    // "Waage für die gewählten Altersklassen schließen und auslosen? ..." (kein vorheriger Warn-Dialog, da alle
     // 103 Teilnehmer bereits kampfbereit sind, siehe warneVorNichtKampfbereitenTeilnehmern).
     await expect(page.locator('#customConfirmModal')).toBeVisible();
     await page.locator('#modalConfirmBtn').click();

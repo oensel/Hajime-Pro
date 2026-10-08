@@ -4,6 +4,7 @@ import {
     getPool,
     generierePools,
     pruefeTeilnehmerlisteGesperrt,
+    getAltersklassenStatus,
     getPoolsMitDetails,
     verschiebeTeilnehmer,
     updatePoolStammdaten,
@@ -41,6 +42,7 @@ export function getPoolRoutes(knex) {
     router.post('/aufteilen', requireTournamentEditAccess(knex), aktiv, (req, res) => verteilePools(knex, req, res));
     router.post('/kaempfe-anordnen', requireTournamentEditAccess(knex), aktiv, (req, res) => planeKaempfe(knex, req, res));
     router.get('/details', requireTournamentEditAccess(knex), (req, res) => getPoolsMitDetails(knex, req, res));
+    router.get('/altersklassen-status', requireTournamentEditAccess(knex), (req, res) => getAltersklassenStatus(knex, req, res));
     router.get('/vorhanden', (req, res) => pruefeTeilnehmerlisteGesperrt(knex, req, res));
     router.post('/verschieben', requireTournamentEditAccess(knex), aktiv, (req, res) => verschiebeTeilnehmer(knex, req, res));
 

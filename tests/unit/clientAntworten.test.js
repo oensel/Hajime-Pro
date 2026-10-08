@@ -60,5 +60,5 @@ test('Nur Lesezugriffe der Client-Seiten: alles andere gibt es nur am Hallen-Ser
     assert.equal((await anfrage('DELETE', '/turniere/1')).status, 403);
     assert.equal((await anfrage('GET', '/kaempfe')).status, 400);
     assert.deepEqual((await anfrage('GET', '/mannschaften')).body, []);
-    assert.deepEqual((await anfrage('GET', '/pools/vorhanden', { query: { turnierId: '1' } })).body, { gesperrt: false });
+    assert.deepEqual((await anfrage('GET', '/pools/vorhanden', { query: { turnierId: '1' } })).body, { mannschaftenGesperrt: false, gesperrt: false, gesperrteAltersklassen: [], ausgelosteAltersklassen: [] });
 });
