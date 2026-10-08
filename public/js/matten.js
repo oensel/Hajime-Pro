@@ -559,7 +559,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         window.hajimeAktualisiereMenueSperren(['kampf']);
                     }
                 } else {
-                    zeigeNotification(result.error || 'Fehler beim Aufteilen.', 'error');
+                    zeigeNotification(result.error || 'Fehler beim Aufteilen.', result.keineNeuenPools ? 'info' : 'error');
                 }
             } catch (err) {
                 zeigeNotification('Netzwerkfehler beim Aufteilen.', 'error');

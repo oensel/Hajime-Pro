@@ -133,14 +133,17 @@ export async function beantworteClientAnfrage({ methode, pfad, query = {}, body 
         if (pfad === '/pools/vorhanden') {
             const docs = await dokumenteNachTyp(db);
             const pools = (docs.pool || []).filter(p => String(p.turnier_id) === String(query.turnierId) && p.typ !== 'mannschaft');
+            // Wie ermittleAltersklassenPoolZustand: "ausgelost" erst mit mindestens einem Teilnehmer im Pool.
+            const poolIdsMitTeilnehmern = new Set((docs.teilnehmer || []).filter(t => t.pool_id != null).map(t => String(t.pool_id)));
+            const poolIdsMitEchtenKaempfen = new Set((docs.kampf || [])
+                .filter(k => ['gestartet', 'beendet'].includes(k.status))
+                .map(k => String(k.pool_id)));
             const ausgelost = new Set();
             const gesperrt = new Set();
             for (const pool of pools) {
                 if (!pool.altersklasse) continue;
-                ausgelost.add(pool.altersklasse);
-                if ((docs.kampf || []).some(k => k.pool_id === pool.id && ['gestartet', 'beendet'].includes(k.status))) {
-                    gesperrt.add(pool.altersklasse);
-                }
+                if (poolIdsMitTeilnehmern.has(String(pool.id))) ausgelost.add(pool.altersklasse);
+                if (poolIdsMitEchtenKaempfen.has(String(pool.id))) gesperrt.add(pool.altersklasse);
             }
             return ok({
                 gesperrt: gesperrt.size > 0,

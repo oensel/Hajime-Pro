@@ -66,6 +66,16 @@ async function istAltersklasseGesperrt(knex, turnierId, altersklasse) {
     return gesperrteAltersklassen.includes(altersklasse);
 }
 
+// Mannschaftsmitglieder behalten die turnierweite Sperre (wie die Mannschaften selbst); alle anderen
+// sind nur gesperrt, wenn ihre eigene Altersklasse echte Kämpfe hat.
+async function istTeilnehmerGesperrt(knex, athlet, hatEchteKaempfe) {
+    if (hatEchteKaempfe) {
+        const mitglied = await knex('mannschaft_mitglieder').where({ turnier_teilnehmer_id: athlet.id }).first();
+        if (mitglied) return true;
+    }
+    return istAltersklasseGesperrt(knex, athlet.turnier_id, athlet.altersklasse);
+}
+
 async function istAltersklasseAusgelost(knex, turnierId, altersklasse) {
     if (!altersklasse) return false;
     const { ausgelosteAltersklassen } = await ermittleAltersklassenPoolZustand(knex, turnierId);
@@ -323,7 +333,7 @@ export async function deleteTeilnehmer(knex, req, res) {
         const turnier = await knex('turniere').where({ id: athlet.turnier_id }).first();
 
         const hatEchteKaempfe = await turnierHatEchteKaempfe(knex, athlet.turnier_id);
-        if (await istAltersklasseGesperrt(knex, athlet.turnier_id, athlet.altersklasse)) {
+        if (await istTeilnehmerGesperrt(knex, athlet, hatEchteKaempfe)) {
             return res.status(409).json({ success: false, error: ALTERSKLASSE_GESPERRT_FEHLER });
         }
 
@@ -356,7 +366,7 @@ export async function ziehZurueck(knex, req, res) {
         const turnier = await knex('turniere').where({ id: athlet.turnier_id }).first();
 
         const hatEchteKaempfe = await turnierHatEchteKaempfe(knex, athlet.turnier_id);
-        if (await istAltersklasseGesperrt(knex, athlet.turnier_id, athlet.altersklasse)) {
+        if (await istTeilnehmerGesperrt(knex, athlet, hatEchteKaempfe)) {
             return res.status(409).json({ success: false, error: ALTERSKLASSE_GESPERRT_FEHLER });
         }
 
@@ -401,7 +411,7 @@ export async function aktualisiereTeilnehmerDaten(knex, id, daten, kontext) {
     const turnier = await knex('turniere').where({ id: athlet.turnier_id }).first();
 
     const hatEchteKaempfe = await turnierHatEchteKaempfe(knex, athlet.turnier_id);
-    if (await istAltersklasseGesperrt(knex, athlet.turnier_id, athlet.altersklasse)) {
+    if (await istTeilnehmerGesperrt(knex, athlet, hatEchteKaempfe)) {
         throw new FachFehler(409, ALTERSKLASSE_GESPERRT_FEHLER);
     }
     // Wechsel in eine bereits ausgeloste Altersklasse wäre eine Nachmeldung durch die Hintertür.

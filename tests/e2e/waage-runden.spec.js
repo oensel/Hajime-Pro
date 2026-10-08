@@ -39,6 +39,14 @@ test.describe.serial('Waage in Runden', () => {
     const holePools = async (request) => (await (await request.get(`/api/pools/details?turnierId=${turnierId}`)).json());
     const holeStatus = async (request) => (await (await request.get(`/api/pools/altersklassen-status?turnierId=${turnierId}`)).json()).altersklassen;
     const generiere = (request, data) => request.post('/api/pools/generieren', { data: { turnierId, ...data } });
+    const holeKampfIds = async (request, pools) => {
+        const ids = [];
+        for (const p of pools) {
+            const kaempfe = await (await request.get(`/api/kaempfe?poolId=${p.id}`)).json();
+            ids.push(...kaempfe.map(k => k.id));
+        }
+        return ids;
+    };
     const zuordnung = (pools) => Object.fromEntries(pools.map(p => [p.id, [p.kampfflaeche_id, p.matte_reihenfolge]]));
 
     test('Turnier und Teilnehmer der drei Runden anlegen', async ({ request }) => {
@@ -152,11 +160,24 @@ test.describe.serial('Waage in Runden', () => {
 
     test('Runde 2: U15 wird ausgelost, frühere Pools bleiben unverändert', async ({ request }) => {
         const vorher = await holePools(request);
+        const kampfIdsVorher = await holeKampfIds(request, vorher);
         const resp = await generiere(request, { altersklassen: ['U15'] });
         expect(resp.ok(), await resp.text()).toBeTruthy();
 
         const nachher = await holePools(request);
         const neuePools = nachher.filter(p => !vorher.some(v => v.id === p.id));
+
+        // IDs werden fortgesetzt, nie doppelt vergeben: frühere Pool-/Kampf-IDs bleiben, neue liegen dahinter
+        expect(new Set(nachher.map(p => p.id)).size).toBe(nachher.length);
+        const hoechstePoolId = Math.max(...vorher.map(p => p.id));
+        expect(neuePools.every(p => p.id > hoechstePoolId)).toBeTruthy();
+        const kampfIdsNachher = await holeKampfIds(request, nachher);
+        expect(new Set(kampfIdsNachher).size).toBe(kampfIdsNachher.length);
+        for (const id of kampfIdsVorher) expect(kampfIdsNachher).toContain(id);
+        const hoechsteKampfId = Math.max(...kampfIdsVorher);
+        const neueKampfIds = kampfIdsNachher.filter(id => !kampfIdsVorher.includes(id));
+        expect(neueKampfIds.length).toBeGreaterThan(0);
+        expect(neueKampfIds.every(id => id > hoechsteKampfId)).toBeTruthy();
         expect(neuePools.length).toBeGreaterThanOrEqual(1);
         expect(neuePools.every(p => p.altersklasse === 'U15')).toBeTruthy();
         expect(neuePools.every(p => !p.kampfflaeche_id)).toBeTruthy();
@@ -190,6 +211,7 @@ test.describe.serial('Waage in Runden', () => {
         // erneut aufrufen: nichts mehr zu verteilen
         const nochmal = await request.post('/api/pools/aufteilen', { data: { turnierId, modus: 'neue' } });
         expect(nochmal.status()).toBe(400);
+        expect((await nochmal.json()).error).toBe('Es sind keine weiteren Pools zur Verteilung bereit.');
     });
 
     test('Neu-Generieren von U15 (ohne Kämpfe) betrifft nur U15', async ({ request }) => {
