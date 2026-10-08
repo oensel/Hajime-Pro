@@ -212,6 +212,22 @@ function playHorn() {
     } catch(e) { console.log("Audio Fehler:", e); }
 }
 
+// Signalton "dingding" (public/sounds/dingding.mp3) am Kampftisch: Ende der regulären Kampfzeit, Ende des Golden Score
+// und Ippon durch Haltegriff (Osaekomi). Alle anderen Entscheidungen behalten die Hupe (playHorn). Nur in der
+// Steuerung vorgeladen, die Anzeigetafel braucht den Ton nicht.
+const dingAudio = (typeof Audio !== 'undefined' && document.getElementById('matchDuration'))
+    ? Object.assign(new Audio('/sounds/dingding.mp3'), { preload: 'auto' })
+    : null;
+
+function playDing() {
+    if (!dingAudio) return;
+    try {
+        dingAudio.currentTime = 0;
+        const start = dingAudio.play();
+        if (start && start.catch) start.catch((e) => console.log('Audio Fehler:', e));
+    } catch (e) { console.log('Audio Fehler:', e); }
+}
+
 // manuell = true, wenn die Mattenleitung den Schieber bedient: nur dann wird die Farbe als Überschreibung
 // für diesen Kampf gespeichert (Kampf > Pool > Turnier). Beim Laden eines Kampfes wird nur die
 // wirksame Farbe übernommen.
@@ -323,10 +339,12 @@ function triggerKikenGachiWin(winnerColor) {
     update();
 }
 
-function triggerIpponWin() {
+// durchHaltegriff: Ippon, weil das Osaekomi die Zeit erreicht hat — dann der Signalton statt der Hupe.
+function triggerIpponWin(durchHaltegriff = false) {
     stopAllTimers();
     state.overlayMode = "ippon";
-    playHorn();
+    if (durchHaltegriff) playDing();
+    else playHorn();
     update();
 }
 
@@ -459,11 +477,11 @@ function toggleOsae(color) {
                         state['ippon' + color] = 1;
                         state['waza' + color] = 0;
                         state['yuko' + color] = Math.max(0, state['yuko' + color] - 1);
-                        triggerIpponWin();
+                        triggerIpponWin(true);
                     } else if (osaeTime === 20) {
                         state['ippon' + color] = 1;
                         state['waza' + color] = 0;
-                        triggerIpponWin();
+                        triggerIpponWin(true);
                     }
                 }
                 
@@ -648,7 +666,7 @@ function toggleTimer() {
                     } else {
                         stopAllTimers();
                         state.timeRunning = false;
-                        playHorn();
+                        playDing();
                         
                         // Artikel 13.3b: Golden Score darf ausschließlich bei absolutem Gleichstand
                         // von Ippon, Waza-Ari UND Yuko angeboten werden (Shido zählt hier bewusst
@@ -677,7 +695,7 @@ function toggleTimer() {
                     } else {
                         stopAllTimers();
                         state.timeRunning = false;
-                        playHorn();
+                        playDing();
 
                         let isDraw = (state.ipponW === state.ipponB && state.wazaW === state.wazaB && state.yukoW === state.yukoB);
                         state.overlayMode = isDraw ? "hantei" : "time";

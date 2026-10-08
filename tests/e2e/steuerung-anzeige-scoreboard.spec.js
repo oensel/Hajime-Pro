@@ -66,6 +66,15 @@ test.describe.serial('Steuerung + Anzeigetafel: Scoreboard-Kernfunktionen (steue
         const context = await browser.newContext();
         kaempfeDB = [];
 
+        // Signalton zählen statt abspielen (Zähler pro Seite in window.__dingCount)
+        await context.addInitScript(() => {
+            window.__dingCount = 0;
+            HTMLMediaElement.prototype.play = function () {
+                if (String(this.currentSrc || this.src).includes('dingding')) window.__dingCount++;
+                return Promise.resolve();
+            };
+        });
+
         await context.route('**/api/kampfflaechen*', async route => {
             await route.fulfill({ json: [{ id: MAT_ID, bezeichnung: 'Testmatte 1' }] });
         });
@@ -346,6 +355,42 @@ test.describe.serial('Steuerung + Anzeigetafel: Scoreboard-Kernfunktionen (steue
         await steuerungPage.locator('#btnErgebnisSendenLive').click();
         await expect(steuerungPage.locator('#btnNaechsterKampfLive')).toBeVisible();
         expect(kaempfeDB.find(k => k.id === 6).status).toBe('beendet');
+    });
+
+    test('Signalton "dingding": Ende der Kampfzeit und Ippon durch Haltegriff, nicht bei manuellem Ippon', async () => {
+        const dings = () => steuerungPage.evaluate(() => window.__dingCount);
+
+        // Ippon durch Haltegriff (20 s Osaekomi), manueller Ippon bleibt ohne dingding
+        kaempfeDB.push(baueKampf(21, { pool_bezeichnung: 'Ton -60kg', pool_kampfzeit: 240 }));
+        await steuerungPage.locator('#btnNaechsterKampfLive').click();
+        await expect(steuerungPage.locator('#nameW')).toHaveValue('Fighter21A, Weiss');
+        const start = await dings();
+
+        await steuerungPage.evaluate(() => window.changeScore('W', 'ippon', 1));
+        await expect(anzeigePage.locator('#bannerW')).toHaveClass(/active/);
+        expect(await dings()).toBe(start);
+        await steuerungPage.evaluate(() => window.changeScore('W', 'ippon', -1));
+        await expect(anzeigePage.locator('#bannerW')).not.toHaveClass(/active/);
+
+        await steuerungPage.locator('#btnStartStopLive').click();
+        await steuerungPage.evaluate(() => window.toggleOsae('W'));
+        await steuerungPage.clock.runFor(21_000);
+        await expect(anzeigePage.locator('#bannerW')).toHaveText('IPPON');
+        expect(await dings()).toBe(start + 1);
+        await steuerungPage.locator('#btnErgebnisSendenLive').click();
+        await expect(steuerungPage.locator('#btnNaechsterKampfLive')).toBeVisible();
+
+        // Ende der regulären Kampfzeit
+        kaempfeDB.push(baueKampf(22, { pool_bezeichnung: 'Ton -60kg', pool_kampfzeit: 2 }));
+        await steuerungPage.locator('#btnNaechsterKampfLive').click();
+        await expect(steuerungPage.locator('#nameW')).toHaveValue('Fighter22A, Weiss');
+        await steuerungPage.evaluate(() => window.changeScore('W', 'yuko', 1));
+        await steuerungPage.locator('#btnStartStopLive').click();
+        await steuerungPage.clock.fastForward(2500);
+        await expect(anzeigePage.locator('#ovTime')).toBeVisible();
+        expect(await dings()).toBe(start + 2);
+        await steuerungPage.locator('#btnErgebnisSendenLive').click();
+        await expect(steuerungPage.locator('#btnNaechsterKampfLive')).toBeVisible();
     });
 
     test('1.-2. medizinische Versorgung zeigt Kreuzsymbole, die 3. beendet den Kampf durch Kiken-gachi', async () => {
