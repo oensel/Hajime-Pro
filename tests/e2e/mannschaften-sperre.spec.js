@@ -81,4 +81,20 @@ test.describe.serial('Mannschaften: Sperre ab dem ersten Mannschaftskampf', () =
         const einzel = await request.delete(`/api/teilnehmer/${einzelStarterId}`);
         expect(einzel.ok(), await einzel.text()).toBeTruthy();
     });
+
+    test('Mitglied mit Einzelstart: Löschen und Gewichtsänderung gesperrt, sonstige Änderungen erlaubt', async ({ request }) => {
+        const id = mitglieder[1];
+        const status = await request.put(`/api/teilnehmer/${id}/status`, { data: { auch_einzelwettkampf: true } });
+        expect(status.ok(), await status.text()).toBeTruthy();
+
+        const loeschen = await request.delete(`/api/teilnehmer/${id}`);
+        expect(loeschen.status()).toBe(409);
+        expect((await loeschen.json()).error).toContain('Mannschaftskämpfe');
+
+        const gewicht = await request.put(`/api/teilnehmer/${id}`, { data: { gewicht: 99 } });
+        expect(gewicht.status()).toBe(409);
+
+        const name = await request.put(`/api/teilnehmer/${id}`, { data: { vorname: 'Umbenannt' } });
+        expect(name.ok(), await name.text()).toBeTruthy();
+    });
 });

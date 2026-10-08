@@ -65,13 +65,31 @@ async function istAltersklasseGesperrt(knex, turnierId, altersklasse) {
     return gesperrteAltersklassen.includes(altersklasse);
 }
 
-// Liefert die Fehlermeldung, warum der Teilnehmer nicht mehr änderbar ist, sonst null. Reine
-// Mannschaftsmitglieder sind gesperrt, sobald ein Mannschafts-Pool des Turniers echte Kämpfe hatte;
-// Einzelstarter (auch mit Mannschaft) nur, wenn ihre eigene Altersklasse echte Kämpfe hat.
-async function ermittleSperrgrund(knex, athlet) {
-    if (!athlet.auch_einzelwettkampf) {
-        const mitglied = await knex('mannschaft_mitglieder').where({ turnier_teilnehmer_id: athlet.id }).first();
-        if (mitglied && await mannschaftsPoolsHabenEchteKaempfe(knex, athlet.turnier_id)) return MANNSCHAFTEN_GESPERRT_FEHLER;
+// Felder, die die Position in der Mannschaft bestimmen (Gewichtsklassen-Zuordnung).
+const MANNSCHAFTS_RELEVANTE_FELDER = ['gewicht', 'gewichtsklasse', 'altersklasse', 'geschlecht', 'geburtsjahr'];
+
+function aendertMannschaftsRelevantes(athlet, aenderung) {
+    return MANNSCHAFTS_RELEVANTE_FELDER.some(feld => {
+        const neu = aenderung[feld];
+        if (neu === undefined || neu === null || neu === '') return false;
+        if (feld === 'gewicht' || feld === 'geburtsjahr') {
+            return parseFloat(String(neu).replace(',', '.')) !== parseFloat(athlet[feld]);
+        }
+        return String(neu) !== String(athlet[feld]);
+    });
+}
+
+// Liefert die Fehlermeldung, warum der Teilnehmer nicht mehr änderbar ist, sonst null.
+// - Mannschaftsmitglieder sind gesperrt, sobald ein Mannschafts-Pool des Turniers echte Kämpfe hatte.
+//   Hat das Mitglied auch einen Einzelstart (auch_einzelwettkampf), bleiben Änderungen ohne Bezug zur
+//   Mannschaft möglich (`aenderung` = geänderte Felder); Löschen und Zurückziehen (ohne `aenderung`)
+//   und Änderungen an Gewicht, Klasse, Geschlecht oder Alter nicht — sie würden die Aufstellung ändern.
+// - Alle Teilnehmer sind gesperrt, wenn ihre eigene Altersklasse echte Kämpfe hat.
+async function ermittleSperrgrund(knex, athlet, aenderung = null) {
+    const mitglied = await knex('mannschaft_mitglieder').where({ turnier_teilnehmer_id: athlet.id }).first();
+    if (mitglied && await mannschaftsPoolsHabenEchteKaempfe(knex, athlet.turnier_id)) {
+        const betrifftMannschaft = !athlet.auch_einzelwettkampf || !aenderung || aendertMannschaftsRelevantes(athlet, aenderung);
+        if (betrifftMannschaft) return MANNSCHAFTEN_GESPERRT_FEHLER;
     }
     return await istAltersklasseGesperrt(knex, athlet.turnier_id, athlet.altersklasse) ? ALTERSKLASSE_GESPERRT_FEHLER : null;
 }
@@ -412,7 +430,7 @@ export async function aktualisiereTeilnehmerDaten(knex, id, daten, kontext) {
     const turnier = await knex('turniere').where({ id: athlet.turnier_id }).first();
 
     const hatEchteKaempfe = await turnierHatEchteKaempfe(knex, athlet.turnier_id);
-    const sperrgrund = await ermittleSperrgrund(knex, athlet);
+    const sperrgrund = await ermittleSperrgrund(knex, athlet, daten);
     if (sperrgrund) {
         throw new FachFehler(409, sperrgrund);
     }

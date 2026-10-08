@@ -70,9 +70,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     let gesperrteAltersklassen = new Set();
     // Mannschaftsmitglieder sind erst gesperrt, wenn ein Mannschafts-Pool echte Kämpfe hatte (wie am Server).
     let mannschaftenGesperrt = false;
-    // (Einzelstarter mit Mannschaft sind davon ausgenommen: für sie zählt nur ihre Altersklasse.)
+    // Einzelstarter mit Mannschaft bleiben bearbeitbar (der Server lehnt nur Änderungen mit Bezug zur
+    // Mannschaft ab), können aber nicht gelöscht werden.
     const istTeilnehmerGesperrt = (athlet) => gesperrteAltersklassen.has(athlet.altersklasse)
         || (mannschaftenGesperrt && !athlet.auch_einzelwettkampf && teamInfoByTeilnehmerId.has(athlet.id));
+    const istLoeschenGesperrt = (athlet) => istTeilnehmerGesperrt(athlet)
+        || (mannschaftenGesperrt && teamInfoByTeilnehmerId.has(athlet.id));
 
     async function pruefeTeilnehmerlisteSperre() {
         try {
@@ -525,7 +528,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             return `
                 <tr${istZurueckgezogen ? ' style="opacity: 0.5;"' : ''}>
                     <td style="text-align: center; vertical-align: middle;">
-                        <input type="checkbox" class="row-checkbox" data-id="${athlet.id}" style="transform: scale(1.2); cursor: pointer;" ${istZurueckgezogen || istTeilnehmerGesperrt(athlet) ? 'disabled' : ''}>
+                        <input type="checkbox" class="row-checkbox" data-id="${athlet.id}" style="transform: scale(1.2); cursor: pointer;" ${istZurueckgezogen || istLoeschenGesperrt(athlet) ? 'disabled' : ''}>
                     </td>
                     <td>
                         <strong>${athlet.nachname}</strong>, ${athlet.vorname}
@@ -562,7 +565,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 <span class="material-icons action-icon" style="color: var(--text-muted); opacity: 0.3; cursor: not-allowed;" title="Gesperrt: Die Kämpfe dieser Altersklasse haben bereits begonnen">lock</span>
                             ` : `
                                 <span class="material-icons action-icon icon-edit" title="Eintrag bearbeiten" onclick="window.oeffneWaageModal(${athlet.id})">edit</span>
-                                <span class="material-icons action-icon icon-delete" data-id="${athlet.id}" data-name="${athlet.vorname} ${athlet.nachname}">delete</span>
+                                ${istLoeschenGesperrt(athlet) ? '' : `<span class="material-icons action-icon icon-delete" data-id="${athlet.id}" data-name="${athlet.vorname} ${athlet.nachname}">delete</span>`}
                             `}
                         </div>
                     </td>

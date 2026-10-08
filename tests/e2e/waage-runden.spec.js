@@ -302,4 +302,27 @@ test.describe.serial('Waage in Runden', () => {
         expect(klassen).not.toContain(abgewaehlt);
         expect(klassen.length).toBe(anzahlKlassen - 1);
     });
+
+    test('Druck: pools.html druckt nur die per druckKlassen gewählten Klassen', async ({ page, request }) => {
+        const pools = (await holePools(request)).filter(p => p.kampfflaeche_id);
+        const gewaehlt = pools[0];
+        const schluessel = `${gewaehlt.altersklasse}|${gewaehlt.geschlecht}`;
+        const andere = pools.filter(p => `${p.altersklasse}|${p.geschlecht}` !== schluessel);
+        expect(andere.length).toBeGreaterThan(0);
+
+        // window.print() ersetzen und den Inhalt des Druckbereichs festhalten
+        await page.addInitScript(() => {
+            window.print = () => { window.__gedruckt = document.getElementById('printArea').innerHTML; };
+        });
+        await page.goto(`/pools.html?turnierId=${turnierId}&druckMatte=alle&druckKlassen=${encodeURIComponent(schluessel)}`);
+        await page.waitForFunction(() => window.__gedruckt !== undefined);
+        const html = await page.evaluate(() => window.__gedruckt);
+
+        for (const p of pools.filter(q => `${q.altersklasse}|${q.geschlecht}` === schluessel)) {
+            expect(html).toContain(p.bezeichnung);
+        }
+        for (const p of andere) {
+            expect(html, `Pool ${p.bezeichnung} dürfte nicht gedruckt werden`).not.toContain(p.bezeichnung);
+        }
+    });
 });
