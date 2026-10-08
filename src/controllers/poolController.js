@@ -1549,6 +1549,36 @@ export async function setzeKampfflaecheReihenfolge(knex, req, res) {
     }
 }
 
+// Kennzahlen aller Pools in zwei Abfragen (statt mehrerer je Pool): Kämpfe je Status gruppiert und
+// Teilnehmer je Pool. `echt` = gestartet/beendet, `offen` = weder beendet noch Freilos.
+async function ladePoolKennzahlen(knex, poolIds) {
+    const kennzahlen = new Map(poolIds.map(id => [id, { gesamt: 0, freilose: 0, offen: 0, echt: 0, teilnehmer: 0 }]));
+    if (poolIds.length === 0) return kennzahlen;
+
+    const kampfZeilen = await knex('kaempfe')
+        .whereIn('pool_id', poolIds)
+        .groupBy('pool_id', 'status')
+        .select('pool_id', 'status')
+        .count({ anzahl: '*' });
+    for (const z of kampfZeilen) {
+        const k = kennzahlen.get(z.pool_id);
+        const anzahl = Number(z.anzahl);
+        k.gesamt += anzahl;
+        if (z.status === 'freilos') k.freilose += anzahl;
+        if (z.status !== 'beendet' && z.status !== 'freilos') k.offen += anzahl;
+        if (z.status === 'gestartet' || z.status === 'beendet') k.echt += anzahl;
+    }
+
+    const teilnehmerZeilen = await knex('turnier_teilnehmer')
+        .whereIn('pool_id', poolIds)
+        .groupBy('pool_id')
+        .select('pool_id')
+        .count({ anzahl: '*' });
+    for (const z of teilnehmerZeilen) kennzahlen.get(z.pool_id).teilnehmer = Number(z.anzahl);
+
+    return kennzahlen;
+}
+
 // Pools automatisch auf Kampfflächen verteilen (Bin Packing, Algorithmus in services/mattenVerteilung.js).
 // modus 'neue' (Standard): nur Pools ohne Matte, an die bestehenden Zuordnungen angehängt (Waage in
 // Runden); modus 'alle': alle Pools ohne echte Kämpfe neu verteilen.
@@ -1576,12 +1606,8 @@ export async function verteilePools(knex, req, res) {
         // stehen (siehe QA-Bericht F4). Ohne diesen Ausschluss wurden sie weiter unten trotzdem
         // erst von ihrer Matte gelöst und danach, weil aus activePools ausgeschlossen, nie wieder
         // zugeordnet — bereits ausgetragene Kämpfe verloren so stillschweigend ihre Matte.
-        const gesperrtePoolIds = new Set();
-        for (const pool of pools) {
-            if (await poolHatBereitsEchteKaempfe(knex, pool.id)) {
-                gesperrtePoolIds.add(pool.id);
-            }
-        }
+        const kennzahlen = await ladePoolKennzahlen(knex, pools.map(p => p.id));
+        const gesperrtePoolIds = new Set(pools.filter(p => kennzahlen.get(p.id).echt > 0).map(p => p.id));
         // Modus 'neue': bereits zugeordnete Pools bleiben unberührt, ihre Restdauer belastet die Matte.
         const verteilbarePools = pools.filter(p => !gesperrtePoolIds.has(p.id)
             && (modus === 'alle' || !p.kampfflaeche_id));
@@ -1594,12 +1620,7 @@ export async function verteilePools(knex, req, res) {
         const bleibendePools = pools.filter(p => p.kampfflaeche_id
             && (modus === 'neue' || gesperrtePoolIds.has(p.id)));
         for (const pool of bleibendePools) {
-            const offeneKaempfe = await knex('kaempfe')
-                .where({ pool_id: pool.id })
-                .whereNotIn('status', ['beendet', 'freilos'])
-                .count({ anzahl: '*' })
-                .first();
-            const dauer = Math.ceil((Number(offeneKaempfe.anzahl) * pool.kampfzeit_sekunden) / 60);
+            const dauer = Math.ceil((kennzahlen.get(pool.id).offen * pool.kampfzeit_sekunden) / 60);
             const last = startLasten[pool.kampfflaeche_id] || { dauer: 0, anzahl: 0 };
             last.dauer += dauer;
             last.anzahl = pool.matte_reihenfolge == null
@@ -1615,15 +1636,10 @@ export async function verteilePools(knex, req, res) {
         // mannschaftsBegegnungEngine.js, läuft bereits bei Team-Zuordnung/Automatisch verteilen).
         const aktivePools = [];
         for (const pool of verteilbarePools) {
-            const kaempfe = await knex('kaempfe').where({ pool_id: pool.id });
-            const freilose = kaempfe.filter(kampf => kampf.status === 'freilos').length;
-            let gesamtKaempfe;
-            if (pool.typ === 'mannschaft') {
-                gesamtKaempfe = Math.max(0, kaempfe.length - freilose);
-            } else {
-                const n = await knex('turnier_teilnehmer').where({ pool_id: pool.id }).count({ anzahl: '*' }).first();
-                gesamtKaempfe = Math.max(0, schaetzeBruttoKaempfe(pool.modus, Number(n.anzahl)) - freilose);
-            }
+            const { gesamt, freilose, teilnehmer } = kennzahlen.get(pool.id);
+            const gesamtKaempfe = pool.typ === 'mannschaft'
+                ? Math.max(0, gesamt - freilose)
+                : Math.max(0, schaetzeBruttoKaempfe(pool.modus, teilnehmer) - freilose);
 
             if (gesamtKaempfe > 0) {
                 pool.gesamt_kaempfe = gesamtKaempfe;

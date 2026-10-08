@@ -111,6 +111,9 @@ Heute sperrt `turnierHatEchteKaempfe` die gesamte Teilnehmerliste ab dem ersten 
 - `teilnehmer.js`: Banner nennt die gesperrten Altersklassen; Bearbeiten-, Wiegen- und Lösch-Aktionen nur für
   deren Teilnehmer deaktivieren. Client-Geräte: `src/shared/clientAntworten.js` (Berechnung von `gesperrt`
   aus den Dokumenten) auf dieselbe Struktur umstellen.
+- Gastvereine melden nur an, solange das Turnier „veröffentlicht“ ist; sobald der erste Kampf läuft, ist die
+  Anmeldung für sie geschlossen (bewusst, auch für noch offene Altersklassen). Nachmeldungen übernimmt der
+  ausrichtende Verein an der Waage.
 - Mannschaften (`mannschaftController.js`) und Mannschaftsmitglieder sind erst gesperrt, wenn ein Mannschafts-Pool
   des Turniers echte Kämpfe hatte (`mannschaftsPoolsHabenEchteKaempfe`); Einzelkämpfe sperren sie nicht.
 

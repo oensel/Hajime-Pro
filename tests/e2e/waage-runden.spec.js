@@ -284,4 +284,22 @@ test.describe.serial('Waage in Runden', () => {
         // der Pool mit begonnenem Kampf bleibt auf seiner Matte
         expect(nachher.find(p => p.id === ersterKampfPoolId).kampfflaeche_id).toBe(mitKampf.kampfflaeche_id);
     });
+    test('Matten-Seite: Beim Drucken lassen sich die Alters-/Geschlechtsklassen auswählen', async ({ page, request }) => {
+        await page.goto(`/matten.html?id=${turnierId}`);
+        await expect(page.locator('#alleDruckenBtn')).toBeEnabled();
+
+        await page.locator('#alleDruckenBtn').click();
+        const boxen = page.locator('.druck-klasse-checkbox');
+        const anzahlKlassen = await boxen.count();
+        expect(anzahlKlassen).toBeGreaterThanOrEqual(2);
+        await boxen.first().uncheck();
+        const abgewaehlt = await boxen.first().getAttribute('value');
+
+        await page.locator('#druckKlassenDrucken').click();
+        const rahmenUrl = await page.locator('iframe[aria-hidden="true"]').getAttribute('src');
+        expect(rahmenUrl).toContain('druckMatte=alle');
+        const klassen = decodeURIComponent(new URL(rahmenUrl, 'http://x').searchParams.get('druckKlassen')).split(',');
+        expect(klassen).not.toContain(abgewaehlt);
+        expect(klassen.length).toBe(anzahlKlassen - 1);
+    });
 });

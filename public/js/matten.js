@@ -155,14 +155,79 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    function oeffneDruck(matteId) {
+    // klassen (optional): Liste von Klassen-Schlüsseln "<Altersklasse>|<Geschlecht>"; ohne Angabe
+    // werden alle Pools der Matte gedruckt.
+    function oeffneDruck(matteId, klassen = null) {
         entferneDruckRahmen();
         druckRahmen = document.createElement('iframe');
         druckRahmen.setAttribute('aria-hidden', 'true');
         // Außerhalb des sichtbaren Bereichs, aber mit echter Größe, damit der Druck sauber layoutet
         druckRahmen.style.cssText = 'position: fixed; left: -10000px; top: 0; width: 1100px; height: 800px; border: 0;';
-        druckRahmen.src = `/pools.html?turnierId=${encodeURIComponent(turnierId)}&druckMatte=${encodeURIComponent(matteId)}`;
+        const klassenParam = klassen ? `&druckKlassen=${encodeURIComponent(klassen.join(','))}` : '';
+        druckRahmen.src = `/pools.html?turnierId=${encodeURIComponent(turnierId)}&druckMatte=${encodeURIComponent(matteId)}${klassenParam}`;
         document.body.appendChild(druckRahmen);
+    }
+
+    // Alters-/Geschlechtsklassen der Pools auf einer Matte ('alle': aller Matten), je mit Anzahl Pools.
+    function sammleDruckKlassen(matteId) {
+        const karten = matteId === 'alle'
+            ? mattenContainer.querySelectorAll('.matte-drop-zone .pool-card')
+            : mattenContainer.querySelectorAll(`.matte-drop-zone[data-kampflaeche-id="${matteId}"] .pool-card`);
+        const klassen = new Map();
+        karten.forEach(karte => {
+            const altersklasse = karte.getAttribute('data-altersklasse') || '';
+            const geschlecht = karte.getAttribute('data-geschlecht') || '';
+            const schluessel = `${altersklasse}|${geschlecht}`;
+            const eintrag = klassen.get(schluessel) || { schluessel, altersklasse, geschlecht, pools: 0 };
+            eintrag.pools++;
+            klassen.set(schluessel, eintrag);
+        });
+        return [...klassen.values()].sort((a, b) =>
+            a.altersklasse.localeCompare(b.altersklasse, 'de', { numeric: true }) || a.geschlecht.localeCompare(b.geschlecht, 'de'));
+    }
+
+    function waehleDruckKlassen(klassen, titel) {
+        return new Promise(resolve => {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'modal-wrapper';
+            wrapper.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 10000; display: flex; align-items: center; justify-content: center;';
+            const zeilen = klassen.map(k => `
+                <label style="display: flex; align-items: center; gap: 12px; padding: 8px 4px; cursor: pointer;">
+                    <input type="checkbox" class="druck-klasse-checkbox" value="${escapeHtml(k.schluessel)}" checked>
+                    <strong>${escapeHtml(k.altersklasse)} ${escapeHtml(k.geschlecht)}</strong>
+                    <span style="color: var(--text-muted);">${k.pools} ${k.pools === 1 ? 'Pool' : 'Pools'}</span>
+                </label>`).join('');
+            wrapper.innerHTML = `
+                <div class="mdc-card" style="width: 95%; max-width: 480px; max-height: 85vh; overflow: auto; padding: 24px; border-radius: 4px; border: 2px solid var(--border); background-color: var(--bg-card);">
+                    <h3 style="margin: 0 0 8px 0;">${escapeHtml(titel)}</h3>
+                    <p style="margin: 0 0 12px 0; color: var(--text-muted);">Welche Alters-/Geschlechtsklassen sollen gedruckt werden?</p>
+                    <div>${zeilen}</div>
+                    <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px;">
+                        <button type="button" class="btn" id="druckKlassenAbbrechen">Abbrechen</button>
+                        <button type="button" class="btn btn-raised" id="druckKlassenDrucken">Drucken</button>
+                    </div>
+                </div>`;
+            document.body.appendChild(wrapper);
+
+            const schliessen = (wert) => { wrapper.remove(); resolve(wert); };
+            const boxen = Array.from(wrapper.querySelectorAll('.druck-klasse-checkbox'));
+            const drucken = wrapper.querySelector('#druckKlassenDrucken');
+            boxen.forEach(b => b.addEventListener('change', () => { drucken.disabled = !boxen.some(x => x.checked); }));
+            wrapper.querySelector('#druckKlassenAbbrechen').addEventListener('click', () => schliessen(null));
+            drucken.addEventListener('click', () => schliessen(boxen.filter(b => b.checked).map(b => b.value)));
+        });
+    }
+
+    // Bei mehreren Klassen fragt der Dialog nach, welche gedruckt werden; mit nur einer Klasse wird
+    // direkt gedruckt.
+    async function starteDruck(matteId, titel) {
+        const klassen = sammleDruckKlassen(matteId);
+        if (klassen.length <= 1) {
+            oeffneDruck(matteId);
+            return;
+        }
+        const gewaehlt = await waehleDruckKlassen(klassen, titel);
+        if (gewaehlt) oeffneDruck(matteId, gewaehlt);
     }
 
     window.addEventListener('message', (e) => {
@@ -181,7 +246,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (nichtZugeordnet > 0) {
                 zeigeNotification(`${nichtZugeordnet} Pool(s) ohne Matte werden nicht gedruckt.`, 'info');
             }
-            oeffneDruck('alle');
+            starteDruck('alle', 'Alle Pools drucken');
         });
     }
 
@@ -272,7 +337,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         return `
-            <div class="pool-card" draggable="true" data-pool-id="${pool.id}" data-dauer-minuten="${dauer}">
+            <div class="pool-card" draggable="true" data-pool-id="${pool.id}" data-dauer-minuten="${dauer}" data-altersklasse="${escapeHtml(pool.altersklasse || '')}" data-geschlecht="${escapeHtml(pool.geschlecht || '')}">
                 <span class="material-icons drag-handle">drag_indicator</span>
                 <span class="pool-card-name">${escapeHtml(pool.bezeichnung)}</span>
                 <span class="pool-card-sep">|</span>
@@ -646,7 +711,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 zeigeNotification('Dieser Kampffläche sind keine Pools zugeordnet.', 'error');
                 return;
             }
-            oeffneDruck(matteId);
+            starteDruck(matteId, 'Pools der Matte drucken');
             return;
         }
 

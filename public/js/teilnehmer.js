@@ -70,8 +70,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     let gesperrteAltersklassen = new Set();
     // Mannschaftsmitglieder sind erst gesperrt, wenn ein Mannschafts-Pool echte Kämpfe hatte (wie am Server).
     let mannschaftenGesperrt = false;
+    // (Einzelstarter mit Mannschaft sind davon ausgenommen: für sie zählt nur ihre Altersklasse.)
     const istTeilnehmerGesperrt = (athlet) => gesperrteAltersklassen.has(athlet.altersklasse)
-        || (mannschaftenGesperrt && teamInfoByTeilnehmerId.has(athlet.id));
+        || (mannschaftenGesperrt && !athlet.auch_einzelwettkampf && teamInfoByTeilnehmerId.has(athlet.id));
 
     async function pruefeTeilnehmerlisteSperre() {
         try {

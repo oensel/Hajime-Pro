@@ -1783,7 +1783,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // matteId = Kampfflächen-ID (nur diese Matte) oder 'alle' (alle Matten nacheinander).
         // Nicht auf einer Matte eingeplante Pools werden nie gedruckt; jede Seite trägt oben
         // rechts den Namen ihrer Matte.
-        async function druckePools(matteId) {
+        // klassen (optional, Schlüssel "<Altersklasse>|<Geschlecht>"): nur diese Klassen drucken.
+        async function druckePools(matteId, klassen = null) {
             try {
 
             const response = await fetch(`/api/pools/details?turnierId=${encodeURIComponent(turnierId)}`);
@@ -1808,6 +1809,7 @@ document.addEventListener('DOMContentLoaded', () => {
             matten.forEach(kf => {
                 pools
                     .filter(p => p.kampfflaeche_id === kf.id)
+                    .filter(p => !klassen || klassen.includes(`${p.altersklasse || ''}|${p.geschlecht || ''}`))
                     .sort((x, y) => (x.matte_reihenfolge ?? 0) - (y.matte_reihenfolge ?? 0))
                     .forEach(pool => druckListe.push({ pool, matteName: kf.bezeichnung }));
             });
@@ -1903,7 +1905,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const druckMatte = urlParams.get('druckMatte');
         if (druckMatte && !druckMatteAusgeloest) {
             druckMatteAusgeloest = true;
-            druckePools(druckMatte);
+            const druckKlassen = urlParams.get('druckKlassen');
+            druckePools(druckMatte, druckKlassen ? druckKlassen.split(',') : null);
         }
 
     }
