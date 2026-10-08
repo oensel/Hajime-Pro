@@ -174,7 +174,8 @@
         const vomTyp = (typ) => docs.filter(d => d.dokumenttyp === typ);
         return baueMattenAnsicht({
             kaempfe: vomTyp('kampf'), pools: vomTyp('pool'), teilnehmer: vomTyp('teilnehmer'),
-            mannschaftskaempfe: vomTyp('mannschaftskampf'), mannschaften: vomTyp('mannschaft')
+            mannschaftskaempfe: vomTyp('mannschaftskampf'), mannschaften: vomTyp('mannschaft'),
+            turnier: vomTyp('turnier')[0]
         }, matId, Date.now());
     }
 
@@ -222,6 +223,65 @@
         return ohneDoc(e2);
     }
 
+    // Beendeten Kampf zurücksetzen: der Server (REST) bzw. die Sync-Brücke (Dokumente) setzt ihn auf
+    // "bereit", leert abhängige Folgekämpfe und reiht ihn an zweiter Stelle ein.
+    async function setzeKampfZurueck(kampfId, turnierId) {
+        await init();
+        if (modus === 'rest') {
+            const r = await restJson(`/api/kaempfe/${kampfId}/zuruecksetzen`, {
+                method: 'POST', headers: JSON_HEADER, body: JSON.stringify({ turnierId })
+            });
+            return r.ok ? { ok: true } : { ok: false, fehler: r.fehler || 'Zurücksetzen fehlgeschlagen.' };
+        }
+        return ohneDoc(await aendereDokument(`kampf:${kampfId}`, {
+            status: 'bereit', sieger_id: null, unterbewertung_kaempfer1: 0, unterbewertung_kaempfer2: 0,
+            kampfzeit_in_sekunden: 0, ...absender()
+        }));
+    }
+
+    // Neue Reihenfolge der noch nicht gestarteten Kämpfe einer Matte (Drag&Drop). kampfIds in der
+    // gewünschten Reihenfolge; die belegten Positionswerte werden neu verteilt (mattenReihenfolge.js).
+    async function setzeReihenfolge(matId, kampfIds, turnierId) {
+        await init();
+        if (modus === 'rest') {
+            const r = await restJson('/api/kaempfe/reihenfolge', {
+                method: 'PUT', headers: JSON_HEADER, body: JSON.stringify({ turnierId, kampfflaecheId: matId, kampfIds })
+            });
+            return r.ok ? { ok: true } : { ok: false, fehler: r.fehler || 'Reihenfolge konnte nicht gespeichert werden.' };
+        }
+        const { verteilePositionen } = await import('/js/shared/mattenReihenfolge.js');
+        const docs = [];
+        for (const id of kampfIds) {
+            const doc = await db.get(`kampf:${id}`);
+            if (doc.status !== 'bereit') {
+                return { ok: false, fehler: 'Es können nur noch nicht gestartete Kämpfe (Status "bereit") umsortiert werden.' };
+            }
+            docs.push(doc);
+        }
+        const ziel = {};
+        for (const z of verteilePositionen(kampfIds, new Map(docs.map(d => [Number(d.id ?? d.sql_id), d])))) {
+            ziel[`kampf:${z.id}`] = z.matten_reihenfolge;
+        }
+        const aenderungen = docs.filter(d => d.matten_reihenfolge !== ziel[d._id]);
+        if (!aenderungen.length) return { ok: true };
+        for (const d of aenderungen) { d.matten_reihenfolge = ziel[d._id]; Object.assign(d, absender()); }
+        const ergebnisse = await db.bulkDocs(aenderungen);
+        const revs = [];
+        for (const [i, res] of ergebnisse.entries()) {
+            const docId = aenderungen[i]._id;
+            if (!res.error) { revs.push(res.rev); continue; }
+            if (res.status !== 409) return { ok: false, fehler: 'Reihenfolge konnte nicht gespeichert werden, bitte erneut versuchen.' };
+            const { rev } = await schreibeMitWiederholung(docId, (doc) => { doc.matten_reihenfolge = ziel[docId]; });
+            revs.push(rev);
+        }
+        let letztes = { ok: true };
+        for (const [i, rev] of revs.entries()) {
+            const e = await warteAufServer(aenderungen[i]._id, rev);
+            if (!e.ok) letztes = e;
+        }
+        return ohneDoc(letztes);
+    }
+
     async function setzeLiveFarbe(kampfId, farbe) {
         await init();
         if (modus === 'rest') {
@@ -240,6 +300,17 @@
         }
         const ergebnis = ohneDoc(await aendereDokument(`kampfflaeche:${matId}`, { status: 'pausiert' }));
         return ergebnis.ok ? { ...ergebnis, meldung: ergebnis.meldung || 'Matte pausiert.' } : ergebnis;
+    }
+
+    async function setzeMatteFort(matId) {
+        await init();
+        if (modus === 'rest') {
+            const r = await restJson(`/api/kampfflaechen/${matId}/fortsetzen`, { method: 'POST' });
+            return r.ok ? { ok: true, meldung: r.daten.message } : { ok: false, fehler: r.fehler || 'Matte konnte nicht fortgesetzt werden.' };
+        }
+        // Die Brücke setzt die Matte fort, sobald der Status nicht mehr "pausiert" ist, und berechnet ihn selbst neu.
+        const ergebnis = ohneDoc(await aendereDokument(`kampfflaeche:${matId}`, { status: 'frei' }));
+        return ergebnis.ok ? { ...ergebnis, meldung: ergebnis.meldung || 'Matte fortgesetzt.' } : ergebnis;
     }
 
     // aktion wie die REST-Pfade: 'nicht-angetreten' | 'disqualifizieren'.
@@ -321,8 +392,11 @@
         ladeKaempfeDerMatte,
         aktualisiereKampf,
         tauscheReihenfolge,
+        setzeKampfZurueck,
+        setzeReihenfolge,
         setzeLiveFarbe,
         pausiereMatte,
+        setzeMatteFort,
         werteForfeit,
         speichereTeilnehmer,
         bestaetigeKampfbereit

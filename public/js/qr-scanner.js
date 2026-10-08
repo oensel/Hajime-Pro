@@ -22,6 +22,7 @@ export function initialisiereScanner(onScanSuccess) {
             animationFrameId = requestAnimationFrame(tick);
         } catch (err) {
             alert("Kamera-Zugriff verweigert oder keine Webcam gefunden: " + err.message);
+            document.dispatchEvent(new CustomEvent('scanner-fehler'));
         }
     });
 

@@ -502,3 +502,32 @@ select.status-select:focus {
     background-color: rgba(198, 40, 40, 0.03) !important;
     box-shadow: 0 0 0 3px rgba(198, 40, 40, 0.15);
 }
+
+/* Hinweis zur Lizenz im Waage-Fenster: abgelaufen (rot) bzw. keine Lizenzdaten (gelb). */
+#waageModal .lizenz-hinweis {
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    line-height: 1.4;
+    font-weight: 600;
+}
+#waageModal .lizenz-hinweis[hidden] { display: none; }
+#waageModal .lizenz-hinweis[data-art="abgelaufen"] {
+    background: rgba(198, 40, 40, 0.12);
+    color: #b71c1c;
+    border: 1px solid rgba(198, 40, 40, 0.4);
+}
+#waageModal .lizenz-hinweis[data-art="fehlt"] {
+    background: rgba(237, 137, 6, 0.14);
+    color: #8a5300;
+    border: 1px solid rgba(237, 137, 6, 0.5);
+}
+[data-theme="dark"] #waageModal .lizenz-hinweis[data-art="abgelaufen"] { color: #ff8a80; }
+[data-theme="dark"] #waageModal .lizenz-hinweis[data-art="fehlt"] { color: #ffcc80; }
+
+/* Lizenzdatum fehlt (Gelb) */
+#waageModal .lizenz-fehlt {
+    border-color: #ed8906 !important;
+    box-shadow: 0 0 0 3px rgba(237, 137, 6, 0.18);
+}

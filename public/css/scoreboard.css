@@ -154,6 +154,8 @@ input:checked + .slider:before { transform: translateX(30px); background-color: 
    rechts. */
 .live-vorschau-toolbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 12px 16px; background: #1a1a1a; }
 .live-vorschau-btn-col { display: flex; flex-direction: column; gap: 6px; }
+/* Mittlerer Block (Start/Reset/Overlay, darunter Ergebnis senden / Nächsten Kampf holen): alle Reihen mittig. */
+.live-vorschau-mitte { text-align: center; }
 
 /* Untere Zeile der Zeitleiste: Hansoku-make für Kämpfer 1 links außen, die zentralen
    Ablauf-Buttons in der Mitte, Hansoku-make für Kämpfer 2 rechts außen. */
@@ -414,3 +416,167 @@ input:checked + .slider:before { transform: translateX(30px); background-color: 
     box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
 }
 
+/* ==========================================================================
+   STEUERUNG (steuerung.html): Icon-Schrift, Farbvariablen, Dunkelmodus
+   Alles auf body.padding-steuerung beschränkt, damit die Anzeigetafel (anzeige.html, teilt sich
+   diese Datei) unverändert bleibt.
+   ========================================================================== */
+
+/* Icon-Schrift: steuerung.html lädt common.css nicht — ohne diese Regeln erscheint der Verschiebe-Griff als
+   Text "drag_indicator" in Hintergrundfarbe (unsichtbar). */
+@font-face {
+    font-family: 'Material Icons';
+    font-style: normal;
+    font-weight: 400;
+    src: url('/icons/material/material-icons.woff2') format('woff2');
+}
+.material-icons {
+    font-family: 'Material Icons';
+    font-weight: normal;
+    font-style: normal;
+    font-size: 24px;
+    line-height: 1;
+    display: inline-block;
+    text-transform: none;
+    letter-spacing: normal;
+    white-space: nowrap;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Farbvariablen; die Modals in steuerung.html nutzen --bg-card/--text-main/--border/--shadow (aus common.css,
+   hier nicht geladen). */
+body.padding-steuerung {
+    --st-bg: #f0f0f0;
+    --st-card: #ffffff;
+    --st-card-kopf: #e9ecef;
+    --st-card-kopf-hover: #dee2e6;
+    --st-card-rahmen: #ced4da;
+    --st-card-grund: #f1f3f5;
+    --st-border: #dee2e6;
+    --st-text: #212529;
+    --st-muted: #6b7280;
+    --st-link: #1a5cff;
+    --st-feld-bg: #ffffff;
+    --st-feld-text: #212529;
+    --st-feld-rahmen: #adb5bd;
+    --st-sieger: #198754;
+    --st-laeuft: #f59f00;
+    --bg-card: var(--st-card);
+    --text-main: var(--st-text);
+    --text-muted: var(--st-muted);
+    --border: var(--st-card-rahmen);
+    --primary: #1a5cff;
+    --shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+    background: var(--st-bg);
+    color: var(--st-text);
+}
+html[data-theme="dark"] body.padding-steuerung {
+    --st-bg: #0b0f19;
+    --st-card: #111827;
+    --st-card-kopf: #1a2233;
+    --st-card-kopf-hover: #232d42;
+    --st-card-rahmen: #2a3447;
+    --st-card-grund: #0f1623;
+    --st-border: #2a3447;
+    --st-text: #f3f4f6;
+    --st-muted: #9ca3af;
+    --st-link: #7aa7ff;
+    --st-feld-bg: #1b2336;
+    --st-feld-text: #f3f4f6;
+    --st-feld-rahmen: #3a4660;
+    --st-sieger: #4ade80;
+    --st-laeuft: #fbbf24;
+    --shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+}
+
+body.padding-steuerung .collapse-container { background: var(--st-card-grund); border-color: var(--st-card-rahmen); }
+body.padding-steuerung .collapse-header { background-color: var(--st-card-kopf); color: var(--st-text); }
+body.padding-steuerung .collapse-header:hover { background-color: var(--st-card-kopf-hover); }
+body.padding-steuerung .collapse-content { background-color: var(--st-card); border-top-color: var(--st-border); color: var(--st-text); }
+body.padding-steuerung .collapse-header-rechts { display: flex; align-items: center; gap: 10px; }
+body.padding-steuerung .timer-section { background: var(--st-card); border-color: var(--st-border); color: var(--st-text); }
+body.padding-steuerung .timer-section input,
+body.padding-steuerung .timer-section select,
+body.padding-steuerung #steuerungResultModal input,
+body.padding-steuerung #steuerungResultModal select {
+    background: var(--st-feld-bg);
+    color: var(--st-feld-text);
+    border: 1px solid var(--st-feld-rahmen);
+    border-radius: 4px;
+}
+body.padding-steuerung .keyboard-legend { background-color: var(--st-card); border-color: var(--st-border); color: var(--st-text); }
+body.padding-steuerung .keyboard-legend h3 { border-bottom-color: var(--st-text); }
+body.padding-steuerung .legend-item { background: var(--st-card-grund); border-color: var(--st-border); }
+body.padding-steuerung .legend-text strong { color: var(--st-link); }
+
+/* Kämpfer-Eingabefelder: Weiß bleibt weiß, Blau/Rot werden im Dunkelmodus abgedunkelt; die Felder darin bleiben hell. */
+body.padding-steuerung .kaempfer input { background: #ffffff; color: #000000; border: 1px solid #adb5bd; border-radius: 4px; }
+html[data-theme="dark"] body.padding-steuerung .blau-control { background: #1e3a8a; border-color: #3b5bb5; color: #f3f4f6; }
+html[data-theme="dark"] body.padding-steuerung .rot-control { background: #7f1d1d; border-color: #b04a4a; color: #f3f4f6; }
+html[data-theme="dark"] body.padding-steuerung .blau-control .label-small,
+html[data-theme="dark"] body.padding-steuerung .rot-control .label-small { color: #e5e7eb; }
+
+/* Umschalter Hell/Dunkel im Kopf des ersten Abschnitts; in der Android-App steckt er im Menü der Top-Bar. */
+body.padding-steuerung .theme-toggle-btn {
+    background: transparent;
+    color: inherit;
+    border: 1px solid var(--st-card-rahmen);
+    border-radius: 12px;
+    padding: 1px 10px;
+    font-size: 0.78rem;
+    cursor: pointer;
+}
+body.padding-steuerung .theme-toggle-btn:hover { background: var(--st-card-kopf-hover); }
+html.modus-app body.padding-steuerung .theme-toggle-btn { display: none; }
+
+/* Sortierbare Kampfliste (Drag&Drop, js/sortierbar.js): Griff gut sichtbar und mit größerer Trefferfläche für Touch. */
+.sortier-griff { color: var(--st-muted, #6b7280); user-select: none; padding: 6px 4px; margin: -6px 0; }
+.sortier-aktiv { background: rgba(255,193,7,0.18); }
+
+/* ==========================================================================
+   POOL-ÜBERSICHT (public/js/poolAnsicht.js)
+   ========================================================================== */
+body.padding-steuerung .pa-kopf { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 14px; margin-bottom: 12px; }
+body.padding-steuerung .pa-pool-name { font-size: 16px; font-weight: 800; }
+body.padding-steuerung .pa-pool-info { font-size: 12px; color: var(--st-muted); }
+body.padding-steuerung .pa-hinweis { font-size: 13px; color: var(--st-muted); padding: 4px 0; }
+body.padding-steuerung .pa-abschnitt { margin-bottom: 18px; }
+body.padding-steuerung .pa-abschnitt:last-child { margin-bottom: 0; }
+body.padding-steuerung .pa-abschnitt-titel { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--st-muted); margin-bottom: 6px; }
+body.padding-steuerung .pa-scroll { overflow-x: auto; padding-bottom: 6px; }
+
+/* Turnierbaum: Spalten gleich hoch, Karten per space-around mittig zwischen den speisenden Kämpfen */
+body.padding-steuerung .pa-runden { display: flex; gap: 14px; align-items: stretch; min-width: min-content; }
+body.padding-steuerung .pa-runde { display: flex; flex-direction: column; width: 190px; flex: none; }
+body.padding-steuerung .pa-runde-titel { font-size: 11px; font-weight: 700; text-align: center; color: var(--st-muted); margin-bottom: 6px; white-space: nowrap; }
+body.padding-steuerung .pa-runde-liste { display: flex; flex-direction: column; justify-content: space-around; gap: 8px; flex: 1; }
+body.padding-steuerung .pa-karte { position: relative; border: 1px solid var(--st-card-rahmen); border-radius: 6px; background: var(--st-card-grund); overflow: hidden; font-size: 12px; }
+body.padding-steuerung .pa-zeile { display: flex; justify-content: space-between; gap: 6px; padding: 4px 8px; }
+body.padding-steuerung .pa-zeile + .pa-zeile { border-top: 1px solid var(--st-border); }
+body.padding-steuerung .pa-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.padding-steuerung .pa-offen { color: var(--st-muted); font-style: italic; }
+body.padding-steuerung .pa-pkt { font-weight: 700; flex: none; }
+body.padding-steuerung .pa-sieger { font-weight: 800; color: var(--st-sieger); }
+body.padding-steuerung .pa-karte.pa-beendet { opacity: 0.85; }
+body.padding-steuerung .pa-karte.pa-laeuft { border-color: var(--st-laeuft); }
+body.padding-steuerung .pa-karte.pa-aktuell { border: 2px solid #ffc107; box-shadow: 0 0 0 2px rgba(255,193,7,0.25); }
+body.padding-steuerung .pa-marke { position: absolute; top: 0; right: 0; font-size: 9px; font-weight: 700; text-transform: uppercase; background: var(--st-laeuft); color: #000; padding: 1px 6px; border-bottom-left-radius: 6px; }
+
+/* Kampfbogen (Matrix) */
+body.padding-steuerung .pa-matrix { border-collapse: collapse; font-size: 12px; min-width: 100%; }
+body.padding-steuerung .pa-matrix th,
+body.padding-steuerung .pa-matrix td { border: 1px solid var(--st-card-rahmen); padding: 5px 8px; text-align: center; }
+body.padding-steuerung .pa-matrix-nr { background: var(--st-card-kopf); font-size: 11px; width: 52px; }
+body.padding-steuerung .pa-matrix-name { background: var(--st-card-kopf); text-align: left !important; white-space: nowrap; font-weight: 600; }
+body.padding-steuerung .pa-matrix-index { display: inline-block; min-width: 18px; color: var(--st-muted); margin-right: 4px; }
+body.padding-steuerung .pa-matrix-verein { display: block; font-weight: 400; font-size: 11px; color: var(--st-muted); margin-left: 22px; }
+body.padding-steuerung .pa-matrix-siege { font-weight: 800; }
+body.padding-steuerung .pa-diagonale { background: repeating-linear-gradient(45deg, transparent 0 5px, var(--st-card-rahmen) 5px 6px); }
+body.padding-steuerung .pa-gewonnen { font-weight: 800; color: var(--st-sieger); }
+body.padding-steuerung .pa-verloren { color: var(--st-muted); }
+body.padding-steuerung .pa-offen-zelle { color: var(--st-muted); font-size: 11px; }
+body.padding-steuerung .pa-matrix td.pa-laeuft { font-weight: 700; background: var(--st-laeuft); color: #000; }
+body.padding-steuerung .pa-matrix td.pa-aktuell { outline: 2px solid #ffc107; outline-offset: -2px; }
+
+/* Matte pausieren: Banner "PAUSE" über den kommenden Kämpfen auf der Anzeige. */
+.overlay-vorschau .pause-banner { display: none; position: absolute; left: 0; right: 0; top: 52%; transform: translateY(-50%); z-index: 2; align-items: center; justify-content: center; padding: 3vh 0; background: rgba(220, 53, 69, 0.94); color: #ffffff; font-family: 'Arial Black', sans-serif; font-size: 18vh; font-weight: 900; letter-spacing: 2vh; line-height: 1; box-shadow: 0 0 6vh rgba(0, 0, 0, 0.6); }

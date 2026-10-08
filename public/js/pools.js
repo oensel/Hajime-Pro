@@ -290,6 +290,15 @@ document.addEventListener('DOMContentLoaded', () => {
                                                 </select>
                                             </div>
 
+                                            <span class="pool-einstellung-label">Kämpfer 2 trägt</span>
+                                            <div class="pool-einstellung-wert">
+                                                <select class="pool-farbe-select" data-id="${pool.id}">
+                                                    <option value="" ${!pool.farbe_kaempfer2 ? 'selected' : ''}>Wie Turnier</option>
+                                                    <option value="blau" ${pool.farbe_kaempfer2 === 'blau' ? 'selected' : ''}>Blau</option>
+                                                    <option value="rot" ${pool.farbe_kaempfer2 === 'rot' ? 'selected' : ''}>Rot</option>
+                                                </select>
+                                            </div>
+
                                             <span class="pool-einstellung-label">Golden Score</span>
                                             <div class="pool-einstellung-wert">
                                                 <select class="pool-gs-select" data-id="${pool.id}">
@@ -393,6 +402,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const nameInput = document.querySelector(`.pool-name-input[data-id="${id}"]`);
         const zeitSelect = document.querySelector(`.pool-time-select[data-id="${id}"]`);
         const gsSelect = document.querySelector(`.pool-gs-select[data-id="${id}"]`);
+        const farbeSelect = document.querySelector(`.pool-farbe-select[data-id="${id}"]`);
 
         const bezeichnung = nameInput ? nameInput.value.trim() : 'Wettkampfklasse';
         const kampfzeitMinuten = zeitSelect ? parseInt(zeitSelect.value, 10) : 4;
@@ -407,7 +417,9 @@ document.addEventListener('DOMContentLoaded', () => {
             bezeichnung: bezeichnung || 'Wettkampfklasse',
             kampfzeit_sekunden: (Number.isFinite(kampfzeitMinuten) && kampfzeitMinuten > 0 ? kampfzeitMinuten : 4) * 60,
             golden_score_aktiv,
-            golden_score_max_sekunden
+            golden_score_max_sekunden,
+            // '' = vom Turnier übernehmen
+            farbe_kaempfer2: farbeSelect && farbeSelect.value ? farbeSelect.value : null
         };
     }
 
@@ -458,6 +470,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch (err) {
                     console.error('Fehler beim Ändern der Kampfzeit:', err);
                     zeigeNotification('Netzwerkfehler beim Ändern der Kampfzeit.', 'error');
+                }
+            });
+        });
+
+        // Farbe von Kämpfer 2 (Pool überschreibt das Turnier)
+        root.querySelectorAll('.pool-farbe-select').forEach(select => {
+            select.addEventListener('change', async (e) => {
+                try {
+                    const response = await speicherePoolStammdaten(e.target.getAttribute('data-id'));
+                    zeigeNotification(response.ok ? 'Farbe von Kämpfer 2 gespeichert.' : 'Fehler beim Speichern der Farbe.', response.ok ? 'success' : 'error');
+                } catch (err) {
+                    console.error('Fehler beim Ändern der Farbe:', err);
+                    zeigeNotification('Netzwerkfehler beim Ändern der Farbe.', 'error');
                 }
             });
         });
@@ -1538,7 +1563,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         const sec = String(k.kampfzeit_in_sekunden % 60).padStart(2, '0');
                         // Kämpfer 1 = Weiß, Kämpfer 2 = Blau (oder Rot, falls das Scoreboard für diesen Kampf Rot eingestellt hat,
                         // siehe live_farbe) — wie im Scoreboard und auf der Kampf-Seite.
-                        const farbe2 = k.live_farbe === 'rot' ? 'Rot' : 'Blau';
+                        const farbe2 = (k.farbe_kaempfer2 || k.live_farbe) === 'rot' ? 'Rot' : 'Blau';
                         ergebnis = `Sieger: ${k.sieger_id === k.kaempfer1_id ? 'Weiß' : farbe2} (${k.unterbewertung_kaempfer1}:${k.unterbewertung_kaempfer2} | ${min}:${sec})`;
                     } else if (k.status === 'freilos') {
                         ergebnis = k.sieger_id ? 'Freilos (automatischer Sieg)' : 'Freilos';

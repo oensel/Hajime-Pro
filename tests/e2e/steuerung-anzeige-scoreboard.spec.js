@@ -150,13 +150,15 @@ test.describe.serial('Steuerung + Anzeigetafel: Scoreboard-Kernfunktionen (steue
         await expect(anzeigePage.locator('#outMeta')).toHaveText('U18 männlich -73kg');
         await expect(anzeigePage.locator('#outTimer')).toHaveText('04:00');
 
-        // Kampf war "bereit" -> naechstenKampfHolen() schickt sofort ein PUT auf Status "gestartet".
-        expect(kaempfeDB.find(k => k.id === 1).status).toBe('gestartet');
+        // Laden allein startet den Kampf nicht: "gestartet" wird erst mit dem ersten START gemeldet.
+        expect(kaempfeDB.find(k => k.id === 1).status).toBe('bereit');
     });
 
     test('1.-3. Shido: Karten füllen sich schrittweise, der 3. Shido löst automatisch Hansoku-make für den Gegner aus', async () => {
         await steuerungPage.locator('#btnStartStopLive').click();
         await expect(steuerungPage.locator('#btnStartStopLive')).toHaveText('STOPP');
+        // Der erste START meldet den Kampf als "gestartet" (PUT im Hintergrund).
+        await expect.poll(() => kaempfeDB.find(k => k.id === 1).status).toBe('gestartet');
 
         await steuerungPage.evaluate(() => window.changeShido('B', 1));
         await expect(anzeigePage.locator('#shidoB_1')).toHaveClass(/active/);

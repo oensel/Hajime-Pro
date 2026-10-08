@@ -4,6 +4,7 @@
  * mit SQL-Zeilen (kampfController.getKaempfe), das Frontend im Sync-Modus mit Dokumenten der
  * Dokument-DB (public/js/datenzugriff.js) — beide Wege liefern dadurch garantiert dieselbe Ansicht.
  */
+import { bestimmeFarbeKaempfer2 } from './kampfFarbe.js';
 import { letztesKampfEndeProTeilnehmer, pruefeKampfPause } from './pausenRegel.js';
 
 function nachId(liste) {
@@ -12,7 +13,7 @@ function nachId(liste) {
     return map;
 }
 
-export function baueMattenAnsicht({ kaempfe, pools, teilnehmer, mannschaftskaempfe, mannschaften }, kampfflaecheId, jetzt) {
+export function baueMattenAnsicht({ kaempfe, pools, teilnehmer, mannschaftskaempfe, mannschaften, turnier }, kampfflaecheId, jetzt) {
     const mattenId = Number(kampfflaecheId);
     const poolsDerMatte = (pools || []).filter(p => Number(p.kampfflaeche_id) === mattenId);
     const poolById = nachId(poolsDerMatte);
@@ -37,7 +38,10 @@ export function baueMattenAnsicht({ kaempfe, pools, teilnehmer, mannschaftskaemp
             const m2 = mk ? mannschaftById.get(Number(mk.mannschaft2_id)) : null;
             return {
                 ...k,
+                // wirksame Farbe von Kämpfer 2: Kampf (live_farbe) > Pool > Turnier
+                farbe_kaempfer2: bestimmeFarbeKaempfer2({ kampf: k, pool, turnier }),
                 pool_bezeichnung: pool.bezeichnung,
+                pool_modus: pool.modus,
                 pool_kampfzeit: pool.kampfzeit_sekunden,
                 pool_altersklasse: pool.altersklasse,
                 pool_golden_score_aktiv: pool.golden_score_aktiv,

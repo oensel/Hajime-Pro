@@ -58,6 +58,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- ZAHLUNGSDATEN DES TURNIERS (für den "Startgeld bezahlen"-QR-Code) ---
     let turnierBezeichnung = '';
     let turnierStartgeldWert = 0;
+    let turnierDatumText = null; // Wettkampftag (YYYY-MM-DD): Stichtag der Lizenzprüfung
     let turnierIban = '';
     let turnierKontoinhaber = '';
     let turnierVerwendungszweck = '';
@@ -114,6 +115,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             turnierStartgeldWert = parseFloat(turnier.startgeld) || 0;
             turnierKostenlos = turnierStartgeldWert === 0;
+            turnierDatumText = turnier.datum ? lokalerTag(turnier.datum) : null;
 
             turnierBezeichnung = turnier.bezeichnung || '';
             turnierIban = turnier.iban || '';
@@ -153,15 +155,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         'teilgenommen', 'nicht_angetreten', 'disqualifiziert', 'zurueckgezogen'
     ];
 
+    // Kalendertag als "YYYY-MM-DD": PostgreSQL liefert Zeitstempel in UTC (z.B. "2026-10-16T22:00:00.000Z" für den
+    // 17.10. in Deutschland), die Dokument-DB reine Tage — beides auf den lokalen Tag abbilden.
+    function lokalerTag(wert) {
+        const str = String(wert);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+        const d = new Date(str);
+        if (isNaN(d)) return '';
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+
     // Ermittelt den Startberechtigt-Status (grün/rot) eines Athleten. Gemeinsam genutzt von
     // Sortierung (rote zuerst) und Tabellen-Rendering, damit beide dieselbe Definition verwenden.
     function berechneStatus(athlet) {
-        const heute = new Date();
-        heute.setHours(0, 0, 0, 0);
-        const ablaufDate = new Date(athlet.lizenz_ablauf);
-        ablaufDate.setHours(0, 0, 0, 0);
-
-        const lizenzGueltig = ablaufDate >= heute;
+        // Die Lizenz muss am Wettkampftag noch gültig sein (liegt er nicht in der Zukunft, gilt heute).
+        const heuteTag = lokalerTag(new Date());
+        const stichtag = turnierDatumText && turnierDatumText > heuteTag ? turnierDatumText : heuteTag;
+        const lizenzGueltig = !!athlet.lizenz_ablauf && lokalerTag(athlet.lizenz_ablauf) >= stichtag;
         const startgeldBezahlt = turnierKostenlos || !!athlet.startgeld_bezahlt;
         const gewichtEingetragen = athlet.gewicht && parseFloat(athlet.gewicht) > 0;
         const gewogen = !!athlet.gewogen;
@@ -349,12 +359,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function sortiereAthleten(daten, sortKey, richtung) {
         const sorted = [...daten].sort((a, b) => {
-            // Kampfbereite stehen immer ganz unten (unabhängig von Spalte und Richtung), darüber folgt
-            // die gewählte Sortierung, bei Gleichstand nach Name.
-            const bereitA = istEffektivKampfbereit(a);
-            const bereitB = istEffektivKampfbereit(b);
-            if (bereitA !== bereitB) {
-                return bereitA ? 1 : -1;
+            // Bereits Gewogene (und damit auch Kampfbereite) stehen immer ganz unten (unabhängig von Spalte
+            // und Richtung), darüber folgt die gewählte Sortierung, bei Gleichstand nach Name.
+            const gewogenA = !!a.gewogen;
+            const gewogenB = !!b.gewogen;
+            if (gewogenA !== gewogenB) {
+                return gewogenA ? 1 : -1;
             }
 
             const nachName = (x, y) => `${x.nachname} ${x.vorname}`.localeCompare(`${y.nachname} ${y.vorname}`, 'de', { sensitivity: 'base' });
@@ -1340,9 +1350,19 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Hintergrundabgleich: Fehler still ignorieren, der nächste Durchlauf versucht es erneut.
         }
     }
-    if (window.Datenzugriff && window.Datenzugriff.rolle && window.Datenzugriff.rolle() === 'client') {
-        setInterval(aktualisiereListeImHintergrund, 3000);
-    }
+    // Auch der Hallen-Server zeigt Änderungen, die Client-Geräte (Notebook, Tablet, Handy) per Sync liefern: die Brücke
+    // schreibt sie in die Datenbank, die Liste holt sie hier nach. Ohne Sync-Rolle (Cloud, Einzelbetrieb ohne
+    // Client-Geräte) bleibt der Abgleich aus — dort ändert nur diese Seite die Daten.
+    (async () => {
+        let rolle = window.Datenzugriff && window.Datenzugriff.rolle ? window.Datenzugriff.rolle() : null;
+        if (!rolle) {
+            try {
+                const status = await fetch('/api/sync/status', { cache: 'no-store' }).then(r => (r.ok ? r.json() : null));
+                rolle = status && status.rolle;
+            } catch (err) { /* ohne Sync-Status kein Hintergrundabgleich */ }
+        }
+        if (rolle === 'client' || rolle === 'server') setInterval(aktualisiereListeImHintergrund, 3000);
+    })();
 
     // Global exponiert, damit waage-modal.js nach dem manuellen Zuordnen/Ändern einer
     // Mannschafts-Mitgliedschaft (Team-Name-Feld) die Team-Spalte ohne vollständigen Reload

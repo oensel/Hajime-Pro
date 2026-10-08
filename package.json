@@ -15,6 +15,7 @@
     "test:e2e:mobil": "playwright test -c playwright.mobil.config.js",
     "android:www": "node scripts/baue-android-www.mjs",
     "android:apk": "node scripts/baue-android-apk.mjs",
+    "android:geraet": "node scripts/android-geraet.mjs",
     "android:schluessel": "node scripts/android-schluessel.mjs",
     "pg:start": "node scripts/lokale-pg.mjs start",
     "pg:stopp": "node scripts/lokale-pg.mjs stopp",

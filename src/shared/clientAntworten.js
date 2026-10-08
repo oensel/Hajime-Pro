@@ -104,7 +104,8 @@ export async function beantworteClientAnfrage({ methode, pfad, query = {}, body 
             const docs = await dokumenteNachTyp(db);
             return ok(baueMattenAnsicht({
                 kaempfe: docs.kampf || [], pools: docs.pool || [], teilnehmer: docs.teilnehmer || [],
-                mannschaftskaempfe: docs.mannschaftskampf || [], mannschaften: docs.mannschaft || []
+                mannschaftskaempfe: docs.mannschaftskampf || [], mannschaften: docs.mannschaft || [],
+                turnier: (docs.turnier || [])[0]
             }, query.kampfflaecheId, Date.now()).map(alsZeile));
         }
 
