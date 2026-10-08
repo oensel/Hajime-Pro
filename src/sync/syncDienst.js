@@ -37,6 +37,11 @@ export async function starteSyncDienst({ knex, konfig, partnerUrl = null, startM
     let schreibenErlaubt = () => modus === 'master';
     let instanzTimer = null;
     const partnerRepl = { repl: null, aktiv: false, lastSeq: null, fehler: null };
+    // Laufende /db-Anfragen: beim Löschen der Turnier-DB werden sie vorher beendet. Sonst crasht
+    // express-pouchdb (routes/changes.js: complete.results ist undefined), wenn eine "changes"-Abfrage
+    // gerade auf die zerstörte DB trifft.
+    const offeneDbAnfragen = new Set();
+    let dbWirdGeloescht = false;
     const abgleich = erzeugeAbgleich({ knex, zustand });
     const bruecke = erzeugeBruecke({ knex, zustand, abgleich });
 
@@ -66,6 +71,11 @@ export async function starteSyncDienst({ knex, konfig, partnerUrl = null, startM
         if (!zustand.instanzId || erstesSegment !== turnierDbName(zustand.instanzId)) {
             return res.status(404).json({ error: 'not_found', reason: 'Keine aktuelle Turnier-DB' });
         }
+        if (dbWirdGeloescht) {
+            return res.status(503).json({ error: 'unavailable', reason: 'Turnier-DB wird gerade ersetzt' });
+        }
+        offeneDbAnfragen.add(res);
+        res.on('close', () => offeneDbAnfragen.delete(res));
         return dokumentDb.middleware(req, res, next);
     }
 
@@ -126,12 +136,27 @@ export async function starteSyncDienst({ knex, konfig, partnerUrl = null, startM
         startePartnerReplikation();
     }
 
+    async function beendeOffeneDbAnfragen() {
+        for (const res of offeneDbAnfragen) res.destroy();
+        offeneDbAnfragen.clear();
+        // kurz warten, damit bereits laufende Abfragen noch gegen die offene DB auslaufen
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
     async function schliesseInstanz({ loeschen }) {
         await stoppePartnerReplikation();
-        if (zustand.db) await (loeschen ? zustand.db.destroy() : zustand.db.close());
-        zustand.db = null;
-        zustand.instanzId = null;
-        zustand.turnierId = null;
+        if (loeschen) {
+            dbWirdGeloescht = true;
+            await beendeOffeneDbAnfragen();
+        }
+        try {
+            if (zustand.db) await (loeschen ? zustand.db.destroy() : zustand.db.close());
+        } finally {
+            zustand.db = null;
+            zustand.instanzId = null;
+            zustand.turnierId = null;
+            dbWirdGeloescht = false;
+        }
     }
 
     // Secondary: Instanz aus der (replizierten, nur lesbaren) relationalen DB übernehmen. Hat der
