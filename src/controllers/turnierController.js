@@ -1,4 +1,5 @@
 import { hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
+import { gueltigeFarbe } from '../shared/kampfFarbe.js';
 import { exportiereVorlagen, importiereVorlagen } from '../services/urkundenVorlagenTransfer.js';
 import { entfernungZuPlzInKm } from '../utils/entfernungHelper.js';
 import { turnierHatEchteKaempfe } from './poolController.js';
@@ -48,7 +49,7 @@ export const TURNIER_SPALTEN_OHNE_PDF = [
     'id', 'bezeichnung', 'ort', 'plz', 'bundesland', 'datum', 'ausrichter',
     'nutze_gewichtsklassen', 'anzahl_kampfflaechen', 'verein_id', 'altersklassen',
     'mannschafts_altersklassen', 'status', 'anmeldeschluss', 'startgeld', 'iban',
-    'kontoinhaber', 'verwendungszweck', 'ausschreibung_dateiname', 'created_at', 'updated_at'
+    'kontoinhaber', 'verwendungszweck', 'ausschreibung_dateiname', 'farbe_kaempfer2', 'created_at', 'updated_at'
 ];
 
 const AUSSCHREIBUNG_MAX_MB = 10;
@@ -92,7 +93,7 @@ function validiereZahlungsdaten(startgeld, iban, kontoinhaber, verwendungszweck)
 
 export async function createTurnier(knex, req, res) {
     try {
-        const { bezeichnung, ort, datum, ausrichter, anzahl_kampfflaechen, nutze_gewichtsklassen, bundesland, plz, altersklassen, mannschafts_altersklassen, anmeldeschluss, startgeld, iban, kontoinhaber, verwendungszweck, ausschreibung_pdf_base64, ausschreibung_dateiname } = req.body;
+        const { bezeichnung, ort, datum, ausrichter, anzahl_kampfflaechen, nutze_gewichtsklassen, bundesland, plz, altersklassen, mannschafts_altersklassen, anmeldeschluss, startgeld, iban, kontoinhaber, verwendungszweck, ausschreibung_pdf_base64, ausschreibung_dateiname, farbe_kaempfer2 } = req.body;
         const userId = req.user.id; // Logged in user ID from middleware
 
         const zahlungsFehler = validiereZahlungsdaten(startgeld, iban, kontoinhaber, verwendungszweck);
@@ -140,6 +141,7 @@ export async function createTurnier(knex, req, res) {
             iban: iban || null,
             kontoinhaber: kontoinhaber || null,
             verwendungszweck: verwendungszweck || null,
+            farbe_kaempfer2: gueltigeFarbe(farbe_kaempfer2) || 'blau',
             ...ausschreibungFragment
         }).returning('id');
 
@@ -155,7 +157,7 @@ export async function createTurnier(knex, req, res) {
 export async function updateTurnier(knex, req, res) {
     try {
         const { id } = req.params;
-        const { bezeichnung, ort, datum, ausrichter, anzahl_kampfflaechen, nutze_gewichtsklassen, bundesland, plz, altersklassen, mannschafts_altersklassen, anmeldeschluss, startgeld, iban, kontoinhaber, verwendungszweck, ausschreibung_pdf_base64, ausschreibung_dateiname } = req.body;
+        const { bezeichnung, ort, datum, ausrichter, anzahl_kampfflaechen, nutze_gewichtsklassen, bundesland, plz, altersklassen, mannschafts_altersklassen, anmeldeschluss, startgeld, iban, kontoinhaber, verwendungszweck, ausschreibung_pdf_base64, ausschreibung_dateiname, farbe_kaempfer2 } = req.body;
 
         const zahlungsFehler = validiereZahlungsdaten(startgeld, iban, kontoinhaber, verwendungszweck);
         if (zahlungsFehler) {
@@ -202,6 +204,8 @@ export async function updateTurnier(knex, req, res) {
             iban: iban || null,
             kontoinhaber: kontoinhaber || null,
             verwendungszweck: verwendungszweck || null,
+            // Nicht mitgesendet -> unverändert lassen
+            ...(gueltigeFarbe(farbe_kaempfer2) ? { farbe_kaempfer2 } : {}),
             ...ausschreibungFragment,
             updated_at: knex.fn.now()
         });
@@ -532,7 +536,8 @@ async function importWettkampfdaten(trx, turnierId, { kampfflaechen, pools, teil
             typ: p.typ || 'einzel',
             mannschafts_gewichtsklassen: p.mannschafts_gewichtsklassen ?? null,
             golden_score_aktiv: p.golden_score_aktiv === undefined ? true : !!p.golden_score_aktiv,
-            golden_score_max_sekunden: p.golden_score_max_sekunden ?? null
+            golden_score_max_sekunden: p.golden_score_max_sekunden ?? null,
+            farbe_kaempfer2: gueltigeFarbe(p.farbe_kaempfer2)
         }).returning('id');
         poolIdMap.set(p.id, typeof neueIdObj === 'object' ? neueIdObj.id : neueIdObj);
     }
@@ -732,6 +737,7 @@ export async function importTurnier(knex, req, res) {
                 iban: t.iban || null,
                 kontoinhaber: t.kontoinhaber || null,
                 verwendungszweck: t.verwendungszweck || null,
+                farbe_kaempfer2: gueltigeFarbe(t.farbe_kaempfer2) || 'blau',
                 verein_id: verein.id,
                 // Hält die ID des Quell-Turniers fest, damit ein späterer Online-Reimport
                 // (importTurnierErgebnisse) dieses (neu angelegte, lokal andere) Offline-Turnier

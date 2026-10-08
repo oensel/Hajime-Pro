@@ -39,6 +39,7 @@ export function baueAndroidWww({ ziel = path.join(wurzel, 'mobil/www'), version 
     kopiere(path.join(wurzel, 'public/css'), 'css');
     kopiere(path.join(wurzel, 'public/js'), 'js');
     kopiere(path.join(wurzel, 'public/fonts/schriften'), 'fonts/schriften');
+    kopiere(path.join(wurzel, 'public/sounds'), 'sounds');
     kopiere(path.join(wurzel, 'public/hajime_pro.png'), 'hajime_pro.png');
     kopiere(path.join(wurzel, 'public/hajime_zeichen.png'), 'hajime_zeichen.png');
     // Was src/app.js aus node_modules/ und src/shared/ unter /js/... bereitstellt.

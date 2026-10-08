@@ -87,6 +87,7 @@ async function main() {
             table.text('altersklassen').nullable();
             table.string('status').notNullable().defaultTo('entwurf');
             table.date('anmeldeschluss').nullable();
+            table.string('farbe_kaempfer2').notNullable().defaultTo('blau');
             table.decimal('startgeld', 6, 2).nullable();
             table.string('iban').nullable();
             table.string('kontoinhaber').nullable();
@@ -120,6 +121,7 @@ async function main() {
             table.integer('matte_reihenfolge').nullable();
             table.string('status').notNullable().defaultTo('angelegt');
             table.boolean('golden_score_aktiv').notNullable().defaultTo(true);
+            table.string('farbe_kaempfer2').nullable();
             table.integer('golden_score_max_sekunden').nullable().defaultTo(null);
             table.timestamps(true, true);
             table.index('turnier_id', 'idx_pools_turnier_id');
@@ -166,6 +168,7 @@ async function main() {
             table.string('status').notNullable().defaultTo('angelegt').index();
             table.string('reihenfolge_nummer').nullable().index();
             table.integer('matten_reihenfolge').nullable().index();
+            table.boolean('reihenfolge_manuell').notNullable().defaultTo(false);
             table.integer('kaempfer1_quelle_kampf_id').unsigned().nullable()
                 .references('id').inTable('kaempfe').onDelete('SET NULL');
             table.string('kaempfer1_quelle_typ').nullable();

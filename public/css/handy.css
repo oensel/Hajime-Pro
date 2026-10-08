@@ -416,6 +416,32 @@ html.modus-app #waageModal .actions .btn {
     display: none;
 }
 
+/* Noch nicht gefüllte Felder Verein/Graduierung bleiben im kompakten Fenster editierbar (Klassen aus setzeKompakt). */
+.waage-kompakt.waage-verein-offen .grid-2:has(#verein) {
+    display: grid;
+}
+
+.waage-kompakt.waage-verein-offen .form-group:has(#verein) {
+    display: block;
+}
+
+.waage-kompakt.waage-graduierung-offen .grid-2:has(#graduierung) {
+    display: grid;
+}
+
+.waage-kompakt.waage-graduierung-offen .form-group:has(#graduierung) {
+    display: block;
+}
+
+/* Lizenz abgelaufen bzw. ohne Lizenzdaten: das Datumsfeld bleibt im kompakten Fenster sichtbar (Klasse aus waage-modal.js). */
+.waage-kompakt.waage-lizenz-offen .grid-2:has(#lizenz_ablauf) {
+    display: grid;
+}
+
+.waage-kompakt.waage-lizenz-offen .form-group:has(#lizenz_ablauf) {
+    display: block;
+}
+
 .waage-kompakt #gewicht {
     font-size: 24px;
     font-weight: 700;

@@ -586,11 +586,13 @@ export async function spieleMatteAmServerDurch(page, baseUrl, turnierId, kampffl
         // erst nach weiteren awaits in naechstenKampfHolen()/ergebnisSenden()).
         await page.locator('#btnNaechsterKampfLive').click();
         await expect(page.locator('#btnNaechsterKampfLive')).toBeHidden();
+        // Der Kampf gilt erst mit dem START der Kampfzeit als "gestartet" (nicht schon beim Laden).
+        await page.locator('#btnStartStopLive').click();
         let laufend;
         await expect.poll(async () => {
             laufend = (await ladeKaempfe()).find(k => k.status === 'gestartet');
             return Boolean(laufend);
-        }, { message: 'nach "Nächster Kampf" ist kein Kampf gestartet' }).toBe(true);
+        }, { message: 'nach START ist kein Kampf gestartet' }).toBe(true);
 
         await page.evaluate(() => window.changeScore('W', 'ippon', 1));
         await expect(page.locator('#btnErgebnisSendenLive')).toBeVisible();

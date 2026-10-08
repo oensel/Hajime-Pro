@@ -145,6 +145,7 @@
 
 .fight-row-fighters {
     flex: 1;
+    min-width: 0;
     display: flex;
     align-items: center;
     gap: 16px;
@@ -168,7 +169,8 @@
 }
 
 .fight-row-actions {
-    width: 150px;
+    min-width: 150px;
+    flex-shrink: 0;
     display: flex;
     justify-content: flex-end;
     gap: 8px;
@@ -288,3 +290,7 @@
     }
 }
 
+
+/* Sortierbare Kampfliste (Drag&Drop, js/sortierbar.js) */
+.sortier-griff { color: var(--text-muted, #888); margin-right: 8px; user-select: none; }
+.sortier-aktiv { box-shadow: 0 2px 8px rgba(0,0,0,0.25); background: rgba(255,193,7,0.15) !important; }

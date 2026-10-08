@@ -15,7 +15,7 @@
 // konflikt:-Dokument hält beide Versionen für die Turnierleitung fest (Spec Abschnitt 10).
 import { randomUUID } from 'crypto';
 import { geaenderteFelder, gleicheWerte, mitServerStand } from '../shared/dokumentAbbildung.js';
-import { aktualisiereKampf, setzeMattenReihenfolge } from '../controllers/kampfController.js';
+import { aktualisiereKampf, setzeMattenReihenfolge, setzeKampfZurueck } from '../controllers/kampfController.js';
 import { pausiereMatte, setzeMatteFort } from '../controllers/kampfflaecheController.js';
 import {
     HALLEN_KONTEXT, legeTeilnehmerAn, aktualisiereTeilnehmerDaten, bestaetigeKampfbereitschaft, werteForfeit
@@ -94,6 +94,10 @@ async function wendeKampfAn(knex, doc, basis) {
     if (doc.forfeit_teilnehmer_id && !['beendet', 'freilos'].includes(zeile.status)) {
         const art = doc.forfeit_art === 'disqualifiziert' ? 'disqualifiziert' : 'nicht_angetreten';
         await werteForfeit(knex, Number(doc.forfeit_teilnehmer_id), id, art, HALLEN_KONTEXT);
+    } else if (ergebnisAbsicht.status === 'bereit' && zeile.status === 'beendet') {
+        // Gerät hat einen beendeten Kampf zurückgesetzt: der Server setzt Folgekämpfe und
+        // Reihenfolge selbst (src/shared/korrekturRegel.js), die Felder des Geräts werden ignoriert.
+        await setzeKampfZurueck(knex, id);
     } else if (Object.keys(ergebnisAbsicht).length) {
         await aktualisiereKampf(knex, id, ergebnisAbsicht);
     }

@@ -54,12 +54,25 @@ function ermittleEffektivenStatus(turnier, { hatEchteKaempfe = false } = {}) {
 // ersten echten Kampf gilt die Auslosung als endgültig.
 const TEILNEHMERLISTE_GESPERRT_FEHLER = 'Die Teilnehmerliste ist gesperrt, da für dieses Turnier bereits Kämpfe stattgefunden haben.';
 
+// Stichtag der Lizenzprüfung: die Lizenz muss am Wettkampftag noch gültig sein (nicht nur heute). Liegt der
+// Wettkampftag nicht in der Zukunft, gilt heute. Als "YYYY-MM-DD" (lexikografisch vergleichbar).
+function lizenzStichtag(turnier) {
+    const heute = new Date().toISOString().slice(0, 10);
+    const datum = turnier && turnier.datum;
+    let tag = null;
+    if (datum instanceof Date) {
+        tag = `${datum.getFullYear()}-${String(datum.getMonth() + 1).padStart(2, '0')}-${String(datum.getDate()).padStart(2, '0')}`;
+    } else if (datum) {
+        tag = String(datum).slice(0, 10);
+    }
+    return tag && tag > heute ? tag : heute;
+}
+
 // Zentrale Kampfbereitschafts-Prüfung, wiederverwendet von createTeilnehmer, updateTeilnehmer und
 // aendereStatusFelder — ein Judoka ist kampfbereit, sobald Lizenz gültig, Gewicht gültig, gewogen
 // bestätigt und Startgeld bezahlt ist (bei kostenlosen Turnieren gilt Startgeld immer als erfüllt).
 function pruefeKampfbereitschaft(teilnehmer, turnier) {
-    const heuteStr = new Date().toISOString().split('T')[0];
-    const lizenzGueltig = !!teilnehmer.lizenz_ablauf && teilnehmer.lizenz_ablauf >= heuteStr;
+    const lizenzGueltig = !!teilnehmer.lizenz_ablauf && teilnehmer.lizenz_ablauf >= lizenzStichtag(turnier);
     const gewichtGueltig = !!teilnehmer.gewicht && parseFloat(teilnehmer.gewicht) > 0;
     const istGewogen = !!teilnehmer.gewogen;
     const turnierKostenlos = (parseFloat(turnier.startgeld) || 0) === 0;
@@ -462,9 +475,8 @@ export async function bestaetigeKampfbereitschaft(knex, id, kontext) {
         throw new FachFehler(400, `Kampfbereitschaft kann aus dem Status "${athlet.status}" nicht bestätigt werden.`);
     }
 
-    const heuteStr = new Date().toISOString().split('T')[0];
-    if (!athlet.lizenz_ablauf || athlet.lizenz_ablauf < heuteStr) {
-        throw new FachFehler(400, 'Die Lizenz ist abgelaufen oder nicht hinterlegt.');
+    if (!athlet.lizenz_ablauf || athlet.lizenz_ablauf < lizenzStichtag(turnier)) {
+        throw new FachFehler(400, 'Die Lizenz ist abgelaufen, nicht hinterlegt oder am Wettkampftag nicht mehr gültig.');
     }
     // Bei kostenlosen Turnieren (Startgeld 0€) gilt jeder als bezahlt, analog zur
     // Frontend-Logik in teilnehmer.js (berechneStatus).

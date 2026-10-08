@@ -340,6 +340,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('bundesland').value = turnier.bundesland || '';
             document.getElementById('ausrichter').value = turnier.ausrichter || '';
             document.getElementById('anzahl_kampfflaechen').value = turnier.anzahl_kampfflaechen || 1;
+            document.getElementById('farbe_kaempfer2').value = turnier.farbe_kaempfer2 === 'rot' ? 'rot' : 'blau';
             document.getElementById('startgeld').value = turnier.startgeld !== null && turnier.startgeld !== undefined ? turnier.startgeld : '';
             document.getElementById('iban').value = turnier.iban || '';
             document.getElementById('kontoinhaber').value = turnier.kontoinhaber || '';
@@ -602,6 +603,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ausrichter: document.getElementById('ausrichter').value.trim(),
                 anzahl_kampfflaechen: parseInt(document.getElementById('anzahl_kampfflaechen').value, 10),
                 nutze_gewichtsklassen: 0,
+                farbe_kaempfer2: document.getElementById('farbe_kaempfer2').value,
                 altersklassen: selectedAK,
                 mannschafts_altersklassen: selectedMannschaftAK,
                 anmeldeschluss: anmeldeschlussValue,

@@ -77,9 +77,9 @@ test('Mattenleitung am Client: Disqualifikation offline, lokale Kaskade, danach 
     await expect(page.locator('#mattenSelect')).toHaveValue(String(matId));
     // Jeweils Kämpfer 2 disqualifizieren -> Kämpfer 1 gewinnt mit 10 Punkten.
     for (const kampf of [erster, zweiter]) {
-        await page.getByRole('button', { name: `${kampf.kaempfer2_nachname}, ${kampf.kaempfer2_vorname}: DSQ` }).first().click();
-        await page.locator('#modalConfirmBtn').click();
-        await expect(page.locator('#snackbarText')).toContainText('Forfeit gewertet');
+        // Die DSQ-Knöpfe gibt es in kampf.html nicht mehr; die Wertung läuft weiter über Datenzugriff.werteForfeit.
+        const ergebnis = await page.evaluate(([teilnehmerId, kampfId]) => window.Datenzugriff.werteForfeit(teilnehmerId, kampfId, 'disqualifizieren'), [kampf.kaempfer2_id, kampf.id]);
+        expect(ergebnis.ok).toBeTruthy();
         await expect.poll(async () => {
             const lokal = await (await request.get(`${CLIENT_BASE_URL}/api/kaempfe?kampfflaecheId=${matId}`)).json();
             return lokal.find(x => x.id === kampf.id).status;

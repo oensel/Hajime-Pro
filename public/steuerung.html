@@ -4,17 +4,19 @@
     <meta charset="UTF-8">
     <title>Judo Steuerung</title>
     <link rel="stylesheet" href="css/scoreboard.css">
+    <script src="js/steuerungTheme.js"></script>
 </head>
 <body class="padding-steuerung">
-
-    <!-- Zurück zum Menü: das Scoreboard hat kein eigenes Menü (menu.js); siehe js/zurueckMenue.js -->
-    <script src="/js/zurueckMenue.js"></script>
 
     <!-- GEMEINSAMER SEKTOR (Breiten-angepasst und standardmäßig offen) -->
     <div class="collapse-wrapper">
         <div class="collapse-container">
             <div class="collapse-header" onclick="toggleCollapse('datenSektorSection', 'arrowDaten')">
-                ⚙️ / 🥋 Kampf-Daten & Einstellungen <span id="arrowDaten" class="arrow">▲</span>
+                <span>⚙️ / 🥋 Kampf-Daten & Einstellungen</span>
+                <span class="collapse-header-rechts">
+                    <button type="button" id="steuerungThemeToggle" class="theme-toggle-btn" aria-label="Dunkelmodus umschalten">🌙 Dunkel</button>
+                    <span id="arrowDaten" class="arrow">▲</span>
+                </span>
             </div>
             
             <div id="datenSektorSection" class="collapse-content" style="padding: 16px 20px; display: block;">
@@ -110,19 +112,33 @@
                         <button type="button" id="btnLiveNaW" class="btn-main na-toggle-btn" onclick="triggerNichtAngetreten('W')">Nicht angetreten</button>
                         <button type="button" id="btnHanteiSiegW" class="btn-main" style="display: none; background-color: #6f42c1;" onclick="triggerHanteiSieg('W')">Sieger Hantei</button>
                     </div>
-                    <div >
+                    <div class="live-vorschau-mitte">
                         <button id="btnStartStopLive" class="btn-main" onclick="toggleTimer()">START</button>
-                        <button class="btn-main btn-reset" onclick="resetTimerBestaetigen()">RESET ALL</button>
+                        <button id="btnResetLive" class="btn-main btn-reset" onclick="resetTimerBestaetigen()">RESET ALL</button>
                       <button id="btnCloseOverlay" class="btn-main" style="background-color: #17a2b8;" onclick="closeOverlay()">Overlay schließen</button>
                         <br>
                         <button id="btnErgebnisSendenLive" class="btn-main" style="background-color: #28a745;" onclick="ergebnisSenden()">Ergebnis senden</button>
                         <button id="btnNaechsterKampfLive" class="btn-main" style="background-color: #007bff;" onclick="naechstenKampfHolen()">Nächsten Kampf holen</button>
+                        <button type="button" id="btnMattePauseLive" class="btn-main" style="background-color: #6c757d;" onclick="toggleMattePause()">Matte pausieren</button>
                     </div>
                     <div class="live-vorschau-btn-col">
                         <button type="button" id="btnLiveNaB" class="btn-main na-toggle-btn" onclick="triggerNichtAngetreten('B')">Nicht angetreten</button>
                         <button type="button" id="btnHanteiSiegB" class="btn-main" style="display: none; background-color: #6f42c1;" onclick="triggerHanteiSieg('B')">Sieger Hantei</button>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- POOL-ÜBERSICHT: der Pool des aktuellen Kampfes als Kampfbogen bzw. Turnierbaum
+         (befüllt von renderePoolAnsichtSteuerung() in scoreboard.js, Darstellung in poolAnsicht.js) -->
+    <div class="collapse-wrapper legend-margin-top">
+        <div class="collapse-container">
+            <div class="collapse-header" onclick="toggleCollapse('poolAnsichtSection', 'arrowPoolAnsicht')">
+                🏆 Pool-Übersicht <span id="arrowPoolAnsicht" class="arrow">▲</span>
+            </div>
+            <div id="poolAnsichtSection" class="collapse-content" style="padding: 16px 20px; display: block; font-family: sans-serif;">
+                <div id="poolAnsichtContainer"></div>
             </div>
         </div>
     </div>
@@ -239,6 +255,7 @@
     <script src="/js/pouchdb/pouchdb.min.js"></script>
     <script src="/js/datenzugriff.js"></script>
     <script src="/js/syncStatus.js"></script>
+    <script src="/js/sortierbar.js"></script>
     <script type="module" src="js/scoreboard.js"></script>
 </body>
 </html>

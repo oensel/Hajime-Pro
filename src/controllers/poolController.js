@@ -1,4 +1,5 @@
 import { readFileSync } from 'fs';
+import { bestimmeFarbeKaempfer2, gueltigeFarbe } from '../shared/kampfFarbe.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -1072,7 +1073,7 @@ export async function verschiebeTeilnehmer(knex, req, res) {
 export async function updatePoolStammdaten(knex, req, res) {
     try {
         const { id } = req.params;
-        const { bezeichnung, kampfzeit_sekunden, golden_score_aktiv, golden_score_max_sekunden } = req.body;
+        const { bezeichnung, kampfzeit_sekunden, golden_score_aktiv, golden_score_max_sekunden, farbe_kaempfer2 } = req.body;
 
         const updateData = {
             bezeichnung,
@@ -1083,6 +1084,11 @@ export async function updatePoolStammdaten(knex, req, res) {
         }
         if (golden_score_max_sekunden !== undefined) {
             updateData.golden_score_max_sekunden = golden_score_max_sekunden ? parseInt(golden_score_max_sekunden, 10) : null;
+        }
+
+        // null/'' = vom Turnier übernehmen
+        if (farbe_kaempfer2 !== undefined) {
+            updateData.farbe_kaempfer2 = gueltigeFarbe(farbe_kaempfer2);
         }
 
         await knex('pools').where({ id }).update(updateData);
@@ -1326,16 +1332,18 @@ export async function entferneAlleMattenzuordnungen(knex, req, res) {
 
         const pools = await knex('pools').where({ turnier_id: turnierId }).select('id', 'kampfflaeche_id');
 
-        // Wie bei loescheAllePools: die Sammel-Aktion wird komplett blockiert, sobald irgendein
-        // Pool bereits echte Kämpfe hat — sonst verlieren bereits ausgetragene Kämpfe
-        // stillschweigend ihre Mattenzuordnung (siehe QA-Bericht F4).
-        for (const p of pools) {
-            if (await poolHatBereitsEchteKaempfe(knex, p.id)) {
-                return res.status(409).json({
-                    success: false,
-                    error: 'Die Mattenzuordnungen können nicht entfernt werden, da mindestens ein Pool bereits echte Kampfergebnisse enthält.'
-                });
-            }
+        // Blockiert wird nur bei BEENDETEN Kämpfen (echte Ergebnisse, siehe QA-Bericht F4). Ein bloß
+        // "gestarteter" Kampf ohne Ergebnis — das Scoreboard markiert jeden geladenen Kampf automatisch
+        // so — hindert die Aktion nicht; er wird unten wieder auf "bereit" gesetzt.
+        const poolIdsAlle = pools.map(p => p.id);
+        const beendet = poolIdsAlle.length
+            ? await knex('kaempfe').whereIn('pool_id', poolIdsAlle).where({ status: 'beendet' }).first('id')
+            : null;
+        if (beendet) {
+            return res.status(409).json({
+                success: false,
+                error: 'Die Mattenzuordnungen können nicht entfernt werden, da mindestens ein Pool bereits echte Kampfergebnisse enthält.'
+            });
         }
 
         const poolIds = pools.map(p => p.id);
@@ -1348,6 +1356,14 @@ export async function entferneAlleMattenzuordnungen(knex, req, res) {
 
         if (poolIds.length > 0) {
             await knex('kaempfe').whereIn('pool_id', poolIds).update({ matten_reihenfolge: null });
+            // Angefangene, aber nicht beendete Kämpfe zurück auf "bereit"; Pools, die nur deshalb "gestartet"
+            // waren, zurück in den Zustand ohne Matte.
+            await knex('kaempfe').whereIn('pool_id', poolIds).where({ status: 'gestartet' })
+                .update({ status: 'bereit', updated_at: knex.fn.now() });
+            await knex('pools').whereIn('id', poolIds).where({ status: 'gestartet' }).update({ status: 'teilnehmer_zugewiesen' });
+            for (const poolId of poolIds) {
+                await aktualisierePoolStatusNachAuslosung(knex, poolId);
+            }
         }
 
         for (const kampflaecheId of betroffeneMatten) {
@@ -1760,7 +1776,12 @@ export async function planeKaempfeFuerKampfflaeche(knex, kampfflaecheId) {
     const fixierteKaempfe = alleKaempfe
         .filter(k => k.status === 'gestartet' || k.status === 'beendet')
         .sort((a, b) => (a.matten_reihenfolge ?? Number.MAX_SAFE_INTEGER) - (b.matten_reihenfolge ?? Number.MAX_SAFE_INTEGER) || a.id - b.id);
-    const planbareKaempfe = alleKaempfe.filter(k => k.status === 'bereit');
+    // Von Hand einsortierte Kämpfe (Drag&Drop, Zurücksetzen) behalten ihre Position: der Planer
+    // fasst sie nicht an und hängt neu freigegebene Kämpfe dahinter an.
+    const manuelleKaempfe = alleKaempfe
+        .filter(k => k.status === 'bereit' && k.reihenfolge_manuell && k.matten_reihenfolge != null)
+        .sort((a, b) => a.matten_reihenfolge - b.matten_reihenfolge || a.id - b.id);
+    const planbareKaempfe = alleKaempfe.filter(k => k.status === 'bereit' && !manuelleKaempfe.includes(k));
 
     if (planbareKaempfe.length === 0) {
         // Nichts neu einzuplanen — vorhandene Reihenfolge bleibt wie sie ist.
@@ -1773,7 +1794,7 @@ export async function planeKaempfeFuerKampfflaeche(knex, kampfflaecheId) {
     // Kampfzeit des Pools als Schätzung.
     let laufendeZeit = 0;
     const letzteZeitProKaempfer = new Map();
-    for (const kampf of fixierteKaempfe) {
+    for (const kampf of [...fixierteKaempfe, ...manuelleKaempfe]) {
         const pool = poolById.get(kampf.pool_id);
         const dauer = kampf.kampfzeit_in_sekunden > 0 ? kampf.kampfzeit_in_sekunden : (pool?.kampfzeit_sekunden || 240);
         laufendeZeit += dauer;
@@ -2032,7 +2053,12 @@ export async function getDashboardData(knex, req, res) {
             const currentFight = fights.find(f => f.status === 'gestartet') || null;
             if (currentFight) {
                 global.liveColors = global.liveColors || {};
-                currentFight.fighter2Color = global.liveColors[currentFight.id] || 'blau';
+                const turnierZeile = await knex('turniere').where({ id: parseInt(turnierId) }).first('farbe_kaempfer2');
+                currentFight.fighter2Color = bestimmeFarbeKaempfer2({
+                    kampf: { live_farbe: global.liveColors[currentFight.id] },
+                    pool: pools.find(p => p.id === currentFight.pool_id),
+                    turnier: turnierZeile
+                });
             }
 
             // Nächste Kämpfe (die ersten 3, die nicht 'gestartet' sind)

@@ -180,7 +180,8 @@ let state = {
     poolName: "Senioren | M | -81kg",
     timeRunning: false,
     vorschauKaempfe: [], // Für overlayMode "vorschau": bis zu 3 Einträge {nameW,clubW,nameB,clubB,pool}
-    vorschauMatte: ""
+    vorschauMatte: "",
+    pausiert: false // Matte pausiert: die Anzeige zeigt die kommenden Kämpfe mit dem Banner "PAUSE"
 };
 
 let currentSeconds = 240;
@@ -211,7 +212,26 @@ function playHorn() {
     } catch(e) { console.log("Audio Fehler:", e); }
 }
 
-function changeFighterColorSlider(isRot) {
+// Signalton "dingding" (public/sounds/dingding.mp3) am Kampftisch: Ende der regulären Kampfzeit, Ende des Golden Score
+// und Ippon durch Haltegriff (Osaekomi). Alle anderen Entscheidungen behalten die Hupe (playHorn). Nur in der
+// Steuerung vorgeladen, die Anzeigetafel braucht den Ton nicht.
+const dingAudio = (typeof Audio !== 'undefined' && document.getElementById('matchDuration'))
+    ? Object.assign(new Audio('/sounds/dingding.mp3'), { preload: 'auto' })
+    : null;
+
+function playDing() {
+    if (!dingAudio) return;
+    try {
+        dingAudio.currentTime = 0;
+        const start = dingAudio.play();
+        if (start && start.catch) start.catch((e) => console.log('Audio Fehler:', e));
+    } catch (e) { console.log('Audio Fehler:', e); }
+}
+
+// manuell = true, wenn die Mattenleitung den Schieber bedient: nur dann wird die Farbe als Überschreibung
+// für diesen Kampf gespeichert (Kampf > Pool > Turnier). Beim Laden eines Kampfes wird nur die
+// wirksame Farbe übernommen.
+function changeFighterColorSlider(isRot, manuell = true) {
     state.fighter2Color = isRot ? 'rot' : 'blau';
     const panelInput = document.getElementById('panelB');
     if(panelInput) {
@@ -225,11 +245,13 @@ function changeFighterColorSlider(isRot) {
 
     // Reine Live-Anzeige-Info für externe Anzeigetafeln (global.liveColors, nicht Teil des
     // Kampfergebnisses).
-    if (currentFightId) {
+    if (currentFightId && manuell) {
         window.Datenzugriff.setzeLiveFarbe(currentFightId, state.fighter2Color)
             .catch(err => console.error("Fehler beim Speichern der Kämpferfarbe im Backend:", err));
     }
 }
+
+const MAX_YUKO = 99;
 
 function changeScore(color, type, value) {
     let key = type + color;
@@ -255,8 +277,10 @@ function changeScore(color, type, value) {
             if (gewinntDurchGoldenScore) triggerGoldenScoreWin();
         }
     } else if (type === 'ippon') {
-        state[key] = Math.max(0, current);
-        if (state[key] === 1 && value > 0) {
+        // Ippon gibt es nur 0 oder 1; ein weiterer Klick auf "+" löst den Sieg nicht erneut aus.
+        const vorher = state[key];
+        state[key] = Math.min(1, Math.max(0, current));
+        if (state[key] === 1 && vorher === 0 && value > 0) {
             if (state.isGoldenScore) triggerGoldenScoreWin();
             else triggerIpponWin();
         } else if (state[key] === 0 && value < 0 && (state.overlayMode === 'ippon' || state.overlayMode === 'goldenscoresieg')) {
@@ -265,8 +289,10 @@ function changeScore(color, type, value) {
             state.overlayMode = 'none';
         }
     } else {
-        state[key] = Math.max(0, current);
-        if (gewinntDurchGoldenScore) triggerGoldenScoreWin();
+        // Yuko: 0 bis 99
+        const vorher = state[key];
+        state[key] = Math.min(MAX_YUKO, Math.max(0, current));
+        if (gewinntDurchGoldenScore && state[key] > vorher) triggerGoldenScoreWin();
     }
     update();
 }
@@ -277,8 +303,17 @@ function changeShido(color, value) {
 
     if (state['shido' + color] >= 3) {
         triggerHansokumakeWin(color === 'W' ? 'B' : 'W');
+    } else if (value < 0 && state.overlayMode === 'hansokumake' && !hatHansokumakeGrund()) {
+        // Der dritte Shido wurde zurückgenommen und es liegt kein anderer Hansoku-make-Grund vor
+        // (dritter Shido des Gegners, direktes Hansoku-make): der Kampf läuft weiter, die Zeit
+        // bleibt gestoppt und wird per START fortgesetzt.
+        state.overlayMode = 'none';
     }
     update();
+}
+
+function hatHansokumakeGrund() {
+    return state.shidoW >= 3 || state.shidoB >= 3 || !!state.hansokuDirektW || !!state.hansokuDirektB;
 }
 
 // Ein Athlet darf zweimal medizinisch versorgt werden (kleinere/größere Blutung). Bei der
@@ -290,6 +325,9 @@ function changeBehandlung(color, value) {
 
     if (state['behandlung' + color] >= 3) {
         triggerKikenGachiWin(color === 'W' ? 'B' : 'W');
+    } else if (value < 0 && state.overlayMode === 'kiken' && state.behandlungW < 3 && state.behandlungB < 3) {
+        // Dritte Versorgung zurückgenommen: der Kampf läuft weiter (analog zu changeShido).
+        state.overlayMode = 'none';
     }
     update();
 }
@@ -301,10 +339,12 @@ function triggerKikenGachiWin(winnerColor) {
     update();
 }
 
-function triggerIpponWin() {
+// durchHaltegriff: Ippon, weil das Osaekomi die Zeit erreicht hat — dann der Signalton statt der Hupe.
+function triggerIpponWin(durchHaltegriff = false) {
     stopAllTimers();
     state.overlayMode = "ippon";
-    playHorn();
+    if (durchHaltegriff) playDing();
+    else playHorn();
     update();
 }
 
@@ -437,11 +477,11 @@ function toggleOsae(color) {
                         state['ippon' + color] = 1;
                         state['waza' + color] = 0;
                         state['yuko' + color] = Math.max(0, state['yuko' + color] - 1);
-                        triggerIpponWin();
+                        triggerIpponWin(true);
                     } else if (osaeTime === 20) {
                         state['ippon' + color] = 1;
                         state['waza' + color] = 0;
-                        triggerIpponWin();
+                        triggerIpponWin(true);
                     }
                 }
                 
@@ -530,6 +570,55 @@ function wendeGoldenScoreEinstellungenAn(aktiv, maxSekunden) {
     if (container) container.style.display = gsAktiv ? '' : 'none';
 }
 
+// Ob der Status "gestartet" des geladenen Kampfes schon in die Datenbank geschrieben wurde. Der Status wird
+// beim ersten START der Kampfzeit gesetzt (nicht beim Laden des Kampfes, siehe naechstenKampfHolen).
+let kampfStatusGemeldet = false;
+// Solange "Ergebnis senden" läuft, gilt ein in der Datenbank schon beendeter Kampf nicht als veraltet.
+let ergebnisWirdGesendet = false;
+
+// Meldet den Kampf beim ersten START als "gestartet". Läuft bewusst im Hintergrund: die Uhr darf nicht auf
+// den Server warten. Lehnt dieser ab (z.B. Matte pausiert), erscheint die Meldung; der nächste START versucht es erneut.
+function meldeKampfGestartet() {
+    if (!currentFightId || kampfStatusGemeldet) return;
+    kampfStatusGemeldet = true;
+    const kampfId = currentFightId;
+    window.Datenzugriff.aktualisiereKampf(kampfId, { status: 'gestartet' }).then(async (start) => {
+        if (start.ok) return;
+        kampfStatusGemeldet = false;
+        // Wurde der Kampf inzwischen anderswo beendet (z.B. Ergebnis in der Kampf-Ansicht eingetragen), ist der
+        // geladene Kampf veraltet: freigeben, damit der nächste Kampf geladen werden kann.
+        if (kampfId === currentFightId && await kampfIstBeendet(kampfId)) {
+            gibGeladenenKampfFrei();
+            zeigeNotification('Dieser Kampf wurde bereits beendet. Bitte den nächsten Kampf laden.', 'error');
+            return;
+        }
+        zeigeNotification(start.fehler || 'Der Kampf konnte nicht als gestartet markiert werden.', 'error');
+    }).catch((err) => {
+        kampfStatusGemeldet = false;
+        console.warn('Kampf konnte nicht als gestartet markiert werden:', err);
+    });
+}
+
+async function kampfIstBeendet(kampfId) {
+    try {
+        const kaempfe = await window.Datenzugriff.ladeKaempfeDerMatte(selectedMatId);
+        const kampf = kaempfe.find(k => Number(k.id) === Number(kampfId));
+        return !!kampf && (kampf.status === 'beendet' || kampf.status === 'freilos');
+    } catch (err) {
+        return false;
+    }
+}
+
+// Entlädt den Kampf im Scoreboard (Zeit stoppen, Wertungen leeren); "Nächsten Kampf holen" erscheint wieder.
+function gibGeladenenKampfFrei() {
+    stopAllTimers();
+    currentFightId = null;
+    kaempfer1_id = null;
+    kaempfer2_id = null;
+    kampfStatusGemeldet = false;
+    resetTimer();
+}
+
 function toggleTimer() {
     if (isRunning) {
         stopAllTimers();
@@ -547,10 +636,15 @@ function toggleTimer() {
             return;
         }
         if (state.overlayMode !== "none") return;
+        if (state.pausiert) {
+            zeigeNotification('Die Matte ist pausiert — bitte zuerst fortsetzen.', 'error');
+            return;
+        }
 
         isRunning = true;
         kampfGestartet = true;
         state.timeRunning = true;
+        meldeKampfGestartet();
         ['btnStartStop', 'btnStartStopLive'].forEach(id => {
             let btnSS = document.getElementById(id);
             if (btnSS) {
@@ -572,7 +666,7 @@ function toggleTimer() {
                     } else {
                         stopAllTimers();
                         state.timeRunning = false;
-                        playHorn();
+                        playDing();
                         
                         // Artikel 13.3b: Golden Score darf ausschließlich bei absolutem Gleichstand
                         // von Ippon, Waza-Ari UND Yuko angeboten werden (Shido zählt hier bewusst
@@ -601,7 +695,7 @@ function toggleTimer() {
                     } else {
                         stopAllTimers();
                         state.timeRunning = false;
-                        playHorn();
+                        playDing();
 
                         let isDraw = (state.ipponW === state.ipponB && state.wazaW === state.wazaB && state.yukoW === state.yukoB);
                         state.overlayMode = isDraw ? "hantei" : "time";
@@ -817,9 +911,19 @@ function update() {
     const previewGsIndicator = document.getElementById('previewGsIndicator');
     if (previewGsIndicator) previewGsIndicator.style.display = state.isGoldenScore ? 'block' : 'none';
 
+    aktualisiereMattePauseButton();
+
     // "Overlay schließen" nur sichtbar, solange tatsächlich ein Overlay angezeigt wird.
     const btnCloseOverlay = document.getElementById('btnCloseOverlay');
-    if (btnCloseOverlay) btnCloseOverlay.style.display = (state.overlayMode === 'time' || state.overlayMode === 'hantei' || state.overlayMode === 'vorschau') ? 'inline-block' : 'none';
+    if (btnCloseOverlay) btnCloseOverlay.style.display = (state.overlayMode === 'time' || state.overlayMode === 'hantei') ? 'inline-block' : 'none';
+
+    // Solange die Vorschau auf die kommenden Kämpfe läuft (nach "Ergebnis senden"), braucht die Steuerung nur
+    // "Nächsten Kampf holen" — Start/Reset, "Nicht angetreten" und "Hantei-Sieg" gehören zu keinem Kampf.
+    const nurNaechsterKampf = state.overlayMode === 'vorschau';
+    ['btnStartStopLive', 'btnResetLive'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.style.display = nurNaechsterKampf ? 'none' : '';
+    });
 
     // "Ergebnis senden"/"Nächsten Kampf holen" existieren zweifach im Markup (Hauptbedienung +
     // Kurzzugriff neben der Live-Vorschau), daher hier für beide Fundstellen synchron halten.
@@ -853,7 +957,7 @@ function update() {
     // "Nicht angetreten" kann per Definition nur vor Kampfbeginn erklärt werden.
     const syncNaButton = (btn, aktiv, gegnerAktiv) => {
         if (!btn) return;
-        btn.style.display = kampfGestartet ? 'none' : 'inline-block';
+        btn.style.display = (kampfGestartet || nurNaechsterKampf) ? 'none' : 'inline-block';
         btn.disabled = !aktiv && (kampfGestartet || gegnerAktiv);
     };
     const aktivNaW = !!state.nichtAngetretenW;
@@ -891,6 +995,7 @@ if (document.getElementById('matchDuration')) {
         await ladeMatten();
         await pruefeUndZeigePausenwarnung();
         await ladeMattenUebersicht();
+        await aktualisiereMattenPause();
 
         const steuerungKorrekturAbbrechenBtn = document.getElementById('steuerungKorrekturAbbrechenBtn');
         if (steuerungKorrekturAbbrechenBtn) {
@@ -911,6 +1016,7 @@ if (document.getElementById('matchDuration')) {
         pausenWarnungIntervall = setInterval(() => {
             pruefeUndZeigePausenwarnung();
             ladeMattenUebersicht();
+            aktualisiereMattenPause();
         }, 20000);
 
     };
@@ -967,9 +1073,16 @@ window.addEventListener('DOMContentLoaded', async () => {
         wendeGoldenScoreEinstellungenAn(gsAktivVal, gsMaxVal);
 
         currentFightId = params.get('id') ? parseInt(params.get('id'), 10) : null;
+        kampfStatusGemeldet = false;
         kaempfer1_id = params.get('k1_id') ? parseInt(params.get('k1_id'), 10) : null;
         kaempfer2_id = params.get('k2_id') ? parseInt(params.get('k2_id'), 10) : null;
         pool_kampfzeit = parseInt(durationVal, 10) || 240;
+
+        // Voreinstellung aus Turnier/Pool/Kampf (Link von der Kampfseite); der Schieber bleibt änderbar.
+        const linkFarbeSlider = document.getElementById('colorToggleSlider');
+        const linkIstRot = params.get('farbe') === 'rot';
+        if (linkFarbeSlider) linkFarbeSlider.checked = linkIstRot;
+        changeFighterColorSlider(linkIstRot, false);
 
         const inputNW = document.getElementById('nameW');
         const inputCW = document.getElementById('clubW');
@@ -1158,7 +1271,18 @@ if (!document.getElementById('matchDuration')) {
 
         const ovVorschau = document.getElementById('ovVorschau');
         if (ovVorschau) {
-            ovVorschau.style.display = (data.overlayMode === 'vorschau') ? 'flex' : 'none';
+            ovVorschau.style.display = (data.overlayMode === 'vorschau' || data.pausiert) ? 'flex' : 'none';
+
+            // Banner "PAUSE" über den kommenden Kämpfen (per Skript angelegt, damit anzeige.html unverändert bleibt).
+            let pauseBanner = document.getElementById('ovPauseBanner');
+            if (!pauseBanner) {
+                pauseBanner = document.createElement('div');
+                pauseBanner.id = 'ovPauseBanner';
+                pauseBanner.className = 'pause-banner';
+                pauseBanner.textContent = 'PAUSE';
+                ovVorschau.appendChild(pauseBanner);
+            }
+            pauseBanner.style.display = data.pausiert ? 'flex' : 'none';
             const kaempfe = data.vorschauKaempfe || [];
 
             const matteEl = document.getElementById('vorschauMatte');
@@ -1487,7 +1611,7 @@ async function ladeMatten() {
 }
 
 // Beim Auswählen einer Wettkampffläche direkt den aktuellen Kampf laden (naechstenKampfHolen()
-// nimmt bereits bevorzugt einen bereits "gestartet"en Kampf, sonst den nächsten "bereit"en/
+// nimmt bereits bevorzugt einen bereits "gestartet"en Kampf (ein Kampf wird erst mit START "gestartet"), sonst den nächsten "bereit"en/
 // "angelegt"en — genau "aktueller Kampf, sonst nächster Kampf"). Danach einmal RESET ALL, damit
 // Zeit/Wertungen sauber auf dem frisch geladenen Kampf stehen, ohne die dafür sonst nötige
 // Sicherheitsabfrage (resetTimerBestaetigen) — das ist hier kein riskanter manueller Klick,
@@ -1504,6 +1628,9 @@ async function updateSelectedMat(val) {
         }
     }
     selectedMatId = val ? parseInt(val, 10) : null;
+    // Pausenzustand der neuen Matte übernehmen (die bisherige Anzeige gehört zur vorherigen Matte)
+    state.pausiert = false;
+    await aktualisiereMattenPause();
     if (selectedMatId) {
         await naechstenKampfHolen();
         resetTimer();
@@ -1515,7 +1642,11 @@ async function naechstenKampfHolen() {
         zeigeNotification("Bitte wählen Sie zuerst eine Matte aus.", "error");
         return;
     }
-    
+    if (state.pausiert) {
+        zeigeNotification('Die Matte ist pausiert — bitte zuerst fortsetzen.', 'error');
+        return;
+    }
+
     try {
         const kaempfe = await window.Datenzugriff.ladeKaempfeDerMatte(selectedMatId);
 
@@ -1596,21 +1727,21 @@ async function naechstenKampfHolen() {
         state.overlayMode = 'none';
         kampfGestartet = false;
 
-        if (naechster.status === 'bereit') {
-            // Wie bisher nicht blockierend: scheitert der Start (z.B. Matte pausiert), bleibt der
-            // Kampf trotzdem geladen.
-            const start = await window.Datenzugriff.aktualisiereKampf(naechster.id, { status: 'gestartet' });
-            if (!start.ok) console.warn('Kampf konnte nicht als gestartet markiert werden:', start.fehler);
-        }
-        
+        // "gestartet" wird erst mit dem ersten Klick auf START gesetzt (meldeKampfGestartet), nicht schon
+        // beim Laden — ein geladener, aber nicht begonnener Kampf bleibt "bereit". War er schon
+        // "gestartet" (Seite neu geladen), ist nichts mehr zu melden.
+        kampfStatusGemeldet = naechster.status === 'gestartet';
+
         currentSeconds = pool_kampfzeit;
         formatTime();
         update();
 
         const slider = document.getElementById('colorToggleSlider');
-        changeFighterColorSlider(slider ? slider.checked : false);
+        const istRot = naechster.farbe_kaempfer2 === 'rot';
+        if (slider) slider.checked = istRot;
+        changeFighterColorSlider(istRot, false);
 
-        zeigeNotification(`Kampf geladen und gestartet: ${nameWVal} vs ${nameBVal}`, 'success');
+        zeigeNotification(`Kampf geladen: ${nameWVal} vs ${nameBVal}`, 'success');
         await pruefeUndZeigePausenwarnung();
         await ladeMattenUebersicht();
     } catch (err) {
@@ -1630,10 +1761,7 @@ function zeigeHanteiModal() {
             return;
         }
 
-        const colorEl = document.getElementById('colorSelect');
-        const activeColor = colorEl ? colorEl.value : 'blue';
-
-        if (activeColor === 'red') {
+        if (state.fighter2Color === 'rot') {
             btnB.style.backgroundColor = '#dc3545';
             btnB.textContent = 'Gewinner rot';
         } else {
@@ -1723,6 +1851,7 @@ async function ergebnisSenden() {
         kampfzeit_in_sekunden: elapsed
     };
 
+    ergebnisWirdGesendet = true;
     try {
         const ergebnis = await window.Datenzugriff.aktualisiereKampf(currentFightId, payload);
         if (!ergebnis.ok) throw new Error(ergebnis.fehler || 'Fehler beim Aktualisieren des Kampfes auf dem Server.');
@@ -1735,12 +1864,15 @@ async function ergebnisSenden() {
         currentFightId = null;
         kaempfer1_id = null;
         kaempfer2_id = null;
+        kampfStatusGemeldet = false;
         resetTimer();
         await zeigeNaechsteKaempferVorschau();
         await pruefeUndZeigePausenwarnung();
         await ladeMattenUebersicht();
     } catch (err) {
         zeigeNotification("Fehler beim Senden des Ergebnisses: " + err.message, "error");
+    } finally {
+        ergebnisWirdGesendet = false;
     }
 }
 
@@ -1748,6 +1880,75 @@ async function ergebnisSenden() {
 // nächstes und wer danach antritt, damit sich die Kämpfer schon vorbereiten können. Verschwindet
 // wieder über "Nächsten Kampf holen" (naechstenKampfHolen()) oder "Overlay schließen"
 // (closeOverlay()).
+function aktualisiereMattePauseButton() {
+    const btn = document.getElementById('btnMattePauseLive');
+    if (!btn) return;
+    btn.textContent = state.pausiert ? 'Matte fortsetzen' : 'Matte pausieren';
+    btn.disabled = !selectedMatId;
+    // Der Button erscheint nur vor Kampfbeginn (geladener Kampf noch nicht gestartet, keine Vorschau nach "Ergebnis
+    // senden"). Ist die Matte schon pausiert (z.B. an anderer Stelle), bleibt er sichtbar, damit sie sich hier
+    // fortsetzen lässt.
+    const vorKampfbeginn = !kampfGestartet && !(currentFightId && kampfStatusGemeldet) && state.overlayMode !== 'vorschau';
+    btn.style.display = (vorKampfbeginn || state.pausiert) ? '' : 'none';
+}
+
+// --- MATTE PAUSIEREN / FORTSETZEN (Button "Matte pausieren" in steuerung.html) ---
+// Pausiert die Matte (wie auf matten.html/kampf.html): auf der Anzeige erscheinen die kommenden Kämpfe
+// mit dem Banner "PAUSE". Solange die Matte pausiert ist, lässt der Server keinen Kampf starten; START und
+// "Nächsten Kampf holen" sind hier deshalb gesperrt.
+async function toggleMattePause() {
+    if (!selectedMatId) {
+        zeigeNotification('Bitte wählen Sie zuerst eine Matte aus.', 'error');
+        return;
+    }
+    try {
+        if (state.pausiert) {
+            const r = await window.Datenzugriff.setzeMatteFort(selectedMatId);
+            if (!r.ok) throw new Error(r.fehler || 'Matte konnte nicht fortgesetzt werden.');
+            await wendePausenAnsichtAn(false);
+            zeigeNotification('Matte fortgesetzt.', 'success');
+        } else {
+            if (isRunning) {
+                zeigeNotification('Bitte zuerst die Kampfzeit stoppen.', 'error');
+                return;
+            }
+            const r = await window.Datenzugriff.pausiereMatte(selectedMatId);
+            if (!r.ok) throw new Error(r.fehler || 'Matte konnte nicht pausiert werden.');
+            await wendePausenAnsichtAn(true);
+            zeigeNotification('Matte pausiert.', 'success');
+        }
+    } catch (err) {
+        zeigeNotification(err.message, 'error');
+    }
+}
+
+// Stellt die Pausen-Ansicht her bzw. nimmt sie zurück (auch wenn die Matte anderswo pausiert/fortgesetzt wurde).
+async function wendePausenAnsichtAn(pausiert) {
+    if (!!state.pausiert === !!pausiert) return;
+    state.pausiert = !!pausiert;
+    if (pausiert) {
+        // Vorschau der kommenden Kämpfe befüllen, ohne den Anzeige-Modus des aktuellen Kampfes zu ändern.
+        const vorher = state.overlayMode;
+        await zeigeNaechsteKaempferVorschau();
+        state.overlayMode = vorher;
+    }
+    update();
+}
+
+// Gleicht die Pausen-Ansicht mit dem Status der gewählten Matte ab (Matte wechselt, periodisch, nach dem Laden).
+async function aktualisiereMattenPause() {
+    const turnierId = localStorage.getItem('aktiveTurnierId');
+    if (!selectedMatId || !turnierId) return;
+    try {
+        const matten = await window.Datenzugriff.ladeKampfflaechen(turnierId);
+        const matte = matten.find(m => Number(m.id) === Number(selectedMatId));
+        if (matte) await wendePausenAnsichtAn(matte.status === 'pausiert');
+    } catch (err) {
+        console.warn('Mattenstatus konnte nicht abgefragt werden:', err);
+    }
+    aktualisiereMattePauseButton();
+}
+
 async function zeigeNaechsteKaempferVorschau() {
     if (!selectedMatId) return;
     try {
@@ -1808,6 +2009,8 @@ async function pruefeUndZeigePausenwarnung() {
             return;
         }
 
+        // Der im Scoreboard geladene Kampf bleibt bis zum START "bereit": die Warnung gilt ihm, solange er noch
+        // nicht begonnen hat — "Mit nächstem Kampf tauschen" lädt dann den anderen Kampf ins Scoreboard.
         const bereite = kaempfe
             .filter(k => k.status === 'bereit')
             .sort((a, b) => (a.matten_reihenfolge ?? 0) - (b.matten_reihenfolge ?? 0));
@@ -1861,9 +2064,18 @@ async function tauscheMitNaechstemKampf() {
     if (!pausenWarnungKampf || !pausenWarnungDanach) return;
     try {
         const turnierId = localStorage.getItem('aktiveTurnierId');
+        // Betrifft der Tausch den bereits geladenen (noch nicht begonnenen) Kampf, müssen danach die neuen
+        // Kämpfer ins Scoreboard.
+        const geladenerKampfBetroffen = currentFightId != null
+            && Number(pausenWarnungKampf.id) === Number(currentFightId)
+            && !kampfGestartet && !kampfStatusGemeldet && !isRunning;
         const tausch = await window.Datenzugriff.tauscheReihenfolge(pausenWarnungKampf.id, pausenWarnungDanach.id, turnierId);
         if (!tausch.ok) throw new Error(tausch.fehler || 'Tausch fehlgeschlagen.');
         zeigeNotification('Reihenfolge getauscht.', 'success');
+        if (geladenerKampfBetroffen) {
+            await naechstenKampfHolen();
+            resetTimer();
+        }
         await pruefeUndZeigePausenwarnung();
         await ladeMattenUebersicht();
     } catch (err) {
@@ -1874,6 +2086,21 @@ async function tauscheMitNaechstemKampf() {
 function formatFighterNameSteuerung(nachname, vorname) {
     if (!nachname && !vorname) return '';
     return `${nachname || ''}${nachname && vorname ? ', ' : ''}${vorname || ''}`.trim();
+}
+
+// Pool-Ansicht ("Pool-Übersicht" in steuerung.html): der Pool des geladenen Kampfes als Kampfbogen bzw.
+// Turnierbaum (public/js/poolAnsicht.js). Das Modul wird erst bei Bedarf geladen, damit ein Fehler dort
+// die Steuerung nicht lahmlegt.
+let poolAnsichtModul = null;
+async function renderePoolAnsichtSteuerung(kaempfe) {
+    const container = document.getElementById('poolAnsichtContainer');
+    if (!container) return;
+    try {
+        poolAnsichtModul = poolAnsichtModul || await import('./poolAnsicht.js');
+        poolAnsichtModul.renderPoolAnsicht(container, kaempfe, currentFightId);
+    } catch (err) {
+        console.error('Fehler bei der Pool-Ansicht:', err);
+    }
 }
 
 // Lädt und rendert die "Kämpfe dieser Matte"-Übersicht (#steuerungUpcomingList /
@@ -1888,6 +2115,7 @@ async function ladeMattenUebersicht() {
     if (!selectedMatId) {
         upcomingList.innerHTML = '';
         finishedList.innerHTML = '';
+        renderePoolAnsichtSteuerung([]);
         return;
     }
 
@@ -1899,7 +2127,17 @@ async function ladeMattenUebersicht() {
             return;
         }
 
-        const kommende = kaempfe.filter(k => k.status === 'bereit' || k.status === 'angelegt');
+        renderePoolAnsichtSteuerung(kaempfe);
+
+        // Der geladene Kampf wurde inzwischen anderswo beendet (z.B. in der Kampf-Ansicht): freigeben.
+        const geladen = currentFightId ? kaempfe.find(k => Number(k.id) === Number(currentFightId)) : null;
+        if (geladen && (geladen.status === 'beendet' || geladen.status === 'freilos') && !isRunning && !ergebnisWirdGesendet) {
+            gibGeladenenKampfFrei();
+            zeigeNotification('Der geladene Kampf wurde bereits beendet. Bitte den nächsten Kampf laden.', 'error');
+        }
+
+        // Der geladene Kampf (noch "bereit", bis START) gehört nicht mehr zu den kommenden Kämpfen.
+        const kommende = kaempfe.filter(k => (k.status === 'bereit' || k.status === 'angelegt') && k.id !== currentFightId);
         const beendete = kaempfe.filter(k => k.status === 'beendet' || k.status === 'freilos').reverse();
 
         upcomingList.innerHTML = '';
@@ -1911,7 +2149,19 @@ async function ladeMattenUebersicht() {
                 const name2 = formatFighterNameSteuerung(k.kaempfer2_nachname, k.kaempfer2_vorname) || 'noch offen';
 
                 const row = document.createElement('div');
-                row.style.cssText = 'display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 13px;';
+                row.style.cssText = 'display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--st-border, rgba(128,128,128,0.25)); font-size: 13px;';
+
+                // Noch nicht gestartete Kämpfe lassen sich per Griff umsortieren (auch noch nicht eingeplante).
+                if (k.status === 'bereit' && !k.wartet_auf_einzelpools) {
+                    row.dataset.sortierbar = '1';
+                    row.dataset.kampfId = k.id;
+                    const griff = document.createElement('span');
+                    griff.className = 'material-icons sortier-griff';
+                    griff.title = 'Ziehen zum Umsortieren';
+                    griff.textContent = 'drag_indicator';
+                    griff.style.fontSize = '18px';
+                    row.appendChild(griff);
+                }
 
                 const orderSpan = document.createElement('span');
                 orderSpan.style.cssText = 'opacity: 0.6; min-width: 24px;';
@@ -1927,6 +2177,12 @@ async function ladeMattenUebersicht() {
                 row.append(orderSpan, poolSpan, fightersSpan);
                 upcomingList.appendChild(row);
             });
+            window.macheSortierbar(upcomingList, async (kampfIds) => {
+                const ergebnis = await window.Datenzugriff.setzeReihenfolge(selectedMatId, kampfIds, localStorage.getItem('aktiveTurnierId'));
+                if (!ergebnis.ok) zeigeNotification(ergebnis.fehler || 'Reihenfolge konnte nicht gespeichert werden.', 'error');
+                await pruefeUndZeigePausenwarnung();
+                await ladeMattenUebersicht();
+            });
         }
 
         finishedList.innerHTML = '';
@@ -1938,7 +2194,7 @@ async function ladeMattenUebersicht() {
                 const name2 = formatFighterNameSteuerung(k.kaempfer2_nachname, k.kaempfer2_vorname) || 'Unbekannt';
 
                 const row = document.createElement('div');
-                row.style.cssText = 'display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 13px; opacity: 0.85;';
+                row.style.cssText = 'display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--st-border, rgba(128,128,128,0.25)); font-size: 13px; opacity: 0.85;';
 
                 const poolSpan = document.createElement('span');
                 poolSpan.style.cssText = 'font-weight: 700; min-width: 160px;';
@@ -1967,6 +2223,16 @@ async function ladeMattenUebersicht() {
                     korrigierenBtn.textContent = 'Korrigieren';
                     korrigierenBtn.addEventListener('click', () => oeffneSteuerungKorrekturModal(k));
                     row.appendChild(korrigierenBtn);
+
+                    if (k.status === 'beendet' && !k.mannschaftskampf_id) {
+                        const zuruecksetzenBtn = document.createElement('button');
+                        zuruecksetzenBtn.type = 'button';
+                        zuruecksetzenBtn.className = 'btn-main';
+                        zuruecksetzenBtn.style.cssText = 'background-color: #8a5a00; font-size: 11px; padding: 4px 10px; margin: 0;';
+                        zuruecksetzenBtn.textContent = 'Zurücksetzen';
+                        zuruecksetzenBtn.addEventListener('click', () => setzeSteuerungKampfZurueck(k));
+                        row.appendChild(zuruecksetzenBtn);
+                    }
                 }
 
                 finishedList.appendChild(row);
@@ -1974,6 +2240,21 @@ async function ladeMattenUebersicht() {
         }
     } catch (err) {
         console.error('Fehler beim Laden der Matten-Übersicht:', err);
+    }
+}
+
+// Setzt einen beendeten Kampf zurück: wieder "bereit", an zweiter Stelle der Kampfliste. Ob es noch
+// erlaubt ist (Folgekampf begonnen?), entscheidet der Server.
+async function setzeSteuerungKampfZurueck(kampf) {
+    if (!confirm('Kampf zurücksetzen? Das Ergebnis wird gelöscht, der Kampf kommt wieder an zweiter Stelle in die Kampfliste.')) return;
+    try {
+        const ergebnis = await window.Datenzugriff.setzeKampfZurueck(kampf.id, localStorage.getItem('aktiveTurnierId'));
+        if (!ergebnis.ok) throw new Error(ergebnis.fehler || 'Zurücksetzen fehlgeschlagen.');
+        zeigeNotification('Kampf zurückgesetzt.', 'success');
+        await pruefeUndZeigePausenwarnung();
+        await ladeMattenUebersicht();
+    } catch (err) {
+        zeigeNotification('Fehler beim Zurücksetzen: ' + err.message, 'error');
     }
 }
 
@@ -2059,6 +2340,7 @@ window.changeShido = changeShido;
 window.closeOverlay = closeOverlay;
 window.ergebnisSenden = ergebnisSenden;
 window.naechstenKampfHolen = naechstenKampfHolen;
+window.toggleMattePause = toggleMattePause;
 window.resetOsae = resetOsae;
 window.resetTimer = resetTimer;
 window.resetTimerBestaetigen = resetTimerBestaetigen;

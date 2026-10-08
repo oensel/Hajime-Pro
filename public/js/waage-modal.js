@@ -20,6 +20,22 @@ document.addEventListener('DOMContentLoaded', () => {
     let istGastgeberVerein = false;
     let istPrivilegiertFuerLizenzUndStartgeld = false;
     let aktuellerVereinName = '';
+    // Wird weiter unten gesetzt (braucht editId/scanMatchedId) und von aktualisiereSpeicherButtonStatus aufgerufen.
+    let aktualisiereLizenzAnzeige = null;
+    let setzeLizenzAnzeigeZurueck = null;
+
+    const istAppAnsicht = () => document.documentElement.classList.contains('modus-app');
+
+    // Stichtag der Lizenzprüfung ist der Wettkampftag: die Lizenz muss an diesem Tag noch gültig sein, nicht nur
+    // heute. Liegt der Wettkampftag nicht in der Zukunft (oder ist das Turnierdatum noch nicht geladen), gilt heute.
+    const lizenzStichtag = () => {
+        const heute = lokalesDatum(new Date());
+        return turnierDatum && turnierDatum > heute ? turnierDatum : heute;
+    };
+    const istLizenzGueltig = (wert) => {
+        const tag = wert ? lokalesDatum(wert) : null;
+        return !!tag && tag >= lizenzStichtag();
+    };
 
     const ermittleBerechtigungen = async () => {
         try {
@@ -35,6 +51,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             istGastgeberVerein = istOffline || !!(user.verein_id && user.verein_freigegeben && turnier && turnier.verein_id === user.verein_id);
             istPrivilegiertFuerLizenzUndStartgeld = istGastgeberVerein || !!user.ist_super_admin;
+            // Stichtag der Lizenzprüfung (Wettkampftag) schon hier setzen, nicht erst mit dem Laden der DJB-Klassen.
+            if (turnier && turnier.datum) turnierDatum = lokalesDatum(turnier.datum);
             aktuellerVereinName = user.verein_name || '';
         } catch (err) {
             console.error('Fehler beim Ermitteln der Bearbeitungsrechte:', err);
@@ -74,9 +92,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const lizenzFeld = document.getElementById('lizenz_ablauf');
 
         const immerPflicht = ['vorname', 'nachname', 'geburtsjahr', 'geschlecht', 'altersklasse', 'gewichtsklasse'];
-        // judopass_id, lizenz_ablauf und gewicht sind nur für den ausrichtenden Verein Pflicht.
+        // judopass_id, lizenz_ablauf und gewicht sind nur für den ausrichtenden Verein Pflicht. In der App
+        // ("Gewogen") ist die Judopass-ID keine Voraussetzung: sie wird beim Klick bei Bedarf erzeugt (siehe Submit).
         const felder = istGastgeberVerein
-            ? [...immerPflicht, 'judopass_id', 'lizenz_ablauf', 'gewicht']
+            ? [...immerPflicht, ...(istAppAnsicht() ? [] : ['judopass_id']), 'lizenz_ablauf', 'gewicht']
             : immerPflicht;
 
         const alleFelderGefuellt = felder.every(id => {
@@ -92,6 +111,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Bleibt immer sichtbar, ist nur ausgegraut (disabled), solange nicht speicherbar.
             submitBtn.disabled = !(alleFelderGefuellt && lizenzOk);
         }
+        if (aktualisiereLizenzAnzeige) aktualisiereLizenzAnzeige();
     };
 
     const felderIDs = ['vorname', 'nachname', 'judopass_id', 'verein', 'geburtsjahr', 'geschlecht', 'gewicht', 'altersklasse', 'gewichtsklasse'];
@@ -113,17 +133,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            const ablaufDatum = new Date(wert);
-            ablaufDatum.setHours(0, 0, 0, 0);
-            const heute = new Date();
-            heute.setHours(0, 0, 0, 0);
-
             lizenzFeldGlobal.classList.remove('lizenz-valid', 'lizenz-expired');
-            if (ablaufDatum >= heute) {
-                lizenzFeldGlobal.classList.add('lizenz-valid');
-            } else {
-                lizenzFeldGlobal.classList.add('lizenz-expired');
-            }
+            lizenzFeldGlobal.classList.add(istLizenzGueltig(wert) ? 'lizenz-valid' : 'lizenz-expired');
             aktualisiereSpeicherButtonStatus();
         };
 
@@ -486,16 +497,7 @@ document.addEventListener('DOMContentLoaded', () => {
         lizenzFeld.classList.remove('lizenz-valid', 'lizenz-expired');
         if (!datumWert) return;
 
-        const ablaufDatum = new Date(datumWert);
-        ablaufDatum.setHours(0, 0, 0, 0);
-        const heute = new Date();
-        heute.setHours(0, 0, 0, 0);
-
-        if (ablaufDatum >= heute) {
-            lizenzFeld.classList.add('lizenz-valid');
-        } else {
-            lizenzFeld.classList.add('lizenz-expired');
-        }
+        lizenzFeld.classList.add(istLizenzGueltig(datumWert) ? 'lizenz-valid' : 'lizenz-expired');
     };
 
     // Befüllt sämtliche Formularfelder anhand eines bestehenden Teilnehmer-Datensatzes.
@@ -529,8 +531,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         uebernimmGewichtsklasse(athlet.gewichtsklasse);
 
-        document.getElementById('lizenz_ablauf').value = athlet.lizenz_ablauf || '';
-        aktualisiereLizenzKlasse(athlet.lizenz_ablauf);
+        // 1970-01-01 ist der Platzhalter des Servers für "keine Lizenzdaten hinterlegt" (siehe teilnehmerController.js).
+        const lizenzTag = athlet.lizenz_ablauf ? lokalesDatum(athlet.lizenz_ablauf) : '';
+        const lizenzWert = !lizenzTag || lizenzTag === '1970-01-01' ? '' : lizenzTag;
+        document.getElementById('lizenz_ablauf').value = lizenzWert;
+        aktualisiereLizenzKlasse(lizenzWert);
+        if (setzeLizenzAnzeigeZurueck) setzeLizenzAnzeigeZurueck();
 
         const startgeldCheckbox = document.getElementById('startgeld_bezahlt');
         if (startgeldCheckbox) {
@@ -565,14 +571,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // Setzt "Lizenz gültig bis" aus einem gescannten QR-Wert (inkl. Warnhinweis bei Ablauf).
     // Nur relevant, wenn das Feld überhaupt bearbeitet werden darf (siehe istPrivilegiertFuer-
     // LizenzUndStartgeld) — sonst würde ein QR-Scan die Sperre umgehen.
-    const setzeLizenzAusScan = (wert, anzeigeName = '') => {
+    const setzeLizenzAusScan = (wert) => {
         const lizenzFeld = document.getElementById('lizenz_ablauf');
         if (!wert || !lizenzFeld || !istPrivilegiertFuerLizenzUndStartgeld) return;
         lizenzFeld.value = wert;
         aktualisiereLizenzKlasse(wert);
-        if (lizenzFeld.classList.contains('lizenz-expired')) {
-            alert(`Achtung: Die Lizenz${anzeigeName ? ' von ' + anzeigeName : ''} ist abgelaufen! Speichern blockiert.`);
-        }
+        // Statt eines Dialogs zeigt aktualisiereLizenzAnzeige() bei abgelaufener Lizenz einen Hinweis samt Datumsfeld.
+        if (aktualisiereLizenzAnzeige) aktualisiereLizenzAnzeige();
     };
 
     // ID des im Editier-Modus bearbeiteten Teilnehmers bzw. des per QR-Scan gefundenen
@@ -605,6 +610,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const istWettkampftag = () => !!turnierDatum && turnierDatum === lokalesDatum(new Date());
 
+    // Scan-Ansicht: über den "Scan"-Knopf der Liste zeigt das Popup zunächst NUR die Kamera. Erst nach dem
+    // Scan erscheint das Formular (Waage-Fenster bzw. "Teilnehmer hinzufügen"); "Scanner schließen" führt
+    // zurück zur Liste.
+    let nurScan = false;
+    const setzeNurScan = (an) => {
+        nurScan = an;
+        document.getElementById('waageKopfZeile').style.display = an ? 'none' : 'flex';
+        document.getElementById('teilnehmerForm').style.display = an ? 'none' : '';
+    };
+    document.addEventListener('scanner-fehler', () => setzeNurScan(false));
+
     // --- QR-DATA-MAPPING & WEBCAM INTERFACE ---
     const verarbeiteGescannteDaten = async (parsedData, istDokuMe) => {
         // Ob Treffer oder Neuanlage: der Judoka stand gerade physisch am Scanner -> beim
@@ -634,7 +650,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // --- ABGLEICH MIT BEREITS VORHANDENEN TEILNEHMERN DES TURNIERS ---
         let treffer = null;
-        let trefferUeberName = false;
         try {
             const response = await fetch(`/api/teilnehmer?turnierId=${turnierId}`);
             if (response.ok) {
@@ -648,7 +663,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 if (gefunden) {
                     treffer = gefunden.teilnehmer;
-                    trefferUeberName = gefunden.ueber === 'name';
                 }
             }
         } catch (err) {
@@ -662,15 +676,8 @@ document.addEventListener('DOMContentLoaded', () => {
             await befuelleTeamNameFeld(treffer.id);
 
             if (scanJudopassId) document.getElementById('judopass_id').value = scanJudopassId;
-            setzeLizenzAusScan(scanLizenzAblauf, `${treffer.vorname} ${treffer.nachname}`);
+            setzeLizenzAusScan(scanLizenzAblauf);
 
-            if (trefferUeberName) {
-                const ergaenzt = [scanJudopassId && 'Judopass-Nr.', scanLizenzAblauf && istPrivilegiertFuerLizenzUndStartgeld && 'Lizenz'].filter(Boolean).join(' und ');
-                window.zeigeNotification?.(
-                    `${treffer.vorname} ${treffer.nachname} (${treffer.geburtsjahr}) gefunden${ergaenzt ? ` — ${ergaenzt} ergänzt (mit „Speichern“ übernehmen)` : ''}.`,
-                    'info'
-                );
-            }
         } else {
             // Kein Treffer -> Formular komplett mit den QR-Daten befüllen (Neuanlage)
             scanMatchedId = null;
@@ -680,7 +687,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (scanJudopassId) document.getElementById('judopass_id').value = scanJudopassId;
             if (scanGeburtsjahr) document.getElementById('geburtsjahr').value = scanGeburtsjahr;
             if (scanVerein) setzeVereinFeldWert(scanVerein);
-            setzeLizenzAusScan(scanLizenzAblauf, `${scanVorname} ${scanNachname}`.trim());
+            setzeLizenzAusScan(scanLizenzAblauf);
         }
 
         if (parsedData.geschlecht) {
@@ -693,6 +700,7 @@ document.addEventListener('DOMContentLoaded', () => {
         uebernimmGewichtsklasse(parsedData.gewichtsklasse);
 
         aktualisiereSpeicherButtonStatus();
+        setzeNurScan(false);
         setzeKompakt(!!treffer, !!treffer);
         // Handy: bekannter Teilnehmer -> direkt zum Gewicht (Wiegen), sonst wie bisher zum Vereinsfeld.
         document.getElementById(istHandyModus && treffer ? 'gewicht' : 'verein').focus();
@@ -711,21 +719,71 @@ document.addEventListener('DOMContentLoaded', () => {
     const istHandyModus = document.documentElement.classList.contains('modus-app');
     const setzeKompakt = (kompakt, bestehend = !!(editId || scanMatchedId)) => {
         if (!istHandyModus) return;
+        // Bekannter Teilnehmer im kompakten Fenster = Wiegen ("Waage"), sonst Anlegen/Bearbeiten.
+        waageModalTitle.innerText = kompakt && bestehend ? 'Waage' : bestehend ? 'Teilnehmer bearbeiten' : 'Teilnehmer hinzufügen';
         teilnehmerForm.classList.toggle('waage-kompakt', kompakt && bestehend);
+        teilnehmerForm.classList.toggle('waage-verein-offen', !document.getElementById('verein').value.trim());
+        teilnehmerForm.classList.toggle('waage-graduierung-offen', !document.getElementById('graduierung').value);
         const zeile = document.getElementById('waageNameZeile');
         if (!zeile) return;
         const name = [document.getElementById('nachname').value, document.getElementById('vorname').value].map(s => s.trim()).filter(Boolean).join(', ');
         document.getElementById('waageNameText').textContent = name;
+        const gradSelect = document.getElementById('graduierung');
+        const graduierung = gradSelect.value ? gradSelect.selectedOptions[0]?.textContent.trim() : '';
+        document.getElementById('waageInfoText').textContent = [document.getElementById('verein').value.trim(), graduierung].filter(Boolean).join(' · ');
         zeile.style.display = bestehend && name ? 'flex' : 'none';
         document.getElementById('waageStiftBtn').style.display = kompakt && bestehend ? 'flex' : 'none';
     };
+
+    // Lizenz-Hinweis: Ist die Lizenz abgelaufen oder fehlen bei einem bestehenden Teilnehmer die Lizenzdaten (auch ohne
+    // QR-Scan), erscheint ein Hinweis, und das Datumsfeld bleibt auch im kompakten Waage-Fenster sichtbar und
+    // editierbar. Nur für Berechtigte (das Feld ist sonst gesperrt). Das Feld bleibt sichtbar, bis das Formular
+    // zurückgesetzt wird — es soll nicht beim Eintippen eines gültigen Datums verschwinden.
+    let lizenzFeldGezeigt = false;
+    const hinweisEl = document.getElementById('lizenzHinweis');
+    aktualisiereLizenzAnzeige = () => {
+        const feld = document.getElementById('lizenz_ablauf');
+        if (!hinweisEl || !feld) return;
+        const bestehend = !!(editId || scanMatchedId);
+        let art = null;
+        if (istPrivilegiertFuerLizenzUndStartgeld) {
+            if (feld.classList.contains('lizenz-expired')) art = 'abgelaufen';
+            else if (!feld.value && bestehend) art = 'fehlt';
+        }
+        if (art) lizenzFeldGezeigt = true;
+        feld.classList.toggle('lizenz-fehlt', art === 'fehlt');
+
+        if (art === 'abgelaufen') {
+            const [j, m, t] = feld.value.split('-');
+            const name = [document.getElementById('vorname').value, document.getElementById('nachname').value].map(x => x.trim()).filter(Boolean).join(' ');
+            const ablauf = `${t}.${m}.${j}`;
+            const heute = lokalesDatum(new Date());
+            const stichtag = lizenzStichtag();
+            const [sj, sm, st] = stichtag.split('-');
+            hinweisEl.textContent = feld.value < heute
+                ? `Die Lizenz${name ? ' von ' + name : ''} ist am ${ablauf} abgelaufen. Bitte das Datum prüfen.`
+                : `Die Lizenz${name ? ' von ' + name : ''} gilt nur bis ${ablauf} und ist am Wettkampftag (${st}.${sm}.${sj}) nicht mehr gültig. Bitte das Datum prüfen.`;
+        } else if (art === 'fehlt') {
+            hinweisEl.textContent = 'Keine Lizenzdaten vorhanden. Bitte das Ablaufdatum eintragen.';
+        }
+        hinweisEl.hidden = !art;
+        hinweisEl.dataset.art = art || '';
+        teilnehmerForm.classList.toggle('waage-lizenz-offen', lizenzFeldGezeigt);
+    };
+    setzeLizenzAnzeigeZurueck = () => {
+        lizenzFeldGezeigt = false;
+        if (hinweisEl) { hinweisEl.hidden = true; hinweisEl.dataset.art = ''; }
+        document.getElementById('lizenz_ablauf')?.classList.remove('lizenz-fehlt');
+        teilnehmerForm.classList.remove('waage-lizenz-offen');
+    };
     document.getElementById('waageStiftBtn')?.addEventListener('click', () => setzeKompakt(false));
-    if (istHandyModus) document.getElementById('submitBtn').textContent = 'Wiegen';
+    if (istHandyModus) document.getElementById('submitBtn').textContent = 'Gewogen';
 
     const setzeFormularZurueck = () => {
         teilnehmerForm.reset();
         setzeKompakt(false, false);
         document.getElementById('lizenz_ablauf').classList.remove('lizenz-valid', 'lizenz-expired');
+        if (setzeLizenzAnzeigeZurueck) setzeLizenzAnzeigeZurueck();
         const startgeldCheckbox = document.getElementById('startgeld_bezahlt');
         if (startgeldCheckbox) startgeldCheckbox.checked = false;
         gewichtsklasseSelect.innerHTML = '<option value="" disabled selected hidden>Bitte Altersklasse wählen...</option>';
@@ -766,10 +824,15 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const schliesseModal = () => {
+        setzeNurScan(false);
         modal.style.display = 'none';
         schliesseScannerFallsAktiv();
         editId = null;
     };
+
+    document.getElementById('stopScanBtn')?.addEventListener('click', () => {
+        if (nurScan) schliesseModal();
+    });
 
     // Öffnet das Popup: ohne id für einen neuen Teilnehmer, mit id zum Bearbeiten eines
     // bestehenden. Global exponiert, da teilnehmer.js (kein Modul) den "Hinzufügen"-Button und
@@ -777,13 +840,13 @@ document.addEventListener('DOMContentLoaded', () => {
     window.oeffneWaageModal = (id = null, { mitScan = false } = {}) => {
         editId = id || null;
         setzeFormularZurueck();
-        waageModalTitle.innerText = editId ? 'Teilnehmer bearbeiten' : 'Teilnehmer hinzufügen';
+        waageModalTitle.innerText = editId ? (istHandyModus ? 'Waage' : 'Teilnehmer bearbeiten') : 'Teilnehmer hinzufügen';
         modal.style.display = 'flex';
         if (editId) {
             ladeBestehendeTeilnehmerDaten(editId);
         } else if (mitScan) {
-            // Über den "Scan"-Button in der Toolbar geöffnet: Kamera direkt aktivieren, statt
-            // erst das leere Formular zu zeigen und den Scan-Button erneut anklicken zu lassen.
+            // Über den "Scan"-Button in der Toolbar geöffnet: nur die Kamera zeigen (siehe setzeNurScan).
+            setzeNurScan(true);
             document.getElementById('startScanBtn')?.click();
         }
     };
@@ -937,6 +1000,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
+            // App: "Gewogen" ohne Judopass-ID — ist die Lizenz gültig, wird die ID erzeugt. Der Zeitstempel hält sie
+            // eindeutig (pro Turnier darf eine Judopass-ID nur einmal vorkommen).
+            const judopassFeld = document.getElementById('judopass_id');
+            if (istAppAnsicht() && istPrivilegiertFuerLizenzUndStartgeld && !judopassFeld.value.trim()
+                && istLizenzGueltig(document.getElementById('lizenz_ablauf').value)) {
+                judopassFeld.value = `AUTO-${Date.now()}`;
+            }
+
             const payload = {
                 turnier_id: parseInt(turnierId),
                 vorname: document.getElementById('vorname').value,
@@ -1005,7 +1076,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (result.ausstehend) window.zeigeNotification(result.meldung, 'info');
                     if (window.ladeTeilnehmerListe) window.ladeTeilnehmerListe();
 
-                    if (editId) {
+                    // Handy: auch ein per Scan gefundener, bereits gelisteter Teilnehmer ist nach dem Wiegen
+                    // erledigt -> zurück zur Liste statt zum leeren "Teilnehmer hinzufügen"-Formular.
+                    if (editId || (istHandyModus && scanMatchedId)) {
                         setTimeout(schliesseModal, 800);
                     } else {
                         // Kampfbereit-Bestätigung anbieten, bevor das Formular für den nächsten

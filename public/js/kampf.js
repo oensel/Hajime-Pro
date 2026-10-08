@@ -183,12 +183,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Buttons steuern
             currentFightActions.innerHTML = '';
             if (currentFight.status === 'bereit') {
-                const startBtn = document.createElement('button');
-                startBtn.className = 'btn btn-raised';
-                startBtn.style.backgroundColor = '#f57c00';
-                startBtn.innerHTML = '<span class="material-icons" style="margin-right: 8px; vertical-align: middle;">play_arrow</span>Kampf im Scoreboard starten';
-                startBtn.addEventListener('click', () => startKampf(currentFight));
-                currentFightActions.appendChild(startBtn);
+                currentFightActions.innerHTML = '<span class="badge wartet">Bereit – Start an der Matte</span>';
             } else if (currentFight.status === 'angelegt') {
                 currentFightActions.innerHTML = '<span class="badge wartet">Wartet auf feste Paarungen</span>';
             } else if (currentFight.status === 'gestartet') {
@@ -200,11 +195,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 currentFightActions.appendChild(finishBtn);
             }
 
-            // Forfeit-Aktionen (nicht angetreten / disqualifiziert) — nur wenn beide Kämpfer
-            // feststehen und der Kampf noch nicht beendet ist.
-            if ((currentFight.status === 'bereit' || currentFight.status === 'gestartet') && currentFight.kaempfer1_id && currentFight.kaempfer2_id) {
-                currentFightActions.appendChild(baueForfeitAktionen(currentFight));
-            }
         } else {
             // Keine Kämpfe vorhanden oder alle beendet
             if (currentTeamBanner) currentTeamBanner.style.display = 'none';
@@ -232,7 +222,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 
                 const row = document.createElement('div');
                 row.className = 'fight-row';
+                // Noch nicht gestartete Kämpfe lassen sich per Griff umsortieren (auch noch nicht eingeplante).
+                const sortierbar = k.status === 'bereit' && !k.wartet_auf_einzelpools;
+                if (sortierbar) {
+                    row.dataset.sortierbar = '1';
+                    row.dataset.kampfId = k.id;
+                }
                 row.innerHTML = `
+                    ${sortierbar ? '<span class="material-icons sortier-griff" title="Ziehen zum Umsortieren">drag_indicator</span>' : ''}
                     <span class="fight-row-order">#${idx + 1}</span>
                     <span class="fight-row-pool">${escapeHtml(k.pool_bezeichnung)}</span>
                     <span class="fight-row-fighters">
@@ -243,6 +240,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <span class="fight-row-status"><span class="badge wartet">Bereit</span></span>
                 `;
                 upcomingFightsList.appendChild(row);
+            });
+            window.macheSortierbar(upcomingFightsList, async (kampfIds) => {
+                const ergebnis = await window.Datenzugriff.setzeReihenfolge(mattenSelect.value, kampfIds, turnierId);
+                if (!ergebnis.ok) zeigeNotification(ergebnis.fehler || 'Reihenfolge konnte nicht gespeichert werden.', 'error');
+                ladeKämpfe(mattenSelect.value);
             });
         }
 
@@ -271,6 +273,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // Ein Freilos hat kein echtes Ergebnis zu korrigieren.
                 const korrigierenButton = k.status === 'freilos' ? '' : `<button type="button" class="btn btn-outlined" style="padding: 4px 8px; font-size: 10px;" onclick="window.bearbeiteKampfergebnis(${k.id})">Korrigieren</button>`;
 
+                // Zurücksetzen: nur echte Einzelkämpfe (Mannschaftsbegegnungen und Freilose ausgenommen);
+                // ob es noch erlaubt ist, entscheidet der Server (Folgekampf begonnen -> Meldung).
+                const zuruecksetzenButton = (k.status === 'beendet' && !k.mannschaftskampf_id)
+                    ? `<button type="button" class="btn btn-outlined" style="padding: 4px 8px; font-size: 10px;" onclick="window.setzeKampfZurueck(${k.id})">Zurücksetzen</button>`
+                    : '';
+
                 const row = document.createElement('div');
                 row.className = 'fight-row';
                 row.style.opacity = '0.7';
@@ -282,9 +290,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                         <span class="fight-row-vs">VS</span>
                         <span>${fighter2Display}</span>
                     </span>
-                    <span class="fight-row-status" style="width: auto; font-size: 12px; font-weight: 700; color: var(--text-muted); margin-right: 12px;">${scoreText}</span>
+                    <span class="fight-row-status" style="width: auto; font-size: 12px; font-weight: 700; color: var(--text-muted); margin-right: 12px; flex-shrink: 0;">${scoreText}</span>
                     <span class="fight-row-actions">
                         ${korrigierenButton}
+                        ${zuruecksetzenButton}
                     </span>
                 `;
                 finishedFightsList.appendChild(row);
@@ -345,88 +354,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    // --- FORFEIT-AKTIONEN (NICHT ANGETRETEN / DISQUALIFIZIERT) ---
-    function baueForfeitAktionen(kampf) {
-        const wrapper = document.createElement('div');
-        wrapper.style.cssText = 'display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; justify-content: center;';
-
-        const fighterLabel = (teilnehmerId) => teilnehmerId === kampf.kaempfer1_id
-            ? (formatFighterName(kampf.kaempfer1_nachname, kampf.kaempfer1_vorname) || 'Kämpfer 1')
-            : (formatFighterName(kampf.kaempfer2_nachname, kampf.kaempfer2_vorname) || 'Kämpfer 2');
-
-        const macheButton = (teilnehmerId, aktion, label, icon) => {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'btn btn-outlined';
-            btn.style.cssText = 'padding: 4px 10px; font-size: 11px; color: #c62828; border-color: #c62828;';
-            btn.innerHTML = `<span class="material-icons" style="font-size: 14px; vertical-align: middle; margin-right: 4px;">${icon}</span>${label}`;
-            btn.addEventListener('click', () => fuehreForfeitAktionAus(teilnehmerId, kampf.id, aktion, fighterLabel(teilnehmerId), kampf));
-            return btn;
-        };
-
-        wrapper.appendChild(macheButton(kampf.kaempfer1_id, 'nicht-angetreten', `${fighterLabel(kampf.kaempfer1_id)}: nicht angetreten`, 'person_off'));
-        wrapper.appendChild(macheButton(kampf.kaempfer1_id, 'disqualifizieren', `${fighterLabel(kampf.kaempfer1_id)}: DSQ`, 'block'));
-        wrapper.appendChild(macheButton(kampf.kaempfer2_id, 'nicht-angetreten', `${fighterLabel(kampf.kaempfer2_id)}: nicht angetreten`, 'person_off'));
-        wrapper.appendChild(macheButton(kampf.kaempfer2_id, 'disqualifizieren', `${fighterLabel(kampf.kaempfer2_id)}: DSQ`, 'block'));
-
-        return wrapper;
-    }
-
-    async function fuehreForfeitAktionAus(teilnehmerId, kampfId, aktion, name, kampf) {
-        let nachricht = aktion === 'disqualifizieren'
-            ? `${name} disqualifizieren? Der Gegner erhält einen regulären Sieg (10 Punkte).`
-            : `${name} als nicht angetreten markieren? Der Gegner erhält einen regulären Sieg (10 Punkte).`;
-        // Abschenken-Verbot (DJB-WKO Art. 3.12.13.3): gehört der Kampf zu einer
-        // Mannschaftsbegegnung, verliert nicht nur dieser Einzelkampf, sondern die GESAMTE
-        // Mannschaft die Begegnung sofort mit 0 Siegen — der Tisch muss das vorher wissen.
-        if (kampf && kampf.mannschaftskampf_id) {
-            nachricht += ' ACHTUNG: Dieser Kampf gehört zu einer Mannschaftsbegegnung — die gesamte Mannschaft verliert dadurch sofort die Begegnung mit 0 Siegen ("zu Null"), unabhängig vom bisherigen Zwischenstand!';
-        }
-        const bestaetigt = window.zeigeZentraleBestaetigung
-            ? await window.zeigeZentraleBestaetigung(nachricht, 'Forfeit werten', 'warning')
-            : confirm(nachricht);
-        if (!bestaetigt) return;
-
-        try {
-            const result = await window.Datenzugriff.werteForfeit(teilnehmerId, kampfId, aktion);
-            if (!result.ok) throw new Error(result.fehler || 'Aktion fehlgeschlagen.');
-            zeigeNotification('Forfeit gewertet.', 'success');
-            ladeKämpfe(mattenSelect.value);
-        } catch (err) {
-            zeigeNotification(err.message, 'error');
-        }
-    }
-
-    // --- KAMPF STARTEN ---
-    async function startKampf(kampf) {
-        try {
-            const start = await window.Datenzugriff.aktualisiereKampf(kampf.id, { status: 'gestartet' });
-            if (!start.ok) throw new Error(start.fehler || 'Fehler beim Starten des Kampfes.');
-
-            zeigeNotification('Kampf gestartet.', 'success');
-
-            // Steuerung-Fenster öffnen und mit Parametern befüllen
-            const nameW = `${kampf.kaempfer1_nachname || ''}, ${kampf.kaempfer1_vorname || ''}`;
-            const clubW = kampf.kaempfer1_verein || '';
-            const nameB = `${kampf.kaempfer2_nachname || ''}, ${kampf.kaempfer2_vorname || ''}`;
-            const clubB = kampf.kaempfer2_verein || '';
-            const poolName = kampf.pool_bezeichnung || '';
-            const duration = kampf.pool_kampfzeit || 240;
-            const gsAktiv = kampf.pool_golden_score_aktiv !== false ? 1 : 0;
-            const gsMax = kampf.pool_golden_score_max_sekunden || '';
-
-            const steuerungUrl = `/steuerung.html?id=${kampf.id}&k1_id=${kampf.kaempfer1_id}&k2_id=${kampf.kaempfer2_id}&matId=${mattenSelect.value}&turnierId=${turnierId}&nameW=${encodeURIComponent(nameW)}&clubW=${encodeURIComponent(clubW)}&nameB=${encodeURIComponent(nameB)}&clubB=${encodeURIComponent(clubB)}&poolName=${encodeURIComponent(poolName)}&duration=${duration}&gsAktiv=${gsAktiv}&gsMax=${gsMax}`;
-            window.open(steuerungUrl, '_blank');
-
-            ladeKämpfe(mattenSelect.value);
-        } catch (err) {
-            zeigeNotification(err.message, 'error');
-        }
-    }
-
-    // Kämpfer 1 ist immer Weiß, Kämpfer 2 Blau oder Rot — je nach Einstellung "Farbe" im Scoreboard (live_farbe).
+    // Kämpfer 1 ist immer Weiß, Kämpfer 2 Blau oder Rot — wirksame Farbe (Scoreboard-Kampf > Pool > Turnier)
+    // liefert der Server bzw. mattenAnsicht.js als farbe_kaempfer2.
     function farbeKaempfer2(kampf) {
-        return kampf && kampf.live_farbe === 'rot' ? 'rot' : 'blau';
+        return kampf && kampf.farbe_kaempfer2 === 'rot' ? 'rot' : 'blau';
     }
     const farbName = (farbe) => (farbe === 'rot' ? 'Rot' : 'Blau');
 
@@ -506,6 +437,18 @@ document.addEventListener('DOMContentLoaded', async () => {
             zeigeNotification(err.message, 'error');
         }
     });
+
+    // --- KAMPF ZURÜCKSETZEN ---
+    window.setzeKampfZurueck = async (kampfId) => {
+        if (!confirm('Kampf zurücksetzen? Das Ergebnis wird gelöscht, der Kampf kommt wieder an zweiter Stelle in die Kampfliste.')) return;
+        const ergebnis = await window.Datenzugriff.setzeKampfZurueck(kampfId, turnierId);
+        if (!ergebnis.ok) {
+            zeigeNotification(ergebnis.fehler || 'Zurücksetzen fehlgeschlagen.', 'error');
+            return;
+        }
+        zeigeNotification('Kampf zurückgesetzt.', 'success');
+        ladeKämpfe(mattenSelect.value);
+    };
 
     // --- ERGEBNIS KORRIGIEREN TRIGER ---
     window.bearbeiteKampfergebnis = (kampfId) => {
