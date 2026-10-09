@@ -324,20 +324,76 @@ export async function setzeKampfZurueck(knex, kampfId) {
     });
 
     await triggerPoolUpdate(knex, kampf.pool_id);
+    await reiheKampfAnZweiterStelleEin(knex, pool, kampf);
+}
+
+// Plant die Kämpfe der Matte neu ein und stellt den Kampf an zweiter Stelle der kommenden Kämpfe ein (läuft gerade
+// ein Kampf, ist er die Nummer 1 und dieser Kampf der nächste; sonst kommt er nach dem als Nächstes anstehenden).
+// Der Kampf wird dabei als manuell einsortiert markiert und bleibt für den Planer unangetastet.
+async function reiheKampfAnZweiterStelleEin(knex, pool, kampf) {
     if (pool && pool.kampfflaeche_id) {
-        // Erst die übrigen Kämpfe einplanen (der zurückgesetzte ist als manuell markiert und bleibt
-        // für den Planer unangetastet), dann ihn an zweiter Stelle einfügen.
         await planeKaempfeFuerKampfflaeche(knex, pool.kampfflaeche_id);
         const bereite = await ladeBereiteKaempfeDerMatte(knex, pool.kampfflaeche_id);
-        const uebrige = bereite.map(k => k.id).filter(id => id !== kampfId);
-        // "Zweite Stelle" der Kampfliste: läuft gerade ein Kampf, ist er die Nummer 1 und der
-        // zurückgesetzte Kampf der nächste; sonst kommt er nach dem als Nächstes anstehenden.
+        const uebrige = bereite.map(k => k.id).filter(id => id !== kampf.id);
         const poolIds = (await knex('pools').where({ kampfflaeche_id: pool.kampfflaeche_id }).select('id')).map(p => p.id);
         const laeuftGerade = await knex('kaempfe').whereIn('pool_id', poolIds).where({ status: 'gestartet' }).first('id');
-        const folge = fuegeEin(uebrige, kampfId, laeuftGerade ? 0 : 1);
+        const folge = fuegeEin(uebrige, kampf.id, laeuftGerade ? 0 : 1);
         const nachId = new Map([...bereite, kampf].map(k => [k.id, k]));
         await schreibePositionen(knex, verteilePositionen(folge, nachId));
         await synchronisiereMattenStatus(knex, pool.kampfflaeche_id);
+    }
+}
+
+// Zusatzkampf in einem Pool in Prüfung (z.B. Entscheidung eines 3er-Kreises mit je einem Sieg): Die Turnierleitung
+// wählt zwei Kämpfer des Pools. Der Pool ist danach wieder in Betrieb ("gestartet") und wird nach dem Kampf
+// automatisch wieder zum Pool in Prüfung (JederGegenJedenManager.aktualisiereTurnier). Nur Jeder-gegen-Jeden:
+// Turnierbäume und Überkreuz-Gruppen sind nach ihrer Struktur entschieden.
+export async function legeZusatzkampfAn(knex, poolId, kaempfer1Id, kaempfer2Id) {
+    const pool = await knex('pools').where({ id: poolId }).first();
+    if (!pool) throw new FachFehler(404, 'Pool nicht gefunden.');
+    if (pool.typ === 'mannschaft') throw new FachFehler(409, 'Für Mannschafts-Pools gibt es keinen Zusatzkampf.');
+    if (!/^Jeder[- ]gegen[- ]Jeden$/.test(pool.modus || '')) {
+        throw new FachFehler(409, 'Ein Zusatzkampf ist nur in Jeder-gegen-Jeden-Pools möglich.');
+    }
+    if (pool.status !== 'kaempfe_beendet') {
+        throw new FachFehler(409, 'Ein Zusatzkampf kann nur in einem Pool in Prüfung angelegt werden.');
+    }
+    const id1 = parseInt(kaempfer1Id, 10);
+    const id2 = parseInt(kaempfer2Id, 10);
+    if (!id1 || !id2 || id1 === id2) throw new FachFehler(400, 'Bitte zwei verschiedene Kämpfer wählen.');
+
+    const poolKaempfe = await knex('kaempfe').where({ pool_id: poolId });
+    const imPool = new Set(poolKaempfe.flatMap(k => [k.kaempfer1_id, k.kaempfer2_id]).filter(Boolean));
+    if (!imPool.has(id1) || !imPool.has(id2)) throw new FachFehler(409, 'Beide Kämpfer müssen zum Pool gehören.');
+
+    const naechsteNummer = poolKaempfe.reduce((m, k) => Math.max(m, parseInt(k.reihenfolge_nummer, 10) || 0), 0) + 1;
+    let neuerKampf;
+    await knex.transaction(async (trx) => {
+        const [zeile] = await trx('kaempfe').insert({
+            pool_id: poolId,
+            status: 'bereit',
+            reihenfolge_nummer: naechsteNummer,
+            kaempfer1_id: id1,
+            kaempfer2_id: id2,
+            sieger_id: null,
+            kampfzeit_in_sekunden: 0,
+            unterbewertung_kaempfer1: 0,
+            unterbewertung_kaempfer2: 0,
+            reihenfolge_manuell: true
+        }).returning('id');
+        neuerKampf = await trx('kaempfe').where({ id: typeof zeile === 'object' ? zeile.id : zeile }).first();
+        await trx('pools').where({ id: poolId }).update({ status: 'gestartet' });
+    });
+    await reiheKampfAnZweiterStelleEin(knex, pool, neuerKampf);
+    return neuerKampf.id;
+}
+
+export async function legeZusatzkampfAnRoute(knex, req, res) {
+    try {
+        const kampfId = await legeZusatzkampfAn(knex, parseInt(req.params.id, 10), req.body.kaempfer1_id, req.body.kaempfer2_id);
+        return res.json({ success: true, kampfId });
+    } catch (error) {
+        return res.status(error.statusCode || 500).json({ success: false, error: error.message });
     }
 }
 

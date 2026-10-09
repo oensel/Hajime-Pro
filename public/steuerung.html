@@ -2,25 +2,99 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Judo Steuerung</title>
     <link rel="stylesheet" href="css/scoreboard.css">
     <script src="js/steuerungTheme.js"></script>
 </head>
 <body class="padding-steuerung">
 
-    <!-- GEMEINSAMER SEKTOR (Breiten-angepasst und standardmäßig offen) -->
-    <div class="collapse-wrapper">
-        <div class="collapse-container">
-            <div class="collapse-header" onclick="toggleCollapse('datenSektorSection', 'arrowDaten')">
-                <span>⚙️ / 🥋 Kampf-Daten & Einstellungen</span>
-                <span class="collapse-header-rechts">
-                    <button type="button" id="steuerungThemeToggle" class="theme-toggle-btn" aria-label="Dunkelmodus umschalten">🌙 Dunkel</button>
-                    <span id="arrowDaten" class="arrow">▲</span>
-                </span>
+    <!-- KOPFLEISTE: Überblick über Matte/Pool/Kampfzeit (befüllt von js/steuerungMenue.js) + Hell/Dunkel -->
+    <header class="st-top">
+        <span class="st-top-titel">Steuerung</span>
+        <span class="st-chip" title="Wettkampffläche"><span class="st-punkt"></span> Matte <b id="stChipMatte">–</b></span>
+        <span class="st-chip st-chip-pool" title="Pool"><b id="stChipPool">–</b></span>
+        <span class="st-chip st-chip-zeit" title="Reguläre Kampfzeit"><b id="stChipZeit">–</b></span>
+        <span class="st-top-platz"></span>
+        <button type="button" id="steuerungThemeToggle" class="theme-toggle-btn" aria-label="Dunkelmodus umschalten">🌙 Dunkel</button>
+    </header>
+
+    <!-- BÜHNE: die Steuerung des Scoreboards bleibt zentral und unverändert -->
+    <main class="st-buehne">
+        <div class="st-buehne-innen">
+            <div class="steuerung-buehne">
+                <!-- Pausenwarnung: erscheint, wenn der als naechstes wartende Kampf die
+                     altersklassenabhaengige Mindestpause (6 bzw. 10 Minuten) eines Kaempfers seit
+                     dessen letztem echten Kampfende noch nicht einhaelt. "Tauschen" schiebt ihn
+                     hinter den danach wartenden Kampf; kann bei Bedarf mehrfach gedrueckt werden. -->
+                <div id="pausenWarnungBanner" style="display: none; background-color: #b45309; color: #fff; padding: 10px 16px; font-family: sans-serif; font-size: 13.5px; font-weight: 600; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+                    <span id="pausenWarnungText">⚠️ Pausenproblem</span>
+                    <button type="button" id="btnPausenTausch" class="btn-main" style="background-color: #ffffff; color: #b45309; padding: 6px 14px; font-size: 12.5px; margin: 0; border-radius: 4px; border: none; font-weight: 700; text-transform: uppercase; cursor: pointer;" onclick="tauscheMitNaechstemKampf()">Mit nächstem Kampf tauschen</button>
+                </div>
+                <iframe src="anzeige.html?swap=1&amp;controls=1" title="Live-Vorschau Anzeigetafel" style="width: 100%; aspect-ratio: 16 / 9; max-height: 800px; border: none; display: block;"></iframe>
+                <!-- Kurzzugriff neben der Live-Vorschau: dieselben Aktionen wie oben im
+                     Bedienpanel (triggerNichtAngetreten/triggerDirectHansokumake), damit man
+                     beim Blick auf die eingebettete Anzeigetafel nicht hochscrollen muss.
+                     Kämpfer 1 links, Kämpfer 2 rechts (passend zur getauschten Live-Vorschau). -->
+                <div class="live-vorschau-toolbar">
+                    <div class="live-vorschau-btn-col">
+                        <button type="button" id="btnLiveNaW" class="btn-main na-toggle-btn" onclick="triggerNichtAngetreten('W')">Nicht angetreten</button>
+                        <button type="button" id="btnHanteiSiegW" class="btn-main" style="display: none; background-color: #6f42c1;" onclick="triggerHanteiSieg('W')">Sieger Hantei</button>
+                    </div>
+                    <div class="live-vorschau-mitte">
+                        <button id="btnStartStopLive" class="btn-main" onclick="toggleTimer()">START</button>
+                      <button id="btnCloseOverlay" class="btn-main" style="background-color: #17a2b8;" onclick="closeOverlay()">Overlay schließen</button>
+                        <button id="btnErgebnisSendenLive" class="btn-main" style="background-color: #28a745;" onclick="ergebnisSenden()">Ergebnis senden</button>
+                        <!-- Durchsage-Hinweis: Beginn eines neuen Pools in den nächsten Kämpfen. Liegt über "Nächsten Kampf holen", bis "Erledigt"
+                             geklickt ist (befüllt von pruefePoolBeginnMeldung() in scoreboard.js; nur Steuerung) -->
+                        <span class="holen-wrap">
+                            <button id="btnNaechsterKampfLive" class="btn-main" style="background-color: #007bff;" onclick="naechstenKampfHolen()">Nächsten Kampf holen</button>
+                            <div id="poolBeginnOverlay" class="pool-beginn-overlay" style="display: none;" role="status" aria-live="assertive">
+                                <div class="pool-beginn-karte">
+                                    <span class="material-icons" style="font-size: 32px;">campaign</span>
+                                    <div class="pool-beginn-text">
+                                        <div id="poolBeginnListe"></div>
+                                        <div class="pool-beginn-hinweis">🎙 Die Durchsage erfolgt bei gedrückter Strg-Taste.</div>
+                                    </div>
+                                    <button type="button" id="poolBeginnErledigtBtn" class="btn-main">Erledigt</button>
+                                </div>
+                            </div>
+                        </span>
+                    </div>
+                    <div class="live-vorschau-btn-col">
+                        <button type="button" id="btnLiveNaB" class="btn-main na-toggle-btn" onclick="triggerNichtAngetreten('B')">Nicht angetreten</button>
+                        <button type="button" id="btnHanteiSiegB" class="btn-main" style="display: none; background-color: #6f42c1;" onclick="triggerHanteiSieg('B')">Sieger Hantei</button>
+                    </div>
+                </div>
             </div>
-            
-            <div id="datenSektorSection" class="collapse-content" style="padding: 16px 20px; display: block;">
-                
+
+            <!-- Kurzvorschau der nächsten Kämpfe (liest #steuerungUpcomingList, siehe js/steuerungMenue.js) -->
+            <div class="st-next" id="stNext" hidden>
+                <span class="st-next-lbl">Als Nächstes</span>
+                <div class="st-next-items" id="stNextItems"></div>
+                <button type="button" class="st-next-mehr" data-st-oeffne="kaempfe">Alle Kämpfe</button>
+            </div>
+        </div>
+    </main>
+
+    <!-- Live-Durchsage (js/durchsage.js): pulsierendes Mikrofon mittig, solange Strg gehalten wird -->
+    <div id="durchsageOverlay" class="durchsage-overlay" aria-live="polite" aria-hidden="true">
+        <div class="durchsage-mikro"><span class="material-icons">mic</span></div>
+        <div id="durchsageStatus" class="durchsage-status"></div>
+    </div>
+
+    <div class="st-scrim" id="stScrim"></div>
+
+    <!-- AUSKLAPP-PANEL: überlagert die Bühne (schiebt sie nicht), je Menüpunkt ein Inhalt -->
+    <aside class="st-drawer" id="stDrawer" aria-hidden="true">
+        <div class="st-drawer-kopf">
+            <h2 id="stDrawerTitel"></h2>
+            <button type="button" id="stDrawerZu" aria-label="Schließen">✕</button>
+        </div>
+        <div class="st-drawer-koerper">
+
+            <!-- KAMPF-DATEN & EINSTELLUNGEN -->
+            <section class="st-panel" data-st-panel="daten" data-st-titel="Kampf-Daten &amp; Einstellungen">
                 <!-- OBERER BEREICH: EINSTELLUNGEN -->
                 <div class="timer-section collapse-timer-reset">
                     <div class="meta-grid collapse-meta-grid">
@@ -78,102 +152,96 @@
                         <input type="text" id="clubB" value="DJK Beispielort" oninput="update()">
                     </div>
                 </div>	
-                
-            </div>
-        </div>
-    </div>
+            </section>
 
-
-
-    <!-- TEST: Live-Vorschau der echten anzeige.html (wie am Fernseher an der Matte) eingebettet
-         per iframe. Synchronisiert sich automatisch über denselben BroadcastChannel, keine
-         eigene Logik nötig. Rein additiv — die bisherige Vorschau oben bleibt unverändert. -->
-    <div class="collapse-wrapper legend-margin-top">
-        <div class="collapse-container">
-            <div class="collapse-header" onclick="toggleCollapse('liveVorschauSection', 'arrowLiveVorschau')">
-                📺 Steuerung <span id="arrowLiveVorschau" class="arrow">▲</span>
-            </div>
-            <div id="liveVorschauSection" class="collapse-content" style="padding: 0; display: block;">
-                <!-- Pausenwarnung: erscheint, wenn der als naechstes wartende Kampf die
-                     altersklassenabhaengige Mindestpause (6 bzw. 10 Minuten) eines Kaempfers seit
-                     dessen letztem echten Kampfende noch nicht einhaelt. "Tauschen" schiebt ihn
-                     hinter den danach wartenden Kampf; kann bei Bedarf mehrfach gedrueckt werden. -->
-                <div id="pausenWarnungBanner" style="display: none; background-color: #b45309; color: #fff; padding: 10px 16px; font-family: sans-serif; font-size: 13.5px; font-weight: 600; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
-                    <span id="pausenWarnungText">⚠️ Pausenproblem</span>
-                    <button type="button" id="btnPausenTausch" class="btn-main" style="background-color: #ffffff; color: #b45309; padding: 6px 14px; font-size: 12.5px; margin: 0; border-radius: 4px; border: none; font-weight: 700; text-transform: uppercase; cursor: pointer;" onclick="tauscheMitNaechstemKampf()">Mit nächstem Kampf tauschen</button>
-                </div>
-                <iframe src="anzeige.html?swap=1&amp;controls=1" title="Live-Vorschau Anzeigetafel" style="width: 100%; aspect-ratio: 16 / 9; max-height: 800px; border: none; display: block;"></iframe>
-                <!-- Kurzzugriff neben der Live-Vorschau: dieselben Aktionen wie oben im
-                     Bedienpanel (triggerNichtAngetreten/triggerDirectHansokumake), damit man
-                     beim Blick auf die eingebettete Anzeigetafel nicht hochscrollen muss.
-                     Kämpfer 1 links, Kämpfer 2 rechts (passend zur getauschten Live-Vorschau). -->
-                <div class="live-vorschau-toolbar">
-                    <div class="live-vorschau-btn-col">
-                        <button type="button" id="btnLiveNaW" class="btn-main na-toggle-btn" onclick="triggerNichtAngetreten('W')">Nicht angetreten</button>
-                        <button type="button" id="btnHanteiSiegW" class="btn-main" style="display: none; background-color: #6f42c1;" onclick="triggerHanteiSieg('W')">Sieger Hantei</button>
-                    </div>
-                    <div class="live-vorschau-mitte">
-                        <button id="btnStartStopLive" class="btn-main" onclick="toggleTimer()">START</button>
-                      <button id="btnCloseOverlay" class="btn-main" style="background-color: #17a2b8;" onclick="closeOverlay()">Overlay schließen</button>
-                        <br>
-                        <button id="btnErgebnisSendenLive" class="btn-main" style="background-color: #28a745;" onclick="ergebnisSenden()">Ergebnis senden</button>
-                        <!-- Durchsage-Hinweis: Beginn eines neuen Pools in den nächsten Kämpfen. Liegt über "Nächsten Kampf holen", bis "Erledigt"
-                             geklickt ist (befüllt von pruefePoolBeginnMeldung() in scoreboard.js; nur Steuerung) -->
-                        <span class="holen-wrap">
-                            <button id="btnNaechsterKampfLive" class="btn-main" style="background-color: #007bff;" onclick="naechstenKampfHolen()">Nächsten Kampf holen</button>
-                            <div id="poolBeginnOverlay" class="pool-beginn-overlay" style="display: none;" role="status" aria-live="assertive">
-                                <div class="pool-beginn-karte">
-                                    <span class="material-icons" style="font-size: 32px;">campaign</span>
-                                    <div class="pool-beginn-text">
-                                        <div id="poolBeginnListe"></div>
-                                        <div class="pool-beginn-hinweis">🎙 Die Durchsage erfolgt bei gedrückter Strg-Taste.</div>
-                                    </div>
-                                    <button type="button" id="poolBeginnErledigtBtn" class="btn-main">Erledigt</button>
-                                </div>
-                            </div>
-                        </span>
-                        <button type="button" id="btnMattePauseLive" class="btn-main" style="background-color: #6c757d;" onclick="toggleMattePause()">Matte pausieren</button>
-                        <!-- Live-Durchsage: Strg halten und sprechen, die Stimme kommt am Audioausgang des Hallen-Servers heraus (js/durchsage.js) -->
-                        <div id="durchsageStatus" class="durchsage-status" aria-live="polite"></div>
-                    </div>
-                    <div class="live-vorschau-btn-col">
-                        <button type="button" id="btnLiveNaB" class="btn-main na-toggle-btn" onclick="triggerNichtAngetreten('B')">Nicht angetreten</button>
-                        <button type="button" id="btnHanteiSiegB" class="btn-main" style="display: none; background-color: #6f42c1;" onclick="triggerHanteiSieg('B')">Sieger Hantei</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- POOL-ÜBERSICHT: der Pool des aktuellen Kampfes als Kampfbogen bzw. Turnierbaum
-         (befüllt von renderePoolAnsichtSteuerung() in scoreboard.js, Darstellung in poolAnsicht.js) -->
-    <div class="collapse-wrapper legend-margin-top">
-        <div class="collapse-container">
-            <div class="collapse-header" onclick="toggleCollapse('poolAnsichtSection', 'arrowPoolAnsicht')">
-                🏆 Pool-Übersicht <span id="arrowPoolAnsicht" class="arrow">▲</span>
-            </div>
-            <div id="poolAnsichtSection" class="collapse-content" style="padding: 16px 20px; display: block; font-family: sans-serif;">
+            <!-- POOL-ÜBERSICHT: der Pool des aktuellen Kampfes als Kampfbogen bzw. Turnierbaum
+                 (befüllt von renderePoolAnsichtSteuerung() in scoreboard.js, Darstellung in poolAnsicht.js) -->
+            <section class="st-panel" data-st-panel="pool" data-st-titel="Pool-Übersicht">
+                <div style="font-family: sans-serif;">
+                <!-- Auswahl: Pool des aktuellen Kampfes, weitere laufende Pools der Matte und Pools in Prüfung (scoreboard.js) -->
+                <div id="poolAuswahl" class="st-poolwahl"></div>
+                <div id="poolAktion" class="st-poolaktion"></div>
+                <div id="poolPlatzierungen" class="st-platzierungen"></div>
                 <div id="poolAnsichtContainer"></div>
-            </div>
-        </div>
-    </div>
+                </div>
+            </section>
 
-    <!-- KÄMPFE DIESER MATTE: kommende Kämpfe (Vorschau) + beendete Kämpfe (mit Korrektur-
-         Möglichkeit, analog zu "Korrigieren" in kampf.html) -->
-    <div class="collapse-wrapper legend-margin-top">
-        <div class="collapse-container">
-            <div class="collapse-header" onclick="toggleCollapse('matteKaempfeSection', 'arrowMatteKaempfe')">
-                📋 Kämpfe dieser Matte <span id="arrowMatteKaempfe" class="arrow">▲</span>
-            </div>
-            <div id="matteKaempfeSection" class="collapse-content" style="padding: 16px 20px; display: block; font-family: sans-serif;">
+            <!-- KÄMPFE DIESER MATTE: kommende Kämpfe (Vorschau) + beendete Kämpfe (mit Korrektur-Möglichkeit) -->
+            <section class="st-panel" data-st-panel="kaempfe" data-st-titel="Kämpfe dieser Matte">
+                <div style="font-family: sans-serif;">
                 <h3 style="margin: 0 0 10px 0; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; color: #ffc107;">Kommende Kämpfe</h3>
                 <div id="steuerungUpcomingList" style="margin-bottom: 24px;"></div>
 
                 <h3 style="margin: 0 0 10px 0; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; color: #28a745;">Beendete Kämpfe</h3>
                 <div id="steuerungFinishedList"></div>
-            </div>
+                </div>
+            </section>
+
+            <!-- VIDEOAUFNAHME FÜR DEN VIDEOSCHIEDSRICHTER (js/video.js): je Kampf ein Clip mit Marken, Speicherung am Hallen-Server -->
+            <section class="st-panel" data-st-panel="video" data-st-titel="Videoaufnahme (Video-Archiv)">
+                <div class="video-panel">
+                    <div class="video-zeile">
+                        <span>Aufnahme aktiv (je Kampf ein Clip: von „Nächsten Kampf holen“ bis „Ergebnis senden“)</span>
+                        <label class="switch switch-aufnahme" title="Aufnahme ein/aus">
+                            <input type="checkbox" id="videoAktiv" disabled>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="video-zeile">
+                        <label>Kamera: <select id="videoKamera"></select></label>
+                        <label>Auflösung:
+                            <select id="videoAufloesung">
+                                <option value="480">480p (sparsam)</option>
+                                <option value="720" selected>720p (Standard)</option>
+                                <option value="1080">1080p</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div id="videoStatus" class="video-status" aria-live="polite"></div>
+                    <div id="videoUebertragung" class="video-status" aria-live="polite"></div>
+                    <div id="videoMessung" class="video-status"></div>
+                    <div id="videoSpeicherInfo" class="video-status"></div>
+                    <canvas id="videoVorschau" class="video-vorschau" width="1280" height="720"></canvas>
+                </div>
+            </section>
+
+            <!-- TASTATUR-LEGENDE -->
+            <section class="st-panel" data-st-panel="hotkeys" data-st-titel="Tastatur-Kurzbefehle (Hotkeys)">
+                <div class="keyboard-legend collapse-legend-reset">
+                    <div class="legend-grid">
+                        <div class="legend-item">
+                            <div class="key-badge">W</div>
+                            <div class="key-badge">⇧</div>
+                            <div class="legend-text"><strong>Kurz drücken:</strong><br>Kampfzeit starten / stoppen<br>(bei Gleichstand + 00:00 startet automatisch Golden Score)</div>
+                        </div>
+                        <div class="legend-item">
+                            <div class="key-badge">A</div>
+                            <div class="key-badge">⇦</div>
+                            <div class="legend-text"><strong>Kurz:</strong> Osaekomi Kämpfer 1 an/aus<br><em>Lang (0,5s):</em> Osaekomi Kämpfer 1 Reset</div>
+                        </div>
+                        <div class="legend-item">
+                            <div class="key-badge">D</div>
+                            <div class="key-badge">⇨</div>
+                            <div class="legend-text"><strong>Kurz:</strong> Osaekomi Kämpfer 2 an/aus<br><em>Lang (0,5s):</em> Osaekomi Kämpfer 2 Reset</div>
+                        </div>
+                        <div class="legend-item">
+                            <div class="key-badge">Strg</div>
+                            <div class="legend-text"><strong>Gedrückt halten:</strong> Live-Durchsage<br>(Mikrofon des Notebooks, Ausgabe über den Lautsprecher des Servers; beim Loslassen endet die Durchsage)</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
         </div>
-    </div>
+    </aside>
+
+    <!-- MENÜ (links): öffnet die Panels -->
+    <nav class="st-nav" aria-label="Steuerungs-Menü">
+        <button type="button" class="st-nav-btn" data-st-oeffne="daten" title="Kampf-Daten &amp; Einstellungen"><span class="material-icons">tune</span><span>Kampf</span></button>
+        <button type="button" class="st-nav-btn" data-st-oeffne="pool" title="Pool-Übersicht"><span class="material-icons">emoji_events</span><span>Pool</span><i class="st-badge st-badge-warn" id="stBadgePool" hidden></i></button>
+        <button type="button" class="st-nav-btn" data-st-oeffne="kaempfe" title="Kämpfe dieser Matte"><span class="material-icons">format_list_bulleted</span><span>Kämpfe</span><i class="st-badge" id="stBadgeKaempfe" hidden></i></button>
+        <button type="button" class="st-nav-btn" data-st-oeffne="video" title="Videoaufnahme"><span class="material-icons">videocam</span><span>Video</span><i class="st-badge st-badge-rec" id="stBadgeVideo" hidden></i></button>
+        <button type="button" class="st-nav-btn" data-st-oeffne="hotkeys" title="Tastatur-Kurzbefehle"><span class="material-icons">keyboard</span><span>Hotkeys</span></button>
+    </nav>
 
     <!-- Modal: beendeten Kampf korrigieren (analog zu kampf.html #resultModal) -->
     <div id="steuerungResultModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(3px); z-index: 20000; align-items: center; justify-content: center;">
@@ -218,77 +286,6 @@
             <div style="display: flex; justify-content: flex-end; gap: 12px;">
                 <button type="button" id="steuerungKorrekturAbbrechenBtn" class="btn-main" style="background-color: #5a6268;">Abbrechen</button>
                 <button type="button" id="steuerungKorrekturSpeichernBtn" class="btn-main" style="background-color: #28a745;">Speichern</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- HIER FOLGT DIE TASTATUR-LEGENDE GANZ UNTEN -->
-    <!-- VIDEOAUFNAHME FÜR DEN VIDEOSCHIEDSRICHTER (js/video.js): je Kampf ein Clip mit Marken, Speicherung am Hallen-Server -->
-    <div class="collapse-wrapper legend-margin-top">
-        <div class="collapse-container">
-            <div class="collapse-header" onclick="toggleCollapse('videoSection', 'arrowVideo')">
-                📹 Videoaufnahme (Video-Archiv) <span id="arrowVideo" class="arrow collapsed">▼</span>
-            </div>
-            <div id="videoSection" class="collapse-content collapsed-state" style="display: none;">
-                <div class="video-panel">
-                    <div class="video-zeile">
-                        <span>Aufnahme aktiv (je Kampf ein Clip: von „Nächsten Kampf holen“ bis „Ergebnis senden“)</span>
-                        <label class="switch switch-aufnahme" title="Aufnahme ein/aus">
-                            <input type="checkbox" id="videoAktiv" disabled>
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                    <div class="video-zeile">
-                        <label>Kamera: <select id="videoKamera"></select></label>
-                        <label>Auflösung:
-                            <select id="videoAufloesung">
-                                <option value="480">480p (sparsam)</option>
-                                <option value="720" selected>720p (Standard)</option>
-                                <option value="1080">1080p</option>
-                            </select>
-                        </label>
-                    </div>
-                    <div id="videoStatus" class="video-status" aria-live="polite"></div>
-                    <div id="videoUebertragung" class="video-status" aria-live="polite"></div>
-                    <div id="videoMessung" class="video-status"></div>
-                    <div id="videoSpeicherInfo" class="video-status"></div>
-                    <canvas id="videoVorschau" class="video-vorschau" width="1280" height="720"></canvas>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- TASTATUR-LEGENDE ALS ZUSAMMENKLAPPBARER SEKTOR -->
-    <div class="collapse-wrapper legend-margin-top">
-        <div class="collapse-container">
-            <div class="collapse-header" onclick="toggleCollapse('legendSection', 'arrowLegend')">
-                ⌨️ Tastatur-Kurzbefehle (Hotkeys) <span id="arrowLegend" class="arrow collapsed">▼</span>
-            </div>
-            
-            <div id="legendSection" class="collapse-content collapsed-state">
-                <div class="keyboard-legend collapse-legend-reset">
-                    <div class="legend-grid">
-                        <div class="legend-item">
-                            <div class="key-badge">W</div>
-                            <div class="key-badge">⇧</div>
-                            <div class="legend-text"><strong>Kurz drücken:</strong><br>Kampfzeit starten / stoppen<br>(bei Gleichstand + 00:00 startet automatisch Golden Score)</div>
-                        </div>
-                        <div class="legend-item">
-                            <div class="key-badge">A</div>
-                            <div class="key-badge">⇦</div>
-                            <div class="legend-text"><strong>Kurz:</strong> Osaekomi Kämpfer 1 an/aus<br><em>Lang (0,5s):</em> Osaekomi Kämpfer 1 Reset</div>
-                        </div>
-                        <div class="legend-item">
-                            <div class="key-badge">D</div>
-                            <div class="key-badge">⇨</div>
-                            <div class="legend-text"><strong>Kurz:</strong> Osaekomi Kämpfer 2 an/aus<br><em>Lang (0,5s):</em> Osaekomi Kämpfer 2 Reset</div>
-                        </div>
-                        <div class="legend-item">
-                            <div class="key-badge">Strg</div>
-                            <div class="legend-text"><strong>Gedrückt halten:</strong> Live-Durchsage<br>(Mikrofon des Notebooks, Ausgabe über den Lautsprecher des Servers; beim Loslassen endet die Durchsage)</div>
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
     </div>
@@ -346,5 +343,6 @@
     <script type="module" src="js/scoreboard.js"></script>
     <script type="module" src="js/durchsage.js"></script>
     <script type="module" src="js/video.js"></script>
+    <script src="js/steuerungMenue.js"></script>
 </body>
 </html>

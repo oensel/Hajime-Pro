@@ -14,6 +14,7 @@ import { MannschaftDoppelKo8Manager } from '../services/MannschaftDoppelKo8Manag
 import { MannschaftDoppelKo16Manager } from '../services/MannschaftDoppelKo16Manager.js';
 import { ermittlePausensekunden } from '../shared/pausenRegel.js';
 import { verteilePoolsAufMatten } from '../services/mattenVerteilung.js';
+import { FachFehler } from '../utils/fachFehler.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1266,21 +1267,21 @@ export async function deletePool(knex, req, res) {
 // Bestätigt die am Tisch geprüften Ergebnisse eines Pools ("kaempfe_beendet" -> "abgeschlossen"):
 // Platzierungen stehen fest, Pool ist bereit für Urkundendruck/Siegerehrung. Manueller,
 // menschlicher Bestätigungsschritt — kein automatischer Übergang.
+export async function schliessePool(knex, id) {
+    const pool = await knex('pools').where({ id }).first();
+    if (!pool) throw new FachFehler(404, 'Pool nicht gefunden.');
+    if (pool.status !== 'kaempfe_beendet') {
+        throw new FachFehler(400, 'Nur Pools mit beendeten Kämpfen können abgeschlossen werden.');
+    }
+    await knex('pools').where({ id }).update({ status: 'abgeschlossen' });
+}
+
 export async function schliessePoolAb(knex, req, res) {
     try {
-        const { id } = req.params;
-        const pool = await knex('pools').where({ id }).first();
-        if (!pool) {
-            return res.status(404).json({ success: false, error: 'Pool nicht gefunden.' });
-        }
-        if (pool.status !== 'kaempfe_beendet') {
-            return res.status(400).json({ success: false, error: 'Nur Pools mit beendeten Kämpfen können abgeschlossen werden.' });
-        }
-
-        await knex('pools').where({ id }).update({ status: 'abgeschlossen' });
+        await schliessePool(knex, req.params.id);
         return res.json({ success: true });
     } catch (error) {
-        return res.status(500).json({ success: false, error: error.message });
+        return res.status(error.statusCode || 500).json({ success: false, error: error.message });
     }
 }
 

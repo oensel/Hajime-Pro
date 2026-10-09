@@ -15,9 +15,10 @@
 // konflikt:-Dokument hält beide Versionen für die Turnierleitung fest (Spec Abschnitt 10).
 import { randomUUID } from 'crypto';
 import { geaenderteFelder, gleicheWerte, mitServerStand } from '../shared/dokumentAbbildung.js';
-import { aktualisiereKampf, setzeMattenReihenfolge, setzeKampfZurueck } from '../controllers/kampfController.js';
+import { aktualisiereKampf, setzeMattenReihenfolge, setzeKampfZurueck, legeZusatzkampfAn } from '../controllers/kampfController.js';
 import { FachFehler } from '../utils/fachFehler.js';
 import { pausiereMatte, setzeMatteFort } from '../controllers/kampfflaecheController.js';
+import { schliessePool } from '../controllers/poolController.js';
 import {
     HALLEN_KONTEXT, legeTeilnehmerAn, aktualisiereTeilnehmerDaten, bestaetigeKampfbereitschaft, werteForfeit
 } from '../controllers/teilnehmerController.js';
@@ -27,7 +28,7 @@ const TEILNEHMER_WAAGE_FELDER = [
     'vorname', 'nachname', 'judopass_id', 'verein', 'geburtsjahr', 'lizenz_ablauf', 'geschlecht',
     'gewicht', 'altersklasse', 'gewichtsklasse', 'graduierung', 'startgeld_bezahlt', 'gewogen'
 ];
-const TABELLE_ZU_TYP = { kampf: 'kaempfe', kampfflaeche: 'kampfflaechen', teilnehmer: 'turnier_teilnehmer' };
+const TABELLE_ZU_TYP = { kampf: 'kaempfe', kampfflaeche: 'kampfflaechen', pool: 'pools', teilnehmer: 'turnier_teilnehmer' };
 
 // Wie lange die Brücke nach dem letzten eingegangenen Dokument wartet, bevor ein zurückgestelltes
 // Ergebnis mit abweichender Paarung als echter Klärungsfall gilt (weitere Replikations-Batches
@@ -119,6 +120,23 @@ async function wendeKampfflaecheAn(knex, doc, basis) {
     if (!('status' in absicht)) return;
     if (absicht.status === 'pausiert' && zeile.status !== 'pausiert') await pausiereMatte(knex, id);
     else if (absicht.status !== 'pausiert' && zeile.status === 'pausiert') await setzeMatteFort(knex, id);
+}
+
+// Zusatzkampf in einem Pool in Prüfung (steuerung.html): Das Gerät legt ein Dokument mit Client-UUID an, der Server
+// erzeugt den Kampf. Das Dokument bekommt die SQL-ID und wird vom Abgleich durch das echte Kampf-Dokument ersetzt.
+async function wendeZusatzkampfAn(knex, db, doc) {
+    const kampfId = await legeZusatzkampfAn(knex, Number(doc.pool_id), doc.kaempfer1_id, doc.kaempfer2_id);
+    await db.put({ ...doc, sql_id: kampfId, id: kampfId, bearbeitet_von: 'server' });
+}
+
+// Einziger Geräte-Eingriff in einen Pool: die Turnierleitung bestätigt die geprüften Ergebnisse
+// ("kaempfe_beendet" -> "abgeschlossen", steuerung.html). Alle anderen Felder gehören dem Server.
+async function wendePoolAn(knex, doc, basis) {
+    const id = doc.sql_id;
+    const zeile = await knex('pools').where({ id }).first();
+    if (!zeile) return;
+    const absicht = absichtGegenueber(doc, basis, zeile, ['status']);
+    if (absicht.status === 'abgeschlossen' && zeile.status !== 'abgeschlossen') await schliessePool(knex, id);
 }
 
 async function wendeTeilnehmerAn(knex, db, doc, basis, legeKonfliktAn) {
@@ -314,8 +332,10 @@ export function erzeugeBruecke({ knex, zustand, abgleich }) {
 
         try {
             const basis = await ladeServerBasis(db, doc);
-            if (typ === 'kampf') await wendeKampfAn(knex, doc, basis);
+            if (typ === 'kampf' && doc.zusatzkampf && doc.sql_id == null) await wendeZusatzkampfAn(knex, db, doc);
+            else if (typ === 'kampf') await wendeKampfAn(knex, doc, basis);
             else if (typ === 'kampfflaeche') await wendeKampfflaecheAn(knex, doc, basis);
+            else if (typ === 'pool') await wendePoolAn(knex, doc, basis);
             else await wendeTeilnehmerAn(knex, db, doc, basis, (t, d, g) => legeKonfliktAnIn(db, t, d, g));
         } catch (fehler) {
             if (fehler instanceof PaarungWeichtAb) {

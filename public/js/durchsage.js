@@ -1,6 +1,8 @@
 // Live-Durchsage: Strg gedrückt halten, ins Mikrofon sprechen, die Stimme kommt am Audioausgang des Hallen-Servers heraus
 // (Server: src/durchsage/). Mono-PCM, 16 kHz, 16 Bit, in 20-ms-Blöcken über den WebSocket /api/durchsage.
 const statusText = document.getElementById('durchsageStatus');
+const overlay = document.getElementById('durchsageOverlay');
+let overlayTimer = null;
 
 const RATE = 16000;
 const MIKRO_OFFEN_MS = 30000; // nach dem Loslassen bleibt das Mikrofon kurz offen, damit der nächste Druck nichts abschneidet
@@ -33,14 +35,27 @@ let gedrueckt = false;  // Knopf ist (noch) unten
 let wartend = [];       // PCM-Blöcke, bis der Server 'bereit' meldet
 let gesendetBytes = 0;
 
+// Das pulsierende Mikrofon ist sichtbar, solange gesendet bzw. verbunden wird; Fehlermeldungen blenden es kurz grau ein.
+function zeigeOverlay(sichtbar, fehler = false, dauerMs = 0) {
+    if (!overlay) return;
+    clearTimeout(overlayTimer);
+    overlay.classList.toggle('aktiv', sichtbar);
+    overlay.classList.toggle('fehler', fehler);
+    overlay.setAttribute('aria-hidden', String(!sichtbar));
+    if (sichtbar && dauerMs) overlayTimer = setTimeout(() => zeigeOverlay(false), dauerMs);
+}
+
 function zeige(text, fehler = false) {
     if (!statusText) return;
     statusText.textContent = text;
-    statusText.style.color = fehler ? '#ff8a80' : '';
-    statusText.classList.toggle('durchsage-aktiv', phase === 'sendet' || phase === 'verbinde');
+    const aktiv = phase === 'sendet' || phase === 'verbinde';
+    statusText.classList.toggle('durchsage-aktiv', aktiv);
+    if (aktiv) zeigeOverlay(true);
+    else if (fehler && text && phase !== 'gesperrt') zeigeOverlay(true, true, 4000); // Dauerzustand 'gesperrt' erst beim Tastendruck
+    else if (phase !== 'gesperrt') zeigeOverlay(false);
 }
 
-// Die Statuszeile zeigt nur Sendezustand und Fehler; im Bereitschaftszustand bleibt sie leer (die Taste steht in der Hotkey-Legende).
+// Der Text unter dem Mikrofon zeigt nur Sendezustand und Fehler; im Bereitschaftszustand bleibt er leer (die Taste steht in der Hotkey-Legende).
 function setzePhase(neu, text, fehler = false) {
     phase = neu;
     if (statusText) statusText.dataset.phase = neu;
@@ -165,7 +180,12 @@ function loslassen() {
 
 if (statusText) {
     // Strg (links oder rechts) als Sprechtaste: halten = senden, loslassen = Ende. Tastatur-Wiederholung wird ignoriert.
-    document.addEventListener('keydown', (e) => { if (e.key === 'Control' && !e.repeat) starten(); });
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Control' || e.repeat) return;
+        // Gesperrte Durchsage: Grund kurz erneut zeigen, statt dass die Taste stumm bleibt
+        if (phase === 'gesperrt' && statusText.textContent) zeigeOverlay(true, true, 4000);
+        starten();
+    });
     document.addEventListener('keyup', (e) => { if (e.key === 'Control') loslassen(); });
     window.addEventListener('blur', loslassen);
     document.addEventListener('visibilitychange', () => { if (document.hidden) loslassen(); });

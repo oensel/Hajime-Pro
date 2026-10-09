@@ -56,10 +56,10 @@ test('Matte pausieren: Status am Server, PAUSE-Banner auf der Anzeige, START und
         anzeige.goto('/anzeige.html')
     ]);
     await expect(steuerung.locator('#matSelect')).toHaveValue(String(matId));
-    await expect(steuerung.locator('#btnMattePauseLive')).toHaveText(/Matte pausieren/);
+    await expect(steuerung.frameLocator('iframe').locator('#iframeBtnMattePause')).toHaveText(/Matte pausieren/);
 
-    await steuerung.locator('#btnMattePauseLive').click();
-    await expect(steuerung.locator('#btnMattePauseLive')).toHaveText(/Matte fortsetzen/);
+    await steuerung.frameLocator('iframe').locator('#iframeBtnMattePause').click();
+    await expect(steuerung.frameLocator('iframe').locator('#iframeBtnMattePause')).toHaveText(/Matte fortsetzen/);
     expect(await matteStatus()).toBe('pausiert');
 
     // Anzeige: kommende Kämpfe mit Banner "PAUSE"
@@ -74,8 +74,8 @@ test('Matte pausieren: Status am Server, PAUSE-Banner auf der Anzeige, START und
     const kaempfe = await (await request.get(`/api/kaempfe?kampfflaecheId=${matId}`)).json();
     expect(kaempfe.some(k => k.status === 'gestartet')).toBe(false);
 
-    await steuerung.locator('#btnMattePauseLive').click();
-    await expect(steuerung.locator('#btnMattePauseLive')).toHaveText(/Matte pausieren/);
+    await steuerung.frameLocator('iframe').locator('#iframeBtnMattePause').click();
+    await expect(steuerung.frameLocator('iframe').locator('#iframeBtnMattePause')).toHaveText(/Matte pausieren/);
     expect(await matteStatus()).not.toBe('pausiert');
     await expect(anzeige.locator('#ovPauseBanner')).toBeHidden();
     await expect(anzeige.locator('#ovVorschau')).toBeHidden();
@@ -105,16 +105,16 @@ test('Pause-Button nur zusammen mit START; Pause mit geladenem Kampf, danach lä
 
     // In der Vorschau nach "Ergebnis senden" gibt es keinen Pause-Button (nur zusammen mit START)
     await expect(steuerung.locator('#btnStartStopLive')).toBeHidden();
-    await expect(steuerung.locator('#btnMattePauseLive')).toBeHidden();
+    await expect(steuerung.frameLocator('iframe').locator('#iframeBtnMattePause')).toBeHidden();
     await steuerung.locator('#btnNaechsterKampfLive').click();
     await expect(steuerung.locator('#btnNaechsterKampfLive')).toBeHidden();
-    await expect(steuerung.locator('#btnMattePauseLive')).toBeVisible();
+    await expect(steuerung.frameLocator('iframe').locator('#iframeBtnMattePause')).toBeVisible();
 
     // Pause mit geladenem, noch nicht gestartetem Kampf, danach Kampf beenden
-    await steuerung.locator('#btnMattePauseLive').click();
-    await expect(steuerung.locator('#btnMattePauseLive')).toHaveText(/Matte fortsetzen/);
-    await steuerung.locator('#btnMattePauseLive').click();
-    await expect(steuerung.locator('#btnMattePauseLive')).toHaveText(/Matte pausieren/);
+    await steuerung.frameLocator('iframe').locator('#iframeBtnMattePause').click();
+    await expect(steuerung.frameLocator('iframe').locator('#iframeBtnMattePause')).toHaveText(/Matte fortsetzen/);
+    await steuerung.frameLocator('iframe').locator('#iframeBtnMattePause').click();
+    await expect(steuerung.frameLocator('iframe').locator('#iframeBtnMattePause')).toHaveText(/Matte pausieren/);
     await steuerung.locator('#btnStartStopLive').click();
     await expect(steuerung.locator('#btnStartStopLive')).toHaveText('STOPP');
     await steuerung.evaluate(() => window.changeScore('W', 'ippon', 1));
@@ -137,10 +137,10 @@ test('Pause-Button verschwindet mit dem START; ein anderswo beendeter Kampf wird
     // Kampf laden: Pause-Button vor Kampfbeginn sichtbar, mit START weg
     await steuerung.locator('#btnNaechsterKampfLive').click();
     await expect(steuerung.locator('#nameW')).not.toHaveValue('Kämpfer 1');
-    await expect(steuerung.locator('#btnMattePauseLive')).toBeVisible();
+    await expect(steuerung.frameLocator('iframe').locator('#iframeBtnMattePause')).toBeVisible();
     await steuerung.locator('#btnStartStopLive').click();
     await expect(steuerung.locator('#btnStartStopLive')).toHaveText('STOPP');
-    await expect(steuerung.locator('#btnMattePauseLive')).toBeHidden();
+    await expect(steuerung.frameLocator('iframe').locator('#iframeBtnMattePause')).toBeHidden();
     await steuerung.locator('#btnStartStopLive').click(); // stoppen
 
     // Zweiter Kampf geladen, aber der Kampf wird an anderer Stelle beendet (z.B. kampf.html)

@@ -21,6 +21,7 @@ import {
     getDashboardData,
     getPoolUebersicht
 } from '../controllers/poolController.js';
+import { legeZusatzkampfAnRoute } from '../controllers/kampfController.js';
 import { requireAuth, requireTournamentEditAccess, requireTurnierAktiv } from '../middleware/auth.js';
 
 export function getPoolRoutes(knex) {
@@ -57,6 +58,7 @@ export function getPoolRoutes(knex) {
     router.get('/:id', requireTournamentEditAccess(knex), (req, res) => getPool(knex, req, res));
     router.put('/:id', requireTournamentEditAccess(knex), aktiv, (req, res) => updatePoolStammdaten(knex, req, res));
     router.put('/:id/system', requireTournamentEditAccess(knex), aktiv, (req, res) => aendereWettkampfsystem(knex, req, res));
+    router.post('/:id/zusatzkampf', requireTournamentEditAccess(knex), aktiv, (req, res) => legeZusatzkampfAnRoute(knex, req, res));
     router.post('/:id/abschliessen', requireTournamentEditAccess(knex), aktiv, (req, res) => schliessePoolAb(knex, req, res));
     router.delete('/:id', requireTournamentEditAccess(knex), aktiv, (req, res) => deletePool(knex, req, res));
 

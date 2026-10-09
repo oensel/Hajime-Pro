@@ -313,6 +313,48 @@
         return ergebnis.ok ? { ...ergebnis, meldung: ergebnis.meldung || 'Matte fortgesetzt.' } : ergebnis;
     }
 
+    // Bestätigt die geprüften Ergebnisse eines Pools ("kaempfe_beendet" -> "abgeschlossen").
+    async function schliessePoolAb(poolId) {
+        await init();
+        if (modus === 'rest') {
+            const r = await restJson(`/api/pools/${poolId}/abschliessen`, { method: 'POST' });
+            return r.ok ? { ok: true } : { ok: false, fehler: r.fehler || 'Pool konnte nicht abgeschlossen werden.' };
+        }
+        return ohneDoc(await aendereDokument(`pool:${poolId}`, { status: 'abgeschlossen' }));
+    }
+
+    // Zusatzkampf in einem Pool in Prüfung (z.B. Entscheidung eines 3er-Kreises). Offline eines Client-Geräts wird der
+    // Auftrag lokal gespeichert und beim Verbinden vom Server ausgeführt.
+    async function legeZusatzkampfAn(poolId, kaempfer1Id, kaempfer2Id) {
+        await init();
+        if (modus === 'rest') {
+            const r = await restJson(`/api/pools/${poolId}/zusatzkampf`, {
+                method: 'POST', headers: JSON_HEADER, body: JSON.stringify({ kaempfer1_id: kaempfer1Id, kaempfer2_id: kaempfer2Id })
+            });
+            return r.ok ? { ok: true, kampfId: r.daten.kampfId } : { ok: false, fehler: r.fehler || 'Zusatzkampf konnte nicht angelegt werden.' };
+        }
+        const neu = {
+            _id: `kampf:u-${crypto.randomUUID()}`, dokumenttyp: 'kampf', sql_id: null, zusatzkampf: true, ...absender(),
+            pool_id: Number(poolId), kaempfer1_id: Number(kaempfer1Id), kaempfer2_id: Number(kaempfer2Id)
+        };
+        const vorher = new Set((await alleDokumente()).filter(d => d.dokumenttyp === 'kampf' && d.sql_id != null).map(d => d._id));
+        const { rev } = await db.put(neu);
+        if (await istOfflineClient()) return LOKAL_GESPEICHERT;
+        // Das Auftrags-Dokument ersetzt der Abgleich durch den echten Kampf: auf dessen Erscheinen (oder eine Ablehnung) warten.
+        const ende = Date.now() + WARTE_MS;
+        while (Date.now() < ende) {
+            await new Promise(r => setTimeout(r, 150));
+            const docs = await alleDokumente();
+            const abgelehnt = docs.find(d => d._id === neu._id && d.letzte_ablehnung && d.letzte_ablehnung.rev === rev);
+            if (abgelehnt) return { ok: false, fehler: abgelehnt.letzte_ablehnung.grund };
+            const erzeugt = docs.find(d => d.dokumenttyp === 'kampf' && d.sql_id != null && !vorher.has(d._id)
+                && Number(d.pool_id) === Number(poolId) && d.zusatzkampf !== true && d.status === 'bereit'
+                && [Number(d.kaempfer1_id), Number(d.kaempfer2_id)].sort().join() === [Number(kaempfer1Id), Number(kaempfer2Id)].sort().join());
+            if (erzeugt) return { ok: true, kampfId: erzeugt.sql_id };
+        }
+        return LOKAL_GESPEICHERT;
+    }
+
     // aktion wie die REST-Pfade: 'nicht-angetreten' | 'disqualifizieren'.
     async function werteForfeit(teilnehmerId, kampfId, aktion) {
         await init();
@@ -397,6 +439,8 @@
         setzeLiveFarbe,
         pausiereMatte,
         setzeMatteFort,
+        schliessePoolAb,
+        legeZusatzkampfAn,
         werteForfeit,
         speichereTeilnehmer,
         bestaetigeKampfbereit
