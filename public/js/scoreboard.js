@@ -429,7 +429,7 @@ function triggerHanteiSieg(color) {
     stopAllTimers();
     state['hanteiSieger' + color] = true;
     state.overlayMode = 'hanteisieg';
-    playHorn();
+    // Kein Signalton: die Kampfzeit ist schon mit Ton abgelaufen, die Entscheidung der Kampfrichter wird nur noch angezeigt.
     update();
 }
 
@@ -575,6 +575,16 @@ let kampfStatusGemeldet = false;
 // Solange "Ergebnis senden" läuft, gilt ein in der Datenbank schon beendeter Kampf nicht als veraltet.
 let ergebnisWirdGesendet = false;
 
+// Ereignisse des Kampfes für die Videoaufnahme (js/video.js): geladen, start, stopp, ergebnis, abbruch.
+// Wird die Aufnahme erst eingeschaltet, nachdem ein Kampf geladen wurde, holt video.js dessen Daten hier ab.
+let aktuellerKampfDetail = null;
+window.hajimeAktuellerKampf = () => (currentFightId && aktuellerKampfDetail && aktuellerKampfDetail.kampfId === currentFightId ? aktuellerKampfDetail : null);
+function meldeKampfEreignis(typ, extra = {}) {
+    try {
+        window.dispatchEvent(new CustomEvent('hajime:kampf', { detail: { typ, kampfId: currentFightId, ...extra } }));
+    } catch (e) { console.warn('Kampf-Ereignis nicht gemeldet:', e); }
+}
+
 // Meldet den Kampf beim ersten START als "gestartet". Läuft bewusst im Hintergrund: die Uhr darf nicht auf
 // den Server warten. Lehnt dieser ab (z.B. Matte pausiert), erscheint die Meldung; der nächste START versucht es erneut.
 function meldeKampfGestartet() {
@@ -611,6 +621,7 @@ async function kampfIstBeendet(kampfId) {
 // Entlädt den Kampf im Scoreboard (Zeit stoppen, Wertungen leeren); "Nächsten Kampf holen" erscheint wieder.
 function gibGeladenenKampfFrei() {
     stopAllTimers();
+    meldeKampfEreignis('abbruch');
     currentFightId = null;
     kaempfer1_id = null;
     kaempfer2_id = null;
@@ -628,6 +639,7 @@ function toggleTimer() {
         stopAllTimers();
         state.timeRunning = false;
         update();
+        meldeKampfEreignis('stopp');
     } else {
         if (state.overlayMode === "time") {
             // Reguläre Kampfzeit abgelaufen, Gleichstand und eine Golden-Score-Zeit konfiguriert
@@ -649,6 +661,7 @@ function toggleTimer() {
         kampfGestartet = true;
         state.timeRunning = true;
         meldeKampfGestartet();
+        meldeKampfEreignis('start');
         ['btnStartStop', 'btnStartStopLive'].forEach(id => {
             let btnSS = document.getElementById(id);
             if (btnSS) {
@@ -849,6 +862,8 @@ if (hotkeyToggleTimer) {
    ANZEIGE-UPDATE & BROADCAST-SYNCHRONISATION
    ========================================================================== */
 function update() {
+    // Die Videoaufnahme (js/video.js) liest Wertungen, Strafen und Kampfzeit für das Overlay im Bild aus diesem Zustand.
+    window.hajimeScoreboardState = state;
     let pName = document.getElementById('poolName');
     let nW = document.getElementById('nameW');
     let cW = document.getElementById('clubW');
@@ -1347,6 +1362,21 @@ function injiziereBedienButtons() {
         resetAll.textContent = 'RESET ALL';
         resetAll.addEventListener('click', () => window.parent.resetTimerBestaetigen());
         metaLeiste.appendChild(resetAll);
+
+        // "Video ansehen" ganz links neben Klasse und Gewicht: nur sichtbar, solange die Videoaufnahme tatsächlich läuft
+        // (js/video.js im Eltern-Fenster, window.hajimeVideoLaeuft/hajimeVideoAnsehen).
+        const videoAnsehen = document.createElement('button');
+        videoAnsehen.type = 'button';
+        videoAnsehen.id = 'iframeBtnVideoAnsehen';
+        videoAnsehen.className = 'iframe-ctrl-video-ansehen';
+        videoAnsehen.textContent = '📹 Video ansehen';
+        videoAnsehen.style.display = 'none';
+        videoAnsehen.addEventListener('click', () => { if (window.parent.hajimeVideoAnsehen) window.parent.hajimeVideoAnsehen(); });
+        metaLeiste.appendChild(videoAnsehen);
+        setInterval(() => {
+            const laeuft = !!(window.parent.hajimeVideoLaeuft && window.parent.hajimeVideoLaeuft());
+            videoAnsehen.style.display = laeuft ? '' : 'none';
+        }, 500);
     }
 
     const scoreTypen = { ippon: 'Ippon', waza: 'Waza', yuko: 'Yuko' };
@@ -1755,6 +1785,16 @@ async function naechstenKampfHolen() {
         // beim Laden — ein geladener, aber nicht begonnener Kampf bleibt "bereit". War er schon
         // "gestartet" (Seite neu geladen), ist nichts mehr zu melden.
         kampfStatusGemeldet = naechster.status === 'gestartet';
+        const matSel = document.getElementById('matSelect');
+        aktuellerKampfDetail = {
+            kampfId: currentFightId,
+            matteId: selectedMatId,
+            matteName: matSel && matSel.selectedOptions[0] ? matSel.selectedOptions[0].textContent.trim() : '',
+            turnierId: localStorage.getItem('aktiveTurnierId'),
+            pool: poolNameVal, kaempfer1: `${nameWVal} (${clubWVal})`, kaempfer2: `${nameBVal} (${clubBVal})`,
+            farbe2: naechster.farbe_kaempfer2 === 'rot' ? 'rot' : 'blau'
+        };
+        meldeKampfEreignis('geladen', aktuellerKampfDetail);
 
         currentSeconds = pool_kampfzeit;
         formatTime();
@@ -1885,6 +1925,7 @@ async function ergebnisSenden() {
             zeigeNotification("Kampfergebnis erfolgreich übermittelt und gespeichert!", "success");
         }
         
+        meldeKampfEreignis('ergebnis', { sieger: winnerColor, farbe2: state.fighter2Color });
         currentFightId = null;
         kaempfer1_id = null;
         kaempfer2_id = null;

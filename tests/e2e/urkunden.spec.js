@@ -245,7 +245,8 @@ test.describe('Urkunden', () => {
 
         await page.locator('#btnFeldBild').click();
         await page.locator('#bildDatei').setInputFiles({ name: 'logo.png', mimeType: 'image/png', buffer: Buffer.from(PNG_1PX, 'base64') });
-        await expect(page.locator('#textWerkzeuge')).toBeHidden();
+        // Bild wird hochgeladen und dekodiert, bevor das Feld ausgewählt ist; im Gesamtlauf der Suite dauert das länger als 5 s.
+        await expect(page.locator('#textWerkzeuge')).toBeHidden({ timeout: 20_000 });
         await expect(page.locator('#farbeWerkzeug')).toBeHidden();
         await page.locator('#btnVorlageSpeichern').click();
         await expect.poll(async () => {

@@ -199,6 +199,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 </a>
             </nav>
             <nav class="sidebar-nav-unten" id="sidebarNavUnten">
+                <a href="/video-live.html" class="menu-item" id="nav-video-live" style="display: none;">
+                    <span class="material-icons">videocam</span>
+                    <span class="menu-text">Video live</span>
+                </a>
+                <a href="/videobeweis.html" class="menu-item" id="nav-videobeweis" style="display: none;">
+                    <span class="material-icons">video_library</span>
+                    <span class="menu-text">Video-Archiv</span>
+                </a>
                 <a href="/sync-konflikte.html" class="menu-item" id="nav-sync-konflikte" style="display: none;">
                     <span class="material-icons">sync_problem</span>
                     <span class="menu-text">Sync-Konflikte</span>
@@ -694,6 +702,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (clientKonfigLink) {
             clientKonfigLink.style.display = '';
             if (currentPath.includes('client-konfig.html')) clientKonfigLink.classList.add('active');
+        }
+        // Video-Archiv: Clips der Kämpfe (nur am Hallen-Server gespeichert).
+        const videoLiveLink = document.getElementById('nav-video-live');
+        if (videoLiveLink) {
+            videoLiveLink.style.display = '';
+            if (currentPath.includes('video-live.html')) videoLiveLink.classList.add('active');
+        }
+        const videoLink = document.getElementById('nav-videobeweis');
+        if (videoLink) {
+            videoLink.style.display = '';
+            if (currentPath.includes('videobeweis.html')) videoLink.classList.add('active');
         }
         // Sync-Konflikte: Menüpunkt mit Zähler der offenen Konflikte (hohe Priorität: rot).
         const syncKonflikteLink = document.getElementById('nav-sync-konflikte');

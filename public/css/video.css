@@ -1,0 +1,39 @@
+/* Seiten der Videoaufnahme: videobeweis.html und video-live.html */
+.video-seite-hinweis { color: var(--text-muted); font-size: 13px; margin-top: 0; }
+.video-seite-status { font-size: 13px; color: var(--text-muted); }
+.video-filter { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin-bottom: 12px; }
+.video-filter label { font-size: 14px; display: flex; gap: 6px; align-items: center; }
+.video-live-titel { font-weight: 700; margin: 8px 0; }
+.video-live { width: 100%; max-width: 960px; aspect-ratio: 16 / 9; background: #000; border-radius: 6px; display: block; }
+.video-player { margin-bottom: 16px; }
+.video-marken, .video-steuer { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+.video-knopf { font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 4px; border: 1px solid var(--border, #bbb); background: transparent; color: inherit; cursor: pointer; text-decoration: none; }
+.video-knopf:hover { background: rgba(128, 128, 128, 0.15); }
+.video-knopf-gefahr { color: #c0392b; border-color: #c0392b; }
+.video-marke-start { border-color: #28a745; color: #28a745; }
+.video-marke-stopp { border-color: #e0a800; color: #b58900; }
+.video-marke-ergebnis { border-color: #1d4ed8; color: #1d4ed8; }
+.video-tabelle { width: 100%; border-collapse: collapse; font-size: 14px; }
+.video-tabelle th, .video-tabelle td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border, #ddd); }
+.video-tabelle td { vertical-align: middle; }
+.video-aktionen { display: flex; gap: 6px; justify-content: flex-end; white-space: nowrap; }
+
+/* Steuerleiste des Video-Archivs: Beschriftung und kurze Auswahl in einer Zeile */
+.video-steuer label { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 14px; }
+.video-steuer select { width: auto !important; min-width: 0; flex: none; padding: 4px 6px; }
+
+/* Breite Seite für Video-Archiv und Live-Ansicht (die Standard-Karte ist nur 680 px breit) */
+.mdc-card.video-seite { max-width: min(1500px, 100%); }
+.video-kaempfer div { display: flex; align-items: center; gap: 8px; padding: 1px 0; }
+.video-farbmarke { flex: none; width: 12px; height: 12px; border-radius: 50%; border: 1px solid #555; }
+.video-farbmarke-weiss { background: #fff; }
+.video-farbmarke-blau { background: #1e5bff; border-color: #1e5bff; }
+.video-farbmarke-rot { background: #dc3545; border-color: #dc3545; }
+
+/* Live-Raster (video-live.html): alle aufnehmenden Matten gleichzeitig */
+.video-raster { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; margin-top: 12px; }
+.video-kachel { background: #111; color: #fff; border-radius: 8px; padding: 8px; }
+.video-kachel-titel { font-weight: 700; font-size: 14px; cursor: pointer; margin-bottom: 6px; }
+.video-kachel-bild { width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 6px; display: block; }
+.video-kachel-gross { grid-column: 1 / -1; }
+.video-kachel .video-seite-status { color: #bbb; margin-top: 4px; }

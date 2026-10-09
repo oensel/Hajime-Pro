@@ -67,14 +67,16 @@ export function erzeugeDurchsageDienst({ ausgabe, darfSenden = () => true, maxSe
 }
 
 // Client-Knoten: reicht den WebSocket des Browsers an den Hallen-Server weiter.
-export function verbindeAlsProxy(browserWs, { serverUrl, secret }) {
-    const ziel = new WebSocket(serverUrl.replace(/^http/, 'ws') + DURCHSAGE_PFAD, {
+// `pfad` mit Query (z. B. '/api/video/live?matte=3') erlaubt, andere Dienste (Video) nutzen dieselbe Weiterleitung.
+export function verbindeAlsProxy(browserWs, { serverUrl, secret, pfad = DURCHSAGE_PFAD }) {
+    const ziel = new WebSocket(serverUrl.replace(/^http/, 'ws') + pfad, {
         headers: secret ? { 'x-hajime-sync-secret': secret } : {}
     });
     const wartend = [];
     let offen = false;
     ziel.on('open', () => { offen = true; wartend.forEach(([d, b]) => ziel.send(d, { binary: b })); wartend.length = 0; });
-    ziel.on('message', (d, istBinaer) => { if (!istBinaer && browserWs.readyState === WebSocket.OPEN) browserWs.send(d.toString()); });
+    // Text- und Binärnachrichten werden unverändert zum Browser durchgereicht (Video-Live schickt beides).
+    ziel.on('message', (d, istBinaer) => { if (browserWs.readyState === WebSocket.OPEN) browserWs.send(istBinaer ? d : d.toString()); });
     ziel.on('error', () => sende(browserWs, { t: 'fehler', grund: 'Hallen-Server nicht erreichbar.' }));
     ziel.on('close', () => { if (browserWs.readyState === WebSocket.OPEN) browserWs.close(); });
     browserWs.on('message', (d, istBinaer) => {
@@ -96,17 +98,22 @@ export function istErlaubt(req, secret) {
     return req.headers['x-hajime-sync-secret'] === secret || url.searchParams.get('secret') === secret;
 }
 
-// Hängt den WebSocket-Pfad an den HTTP-Server. `verbinde(ws)` bekommt jede angenommene Verbindung.
-export function haengeDurchsageAn(httpServer, { verbinde, secret = () => '' }) {
-    const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
+// Hängt einen WebSocket-Pfad an den HTTP-Server. `verbinde(ws, req)` bekommt jede angenommene Verbindung (req für die Query).
+// Der Zugriff folgt istErlaubt(); andere Pfade lässt der Handler unberührt (mehrere Dienste hängen am selben Server).
+export function haengeWebSocketAn(httpServer, { pfad, verbinde, secret = () => '', maxPayload = 64 * 1024 }) {
+    const wss = new WebSocketServer({ noServer: true, maxPayload });
     httpServer.on('upgrade', (req, socket, head) => {
-        if (new URL(req.url, 'http://x').pathname !== DURCHSAGE_PFAD) return;
+        if (new URL(req.url, 'http://x').pathname !== pfad) return;
         if (!istErlaubt(req, secret())) {
             socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
             socket.destroy();
             return;
         }
-        wss.handleUpgrade(req, socket, head, (ws) => verbinde(ws));
+        wss.handleUpgrade(req, socket, head, (ws) => verbinde(ws, req));
     });
     return wss;
+}
+
+export function haengeDurchsageAn(httpServer, { verbinde, secret = () => '' }) {
+    return haengeWebSocketAn(httpServer, { pfad: DURCHSAGE_PFAD, verbinde, secret });
 }

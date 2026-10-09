@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hajime Pro - Video-Archiv</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <link rel="stylesheet" href="/css/video.css">
+    <script src="/js/menu.js"></script>
+</head>
+<body>
+
+<div class="kanji-left">柔</div>
+<div class="kanji-right">道</div>
+
+<div class="mdc-card video-seite" style="padding: 16px 24px;">
+    <div class="form-title-area">
+        <span class="material-icons">video_library</span>
+        <h1>Video-Archiv</h1>
+        <span class="material-icons">video_library</span>
+    </div>
+    <p class="video-seite-hinweis">Je Kampf ein Clip (von „Nächsten Kampf holen“ bis „Ergebnis senden“) mit Marken für START, STOPP und Ergebnis. <a href="/video-live.html">Zur Live-Ansicht aller Kameras</a></p>
+
+    <div class="video-filter">
+        <label>Matte: <select id="vbMatte"><option value="">Alle</option></select></label>
+        <label>Suche: <input type="search" id="vbSuche" placeholder="Pool oder Kämpfer"></label>
+        <span id="vbSpeicher" class="video-seite-status"></span>
+        <button type="button" id="vbAlleLoeschen" class="video-knopf video-knopf-gefahr">Alle Clips löschen</button>
+    </div>
+
+    <div id="vbPlayer" class="video-player" hidden>
+        <div id="vbTitel" class="video-live-titel"></div>
+        <video id="vbVideo" class="video-live" controls playsinline></video>
+        <div id="vbMarken" class="video-marken"></div>
+        <div class="video-steuer">
+            <button type="button" id="vbBildZurueck" class="video-knopf" title="Ein Bild zurück">◀ Bild</button>
+            <button type="button" id="vbBildVor" class="video-knopf" title="Ein Bild vor">Bild ▶</button>
+            <label>Geschwindigkeit:
+                <select id="vbTempo">
+                    <option value="0.25">0,25×</option>
+                    <option value="0.5">0,5×</option>
+                    <option value="1" selected>1×</option>
+                    <option value="2">2×</option>
+                </select>
+            </label>
+            <a id="vbDownload" class="video-knopf" download>Herunterladen</a>
+        </div>
+    </div>
+
+    <div id="vbListe" class="video-liste">Wird geladen …</div>
+</div>
+
+<script src="/js/videobeweis.js" type="module"></script>
+</body>
+</html>

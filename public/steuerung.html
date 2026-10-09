@@ -223,6 +223,41 @@
     </div>
 
     <!-- HIER FOLGT DIE TASTATUR-LEGENDE GANZ UNTEN -->
+    <!-- VIDEOAUFNAHME FÜR DEN VIDEOSCHIEDSRICHTER (js/video.js): je Kampf ein Clip mit Marken, Speicherung am Hallen-Server -->
+    <div class="collapse-wrapper legend-margin-top">
+        <div class="collapse-container">
+            <div class="collapse-header" onclick="toggleCollapse('videoSection', 'arrowVideo')">
+                📹 Videoaufnahme (Video-Archiv) <span id="arrowVideo" class="arrow collapsed">▼</span>
+            </div>
+            <div id="videoSection" class="collapse-content collapsed-state" style="display: none;">
+                <div class="video-panel">
+                    <div class="video-zeile">
+                        <span>Aufnahme aktiv (je Kampf ein Clip: von „Nächsten Kampf holen“ bis „Ergebnis senden“)</span>
+                        <label class="switch switch-aufnahme" title="Aufnahme ein/aus">
+                            <input type="checkbox" id="videoAktiv" disabled>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="video-zeile">
+                        <label>Kamera: <select id="videoKamera"></select></label>
+                        <label>Auflösung:
+                            <select id="videoAufloesung">
+                                <option value="480">480p (sparsam)</option>
+                                <option value="720" selected>720p (Standard)</option>
+                                <option value="1080">1080p</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div id="videoStatus" class="video-status" aria-live="polite"></div>
+                    <div id="videoUebertragung" class="video-status" aria-live="polite"></div>
+                    <div id="videoMessung" class="video-status"></div>
+                    <div id="videoSpeicherInfo" class="video-status"></div>
+                    <canvas id="videoVorschau" class="video-vorschau" width="1280" height="720"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- TASTATUR-LEGENDE ALS ZUSAMMENKLAPPBARER SEKTOR -->
     <div class="collapse-wrapper legend-margin-top">
         <div class="collapse-container">
@@ -271,11 +306,45 @@
         </div>
     </div>
 
+    <!-- Videoaufnahme: Ansicht des laufenden Kampfes (js/video.js). Die Aufnahme läuft im Hintergrund weiter. -->
+    <div id="videoReview" class="video-review" hidden>
+        <div class="video-review-kopf">
+            <strong>📹 Aufnahme ansehen</strong>
+            <button type="button" id="videoReviewSchliessen" class="video-review-knopf">✕ Schließen</button>
+        </div>
+        <video id="videoReviewPlayer" class="video-review-player" controls playsinline></video>
+        <div id="videoReviewMarken" class="video-review-zeile"></div>
+        <div class="video-review-zeile">
+            <button type="button" class="video-review-knopf" data-sprung="-10">⏪ 10 s</button>
+            <button type="button" class="video-review-knopf" data-sprung="-5">◀ 5 s</button>
+            <button type="button" class="video-review-knopf" data-sprung="5">5 s ▶</button>
+            <button type="button" class="video-review-knopf" data-sprung="10">10 s ⏩</button>
+        </div>
+        <div class="video-review-zeile">
+            <button type="button" id="videoReviewBildZurueck" class="video-review-knopf">◀ Bild</button>
+            <button type="button" id="videoReviewBildVor" class="video-review-knopf">Bild ▶</button>
+            <label class="video-review-label">Geschwindigkeit:
+                <select id="videoReviewTempo">
+                    <option value="0.25">0,25×</option>
+                    <option value="0.5">0,5×</option>
+                    <option value="1" selected>1×</option>
+                    <option value="2">2×</option>
+                </select>
+            </label>
+        </div>
+        <div class="video-review-zeile">
+            <button type="button" id="videoReviewAktualisieren" class="video-review-knopf">⟳ Aktualisieren</button>
+            <button type="button" id="videoReviewLive" class="video-review-knopf">⏭ Zum aktuellen Stand</button>
+        </div>
+        <div id="videoReviewHinweis" class="video-review-hinweis"></div>
+    </div>
+
     <script src="/js/pouchdb/pouchdb.min.js"></script>
     <script src="/js/datenzugriff.js"></script>
     <script src="/js/syncStatus.js"></script>
     <script src="/js/sortierbar.js"></script>
     <script type="module" src="js/scoreboard.js"></script>
     <script type="module" src="js/durchsage.js"></script>
+    <script type="module" src="js/video.js"></script>
 </body>
 </html>
