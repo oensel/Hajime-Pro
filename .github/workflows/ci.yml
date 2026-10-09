@@ -2,16 +2,13 @@
 #   dev  : schnell und billig (Ubuntu): Plan/Pfadfilter, Unit-Tests, shellcheck. Rot = nichts Teureres startet.
 #   test : E2E-Kern (test:e2e, test:e2e:sync) auf Ubuntu.
 #   qa   : teure Plattform-/Infrastrukturläufe (Windows-Selbststart, macOS vorerst nur im Release, Docker-Cluster, test:e2e:cluster).
-# Pull Requests und Pushes auf main laufen mit Pfadfiltern (nur was die Änderung berührt). VOLLER Umfang ohne Filter:
-# Release (Tag v*, über workflow_call), nächtlicher Lauf (fängt Lücken der Pfadfilter ab) und manueller Start.
+# Pull Requests laufen mit Pfadfiltern (nur was die Änderung berührt); nach dem Merge läuft nichts erneut (kein Push-
+# Trigger auf main, kein Nachtlauf). VOLLER Umfang ohne Filter: Release (Tag v*, über workflow_call) und manueller Start.
+# Die Sync-Suite (test:e2e:sync) läuft nur im PR, und nur bei passenden Pfaden; das Release führt sie nicht erneut aus.
 # test:e2e:vollablauf läuft bewusst NICHT hier (schreibt in die echte Cloud-DB).
 name: CI
 on:
-  push:
-    branches: [main]
   pull_request:
-  schedule:
-    - cron: '17 2 * * *'
   workflow_dispatch:
   workflow_call:
     inputs:
@@ -20,7 +17,7 @@ on:
         type: boolean
         default: false
 
-# Veraltete Läufe desselben Branches/PRs abbrechen; main, Nachtlauf und Tags laufen immer zu Ende.
+# Veraltete Läufe desselben Branches/PRs abbrechen; Tags und manuelle Läufe laufen immer zu Ende.
 concurrency:
   group: ci-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -38,6 +35,7 @@ jobs:
     outputs:
       kern: ${{ steps.ergebnis.outputs.kern }}
       cluster: ${{ steps.ergebnis.outputs.cluster }}
+      sync: ${{ steps.ergebnis.outputs.sync }}
       plattform: ${{ steps.ergebnis.outputs.plattform }}
       shell: ${{ steps.ergebnis.outputs.shell }}
       paket: ${{ steps.ergebnis.outputs.paket }}
@@ -46,8 +44,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
         id: f
-        # Für Release/Nachtlauf/manuell nicht nötig, dort gilt "alles".
-        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        # Für Release/manuell nicht nötig, dort gilt "alles".
+        if: github.event_name == 'pull_request'
         with:
           filters: |
             kern:
@@ -61,6 +59,16 @@ jobs:
               - 'package.json'
               - 'package-lock.json'
               - 'playwright*.js'
+              - '.github/workflows/ci.yml'
+            sync:
+              - 'src/sync/**'
+              - 'src/shared/**'
+              - 'public/js/datenzugriff.js'
+              - 'tests/e2e-sync/**'
+              - 'migrations/**'
+              - 'playwright.sync.config.js'
+              - 'package.json'
+              - 'package-lock.json'
               - '.github/workflows/ci.yml'
             cluster:
               - 'src/cluster/**'
@@ -104,15 +112,16 @@ jobs:
           REF: ${{ github.ref }}
           F_KERN: ${{ steps.f.outputs.kern }}
           F_CLUSTER: ${{ steps.f.outputs.cluster }}
+          F_SYNC: ${{ steps.f.outputs.sync }}
           F_PLATTFORM: ${{ steps.f.outputs.plattform }}
           F_SHELL: ${{ steps.f.outputs.shell }}
           F_PAKET: ${{ steps.f.outputs.paket }}
           F_ANDROID: ${{ steps.f.outputs.android }}
         run: |
           voll=false
-          case "$EREIGNIS" in schedule|workflow_dispatch) voll=true ;; esac
+          case "$EREIGNIS" in workflow_dispatch) voll=true ;; esac
           case "$REF" in refs/tags/*) voll=true ;; esac
-          for n in kern cluster plattform shell paket android; do
+          for n in kern sync cluster plattform shell paket android; do
             v=$(eval echo "\$F_$(echo $n | tr a-z A-Z)")
             if [ "$voll" = true ] || [ "$v" = true ]; then echo "$n=true" >> "$GITHUB_OUTPUT"; else echo "$n=false" >> "$GITHUB_OUTPUT"; fi
           done
@@ -141,16 +150,12 @@ jobs:
 
   # --------------------------------------------------------------- test
   e2e:
-    name: test / ${{ matrix.suite }}
+    name: test / test:e2e
     needs: [plan, unit, shellcheck]
     # shellcheck darf übersprungen sein; fehlgeschlagen/abgebrochen blockiert.
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.kern == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        suite: [test:e2e, test:e2e:sync]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -163,11 +168,40 @@ jobs:
       - run: npx playwright install --with-deps chromium
       # NODE_ENV=test wird NICHT hier gesetzt: tests/e2e-sync/test-env.js und tests/e2e-cluster/test-env.js setzen es
       # selbst in ihren Server-Envs; npm run test:e2e braucht es nicht (keine NODE_ENV-gegateten Test-Endpunkte).
-      - run: npm run ${{ matrix.suite }}
+      - run: npm run test:e2e
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: bericht-${{ strategy.job-index }}
+          name: bericht-e2e
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 3
+          if-no-files-found: ignore
+
+  # Sync-Suite (Hallen-Server + Client-Gerät): nur im PR und nur bei passenden Pfaden; Release/manuell nach Wunsch
+  # über workflow_dispatch (dort gilt "alles"). Beim Release (inputs.release) läuft sie nicht erneut.
+  e2e-sync:
+    name: test / test:e2e:sync
+    needs: [plan, unit, shellcheck]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.sync == 'true' && !inputs.release }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e:sync
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bericht-sync
           path: |
             test-results/
             playwright-report/
@@ -236,11 +270,11 @@ jobs:
           if-no-files-found: ignore
 
   # Server-Paket (Installer-Build je Plattform, bis 45 Min.): erst nach dem E2E-Kern, nur bei passenden Pfaden. Bei Tag
-  # baut release.yml es selbst (mit den signierten Client-Dateien), im Nachtlauf wäre es unnötig teuer.
+  # baut release.yml es selbst (mit den signierten Client-Dateien).
   server-paket:
     name: qa / server-paket
     needs: [plan, e2e]
-    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.paket == 'true' && !startsWith(github.ref, 'refs/tags/') && github.event_name != 'schedule' && !inputs.release }}
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.paket == 'true' && !startsWith(github.ref, 'refs/tags/') && !inputs.release }}
     uses: ./.github/workflows/server-paket.yml
 
   # Android-App kompilieren (Debug-APK ohne Release-Schlüssel): fängt Fehler im nativen Teil (mobil/android, z.B. das
@@ -248,7 +282,7 @@ jobs:
   android-apk:
     name: qa / android-apk
     needs: [plan, unit]
-    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.android == 'true' && !startsWith(github.ref, 'refs/tags/') && github.event_name != 'schedule' && !inputs.release }}
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.android == 'true' && !startsWith(github.ref, 'refs/tags/') && !inputs.release }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:

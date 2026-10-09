@@ -3,7 +3,7 @@
 // Die Pfadfilter unten müssen mit denen in ci.yml übereinstimmen.
 //
 //   npm run ci:lokal                 geänderte Dateien gegen origin/main (+ uncommittete Änderungen)
-//   npm run ci:lokal -- --alles      alle Gruppen (wie Nachtlauf/Tag), ohne Paket und Docker
+//   npm run ci:lokal -- --alles      alle Gruppen (wie Release/manueller Lauf), ohne Paket und Docker
 //   npm run ci:lokal -- --nur-anzeigen   nur zeigen, was laufen würde
 //   --base <ref>   Vergleichsbasis (Standard: origin/main, sonst main)
 //   --weiter       nach einem Fehler die übrigen Gruppen trotzdem ausführen
