@@ -1,6 +1,7 @@
 // Mattenwahl eines Client-Geräts: Vorauswahl aus der Gerätekonfiguration, Wechsel im Betrieb nur
 // nach Nachfrage, Warnung wenn laut Heartbeat ein anderes Gerät die Ziel-Matte bedient.
 import { test, expect } from '@playwright/test';
+import { schliesseOverlayAutomatisch } from '../e2e/helpers/pool-beginn-overlay.js';
 import { legeTurnierAn, syncLeerlauf, syncStatus, schreibeClientDokument, CLIENT_BASE_URL } from './helpers.js';
 
 test('Scoreboard am Client: Matte aus der Gerätekonfiguration, Wechsel mit Nachfrage und Warnung', async ({ page, request }) => {
@@ -19,6 +20,8 @@ test('Scoreboard am Client: Matte aus der Gerätekonfiguration, Wechsel mit Nach
 
     await page.goto(`${CLIENT_BASE_URL}/steuerung.html?turnierId=${turnierId}`);
     await expect(page.locator('#matSelect')).toHaveValue(String(matte1));
+    // Die Mattenwahl liegt im Menü-Panel "Kampf"
+    await page.locator('.st-nav-btn[data-st-oeffne="daten"]').click();
 
     // steuerung.html lädt bewusst kein menu.js -> Nachfrage über den nativen confirm()-Dialog.
     let meldung = '';

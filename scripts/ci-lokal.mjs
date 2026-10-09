@@ -3,13 +3,19 @@
 // Die Pfadfilter unten müssen mit denen in ci.yml übereinstimmen.
 //
 //   npm run ci:lokal                 geänderte Dateien gegen origin/main (+ uncommittete Änderungen)
-//   npm run ci:lokal -- --alles      alle Gruppen (wie Nachtlauf/Tag), ohne Paket und Docker
+//   npm run ci:lokal -- --alles      alle Gruppen (wie Release/manueller Lauf), ohne Paket und Docker
 //   npm run ci:lokal -- --nur-anzeigen   nur zeigen, was laufen würde
 //   --base <ref>   Vergleichsbasis (Standard: origin/main, sonst main)
 //   --weiter       nach einem Fehler die übrigen Gruppen trotzdem ausführen
 //   --paket        zusätzlich Server-Paket bauen + Electron-Rauchtest (langsam)
 //   --docker       zusätzlich cluster-installation (Docker mit systemd nötig)
+//   --schlank      Variante für den Pre-Push-Hook: Unit-Tests + nur die zu den Änderungen passenden E2E-Specs
+//                  (Dateiname/Inhalt nennt eine geänderte Datei, immer smoke.spec.js) statt der ganzen Suite;
+//                  die Sync-Suite nur bei Änderungen an src/sync, src/shared, datenzugriff.js; Cluster-Suite nie.
+//                  Basis ist der Upstream-Zweig (nur nicht gepushte Änderungen), sonst origin/main.
+//                  Die vollständige Suite läuft in der CI auf GitHub (oder lokal mit `npm run ci:lokal`).
 import { spawnSync } from 'node:child_process';
+import { readdirSync, readFileSync } from 'node:fs';
 
 const FILTER = {
     kern: ['src/**', 'public/**', 'migrations/**', 'tests/**', 'scripts/**', 'knexfile.cjs', 'setup_db.js',
@@ -43,7 +49,9 @@ function globRegex(muster) {
 }
 
 function geaenderteDateien() {
-    const base = wert('--base')
+    // Schlank (Pre-Push-Hook): nur die noch nicht gepushten Änderungen gegenüber dem Upstream-Zweig prüfen.
+    const upstream = hat('--schlank') && git('rev-parse', '--verify', '-q', '@{upstream}') ? '@{upstream}' : null;
+    const base = wert('--base') || upstream
         || (git('rev-parse', '--verify', '-q', 'origin/main') ? 'origin/main' : 'main');
     const mergeBase = git('merge-base', base, 'HEAD');
     if (!mergeBase) throw new Error(`Keine gemeinsame Basis mit "${base}" gefunden (--base angeben).`);
@@ -67,6 +75,27 @@ function shellcheckVerfuegbar() {
     return spawnSync('shellcheck', ['--version'], { stdio: 'ignore' }).status === 0;
 }
 
+// Schlanker Modus: E2E-Specs wählen, die zu den geänderten Dateien passen. Ein Spec passt, wenn er selbst geändert
+// wurde oder der Dateiname einer geänderten src-/public-Datei (ohne Endung, ab 5 Zeichen) in seinem Dateinamen oder
+// Inhalt vorkommt. smoke.spec.js läuft immer.
+const ZU_ALLGEMEIN = new Set(['common', 'index', 'helpers', 'client']);
+function waehleE2eSpecs(geaendert) {
+    const verzeichnis = 'tests/e2e';
+    const specs = readdirSync(verzeichnis).filter((f) => f.endsWith('.spec.js'));
+    const tokens = [...new Set(geaendert
+        .filter((d) => /^(src|public)\//.test(d))
+        .map((d) => d.split('/').pop().replace(/\.[^.]+$/, '').toLowerCase())
+        .filter((t) => t.length >= 5 && !ZU_ALLGEMEIN.has(t)))];
+    const gewaehlt = new Set(specs.filter((f) => f === 'smoke.spec.js'));
+    for (const f of specs) {
+        if (geaendert.includes(`${verzeichnis}/${f}`)) { gewaehlt.add(f); continue; }
+        const inhalt = readFileSync(`${verzeichnis}/${f}`, 'utf8').toLowerCase();
+        if (tokens.some((t) => f.toLowerCase().includes(t) || inhalt.includes(t))) gewaehlt.add(f);
+    }
+    return [...gewaehlt].sort().map((f) => `${verzeichnis}/${f}`);
+}
+const schlank = hat('--schlank');
+
 const schritte = [{ name: 'unit', befehl: [npm, 'run', 'test:unit'] }];
 if (trifft('shell')) {
     if (shellcheckVerfuegbar()) {
@@ -78,11 +107,22 @@ if (trifft('shell')) {
         console.log('shellcheck nicht installiert, Schritt übersprungen (CI prüft es trotzdem).');
     }
 }
-if (trifft('kern')) {
-    schritte.push({ name: 'e2e', befehl: [npm, 'run', 'test:e2e'] });
-    schritte.push({ name: 'e2e:sync', befehl: [npm, 'run', 'test:e2e:sync'] });
+if (schlank) {
+    if (trifft('kern')) {
+        const specs = waehleE2eSpecs(dateien);
+        console.log(`Schlank: ${specs.length} passende E2E-Specs (${specs.map((p) => p.split('/').pop()).join(', ')})`);
+        schritte.push({ name: `e2e (${specs.length} Specs)`, befehl: [npm, 'run', 'test:e2e', '--', ...specs] });
+        const syncRelevant = dateien.some((d) => /^src\/(sync|shared)\//.test(d) || d === 'public/js/datenzugriff.js'
+            || d.startsWith('tests/e2e-sync/'));
+        if (syncRelevant) schritte.push({ name: 'e2e:sync', befehl: [npm, 'run', 'test:e2e:sync'] });
+    }
+} else {
+    if (trifft('kern')) {
+        schritte.push({ name: 'e2e', befehl: [npm, 'run', 'test:e2e'] });
+        schritte.push({ name: 'e2e:sync', befehl: [npm, 'run', 'test:e2e:sync'] });
+    }
+    if (trifft('cluster')) schritte.push({ name: 'e2e:cluster', befehl: [npm, 'run', 'test:e2e:cluster'] });
 }
-if (trifft('cluster')) schritte.push({ name: 'e2e:cluster', befehl: [npm, 'run', 'test:e2e:cluster'] });
 if (trifft('plattform')) {
     schritte.push({ name: 'server-selbststart', befehl: ['node', 'scripts/smoke-server-eingebettet.mjs'] });
 }

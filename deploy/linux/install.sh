@@ -40,7 +40,7 @@ export DEBIAN_FRONTEND=noninteractive
 # --- 1. Pakete ---------------------------------------------------------------------------------
 log "Systempakete installieren"
 apt-get update -qq
-apt-get install -y -qq postgresql curl ca-certificates gnupg rsync openssl build-essential python3 >/dev/null
+apt-get install -y -qq postgresql curl ca-certificates gnupg rsync openssl build-essential python3 alsa-utils >/dev/null
 
 node_major() { command -v node >/dev/null && node -v | sed 's/^v\([0-9]*\).*/\1/' || echo 0; }
 if [ "$(node_major)" -lt 20 ]; then

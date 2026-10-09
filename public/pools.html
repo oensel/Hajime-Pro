@@ -14,40 +14,35 @@
 <div class="kanji-right">道</div>
 
 <div class="mdc-card pool-management-card">
-    <div class="form-title-area">
+    <div class="form-title-area titel-zentriert">
         <span class="material-icons">groups</span>
         <h1 id="formTitle">Pool-Verwaltung</h1>
-    </div>
-
-    <!-- Status B: Pools existieren bereits (Nutzt flex-Display via JS) -->
-    <div id="regenerateActionArea" class="pools-toolbar" style="display: none;">
-        <button type="button" class="toolbar-btn" id="refreshPoolsBtn" title="Aktualisieren">
-            <span class="material-icons">refresh</span>
-            <span>Aktualisieren</span>
-        </button>
-        <button type="button" class="toolbar-btn" id="generateMorePoolsBtn" title="Pools für weitere gewogene Altersklassen generieren" style="display: none;">
-            <span class="material-icons">auto_awesome</span>
-            <span>Pools generieren</span>
-        </button>
-        <button type="button" class="toolbar-btn toolbar-btn-danger" id="regeneratePoolsBtn" title="Pools neu generieren">
-            <span class="material-icons">restart_alt</span>
-            <span>Neu generieren</span>
-        </button>
-        <button type="button" class="toolbar-btn toolbar-btn-danger" id="deleteAllPoolsBtn" title="Alle Pools löschen">
-            <span class="material-icons">delete_sweep</span>
-            <span>Alle löschen</span>
-        </button>
-    </div>
-
-    <!-- Status A: Vor der Auslosung (Zentraler Aktionsbereich) -->
-    <div id="drawActionArea" style="text-align: center; padding: 24px; border-bottom: 2px solid var(--border); margin-bottom: 24px;">
-        <p style="margin: 0 0 16px 0; font-weight: 600; color: var(--text-muted);">
-            Alle Teilnehmer erfasst? Starten Sie die automatische Pool-Generierung nach DJB-Reglement.
-        </p>
-        <button type="button" class="btn btn-raised" id="generatePoolsBtn" style="height: auto; padding: 14px 40px; display: inline-flex; align-items: center;">
-            <span class="material-icons" style="vertical-align: middle; margin-right: 8px;">auto_awesome</span>
-            Pools jetzt generieren
-        </button>
+        <!-- Status A: Vor der Auslosung (Nutzt flex-Display via JS) -->
+        <div id="drawActionArea" class="titel-icons">
+            <button type="button" class="toolbar-btn" id="generatePoolsBtn" aria-label="Pools jetzt generieren" data-tooltip="Pools jetzt generieren (automatische Auslosung nach DJB-Reglement)">
+                <span class="material-icons">auto_awesome</span>
+                <span>Pools jetzt generieren</span>
+            </button>
+        </div>
+        <!-- Status B: Pools existieren bereits (Nutzt flex-Display via JS) -->
+        <div id="regenerateActionArea" class="titel-icons" style="display: none;">
+            <button type="button" class="toolbar-btn" id="refreshPoolsBtn" aria-label="Aktualisieren" data-tooltip="Aktualisieren">
+                <span class="material-icons">refresh</span>
+                <span>Aktualisieren</span>
+            </button>
+            <button type="button" class="toolbar-btn" id="generateMorePoolsBtn" aria-label="Pools generieren" data-tooltip="Pools für weitere gewogene Altersklassen generieren" style="display: none;">
+                <span class="material-icons">auto_awesome</span>
+                <span>Pools generieren</span>
+            </button>
+            <button type="button" class="toolbar-btn toolbar-btn-danger" id="regeneratePoolsBtn" aria-label="Neu generieren" data-tooltip="Pools neu generieren">
+                <span class="material-icons">restart_alt</span>
+                <span>Neu generieren</span>
+            </button>
+            <button type="button" class="toolbar-btn toolbar-btn-danger" id="deleteAllPoolsBtn" aria-label="Alle löschen" data-tooltip="Alle Pools löschen">
+                <span class="material-icons">delete_sweep</span>
+                <span>Alle löschen</span>
+            </button>
+        </div>
     </div>
 
     <!-- Dynamischer Container für die Pool-Listen -->

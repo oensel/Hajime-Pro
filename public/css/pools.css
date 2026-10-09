@@ -34,16 +34,6 @@
     box-sizing: border-box;
 }
 
-/* Aktions-Leiste über den Pools, im gleichen Button-Stil wie die Toolbar auf teilnehmer.html */
-.pools-toolbar {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 8px;
-    flex-wrap: wrap;
-    margin-bottom: 14px;
-}
-
 /* Der Pool-Container nutzt die komplette Kartenbreite */
 #poolsContainer {
     width: 100%;

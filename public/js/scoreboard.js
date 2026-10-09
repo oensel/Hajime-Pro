@@ -429,7 +429,7 @@ function triggerHanteiSieg(color) {
     stopAllTimers();
     state['hanteiSieger' + color] = true;
     state.overlayMode = 'hanteisieg';
-    playHorn();
+    // Kein Signalton: die Kampfzeit ist schon mit Ton abgelaufen, die Entscheidung der Kampfrichter wird nur noch angezeigt.
     update();
 }
 
@@ -575,6 +575,16 @@ let kampfStatusGemeldet = false;
 // Solange "Ergebnis senden" läuft, gilt ein in der Datenbank schon beendeter Kampf nicht als veraltet.
 let ergebnisWirdGesendet = false;
 
+// Ereignisse des Kampfes für die Videoaufnahme (js/video.js): geladen, start, stopp, ergebnis, abbruch.
+// Wird die Aufnahme erst eingeschaltet, nachdem ein Kampf geladen wurde, holt video.js dessen Daten hier ab.
+let aktuellerKampfDetail = null;
+window.hajimeAktuellerKampf = () => (currentFightId && aktuellerKampfDetail && aktuellerKampfDetail.kampfId === currentFightId ? aktuellerKampfDetail : null);
+function meldeKampfEreignis(typ, extra = {}) {
+    try {
+        window.dispatchEvent(new CustomEvent('hajime:kampf', { detail: { typ, kampfId: currentFightId, ...extra } }));
+    } catch (e) { console.warn('Kampf-Ereignis nicht gemeldet:', e); }
+}
+
 // Meldet den Kampf beim ersten START als "gestartet". Läuft bewusst im Hintergrund: die Uhr darf nicht auf
 // den Server warten. Lehnt dieser ab (z.B. Matte pausiert), erscheint die Meldung; der nächste START versucht es erneut.
 function meldeKampfGestartet() {
@@ -611,6 +621,7 @@ async function kampfIstBeendet(kampfId) {
 // Entlädt den Kampf im Scoreboard (Zeit stoppen, Wertungen leeren); "Nächsten Kampf holen" erscheint wieder.
 function gibGeladenenKampfFrei() {
     stopAllTimers();
+    meldeKampfEreignis('abbruch');
     currentFightId = null;
     kaempfer1_id = null;
     kaempfer2_id = null;
@@ -618,11 +629,17 @@ function gibGeladenenKampfFrei() {
     resetTimer();
 }
 
+function hatIppon() {
+    return state.ipponW > 0 || state.ipponB > 0;
+}
+
 function toggleTimer() {
+    if (!isRunning && hatIppon()) return; // auch per Tastenkürzel: nach einem Ippon läuft die Kampfzeit nicht weiter
     if (isRunning) {
         stopAllTimers();
         state.timeRunning = false;
         update();
+        meldeKampfEreignis('stopp');
     } else {
         if (state.overlayMode === "time") {
             // Reguläre Kampfzeit abgelaufen, Gleichstand und eine Golden-Score-Zeit konfiguriert
@@ -644,6 +661,7 @@ function toggleTimer() {
         kampfGestartet = true;
         state.timeRunning = true;
         meldeKampfGestartet();
+        meldeKampfEreignis('start');
         ['btnStartStop', 'btnStartStopLive'].forEach(id => {
             let btnSS = document.getElementById(id);
             if (btnSS) {
@@ -844,6 +862,8 @@ if (hotkeyToggleTimer) {
    ANZEIGE-UPDATE & BROADCAST-SYNCHRONISATION
    ========================================================================== */
 function update() {
+    // Die Videoaufnahme (js/video.js) liest Wertungen, Strafen und Kampfzeit für das Overlay im Bild aus diesem Zustand.
+    window.hajimeScoreboardState = state;
     let pName = document.getElementById('poolName');
     let nW = document.getElementById('nameW');
     let cW = document.getElementById('clubW');
@@ -919,10 +939,9 @@ function update() {
     // Solange die Vorschau auf die kommenden Kämpfe läuft (nach "Ergebnis senden"), braucht die Steuerung nur
     // "Nächsten Kampf holen" — Start/Reset, "Nicht angetreten" und "Hantei-Sieg" gehören zu keinem Kampf.
     const nurNaechsterKampf = state.overlayMode === 'vorschau';
-    ['btnStartStopLive', 'btnResetLive'].forEach(id => {
-        const btn = document.getElementById(id);
-        if (btn) btn.style.display = nurNaechsterKampf ? 'none' : '';
-    });
+    const btnStartLive = document.getElementById('btnStartStopLive');
+    // Ohne geladenen Kampf zeigt die Steuerung "Nächsten Kampf holen" statt START (so passt alles in eine Zeile).
+    if (btnStartLive) btnStartLive.style.display = (nurNaechsterKampf || !currentFightId) ? 'none' : '';
 
     // "Ergebnis senden"/"Nächsten Kampf holen" existieren zweifach im Markup (Hauptbedienung +
     // Kurzzugriff neben der Live-Vorschau), daher hier für beide Fundstellen synchron halten.
@@ -943,10 +962,12 @@ function update() {
         const btnHolen = document.getElementById(id);
         if (btnHolen) btnHolen.style.display = !currentFightId ? 'inline-block' : 'none';
     });
+    zeigePoolBeginnOverlay();
 
     ['btnStartStop', 'btnStartStopLive'].forEach(id => {
         const btnStartStop = document.getElementById(id);
-        if (btnStartStop) btnStartStop.disabled = (currentFightId === null);
+        // Mit einem Ippon ist der Kampf entschieden: START bleibt ausgegraut, bis der Ippon wieder zurückgenommen wird.
+        if (btnStartStop) btnStartStop.disabled = (currentFightId === null) || hatIppon();
     });
 
     // "Nicht angetreten": Button wird bei Aktivierung zum Banner (Klick darauf macht es
@@ -1154,8 +1175,14 @@ if (!document.getElementById('matchDuration')) {
 
     channel.onmessage = function(event) {
         const data = event.data;
+        // Andere Seiten (z.B. das Dashboard mit { type: 'request_state' }) nutzen denselben Kanal: nur echte Zustände anzeigen,
+        // sonst erscheint kurz "undefined" in der Anzeige.
+        if (!data || data.type === 'request_state' || data.nameW === undefined) return;
         const panelB = document.getElementById('panelB');
         if (panelB) panelB.className = data.fighter2Color;
+
+        const resetAllBtn = document.getElementById('iframeBtnResetAll');
+        if (resetAllBtn) resetAllBtn.style.display = data.overlayMode === 'vorschau' ? 'none' : '';
 
         document.getElementById('outNameW').innerText = data.nameW;
         document.getElementById('outClubW').innerText = data.clubW;
@@ -1325,6 +1352,56 @@ function injiziereBedienButtons() {
         b.textContent = text;
         b.addEventListener('click', onClick);
         return b;
+    }
+
+    // "RESET ALL" ganz rechts in der Meta-Leiste (neben Klasse und Gewicht). Wie die übrigen Buttons ruft er die
+    // Funktion des Eltern-Fensters auf (inkl. Sicherheitsabfrage); in der Vorschau der kommenden Kämpfe blendet ihn
+    // channel.onmessage aus (gehört dort zu keinem Kampf).
+    const metaLeiste = document.querySelector('.top-meta-bar');
+    if (metaLeiste) {
+        const resetAll = document.createElement('button');
+        resetAll.type = 'button';
+        resetAll.id = 'iframeBtnResetAll';
+        resetAll.className = 'iframe-ctrl-reset-all';
+        resetAll.textContent = 'RESET ALL';
+        resetAll.addEventListener('click', () => window.parent.resetTimerBestaetigen());
+
+        // "Matte pausieren/fortsetzen" links neben RESET ALL; Beschriftung, Sperre und Sichtbarkeit kommen aus dem
+        // Eltern-Fenster (aktualisiereMattePauseButton, window.hajimeMattePauseZustand).
+        const mattePause = document.createElement('button');
+        mattePause.type = 'button';
+        mattePause.id = 'iframeBtnMattePause';
+        mattePause.className = 'iframe-ctrl-matte-pause';
+        mattePause.textContent = 'Matte pausieren';
+        mattePause.style.display = 'none';
+        mattePause.addEventListener('click', () => window.parent.toggleMattePause());
+        setInterval(() => {
+            const z = window.parent.hajimeMattePauseZustand && window.parent.hajimeMattePauseZustand();
+            if (!z) return;
+            if (mattePause.textContent !== z.text) mattePause.textContent = z.text;
+            mattePause.disabled = z.gesperrt;
+            mattePause.style.display = z.sichtbar ? '' : 'none';
+        }, 300);
+
+        const rechts = document.createElement('div');
+        rechts.className = 'iframe-ctrl-rechts';
+        rechts.append(mattePause, resetAll);
+        metaLeiste.appendChild(rechts);
+
+        // "Video ansehen" ganz links neben Klasse und Gewicht: nur sichtbar, solange die Videoaufnahme tatsächlich läuft
+        // (js/video.js im Eltern-Fenster, window.hajimeVideoLaeuft/hajimeVideoAnsehen).
+        const videoAnsehen = document.createElement('button');
+        videoAnsehen.type = 'button';
+        videoAnsehen.id = 'iframeBtnVideoAnsehen';
+        videoAnsehen.className = 'iframe-ctrl-video-ansehen';
+        videoAnsehen.textContent = '📹 Video ansehen';
+        videoAnsehen.style.display = 'none';
+        videoAnsehen.addEventListener('click', () => { if (window.parent.hajimeVideoAnsehen) window.parent.hajimeVideoAnsehen(); });
+        metaLeiste.appendChild(videoAnsehen);
+        setInterval(() => {
+            const laeuft = !!(window.parent.hajimeVideoLaeuft && window.parent.hajimeVideoLaeuft());
+            videoAnsehen.style.display = laeuft ? '' : 'none';
+        }, 500);
     }
 
     const scoreTypen = { ippon: 'Ippon', waza: 'Waza', yuko: 'Yuko' };
@@ -1637,6 +1714,9 @@ async function updateSelectedMat(val) {
 }
 
 async function naechstenKampfHolen() {
+    // Solange der Durchsage-Hinweis (Beginn eines neuen Pools) nicht mit "Erledigt" bestätigt ist, wird kein Kampf geholt.
+    const poolBeginnOverlay = document.getElementById('poolBeginnOverlay');
+    if (poolBeginnOverlay && poolBeginnOverlay.style.display !== 'none') return;
     if (!selectedMatId) {
         zeigeNotification("Bitte wählen Sie zuerst eine Matte aus.", "error");
         return;
@@ -1730,6 +1810,16 @@ async function naechstenKampfHolen() {
         // beim Laden — ein geladener, aber nicht begonnener Kampf bleibt "bereit". War er schon
         // "gestartet" (Seite neu geladen), ist nichts mehr zu melden.
         kampfStatusGemeldet = naechster.status === 'gestartet';
+        const matSel = document.getElementById('matSelect');
+        aktuellerKampfDetail = {
+            kampfId: currentFightId,
+            matteId: selectedMatId,
+            matteName: matSel && matSel.selectedOptions[0] ? matSel.selectedOptions[0].textContent.trim() : '',
+            turnierId: localStorage.getItem('aktiveTurnierId'),
+            pool: poolNameVal, kaempfer1: `${nameWVal} (${clubWVal})`, kaempfer2: `${nameBVal} (${clubBVal})`,
+            farbe2: naechster.farbe_kaempfer2 === 'rot' ? 'rot' : 'blau'
+        };
+        meldeKampfEreignis('geladen', aktuellerKampfDetail);
 
         currentSeconds = pool_kampfzeit;
         formatTime();
@@ -1740,7 +1830,6 @@ async function naechstenKampfHolen() {
         if (slider) slider.checked = istRot;
         changeFighterColorSlider(istRot, false);
 
-        zeigeNotification(`Kampf geladen: ${nameWVal} vs ${nameBVal}`, 'success');
         await pruefeUndZeigePausenwarnung();
         await ladeMattenUebersicht();
     } catch (err) {
@@ -1854,12 +1943,8 @@ async function ergebnisSenden() {
     try {
         const ergebnis = await window.Datenzugriff.aktualisiereKampf(currentFightId, payload);
         if (!ergebnis.ok) throw new Error(ergebnis.fehler || 'Fehler beim Aktualisieren des Kampfes auf dem Server.');
-        if (ergebnis.ausstehend) {
-            zeigeNotification(ergebnis.meldung, "info");
-        } else {
-            zeigeNotification("Kampfergebnis erfolgreich übermittelt und gespeichert!", "success");
-        }
-        
+        // Keine Erfolgsmeldung: bei fehlender Verbindung speichert das Gerät lokal und überträgt später (Sync-Statusleiste).
+        meldeKampfEreignis('ergebnis', { sieger: winnerColor, farbe2: state.fighter2Color });
         currentFightId = null;
         kaempfer1_id = null;
         kaempfer2_id = null;
@@ -1880,16 +1965,20 @@ async function ergebnisSenden() {
 // wieder über "Nächsten Kampf holen" (naechstenKampfHolen()) oder "Overlay schließen"
 // (closeOverlay()).
 function aktualisiereMattePauseButton() {
-    const btn = document.getElementById('btnMattePauseLive');
-    if (!btn) return;
-    btn.textContent = state.pausiert ? 'Matte fortsetzen' : 'Matte pausieren';
-    btn.disabled = !selectedMatId;
+    // Der Knopf selbst sitzt in der eingebetteten Anzeige neben "RESET ALL" (injiziereBedienButtons) und fragt diesen Zustand ab.
     // Der Button erscheint nur vor Kampfbeginn (geladener Kampf noch nicht gestartet, keine Vorschau nach "Ergebnis
     // senden"). Ist die Matte schon pausiert (z.B. an anderer Stelle), bleibt er sichtbar, damit sie sich hier
-    // fortsetzen lässt.
-    const vorKampfbeginn = !kampfGestartet && !(currentFightId && kampfStatusGemeldet) && state.overlayMode !== 'vorschau';
-    btn.style.display = (vorKampfbeginn || state.pausiert) ? '' : 'none';
+    // fortsetzen lässt. Der Zustand wird bei jeder Abfrage frisch berechnet.
+    window.hajimeMattePauseZustand = () => {
+        const vorKampfbeginn = !kampfGestartet && !(currentFightId && kampfStatusGemeldet) && state.overlayMode !== 'vorschau';
+        return {
+            text: state.pausiert ? 'Matte fortsetzen' : 'Matte pausieren',
+            gesperrt: !selectedMatId,
+            sichtbar: vorKampfbeginn || state.pausiert
+        };
+    };
 }
+aktualisiereMattePauseButton(); // Zustandsfunktion von Anfang an bereitstellen (die eingebettete Anzeige fragt sie ab)
 
 // --- MATTE PAUSIEREN / FORTSETZEN (Button "Matte pausieren" in steuerung.html) ---
 // Pausiert die Matte (wie auf matten.html/kampf.html): auf der Anzeige erscheinen die kommenden Kämpfe
@@ -1905,7 +1994,6 @@ async function toggleMattePause() {
             const r = await window.Datenzugriff.setzeMatteFort(selectedMatId);
             if (!r.ok) throw new Error(r.fehler || 'Matte konnte nicht fortgesetzt werden.');
             await wendePausenAnsichtAn(false);
-            zeigeNotification('Matte fortgesetzt.', 'success');
         } else {
             if (isRunning) {
                 zeigeNotification('Bitte zuerst die Kampfzeit stoppen.', 'error');
@@ -1914,7 +2002,6 @@ async function toggleMattePause() {
             const r = await window.Datenzugriff.pausiereMatte(selectedMatId);
             if (!r.ok) throw new Error(r.fehler || 'Matte konnte nicht pausiert werden.');
             await wendePausenAnsichtAn(true);
-            zeigeNotification('Matte pausiert.', 'success');
         }
     } catch (err) {
         zeigeNotification(err.message, 'error');
@@ -2070,7 +2157,6 @@ async function tauscheMitNaechstemKampf() {
             && !kampfGestartet && !kampfStatusGemeldet && !isRunning;
         const tausch = await window.Datenzugriff.tauscheReihenfolge(pausenWarnungKampf.id, pausenWarnungDanach.id, turnierId);
         if (!tausch.ok) throw new Error(tausch.fehler || 'Tausch fehlgeschlagen.');
-        zeigeNotification('Reihenfolge getauscht.', 'success');
         if (geladenerKampfBetroffen) {
             await naechstenKampfHolen();
             resetTimer();
@@ -2091,16 +2177,349 @@ function formatFighterNameSteuerung(nachname, vorname) {
 // Turnierbaum (public/js/poolAnsicht.js). Das Modul wird erst bei Bedarf geladen, damit ein Fehler dort
 // die Steuerung nicht lahmlegt.
 let poolAnsichtModul = null;
+let poolAnsichtWahl = null;          // vom Bediener gewählter Pool (null = Pool des aktuellen Kampfes)
+let poolAnsichtKaempfe = [];         // zuletzt geladene Kampfliste der Matte (für den Wechsel ohne Neuladen)
+
+// Einzel-Pools der Matte, die im Panel "Pool" wählbar sind: der Pool des aktuellen Kampfes, weitere laufende Pools
+// (mindestens ein Kampf begonnen oder beendet) und alle Pools in Prüfung ("kaempfe_beendet"). Abgeschlossene und noch
+// nicht begonnene Pools tauchen nicht auf.
+function ermittleWaehlbarePools(kaempfe) {
+    const einzel = (kaempfe || []).filter(k => !k.mannschaftskampf_id);
+    const ordnung = [];
+    const proPool = new Map();
+    einzel.forEach(k => {
+        if (!proPool.has(k.pool_id)) {
+            proPool.set(k.pool_id, { id: k.pool_id, name: k.pool_bezeichnung, status: k.pool_status, modus: k.pool_modus, begonnen: false, aktuell: false });
+            ordnung.push(k.pool_id);
+        }
+        const p = proPool.get(k.pool_id);
+        if (k.status === 'beendet' || k.status === 'gestartet') p.begonnen = true;
+        if (currentFightId && Number(k.id) === Number(currentFightId)) p.aktuell = true;
+    });
+    const liste = ordnung.map(id => proPool.get(id)).filter(p => {
+        if (p.status === 'abgeschlossen') return false;
+        return p.aktuell || p.status === 'kaempfe_beendet' || p.begonnen;
+    });
+    liste.forEach(p => { p.pruefung = p.status === 'kaempfe_beendet'; });
+    // Reihenfolge: aktueller Pool, weitere laufende, dann die Pools in Prüfung
+    const rang = (p) => (p.aktuell ? 0 : p.pruefung ? 2 : 1);
+    return liste.sort((a, b) => rang(a) - rang(b));
+}
+
+// Zusatzkampf in einem Pool in Prüfung (z.B. Entscheidung eines 3er-Kreises): Formular im Aktionsbereich. Der Zustand
+// liegt außerhalb, weil die Ansicht regelmäßig neu gezeichnet wird.
+const zusatzForm = { offen: false, poolId: null, k1: '', k2: '' };
+
+function kaempferDesPools(poolId) {
+    const liste = new Map();
+    poolAnsichtKaempfe.filter(k => Number(k.pool_id) === Number(poolId) && !k.mannschaftskampf_id).forEach(k => {
+        [[k.kaempfer1_id, k.kaempfer1_vorname, k.kaempfer1_nachname], [k.kaempfer2_id, k.kaempfer2_vorname, k.kaempfer2_nachname]].forEach(([id, vorname, nachname]) => {
+            if (id && !liste.has(id)) liste.set(id, formatFighterNameSteuerung(nachname, vorname));
+        });
+    });
+    return [...liste.entries()].map(([id, name]) => ({ id, name }));
+}
+
+function baueZusatzkampfFormular(pool) {
+    const form = document.createElement('div');
+    form.className = 'st-zusatzform';
+    const hinweis = document.createElement('div');
+    hinweis.className = 'st-pool-hinweis';
+    hinweis.textContent = 'Zusatzkampf anlegen (z.B. zur Entscheidung eines Kreises). Der Pool ist danach wieder in Betrieb, bis der Kampf beendet ist.';
+    const waehle = (schluessel, beschriftung) => {
+        const label = document.createElement('label');
+        label.textContent = beschriftung;
+        const sel = document.createElement('select');
+        const leer = document.createElement('option');
+        leer.value = '';
+        leer.textContent = 'Kämpfer wählen …';
+        sel.appendChild(leer);
+        kaempferDesPools(pool.id).forEach(k => {
+            const o = document.createElement('option');
+            o.value = String(k.id);
+            o.textContent = k.name;
+            sel.appendChild(o);
+        });
+        sel.value = zusatzForm[schluessel];
+        sel.addEventListener('change', () => { zusatzForm[schluessel] = sel.value; });
+        label.appendChild(sel);
+        return label;
+    };
+    const anlegen = document.createElement('button');
+    anlegen.type = 'button';
+    anlegen.className = 'btn-main st-pool-abschliessen';
+    anlegen.textContent = 'Kampf anlegen';
+    anlegen.addEventListener('click', () => legeZusatzkampfSteuerung(pool));
+    const abbrechen = document.createElement('button');
+    abbrechen.type = 'button';
+    abbrechen.className = 'btn-main st-pool-abschliessen st-btn-grau';
+    abbrechen.textContent = 'Abbrechen';
+    abbrechen.addEventListener('click', () => { zusatzForm.offen = false; renderePoolAnsichtSteuerung(poolAnsichtKaempfe); });
+    form.append(hinweis, waehle('k1', 'Kämpfer 1'), waehle('k2', 'Kämpfer 2'), anlegen, abbrechen);
+    return form;
+}
+
+async function legeZusatzkampfSteuerung(pool) {
+    if (!zusatzForm.k1 || !zusatzForm.k2 || zusatzForm.k1 === zusatzForm.k2) {
+        zeigeNotification('Bitte zwei verschiedene Kämpfer wählen.', 'error');
+        return;
+    }
+    try {
+        const r = await window.Datenzugriff.legeZusatzkampfAn(pool.id, zusatzForm.k1, zusatzForm.k2);
+        if (!r.ok) throw new Error(r.fehler || 'Zusatzkampf konnte nicht angelegt werden.');
+        zusatzForm.offen = false;
+        zusatzForm.k1 = '';
+        zusatzForm.k2 = '';
+        await ladeMattenUebersicht();
+    } catch (err) {
+        zeigeNotification('Zusatzkampf konnte nicht angelegt werden: ' + err.message, 'error');
+    }
+}
+
+function zeichnePoolAuswahl(pools, gewaehltId) {
+    const leiste = document.getElementById('poolAuswahl');
+    const aktion = document.getElementById('poolAktion');
+    if (!leiste || !aktion) return;
+    leiste.textContent = '';
+    // Eine Eingabe im Zusatzkampf-Formular nicht durch das regelmäßige Neuzeichnen unterbrechen
+    const aktiv = document.activeElement;
+    const behalteAktion = zusatzForm.offen && Number(zusatzForm.poolId) === Number(gewaehltId)
+        && !!aktiv && aktiv.tagName === 'SELECT' && !!aktiv.closest('.st-zusatzform');
+    if (!behalteAktion) aktion.textContent = '';
+    pools.forEach(p => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'st-poolchip' + (Number(p.id) === Number(gewaehltId) ? ' aktiv' : '') + (p.pruefung ? ' pruefung' : '');
+        const text = document.createElement('span');
+        text.textContent = (p.aktuell ? '▶ ' : '') + (p.name || 'Pool');
+        chip.appendChild(text);
+        if (p.pruefung) {
+            const marke = document.createElement('small');
+            marke.textContent = 'In Prüfung';
+            chip.appendChild(marke);
+        }
+        chip.addEventListener('click', () => { poolAnsichtWahl = p.id; renderePoolAnsichtSteuerung(poolAnsichtKaempfe); });
+        leiste.appendChild(chip);
+    });
+    const gewaehlt = pools.find(p => Number(p.id) === Number(gewaehltId));
+    if (zusatzForm.offen && (!gewaehlt || !gewaehlt.pruefung || Number(zusatzForm.poolId) !== Number(gewaehlt.id))) zusatzForm.offen = false;
+    if (gewaehlt && gewaehlt.pruefung && !behalteAktion) {
+        const info = document.createElement('span');
+        info.className = 'st-pool-hinweis';
+        info.textContent = 'Alle Kämpfe sind beendet. Ergebnisse prüfen und den Pool abschließen.';
+        const knopf = document.createElement('button');
+        knopf.type = 'button';
+        knopf.className = 'btn-main st-pool-abschliessen';
+        knopf.textContent = 'Pool abschließen';
+        knopf.addEventListener('click', () => schliessePoolAbSteuerung(gewaehlt));
+        aktion.append(info, knopf);
+        // Zusatzkampf nur in Jeder-gegen-Jeden (Turnierbäume und Überkreuz-Gruppen sind durch ihre Struktur entschieden)
+        if (/^Jeder[- ]gegen[- ]Jeden$/.test(gewaehlt.modus || '')) {
+            if (zusatzForm.offen) {
+                aktion.appendChild(baueZusatzkampfFormular(gewaehlt));
+            } else {
+                const zusatz = document.createElement('button');
+                zusatz.type = 'button';
+                zusatz.className = 'btn-main st-pool-abschliessen st-btn-grau';
+                zusatz.textContent = 'Zusatzkampf';
+                zusatz.title = 'Weiteren Kampf zwischen zwei Kämpfern dieses Pools anlegen (z.B. Entscheidung eines 3er-Kreises)';
+                zusatz.addEventListener('click', () => {
+                    zusatzForm.offen = true;
+                    zusatzForm.poolId = gewaehlt.id;
+                    zusatzForm.k1 = '';
+                    zusatzForm.k2 = '';
+                    renderePoolAnsichtSteuerung(poolAnsichtKaempfe);
+                });
+                aktion.appendChild(zusatz);
+            }
+        }
+    }
+    // Badge am Menüpunkt "Pool": Anzahl der Pools in Prüfung
+    window.dispatchEvent(new CustomEvent('hajime:pool-pruefung', { detail: { anzahl: pools.filter(p => p.pruefung).length } }));
+}
+
+async function schliessePoolAbSteuerung(pool) {
+    if (!window.confirm('Ergebnisse von "' + pool.name + '" als final bestätigen? Damit ist der Pool abgeschlossen.')) return;
+    try {
+        const r = await window.Datenzugriff.schliessePoolAb(pool.id);
+        if (!r.ok) throw new Error(r.fehler || 'Pool konnte nicht abgeschlossen werden.');
+        if (Number(poolAnsichtWahl) === Number(pool.id)) poolAnsichtWahl = null;
+        await ladeMattenUebersicht();
+    } catch (err) {
+        zeigeNotification('Pool konnte nicht abgeschlossen werden: ' + err.message, 'error');
+    }
+}
+
+// Platzierungen eines Pools in Prüfung (gemeinsame Berechnung src/shared/platzierungen.js, wie Siegerliste und Urkunden).
+// Die Teilnehmer ergeben sich aus den Kämpfen des Pools; offene Plätze (null) werden nicht gezeigt.
+let platzierungenModul = null;
+async function zeichnePlatzierungen(pool, kaempfe) {
+    const box = document.getElementById('poolPlatzierungen');
+    if (!box) return;
+    box.textContent = '';
+    if (!pool || !pool.pruefung) return;
+    platzierungenModul = platzierungenModul || await import('/js/shared/platzierungen.js');
+    const poolKaempfe = kaempfe.filter(k => Number(k.pool_id) === Number(pool.id) && !k.mannschaftskampf_id);
+    const teilnehmer = new Map();
+    poolKaempfe.forEach(k => {
+        [[k.kaempfer1_id, k.kaempfer1_vorname, k.kaempfer1_nachname, k.kaempfer1_verein],
+         [k.kaempfer2_id, k.kaempfer2_vorname, k.kaempfer2_nachname, k.kaempfer2_verein]].forEach(([id, vorname, nachname, verein]) => {
+            if (id && !teilnehmer.has(id)) teilnehmer.set(id, { id, vorname, nachname, verein });
+        });
+    });
+    const modusMitRangliste = /^Jeder[- ]gegen[- ]Jeden$/.test(poolKaempfe[0]?.pool_modus || '');
+    const { eintraege } = platzierungenModul.berechnePlatzierungen({ modus: poolKaempfe[0]?.pool_modus }, poolKaempfe, [...teilnehmer.values()]);
+    const mitPlatz = eintraege.filter(e => e.platz != null);
+    if (!mitPlatz.length) return;
+
+    // Kennzahlen je Kämpfer für die Prüfung: Siege, Wertungspunkte der Siege und die einzelnen Siegzeiten
+    // (Grundlage, falls bei gleicher Siegzahl über Punkte bzw. Kampfzeit entschieden werden muss).
+    const mmss = (sek) => Math.floor(sek / 60) + ':' + String(sek % 60).padStart(2, '0');
+    const kennzahlen = (id) => {
+        const siege = poolKaempfe.filter(k => k.status === 'beendet' && k.sieger_id && Number(k.sieger_id) === Number(id));
+        return {
+            siege: siege.length,
+            punkte: siege.reduce((summe, k) => summe + (Number(Number(k.sieger_id) === Number(k.kaempfer1_id) ? k.unterbewertung_kaempfer1 : k.unterbewertung_kaempfer2) || 0), 0),
+            zeiten: siege.map(k => Number(k.kampfzeit_in_sekunden)).filter(z => Number.isFinite(z))
+        };
+    };
+    const werte = new Map(mitPlatz.map(e => [e.teilnehmer.id, kennzahlen(e.teilnehmer.id)]));
+    const gleichstand = (a, b) => a && b && a.siege === b.siege && a.punkte === b.punkte;
+    const titel = document.createElement('div');
+    titel.className = 'st-platz-titel';
+    titel.textContent = 'Platzierungen';
+    box.appendChild(titel);
+    mitPlatz.forEach((e, i) => {
+        const w = werte.get(e.teilnehmer.id);
+        const zeile = document.createElement('div');
+        zeile.className = 'st-platz-zeile st-platz-' + (e.platz <= 3 ? e.platz : 'x');
+        const nr = document.createElement('span');
+        nr.className = 'st-platz-nr';
+        nr.textContent = e.platz + '.';
+        const name = document.createElement('span');
+        name.className = 'st-platz-name';
+        name.textContent = formatFighterNameSteuerung(e.teilnehmer.nachname, e.teilnehmer.vorname);
+        const verein = document.createElement('span');
+        verein.className = 'st-platz-verein';
+        verein.textContent = e.teilnehmer.verein || '';
+        zeile.append(nr, name, verein);
+        const detail = document.createElement('div');
+        detail.className = 'st-platz-detail';
+        const summe = w.zeiten.reduce((a, z) => a + z, 0);
+        detail.textContent = w.siege + (w.siege === 1 ? ' Sieg' : ' Siege') + ' · ' + w.punkte + ' Wertungspunkte'
+            + (w.zeiten.length ? ' · Siegzeiten: ' + w.zeiten.map(mmss).join(' + ') + ' = ' + mmss(summe) : '');
+        zeile.appendChild(detail);
+        box.appendChild(zeile);
+        // Gleiche Siege und Wertungspunkte wie der nächste Platz: Hinweis, dass hier eine Entscheidung nötig sein kann
+        const naechster = mitPlatz[i + 1] && werte.get(mitPlatz[i + 1].teilnehmer.id);
+        if (gleichstand(w, naechster) && modusMitRangliste) {
+            const hinweis = document.createElement('div');
+            hinweis.className = 'st-platz-gleich';
+            hinweis.textContent = 'Gleichstand bei Siegen und Wertungspunkten zum nächsten Platz – ggf. nach Ausschreibung entscheiden';
+            box.appendChild(hinweis);
+        }
+    });
+}
+
 async function renderePoolAnsichtSteuerung(kaempfe) {
     const container = document.getElementById('poolAnsichtContainer');
     if (!container) return;
+    poolAnsichtKaempfe = kaempfe || [];
     try {
+        const pools = ermittleWaehlbarePools(poolAnsichtKaempfe);
+        // Gewählt: Auswahl des Bedieners (solange wählbar), sonst Pool des aktuellen Kampfes, sonst erster laufender, sonst erster in Prüfung
+        let gewaehltId = pools.some(p => Number(p.id) === Number(poolAnsichtWahl)) ? poolAnsichtWahl : null;
+        if (gewaehltId == null) {
+            poolAnsichtWahl = null;
+            const standard = pools.find(p => p.aktuell) || pools.find(p => !p.pruefung) || pools[0];
+            gewaehltId = standard ? standard.id : null;
+        }
+        zeichnePoolAuswahl(pools, gewaehltId);
+        await zeichnePlatzierungen(pools.find(p => Number(p.id) === Number(gewaehltId)), poolAnsichtKaempfe)
+            .catch(err => console.error('Fehler bei den Platzierungen:', err)); // darf die Pool-Ansicht nicht verhindern
         poolAnsichtModul = poolAnsichtModul || await import('./poolAnsicht.js');
-        poolAnsichtModul.renderPoolAnsicht(container, kaempfe, currentFightId);
+        // Ohne eigene Wahl und mit aktuellem Kampf bleibt es beim bisherigen Verhalten (Pool des aktuellen Kampfes)
+        const erzwingen = (poolAnsichtWahl != null || !pools.some(p => p.aktuell)) ? gewaehltId : null;
+        poolAnsichtModul.renderPoolAnsicht(container, poolAnsichtKaempfe, currentFightId, erzwingen);
     } catch (err) {
         console.error('Fehler bei der Pool-Ansicht:', err);
     }
 }
+
+// --- Durchsage-Hinweis "Beginn eines neuen Pools" (Overlay #poolBeginnOverlay, nur Steuerung) ---
+// Die Steuerung soll rechtzeitig den Beginn einer neuen Klasse durchsagen können: Liegt der erste Kampf eines Pools,
+// von dem noch kein Kampf begonnen wurde, unter den nächsten POOL_BEGINN_VORLAUF kommenden Kämpfen (der geladene
+// bzw. laufende zählt nicht mit), erscheint das Overlay, bis es mit "Erledigt" weggeklickt wird. Die Matten-Planung
+// verschränkt die Pools (Mindestpausen), daher zählt der erste Kampf des Pools, nicht ein Wechsel zum Vorkampf.
+// Je Turnier, Matte und Pool nur einmal (Merker im sessionStorage, übersteht ein Neuladen).
+const POOL_BEGINN_VORLAUF = 3;
+const POOL_BEGINN_MERKER = 'poolBeginnErledigt';
+
+function ladePoolBeginnErledigt() {
+    try { return new Set(JSON.parse(sessionStorage.getItem(POOL_BEGINN_MERKER) || '[]')); } catch { return new Set(); }
+}
+
+function poolBeginnSchluessel(poolId) {
+    return `${localStorage.getItem('aktiveTurnierId') || ''}:${selectedMatId}:${poolId}`;
+}
+
+function matteFuerDurchsage() {
+    const sel = document.getElementById('matSelect');
+    const name = sel && sel.selectedOptions[0] ? sel.selectedOptions[0].textContent.trim() : '';
+    return /^matte/i.test(name) ? name : `Matte ${name}`;
+}
+
+// Liefert je Pool den ersten Kampf, wenn er unter den nächsten Kämpfen liegt und der Pool noch nicht begonnen hat
+// (kein beendeter/laufender/geladener Kampf). Freilose zählen nicht als Beginn.
+function findePoolBeginne(kaempfe, kommende, geladenId, vorlauf = POOL_BEGINN_VORLAUF) {
+    const begonnen = new Set(kaempfe
+        .filter(k => k.status === 'beendet' || k.status === 'gestartet' || (geladenId && Number(k.id) === Number(geladenId)))
+        .map(k => k.pool_id));
+    const beginne = [];
+    kommende.slice(0, vorlauf).forEach(k => {
+        if (!begonnen.has(k.pool_id) && !beginne.some(x => x.pool_id === k.pool_id)) beginne.push(k);
+    });
+    return beginne;
+}
+
+function pruefePoolBeginnMeldung(kaempfe, kommende) {
+    const overlay = document.getElementById('poolBeginnOverlay');
+    const liste = document.getElementById('poolBeginnListe');
+    if (!overlay || !liste) return;
+    const erledigt = ladePoolBeginnErledigt();
+    const offen = findePoolBeginne(kaempfe, kommende.filter(k => !k.wartet_auf_einzelpools), currentFightId)
+        .filter(k => !erledigt.has(poolBeginnSchluessel(k.pool_id)));
+    liste.innerHTML = '';
+    offen.forEach(k => {
+        const zeile = document.createElement('div');
+        zeile.className = 'pool-beginn-zeile';
+        zeile.textContent = `Durchsage: Beginn ${k.pool_bezeichnung || 'neuer Pool'} auf ${matteFuerDurchsage()}`;
+        liste.appendChild(zeile);
+    });
+    overlay.dataset.poolIds = JSON.stringify(offen.map(k => k.pool_id));
+    zeigePoolBeginnOverlay();
+}
+
+// Sichtbar nur, solange kein Kampf geladen ist (Ansicht der kommenden Kämpfe): das Overlay liegt dann über dem Knopf
+// "Nächsten Kampf holen" und sperrt nur diesen, bis "Erledigt" geklickt ist; die Anzeige der kommenden Kämpfe bleibt
+// während der Durchsage stehen und die übrige Steuerung bedienbar.
+// Wird auch von update() aufgerufen, wenn ein Kampf geladen bzw. freigegeben wird.
+function zeigePoolBeginnOverlay() {
+    const overlay = document.getElementById('poolBeginnOverlay');
+    if (!overlay) return;
+    const offen = JSON.parse(overlay.dataset.poolIds || '[]');
+    overlay.style.display = offen.length && !currentFightId ? 'flex' : 'none';
+}
+
+function poolBeginnErledigtClick() {
+    const overlay = document.getElementById('poolBeginnOverlay');
+    if (!overlay) return;
+    const erledigt = ladePoolBeginnErledigt();
+    JSON.parse(overlay.dataset.poolIds || '[]').forEach(id => erledigt.add(poolBeginnSchluessel(id)));
+    try { sessionStorage.setItem(POOL_BEGINN_MERKER, JSON.stringify([...erledigt])); } catch { /* Merker nicht speicherbar */ }
+    overlay.style.display = 'none';
+}
+document.getElementById('poolBeginnErledigtBtn')?.addEventListener('click', poolBeginnErledigtClick);
 
 // Lädt und rendert die "Kämpfe dieser Matte"-Übersicht (#steuerungUpcomingList /
 // #steuerungFinishedList in steuerung.html): kommende Kämpfe rein zur Information, beendete
@@ -2139,6 +2558,14 @@ async function ladeMattenUebersicht() {
         const kommende = kaempfe.filter(k => (k.status === 'bereit' || k.status === 'angelegt') && k.id !== currentFightId);
         const beendete = kaempfe.filter(k => k.status === 'beendet' || k.status === 'freilos').reverse();
 
+        pruefePoolBeginnMeldung(kaempfe, kommende);
+
+        // "Pool-Start": der erste Kampf eines Pools (nach Position auf der Matte) trägt immer das Badge, solange er aussteht.
+        const poolErstKampf = new Map();
+        [...kaempfe].sort((a, b) => (a.matten_reihenfolge ?? Infinity) - (b.matten_reihenfolge ?? Infinity) || a.id - b.id).forEach(k => {
+            if (!poolErstKampf.has(k.pool_id)) poolErstKampf.set(k.pool_id, k.id);
+        });
+
         upcomingList.innerHTML = '';
         if (kommende.length === 0) {
             upcomingList.textContent = 'Keine kommenden Kämpfe auf dieser Matte.';
@@ -2163,14 +2590,25 @@ async function ladeMattenUebersicht() {
                 }
 
                 const orderSpan = document.createElement('span');
+                orderSpan.className = 'st-k-nr';
                 orderSpan.style.cssText = 'opacity: 0.6; min-width: 24px;';
                 orderSpan.textContent = `#${idx + 1}`;
 
                 const poolSpan = document.createElement('span');
+                poolSpan.className = 'st-k-pool';
                 poolSpan.style.cssText = 'font-weight: 700; min-width: 160px;';
                 poolSpan.textContent = k.pool_bezeichnung || '';
+                if (poolErstKampf.get(k.pool_id) === k.id) {
+                    row.dataset.poolStart = '1';
+                    const badge = document.createElement('span');
+                    badge.className = 'st-poolstart';
+                    badge.textContent = 'Pool-Start';
+                    poolSpan.appendChild(document.createTextNode(' '));
+                    poolSpan.appendChild(badge);
+                }
 
                 const fightersSpan = document.createElement('span');
+                fightersSpan.className = 'st-k-namen';
                 fightersSpan.textContent = `${name1} vs ${name2}`;
 
                 row.append(orderSpan, poolSpan, fightersSpan);
@@ -2249,7 +2687,6 @@ async function setzeSteuerungKampfZurueck(kampf) {
     try {
         const ergebnis = await window.Datenzugriff.setzeKampfZurueck(kampf.id, localStorage.getItem('aktiveTurnierId'));
         if (!ergebnis.ok) throw new Error(ergebnis.fehler || 'Zurücksetzen fehlgeschlagen.');
-        zeigeNotification('Kampf zurückgesetzt.', 'success');
         await pruefeUndZeigePausenwarnung();
         await ladeMattenUebersicht();
     } catch (err) {
@@ -2314,7 +2751,6 @@ async function speichereSteuerungKorrektur() {
         const korrektur = await window.Datenzugriff.aktualisiereKampf(kampfId, payload);
         if (!korrektur.ok) throw new Error(korrektur.fehler || 'Korrektur fehlgeschlagen.');
 
-        zeigeNotification('Kampfergebnis korrigiert.', 'success');
         modal.style.display = 'none';
         await ladeMattenUebersicht();
         await pruefeUndZeigePausenwarnung();

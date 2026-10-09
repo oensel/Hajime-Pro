@@ -3,6 +3,7 @@
 // Server kommt zum selben Ergebnis.
 import { test, expect } from '@playwright/test';
 import { richteDk8TurnierEin, syncLeerlauf, clientTrennen, clientVerbinden, clientStatus, CLIENT_BASE_URL } from './helpers.js';
+import { schliesseOverlayAutomatisch } from '../e2e/helpers/pool-beginn-overlay.js';
 
 async function spieleKomplettDurch(page, anzahl) {
     let vorher = 'Kämpfer 1|Kämpfer 2';
@@ -28,6 +29,7 @@ test('Scoreboard am Client: DK8 komplett offline, danach identisch am Server', a
 
     await clientTrennen(request);
     await page.goto(`${CLIENT_BASE_URL}/steuerung.html?turnierId=${turnierId}&matId=${matId}`);
+    await schliesseOverlayAutomatisch(page);
     await expect(page.locator('#matSelect')).toHaveValue(String(matId));
     await spieleKomplettDurch(page, 11);
 

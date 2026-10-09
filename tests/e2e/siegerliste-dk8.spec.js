@@ -16,6 +16,7 @@
 // Kampf per Ippon" führt bei diesem Ausgangsraster deterministisch zu Anna als Champion, Clara als
 // Finalgegnerin und Elena+Greta als gemeinsame Bronze-Platzierte).
 import { test, expect } from '@playwright/test';
+import { schliesseOverlayAutomatisch } from './helpers/pool-beginn-overlay.js';
 
 const TEILNEHMER_FIXTUR = [
     { vorname: 'Anna', nachname: 'Adler', verein: 'JC Alpha', gewicht: 60 },
@@ -100,6 +101,7 @@ test.describe.serial('Siegerliste: Platzierungen und Vereinswertung nach einem D
     test.beforeAll(async ({ browser, request }) => {
         const context = await browser.newContext();
         page = await context.newPage();
+        await schliesseOverlayAutomatisch(page);
 
         const setup = await richteDk8TurnierEin(request, 'Siegerliste-DK8-Test');
         turnierId = setup.turnierId;

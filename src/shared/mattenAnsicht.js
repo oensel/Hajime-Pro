@@ -42,6 +42,7 @@ export function baueMattenAnsicht({ kaempfe, pools, teilnehmer, mannschaftskaemp
                 farbe_kaempfer2: bestimmeFarbeKaempfer2({ kampf: k, pool, turnier }),
                 pool_bezeichnung: pool.bezeichnung,
                 pool_modus: pool.modus,
+                pool_status: pool.status,
                 pool_kampfzeit: pool.kampfzeit_sekunden,
                 pool_altersklasse: pool.altersklasse,
                 pool_golden_score_aktiv: pool.golden_score_aktiv,

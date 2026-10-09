@@ -199,6 +199,19 @@ document.addEventListener('DOMContentLoaded', async () => {
                 </a>
             </nav>
             <nav class="sidebar-nav-unten" id="sidebarNavUnten">
+                <a href="/video-live.html" class="menu-item" id="nav-video-live" style="display: none;">
+                    <span class="material-icons">videocam</span>
+                    <span class="menu-text">Video live</span>
+                </a>
+                <a href="/videobeweis.html" class="menu-item" id="nav-videobeweis" style="display: none;">
+                    <span class="material-icons">video_library</span>
+                    <span class="menu-text">Video-Archiv</span>
+                </a>
+                <a href="/sync-konflikte.html" class="menu-item" id="nav-sync-konflikte" style="display: none;">
+                    <span class="material-icons">sync_problem</span>
+                    <span class="menu-text">Sync-Konflikte</span>
+                    <span class="menu-item-badge" id="nav-sync-konflikte-badge" style="display: none;"></span>
+                </a>
                 <a href="/client-konfig.html" class="menu-item" id="nav-client-konfig" style="display: none;">
                     <span class="material-icons">settings</span>
                     <span class="menu-text">Client-Konfig</span>
@@ -689,6 +702,41 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (clientKonfigLink) {
             clientKonfigLink.style.display = '';
             if (currentPath.includes('client-konfig.html')) clientKonfigLink.classList.add('active');
+        }
+        // Video-Archiv: Clips der Kämpfe (nur am Hallen-Server gespeichert).
+        const videoLiveLink = document.getElementById('nav-video-live');
+        if (videoLiveLink) {
+            videoLiveLink.style.display = '';
+            if (currentPath.includes('video-live.html')) videoLiveLink.classList.add('active');
+        }
+        const videoLink = document.getElementById('nav-videobeweis');
+        if (videoLink) {
+            videoLink.style.display = '';
+            if (currentPath.includes('videobeweis.html')) videoLink.classList.add('active');
+        }
+        // Sync-Konflikte: Menüpunkt mit Zähler der offenen Konflikte (hohe Priorität: rot).
+        const syncKonflikteLink = document.getElementById('nav-sync-konflikte');
+        if (syncKonflikteLink) {
+            syncKonflikteLink.style.display = '';
+            if (currentPath.includes('sync-konflikte.html')) syncKonflikteLink.classList.add('active');
+            const syncKonflikteBadge = document.getElementById('nav-sync-konflikte-badge');
+            const aktualisiereSyncKonflikte = async () => {
+                try {
+                    const antwort = await fetch('/api/sync/konflikte', { cache: 'no-store' });
+                    if (!antwort.ok) return;
+                    const konflikte = await antwort.json();
+                    const anzahl = konflikte.length;
+                    syncKonflikteBadge.textContent = anzahl > 99 ? '99+' : String(anzahl);
+                    syncKonflikteBadge.style.display = anzahl > 0 ? 'inline-block' : 'none';
+                    syncKonflikteBadge.classList.toggle('hoch', konflikte.some(k => k.prioritaet === 'hoch'));
+                    syncKonflikteLink.title = anzahl > 0 ? `${anzahl} offene${anzahl === 1 ? 'r' : ''} Sync-Konflikt${anzahl === 1 ? '' : 'e'}` : '';
+                } catch (fehler) {
+                    // Zähler bleibt beim letzten Stand
+                }
+            };
+            window.hajimeAktualisiereSyncKonflikte = aktualisiereSyncKonflikte;
+            aktualisiereSyncKonflikte();
+            setInterval(aktualisiereSyncKonflikte, 10000);
         }
         // Button "Hallen-Server" in der Kopfzeile (links vom Logout) führt zur Cluster-Statusseite;
         // ohne CLUSTER_KNOTEN zeigt cluster.html einen entsprechenden Hinweis.

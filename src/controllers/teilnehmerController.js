@@ -1418,7 +1418,8 @@ export async function previewTeilnehmerImport(knex, req, res) {
 
             // Nur die ersten 5 Zeilen werden für die Tabellen-Vorschau mitgeschickt, die
             // Zusammenfassung darunter zählt aber immer über die komplette Datei.
-            if (idx < 5) {
+            // Beim Import aus einer E-Mail (alleZeilen) werden alle Zeilen zur Korrektur gebraucht.
+            if (req.body.alleZeilen || idx < 5) {
                 vorschauZeilen.push({ rowNumber, raw: rawRow, felder: ergebnis.felder, fehlerFelder: ergebnis.fehlerFelder });
             }
         });

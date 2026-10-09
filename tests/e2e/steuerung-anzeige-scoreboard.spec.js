@@ -30,6 +30,7 @@
 // stabilen IDs (Nächsten Kampf holen, Start/Stopp, Nicht angetreten, Sieger Hantei, Ergebnis
 // senden, direktes Hansoku-make im iframe) werden dagegen echte Klicks verwendet.
 import { test, expect } from '@playwright/test';
+import { schliesseOverlayAutomatisch } from './helpers/pool-beginn-overlay.js';
 
 const TURNIER_ID = 9001;
 const MAT_ID = 3;
@@ -110,7 +111,10 @@ test.describe.serial('Steuerung + Anzeigetafel: Scoreboard-Kernfunktionen (steue
         });
 
         steuerungPage = await context.newPage();
+
+        await schliesseOverlayAutomatisch(steuerungPage);
         anzeigePage = await context.newPage();
+        await schliesseOverlayAutomatisch(anzeigePage);
 
         for (const [name, page] of [['steuerung', steuerungPage], ['anzeige', anzeigePage]]) {
             page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(`[${name}] ${msg.text()}`); });
@@ -136,9 +140,12 @@ test.describe.serial('Steuerung + Anzeigetafel: Scoreboard-Kernfunktionen (steue
         await expect(steuerungPage.locator('#globalLoginModal')).toHaveCount(0);
         await expect(steuerungPage.locator('#matSelect')).toHaveValue(String(MAT_ID));
 
+        // Namen und Pool stehen im Panel "Kampf" des Menüs
+        await steuerungPage.locator('.st-nav-btn[data-st-oeffne="daten"]').click();
         await steuerungPage.locator('#nameW').fill('Synchronisationstest Weiss');
         await steuerungPage.locator('#clubW').fill('JC Sync');
         await steuerungPage.locator('#poolName').fill('Sync-Pool U21');
+        await steuerungPage.keyboard.press('Escape'); // Panel wieder schließen, sonst überdeckt es die Bühne
 
         await expect(anzeigePage.locator('#outNameW')).toHaveText('Synchronisationstest Weiss');
         await expect(anzeigePage.locator('#outClubW')).toHaveText('JC Sync');

@@ -14,29 +14,28 @@
 <div class="kanji-right">道</div>
 
 <div class="mdc-card matten-management-card">
-    <div class="form-title-area">
-        <span class="material-icons">layers</span>
+    <div class="form-title-area matten-titelzeile">
+        <span id="mattenStand" class="matten-stand" title="Zeitpunkt der letzten Aktualisierung; die Restzeiten der Matten beziehen sich darauf"></span>
         <h1>Kampfflächen</h1>
-        <span class="material-icons">layers</span>
-    </div>
-
-    <div style="display: flex; justify-content: flex-end; gap: 10px; margin-bottom: 16px; flex-wrap: wrap;">
-        <button type="button" class="btn btn-outlined" id="aufteilenBtn" style="display: inline-flex; align-items: center; gap: 8px; height: 38px; font-size: 13px; font-weight: bold; margin: 0; padding: 0 16px;">
-            <span class="material-icons" style="font-size: 18px;">auto_awesome</span>
-            Pools aufteilen
-        </button>
-        <button type="button" class="btn btn-outlined" id="alleNeuVerteilenBtn" title="Alle Pools ohne begonnene Kämpfe verwerfen und neu auf die Matten verteilen" style="display: inline-flex; align-items: center; gap: 8px; height: 38px; font-size: 13px; font-weight: bold; margin: 0; padding: 0 16px;">
-            <span class="material-icons" style="font-size: 18px;">shuffle</span>
-            Alle neu verteilen
-        </button>
-        <button type="button" class="btn btn-outlined" id="alleDruckenBtn" title="Pools aller Matten drucken (erst möglich, wenn Pools auf Matten verteilt sind)" style="display: inline-flex; align-items: center; gap: 8px; height: 38px; font-size: 13px; font-weight: bold; margin: 0; padding: 0 16px;" disabled>
-            <span class="material-icons" style="font-size: 18px;">print</span>
-            Alle Pools drucken
-        </button>
-        <button type="button" class="btn btn-outlined" id="alleZuordnungenLoeschenBtn" style="display: inline-flex; align-items: center; gap: 8px; height: 38px; font-size: 13px; font-weight: bold; margin: 0; padding: 0 16px; color: #c62828; border-color: #c62828;">
-            <span class="material-icons" style="font-size: 18px;">delete_sweep</span>
-            Alle Zuordnungen löschen
-        </button>
+        <div class="matten-toolbar">
+            <button type="button" class="btn btn-outlined icon-btn" id="aktualisierenBtn" aria-label="Aktualisieren" data-tooltip="Aktualisieren">
+                <span class="material-icons">refresh</span>
+            </button>
+            <span class="toolbar-sep"></span>
+            <button type="button" class="btn btn-outlined icon-btn" id="aufteilenBtn" aria-label="Pools aufteilen" data-tooltip="Pools aufteilen (nur Pools ohne Matte)">
+                <span class="material-icons">auto_awesome</span>
+            </button>
+            <button type="button" class="btn btn-outlined icon-btn" id="alleNeuVerteilenBtn" aria-label="Alle neu verteilen" data-tooltip="Alle neu verteilen (Pools ohne begonnene Kämpfe)">
+                <span class="material-icons">shuffle</span>
+            </button>
+            <span class="toolbar-sep"></span>
+            <button type="button" class="btn btn-outlined icon-btn" id="alleDruckenBtn" aria-label="Alle Pools drucken" data-tooltip="Alle Pools drucken" disabled>
+                <span class="material-icons">print</span>
+            </button>
+            <button type="button" class="btn btn-outlined icon-btn icon-btn-danger" id="alleZuordnungenLoeschenBtn" aria-label="Alle Zuordnungen löschen" data-tooltip="Alle Zuordnungen löschen">
+                <span class="material-icons">delete_sweep</span>
+            </button>
+        </div>
     </div>
 
     <div id="mattenContainer">
@@ -44,18 +43,6 @@
     </div>
 </div>
 
-<!-- Sync-Konflikte (nur Hallen-Server mit SYNC_ROLLE=server, siehe public/js/konflikte.js) -->
-<div class="mdc-card" id="syncKonflikteKarte" style="display: none; margin-top: 24px; padding: 16px 24px;">
-    <div class="form-title-area">
-        <span class="material-icons">sync_problem</span>
-        <h1>Sync-Konflikte</h1>
-        <span class="material-icons">sync_problem</span>
-    </div>
-    <p style="color: var(--text-muted); font-size: 13px; margin-top: 0;">Abweichungen zwischen Matten/Waagen und dem Server, die automatisch aufgelöst wurden oder eine Entscheidung der Turnierleitung brauchen.</p>
-    <div id="syncKonflikteListe">Wird geladen …</div>
-</div>
-
 <script src="/js/matten.js"></script>
-<script src="/js/konflikte.js"></script>
 </body>
 </html>

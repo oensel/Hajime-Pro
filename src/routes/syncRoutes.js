@@ -1,4 +1,5 @@
 import express from 'express';
+import { requireWriteAuth } from '../middleware/auth.js';
 
 // /api/sync/status ist IMMER gemountet (auch ohne Sync, dann rolle: null) — das Frontend
 // (datenzugriff.js, syncStatus.js) entscheidet anhand der Antwort zwischen REST- und
@@ -31,6 +32,15 @@ export function getSyncRoutes(holeSync) {
             res.json({ success: true });
         } catch (err) {
             res.status(err.status || 500).json({ success: false, error: err.message });
+        }
+    });
+
+    router.post('/konflikte/:id/entscheiden', requireWriteAuth, nurServer, async (req, res) => {
+        try {
+            await req.server.entscheideKlaerung(req.params.id, req.body && req.body.entscheidung);
+            res.json({ success: true });
+        } catch (err) {
+            res.status(err.statusCode || err.status || 500).json({ success: false, error: err.message });
         }
     });
 

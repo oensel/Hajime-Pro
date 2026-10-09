@@ -39,6 +39,11 @@ import { ladeKopplung } from './sync/kopplung.js';
 import { getClientVerteilungRoutes } from './routes/clientVerteilungRoutes.js';
 import { starteAnkuendigung } from './sync/ankuendigung.js';
 import { starteWeiterleitung } from './sync/port80.js';
+import { erzeugeAusgabe } from './durchsage/audioAusgabe.js';
+import { erzeugeDurchsageDienst, haengeDurchsageAn, haengeWebSocketAn, verbindeAlsProxy } from './durchsage/durchsageDienst.js';
+import { erzeugeVideoSpeicher } from './video/videoSpeicher.js';
+import { erzeugeVideoDienst, VIDEO_PFAD, VIDEO_LIVE_PFAD } from './video/videoDienst.js';
+import { getVideoRoutes } from './routes/videoRoutes.js';
 import { dienstUpdateAktiv, pruefeUndAktualisiereDienst } from './utils/dienstUpdate.js';
 
 dotenv.config({ quiet: true });
@@ -329,6 +334,51 @@ app.get('/api/config', (req, res) => {
     res.json({ isOffline: bm.einzelbenutzer, syncRolle: syncKonfig.rolle, betriebsmodus: bm.modus });
 });
 
+// Live-Durchsage (Scoreboard-Mikrofon -> Audioausgang des Hallen-Servers, siehe src/durchsage/). Nicht in der Cloud.
+// Hallen-Server: spielt selbst ab (nur der Master); Client-Knoten: reicht Status und WebSocket an den Hallen-Server weiter.
+const durchsageDienst = (bm.modus === 'cloud' || syncKonfig.istClient) ? null : erzeugeDurchsageDienst({
+    ausgabe: erzeugeAusgabe(),
+    darfSenden: () => { const c = app.get('cluster'); return !c || c.darfSchreiben(); }
+});
+if (bm.modus !== 'cloud') {
+    app.get('/api/durchsage/status', async (req, res) => {
+        if (durchsageDienst) return res.json(durchsageDienst.status());
+        try {
+            const r = await fetch(`${syncKonfig.serverUrl}/api/durchsage/status`, {
+                headers: syncKonfig.secret ? { 'x-hajime-sync-secret': syncKonfig.secret } : {},
+                signal: AbortSignal.timeout(3000)
+            });
+            if (!r.ok) throw new Error(String(r.status));
+            res.json(await r.json());
+        } catch {
+            res.json({ verfuegbar: false, grund: 'Hallen-Server nicht erreichbar.', besetzt: false });
+        }
+    });
+}
+
+// Videoaufnahme für den Videoschiedsrichter (src/video/): Der Hallen-Server speichert die Clips der Matten (Übertragung live, sonst nachgeliefert) und zeigt sie live;
+// Client-Knoten (Steuerung der Matte) reichen Status und WebSocket an ihn weiter. Nicht in der Cloud.
+const videoSpeicher = (bm.modus === 'cloud' || syncKonfig.istClient) ? null
+    : erzeugeVideoSpeicher({ wurzel: process.env.VIDEO_VERZEICHNIS || './data/video' });
+const videoDienst = videoSpeicher && erzeugeVideoDienst({
+    speicher: videoSpeicher,
+    darfSenden: () => { const c = app.get('cluster'); return !c || c.darfSchreiben(); }
+});
+if (videoDienst) {
+    app.use('/api/video', requireWriteAuth, getVideoRoutes({ speicher: videoSpeicher, dienst: videoDienst }));
+} else if (syncKonfig.istClient) {
+    const serverKopf = () => (syncKonfig.secret ? { 'x-hajime-sync-secret': syncKonfig.secret } : {});
+    app.get('/api/video/status', async (req, res) => {
+        try {
+            const r = await fetch(`${syncKonfig.serverUrl}/api/video/status`, { headers: serverKopf(), signal: AbortSignal.timeout(3000) });
+            if (!r.ok) throw new Error(String(r.status));
+            res.json(await r.json());
+        } catch {
+            res.json({ verfuegbar: false, grund: 'Hallen-Server nicht erreichbar.', speicher: null });
+        }
+    });
+}
+
 if (syncKonfig.istClient) {
     // Alle übrigen /api-Lesezugriffe beantwortet der Client aus seinen lokalen Dokumenten.
     app.use('/api', getClientApiRoutes(() => app.get('sync')));
@@ -341,8 +391,35 @@ app.get('/', (req, res) => {
 // Bindeadresse (bm.listenHost): der Desktop-Client (desktop/main.js) setzt LISTEN_HOST=127.0.0.1, damit er nicht im
 // WLAN erreichbar ist und keine Firewall-Abfrage auslöst. Ein Server bindet sonst auf allen Schnittstellen — ob der
 // Browser lokal läuft oder ein Client im LAN zugreift, macht für ihn keinen Unterschied.
-app.listen(PORT, bm.listenHost, () => {
+const httpServer = app.listen(PORT, bm.listenHost, () => {
     console.log(`🚀 Hajime Pro läuft auf http://${bm.listenHost || 'localhost'}:${PORT} (Modus ${bm.modus})`);
 });
+
+if (bm.modus !== 'cloud') {
+    haengeDurchsageAn(httpServer, {
+        verbinde: durchsageDienst
+            ? (ws) => durchsageDienst.verbinde(ws)
+            : (ws) => verbindeAlsProxy(ws, { serverUrl: syncKonfig.serverUrl, secret: syncKonfig.secret }),
+        // Client-Knoten bindet nur an localhost (Browser derselben Seite); der Hallen-Server prüft SYNC_SECRET.
+        secret: () => (durchsageDienst ? syncKonfig.secret : '')
+    });
+}
+
+if (videoDienst) {
+    const secret = () => syncKonfig.secret;
+    haengeWebSocketAn(httpServer, { pfad: VIDEO_PFAD, verbinde: (ws) => videoDienst.verbindeSender(ws), secret, maxPayload: 16 * 1024 * 1024 });
+    haengeWebSocketAn(httpServer, {
+        pfad: VIDEO_LIVE_PFAD,
+        verbinde: (ws, req) => videoDienst.verbindeZuschauer(ws, new URL(req.url, 'http://x').searchParams.get('matte') ?? ''),
+        secret
+    });
+} else if (syncKonfig.istClient) {
+    // Client-Knoten: die Steuerung überträgt über ihn; Zuschauerseiten (Live, Video-Archiv) öffnet man am Hallen-Server.
+    haengeWebSocketAn(httpServer, {
+        pfad: VIDEO_PFAD,
+        verbinde: (ws) => verbindeAlsProxy(ws, { serverUrl: syncKonfig.serverUrl, secret: syncKonfig.secret, pfad: VIDEO_PFAD }),
+        maxPayload: 16 * 1024 * 1024
+    });
+}
 
 export { app };

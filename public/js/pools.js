@@ -157,11 +157,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             if (pools.length === 0) {
-                if (drawActionArea) drawActionArea.style.display = 'block';
+                if (drawActionArea) drawActionArea.style.display = 'flex';
                 if (regenerateActionArea) regenerateActionArea.style.display = 'none';
                 poolsContainer.innerHTML = `
                     <div class="pools-empty-banner">
-                        Noch keine Pools für dieses Turnier berechnet. Klicken Sie oben auf "Pools jetzt generieren".
+                        Noch keine Pools für dieses Turnier berechnet. Alle Teilnehmer erfasst? Starten Sie oben rechts die automatische Pool-Generierung nach DJB-Reglement.
                     </div>`;
                 return;
             }
@@ -176,7 +176,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } catch (error) {
             console.error('[Pools] Fehler beim Laden:', error);
-            if (drawActionArea) drawActionArea.style.display = 'block';
+            if (drawActionArea) drawActionArea.style.display = 'flex';
             if (regenerateActionArea) regenerateActionArea.style.display = 'none';
             poolsContainer.innerHTML = `<p class="pools-error-banner">Fehler beim Laden: ${error.message}</p>`;
         } finally {
@@ -530,10 +530,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                             if (generatePoolsBtn) {
                                 generatePoolsBtn.removeAttribute('disabled');
-                                generatePoolsBtn.innerHTML = `
-                                    <span class="material-icons btn-icon-spacing">auto_awesome</span>
-                                    Pools jetzt generieren
-                                `;
+                                generatePoolsBtn.innerHTML = `<span class="material-icons">auto_awesome</span>`;
                             }
 
                             await ladePools();
@@ -665,14 +662,8 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             if (button) {
                 button.setAttribute('disabled', 'true');
-                // regeneratePoolsBtn ist ein reiner Icon-Button in der Titelzeile, generatePoolsBtn
-                // dagegen die große Haupt-Aktionsfläche mit Textbeschriftung.
-                button.innerHTML = neuGenerieren
-                    ? `<span class="material-icons icon-spin">sync</span>`
-                    : `
-                        <span class="material-icons btn-icon-spacing icon-spin">sync</span>
-                        Berechne Pools...
-                    `;
+                // Beide Buttons sind reine Icon-Buttons in der Titelzeile.
+                button.innerHTML = `<span class="material-icons icon-spin">sync</span>`;
             }
 
             const response = await fetch('/api/pools/generieren', {
@@ -899,10 +890,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     zeigeNotification('Alle Pools wurden gelöscht.', 'success');
                     if (generatePoolsBtn) {
                         generatePoolsBtn.removeAttribute('disabled');
-                        generatePoolsBtn.innerHTML = `
-                            <span class="material-icons btn-icon-spacing">auto_awesome</span>
-                            Pools jetzt generieren
-                        `;
+                        generatePoolsBtn.innerHTML = `<span class="material-icons">auto_awesome</span>`;
                     }
                     await ladePools();
                 } else {

@@ -398,3 +398,31 @@
     background-color: rgba(184, 50, 50, 0.15);
     color: #b83232;
 }
+
+/* --- Werkzeugleiste: reine Icon-Buttons mit Tooltip --- */
+.matten-titelzeile { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; column-gap: 16px; }
+.matten-titelzeile h1 { flex-grow: 0; }
+.matten-stand { color: var(--text-muted); font-size: 13px; justify-self: start; }
+.matten-toolbar { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+@media (max-width: 900px) {
+    .matten-titelzeile { grid-template-columns: 1fr; row-gap: 8px; }
+    .matten-titelzeile h1 { flex-basis: auto; }
+    .matten-stand { justify-self: center; order: 2; }
+    .matten-toolbar { justify-content: center; order: 3; }
+}
+.toolbar-sep { width: 1px; height: 24px; background: var(--border); margin: 0 4px; }
+.matten-toolbar .icon-btn { position: relative; width: 38px; height: 38px; min-width: 0; margin: 0; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.matten-toolbar .icon-btn .material-icons { font-size: 20px; }
+.matten-toolbar .icon-btn-danger { color: #c62828; border-color: #c62828; }
+.matten-toolbar .icon-btn:disabled { color: var(--text-main); border-color: var(--border); background: transparent; cursor: not-allowed; }
+.matten-toolbar .icon-btn::after {
+    content: attr(data-tooltip);
+    position: absolute; top: calc(100% + 6px); right: 0;
+    background: #333; color: #fff; font-size: 12px; font-weight: normal; line-height: 1.3;
+    padding: 4px 8px; border-radius: 4px; white-space: nowrap;
+    opacity: 0; pointer-events: none; transition: opacity 0.12s; z-index: 20;
+}
+.matten-toolbar .icon-btn:hover::after, .matten-toolbar .icon-btn:focus-visible::after { opacity: 1; }
+
+/* Druck-Icon an der Matte in der Haupttextfarbe (im Dunkelmodus weiß) statt im gedämpften Grau */
+.matte-druck-icon { color: var(--text-main); }

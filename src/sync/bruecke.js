@@ -15,8 +15,10 @@
 // konflikt:-Dokument hält beide Versionen für die Turnierleitung fest (Spec Abschnitt 10).
 import { randomUUID } from 'crypto';
 import { geaenderteFelder, gleicheWerte, mitServerStand } from '../shared/dokumentAbbildung.js';
-import { aktualisiereKampf, setzeMattenReihenfolge, setzeKampfZurueck } from '../controllers/kampfController.js';
+import { aktualisiereKampf, setzeMattenReihenfolge, setzeKampfZurueck, legeZusatzkampfAn } from '../controllers/kampfController.js';
+import { FachFehler } from '../utils/fachFehler.js';
 import { pausiereMatte, setzeMatteFort } from '../controllers/kampfflaecheController.js';
+import { schliessePool } from '../controllers/poolController.js';
 import {
     HALLEN_KONTEXT, legeTeilnehmerAn, aktualisiereTeilnehmerDaten, bestaetigeKampfbereitschaft, werteForfeit
 } from '../controllers/teilnehmerController.js';
@@ -26,7 +28,7 @@ const TEILNEHMER_WAAGE_FELDER = [
     'vorname', 'nachname', 'judopass_id', 'verein', 'geburtsjahr', 'lizenz_ablauf', 'geschlecht',
     'gewicht', 'altersklasse', 'gewichtsklasse', 'graduierung', 'startgeld_bezahlt', 'gewogen'
 ];
-const TABELLE_ZU_TYP = { kampf: 'kaempfe', kampfflaeche: 'kampfflaechen', teilnehmer: 'turnier_teilnehmer' };
+const TABELLE_ZU_TYP = { kampf: 'kaempfe', kampfflaeche: 'kampfflaechen', pool: 'pools', teilnehmer: 'turnier_teilnehmer' };
 
 // Wie lange die Brücke nach dem letzten eingegangenen Dokument wartet, bevor ein zurückgestelltes
 // Ergebnis mit abweichender Paarung als echter Klärungsfall gilt (weitere Replikations-Batches
@@ -118,6 +120,23 @@ async function wendeKampfflaecheAn(knex, doc, basis) {
     if (!('status' in absicht)) return;
     if (absicht.status === 'pausiert' && zeile.status !== 'pausiert') await pausiereMatte(knex, id);
     else if (absicht.status !== 'pausiert' && zeile.status === 'pausiert') await setzeMatteFort(knex, id);
+}
+
+// Zusatzkampf in einem Pool in Prüfung (steuerung.html): Das Gerät legt ein Dokument mit Client-UUID an, der Server
+// erzeugt den Kampf. Das Dokument bekommt die SQL-ID und wird vom Abgleich durch das echte Kampf-Dokument ersetzt.
+async function wendeZusatzkampfAn(knex, db, doc) {
+    const kampfId = await legeZusatzkampfAn(knex, Number(doc.pool_id), doc.kaempfer1_id, doc.kaempfer2_id);
+    await db.put({ ...doc, sql_id: kampfId, id: kampfId, bearbeitet_von: 'server' });
+}
+
+// Einziger Geräte-Eingriff in einen Pool: die Turnierleitung bestätigt die geprüften Ergebnisse
+// ("kaempfe_beendet" -> "abgeschlossen", steuerung.html). Alle anderen Felder gehören dem Server.
+async function wendePoolAn(knex, doc, basis) {
+    const id = doc.sql_id;
+    const zeile = await knex('pools').where({ id }).first();
+    if (!zeile) return;
+    const absicht = absichtGegenueber(doc, basis, zeile, ['status']);
+    if (absicht.status === 'abgeschlossen' && zeile.status !== 'abgeschlossen') await schliessePool(knex, id);
 }
 
 async function wendeTeilnehmerAn(knex, db, doc, basis, legeKonfliktAn) {
@@ -313,8 +332,10 @@ export function erzeugeBruecke({ knex, zustand, abgleich }) {
 
         try {
             const basis = await ladeServerBasis(db, doc);
-            if (typ === 'kampf') await wendeKampfAn(knex, doc, basis);
+            if (typ === 'kampf' && doc.zusatzkampf && doc.sql_id == null) await wendeZusatzkampfAn(knex, db, doc);
+            else if (typ === 'kampf') await wendeKampfAn(knex, doc, basis);
             else if (typ === 'kampfflaeche') await wendeKampfflaecheAn(knex, doc, basis);
+            else if (typ === 'pool') await wendePoolAn(knex, doc, basis);
             else await wendeTeilnehmerAn(knex, db, doc, basis, (t, d, g) => legeKonfliktAnIn(db, t, d, g));
         } catch (fehler) {
             if (fehler instanceof PaarungWeichtAb) {
@@ -401,5 +422,56 @@ export function erzeugeBruecke({ knex, zustand, abgleich }) {
         await erledigeKonflikt(id);
     }
 
-    return { starte, stoppe, leerlauf, neuStarten, listeKonflikte, erledigeKonflikt, wiederholeKonflikt };
+    // Entscheidung der Turnierleitung bei einem Klärungsfall (Kampf mit abweichender Paarung):
+    //  'server' — Server-Paarung behalten, das Geräte-Ergebnis verwerfen; der Kampf erhält seinen
+    //             Status von vor der Klärung zurück und wird regulär ausgetragen.
+    //  'geraet' — Paarung und Ergebnis des Geräts übernehmen; der Kampf wird mit dieser Paarung
+    //             beendet, die Kaskade zieht Folgekämpfe nach. Die Vorkämpfe, aus denen der Server die
+    //             Paarung ableitet, bleiben unverändert.
+    async function entscheideKlaerung(id, entscheidung) {
+        const db = zustand.db;
+        if (!['server', 'geraet'].includes(entscheidung)) throw new FachFehler(400, 'Ungültige Entscheidung.');
+        const konflikt = await db.get(id).catch(() => null);
+        if (!konflikt || konflikt.dokumenttyp !== 'konflikt') throw new FachFehler(404, 'Konflikt nicht gefunden.');
+        if (konflikt.konflikt_typ !== 'klaerung') throw new FachFehler(400, 'Nur Klärungsfälle können entschieden werden.');
+        if (konflikt.erledigt) throw new FachFehler(409, 'Der Konflikt ist bereits erledigt.');
+
+        const lokal = konflikt.version_lokal || {};
+        const kampfId = lokal.sql_id;
+        const zeile = kampfId != null ? await knex('kaempfe').where({ id: kampfId }).first() : null;
+        if (!zeile) throw new FachFehler(404, 'Der Kampf existiert nicht mehr.');
+        if (zeile.status !== 'klaerung') {
+            throw new FachFehler(409, `Der Kampf steht nicht mehr auf "Klärung" (Status: ${zeile.status}). Bitte den Konflikt nur als erledigt markieren.`);
+        }
+
+        if (entscheidung === 'server') {
+            const vorher = konflikt.version_server && konflikt.version_server.status;
+            const status = vorher && !['klaerung', 'beendet', 'freilos'].includes(vorher) ? vorher : 'bereit';
+            await knex('kaempfe').where({ id: kampfId }).update({ status, updated_at: knex.fn.now() });
+        } else {
+            const { kaempfer1_id: k1, kaempfer2_id: k2, sieger_id: sieger } = lokal;
+            if (lokal.status !== 'beendet' || !sieger || !k1 || !k2 || k1 === k2 || (sieger !== k1 && sieger !== k2)) {
+                throw new FachFehler(400, 'Das Geräte-Ergebnis ist unvollständig und kann nicht übernommen werden.');
+            }
+            const kaempfer = await knex('turnier_teilnehmer').whereIn('id', [k1, k2]);
+            if (kaempfer.length !== 2 || kaempfer.some(t => t.pool_id !== zeile.pool_id)) {
+                throw new FachFehler(409, 'Mindestens ein Kämpfer des Geräts gehört nicht (mehr) zu diesem Pool.');
+            }
+            await knex.transaction(async (trx) => {
+                // Zuerst auf einen regulären Status, damit die Ergebnisprüfung den Kampf wie einen
+                // gewöhnlichen, noch offenen behandelt.
+                await trx('kaempfe').where({ id: kampfId }).update({ status: 'bereit', updated_at: trx.fn.now() });
+                await aktualisiereKampf(trx, kampfId, {
+                    kaempfer1_id: k1, kaempfer2_id: k2, sieger_id: sieger, status: 'beendet',
+                    unterbewertung_kaempfer1: lokal.unterbewertung_kaempfer1 ?? 0,
+                    unterbewertung_kaempfer2: lokal.unterbewertung_kaempfer2 ?? 0,
+                    ...(lokal.kampfzeit_in_sekunden != null ? { kampfzeit_in_sekunden: lokal.kampfzeit_in_sekunden } : {})
+                });
+            });
+        }
+        await db.put({ ...konflikt, erledigt: true, erledigt_am: new Date().toISOString(), entscheidung });
+        await abgleich.fuehreAus();
+    }
+
+    return { starte, stoppe, leerlauf, neuStarten, listeKonflikte, erledigeKonflikt, wiederholeKonflikt, entscheideKlaerung };
 }

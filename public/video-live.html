@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hajime Pro - Video live</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <link rel="stylesheet" href="/css/video.css">
+    <script src="/js/menu.js"></script>
+</head>
+<body>
+
+<div class="kanji-left">柔</div>
+<div class="kanji-right">道</div>
+
+<div class="mdc-card video-seite" style="padding: 16px 24px;">
+    <div class="form-title-area">
+        <span class="material-icons">videocam</span>
+        <h1>Video live</h1>
+        <span class="material-icons">videocam</span>
+    </div>
+    <p class="video-seite-hinweis">Alle Matten, auf denen gerade ein Kampf aufgenommen wird, gleichzeitig. Das Bild läuft etwa 1–2 Sekunden hinter dem Geschehen; ein Klick vergrößert eine Kachel. Fertige Kämpfe stehen im <a href="/videobeweis.html">Video-Archiv</a>.</p>
+    <div id="videoLiveLeer" class="video-seite-status">Wird geladen …</div>
+    <div id="videoLiveRaster" class="video-raster"></div>
+</div>
+
+<script src="/js/video-live.js" type="module"></script>
+</body>
+</html>

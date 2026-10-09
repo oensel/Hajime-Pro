@@ -557,8 +557,9 @@ Letzter Schritt von Stufe 1, erst wenn die Sync-Suite grün ist.
 Suite `tests/e2e-vollablauf/`, Cloud-Betrieb.
 
 **Umsetzung:** entfernt. Die vier `steuerung-*-online-vs-offline.spec.js` heißen jetzt
-`steuerung-*-komplett.spec.js` und spielen nur noch am Server; der Vergleich Server ↔ offline
-spielendes Gerät liegt in `tests/e2e-sync/client-vs-server-vergleich.spec.js`.
+`steuerung-*-komplett.spec.js` und spielen nur noch am Server; der Offline-Betrieb eines
+spielenden Geräts liegt in `tests/e2e-sync/sync-client-offline.spec.js` (der frühere
+Vergleich je Turniersystem, `client-vs-server-vergleich.spec.js`, ist entfernt).
 `steuerung-offline-modus.spec.js` ist gelöscht. Die Vollablauf-Suite spielt die Matten per
 Scoreboard direkt am Offline-Server statt über Matten-Dateien.
 

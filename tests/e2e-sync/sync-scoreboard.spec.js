@@ -3,6 +3,7 @@
 // tests/e2e/steuerung-dk8-komplett.spec.js, identische Bedienfolge).
 import { test, expect } from '@playwright/test';
 import { warteLeerlauf, richteDk8TurnierEin, syncStatus, alleDokumente } from './helpers.js';
+import { schliesseOverlayAutomatisch } from '../e2e/helpers/pool-beginn-overlay.js';
 
 // W (kaempfer1) gewinnt jeden Kampf per Ippon.
 async function spieleKomplettDurch(page, anzahl) {
@@ -26,6 +27,8 @@ test('Scoreboard im Sync-Modus: kompletter DK8-Pool, Ergebnis wie online', async
     await warteLeerlauf(request);
 
     await page.goto(`/steuerung.html?turnierId=${turnierId}&matId=${matId}`);
+
+    await schliesseOverlayAutomatisch(page);
     await expect(page.locator('#matSelect')).toHaveValue(String(matId));
     await spieleKomplettDurch(page, 11);
     await warteLeerlauf(request);

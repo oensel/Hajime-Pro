@@ -3,6 +3,7 @@
 // 27 Kämpfe: H1-H8, H9-H12, H13-H14, Trostrunde T1-T12, Finale F1 -- siehe
 // DoppelKo16Manager.js/DOPPEL_KO_16_TOPOLOGIE).
 import { test, expect } from '@playwright/test';
+import { schliesseOverlayAutomatisch } from './helpers/pool-beginn-overlay.js';
 
 // 16 Teilnehmer, alle mit unterschiedlichem Verein (Vereinstrennung in
 // DoppelKo16Manager.initialisierePool() spielt damit keine Rolle) und streng aufsteigendem
@@ -120,6 +121,7 @@ test.describe.serial('Doppel-KO-16 komplett austragen über den Hallen-Server', 
     test.beforeAll(async ({ browser }) => {
         const onlineContext = await browser.newContext();
         onlinePage = await onlineContext.newPage();
+        await schliesseOverlayAutomatisch(onlinePage);
     });
 
     test.afterAll(async () => {

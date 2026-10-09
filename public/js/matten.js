@@ -60,12 +60,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- DRAG STATE ---
     let draggedPoolId = null;
 
+    const standAnzeige = document.getElementById('mattenStand');
+    const aktualisierenBtn = document.getElementById('aktualisierenBtn');
+    const AUTO_AKTUALISIERUNG_MS = 30000;
+    // Zählt laufende Änderungen (Zuordnen/Aufheben), damit eine Aktualisierung nicht dazwischenfunkt
+    let aenderungenLaufen = 0;
+
     // --- DATEN LADEN ---
-    async function ladeDaten() {
+    // still: Aktualisierung im Hintergrund (kein Lade-Platzhalter, Fehler werden nur geloggt).
+    async function ladeDaten(still = false) {
         if (!mattenContainer) return;
 
         try {
-            mattenContainer.innerHTML = '<div class="matten-loading">Kampfflächen werden geladen...</div>';
+            if (!still) mattenContainer.innerHTML = '<div class="matten-loading">Kampfflächen werden geladen...</div>';
 
             const response = await fetch(`/api/pools/kampfflaechen?turnierId=${encodeURIComponent(turnierId)}`);
             const data = await response.json();
@@ -74,17 +81,44 @@ document.addEventListener('DOMContentLoaded', async () => {
                 throw new Error(data.error || 'Daten konnten nicht geladen werden.');
             }
 
+            // Hat der Nutzer während des Ladens begonnen zu ziehen, bleibt die Ansicht unangetastet.
+            if (still && (draggedPoolId !== null || aenderungenLaufen > 0)) return;
+
             renderAlles(data);
 
         } catch (error) {
             console.error('[Matten] Fehler beim Laden:', error);
-            mattenContainer.innerHTML = `<div class="matten-error">Fehler beim Laden: ${error.message}</div>`;
+            if (!still) mattenContainer.innerHTML = `<div class="matten-error">Fehler beim Laden: ${error.message}</div>`;
         }
     }
 
+    // Automatische Aktualisierung: pausiert während Drag & Drop, laufender Zuordnung und bei
+    // verstecktem Tab.
+    async function aktualisiereImHintergrund() {
+        if (document.hidden || draggedPoolId !== null || aenderungenLaufen > 0) return;
+        await ladeDaten(true);
+    }
+    setInterval(aktualisiereImHintergrund, AUTO_AKTUALISIERUNG_MS);
+
+    if (aktualisierenBtn) {
+        aktualisierenBtn.addEventListener('click', async () => {
+            aktualisierenBtn.setAttribute('disabled', 'true');
+            try {
+                await ladeDaten(true);
+            } finally {
+                aktualisierenBtn.removeAttribute('disabled');
+            }
+        });
+    }
+
+    // Abgeschlossene Pools und Pools in Ergebnisprüfung werden nicht mehr auf Matten angezeigt.
+    const istPoolErledigt = (pool) => pool.status === 'kaempfe_beendet' || pool.status === 'abgeschlossen';
+
     // --- KOMPLETT-RENDERING ---
     function renderAlles(data) {
-        const { pools = [], kampfflaechen = [] } = data;
+        const { kampfflaechen = [] } = data;
+        const pools = (data.pools || []).filter(p => !istPoolErledigt(p));
+        const unzugeordnetEingeklappt = !!mattenContainer.querySelector('.unzugeordnet-body.collapsed');
 
         // Pools aufteilen: zugeordnet vs. nicht zugeordnet
         const zugeordnet = new Map(); // kampflaecheId -> [pool, ...]
@@ -120,6 +154,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         html += renderUnzugeordnet(nichtZugeordnet);
 
         mattenContainer.innerHTML = html;
+
+        if (unzugeordnetEingeklappt) {
+            mattenContainer.querySelector('.unzugeordnet-body')?.classList.add('collapsed');
+        }
+        if (standAnzeige) {
+            standAnzeige.textContent = `Stand: ${new Date().toLocaleTimeString('de-DE')} Uhr · Restzeiten ab diesem Zeitpunkt`;
+        }
 
         // Event-Handler anbinden
         initialisiereCollapse();
@@ -281,9 +322,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         gesperrt: { text: 'Gesperrt', klasse: 'beendet' }
     };
 
+    // Verbleibende Dauer eines Pools (bereits beendete Kämpfe abgezogen); ältere Antworten ohne
+    // restdauer_minuten fallen auf die Gesamtdauer zurück.
+    const restDauer = (pool) => pool.restdauer_minuten ?? pool.dauer_minuten ?? 0;
+
     // --- EINZELNE MATTE ---
     function renderMatte(kf, pools) {
-        const gesamtMinuten = pools.reduce((sum, p) => sum + (p.dauer_minuten || 0), 0);
+        const gesamtMinuten = pools.reduce((sum, p) => sum + restDauer(p), 0);
         const { text: mattenStatusText, klasse: mattenStatusKlasse } = MATTE_STATUS_LABELS[kf.status] || { text: kf.status || '', klasse: 'bereit' };
         const istPausiert = kf.status === 'pausiert';
         const istGesperrt = kf.status === 'gesperrt';
@@ -324,7 +369,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     function renderPoolCard(pool) {
         const abk = mapWettkampfsystem(pool.modus, pool.anzahl_teilnehmer);
         const kaempfe = pool.gesamt_kaempfe || 0;
-        const dauer = pool.dauer_minuten || 0;
+        const gesamtDauer = pool.dauer_minuten || 0;
+        const dauer = restDauer(pool);
+        const dauerText = dauer < gesamtDauer ? `noch ${dauer}min` : `${dauer}min`;
+        const dauerTitel = dauer < gesamtDauer ? ` title="Gesamtdauer ${gesamtDauer}min, ${pool.beendete_kaempfe || 0} von ${kaempfe} Kämpfen beendet"` : '';
         const anzahlTeilnehmer = Number(pool.anzahl_teilnehmer) || 0;
 
         let { text: statusText, klasse: statusClass } = POOL_STATUS_LABELS[pool.status] || { text: 'Bereit', klasse: 'bereit' };
@@ -347,7 +395,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <span class="pool-card-sep">|</span>
                 <span class="pool-card-fights">${kaempfe} Kämpfe</span>
                 <span class="pool-card-sep">|</span>
-                <span class="pool-card-duration">${dauer}min</span>
+                <span class="pool-card-duration"${dauerTitel}>${dauerText}</span>
             </div>
         `;
     }
@@ -493,6 +541,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             ? alteZone.getAttribute('data-kampflaeche-id')
             : null;
 
+        aenderungenLaufen++;
         try {
             if (window.zeigeLadeModal) window.zeigeLadeModal('Pool wird zugeordnet…');
 
@@ -550,6 +599,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             zeigeNotification('Fehler: ' + error.message, 'error');
             await ladeDaten();
         } finally {
+            aenderungenLaufen--;
             if (window.versteckeLadeModal) window.versteckeLadeModal();
         }
     }
@@ -562,6 +612,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             ? alteZone.getAttribute('data-kampflaeche-id')
             : null;
 
+        aenderungenLaufen++;
         try {
             const response = await fetch('/api/pools/kampfflaeche-zuordnen', {
                 method: 'PUT',
@@ -594,6 +645,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.error('[Matten] Fehler beim Entfernen:', error);
             zeigeNotification('Fehler: ' + error.message, 'error');
             await ladeDaten();
+        } finally {
+            aenderungenLaufen--;
         }
     }
 
@@ -695,7 +748,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 zeigeNotification('Netzwerkfehler beim Löschen.', 'error');
             } finally {
                 alleZuordnungenLoeschenBtn.removeAttribute('disabled');
-                alleZuordnungenLoeschenBtn.innerHTML = `<span class="material-icons" style="font-size: 18px;">delete_sweep</span>Alle Zuordnungen löschen`;
+                alleZuordnungenLoeschenBtn.innerHTML = '<span class="material-icons">delete_sweep</span>';
             }
         });
     }

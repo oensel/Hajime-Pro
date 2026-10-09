@@ -86,9 +86,14 @@ function kampfbogen(titel, kaempfe, aktuellerKampfId) {
         return abschnitt;
     }
 
+    // Je Paarung eine Liste: ein Zusatzkampf (Entscheidung nach Gleichstand) kommt als zweiter Kampf derselben Paarung hinzu.
     const paarung = new Map();
-    for (const k of kaempfe) paarung.set(`${k.kaempfer1_id}|${k.kaempfer2_id}`, k);
-    const finde = (a, b) => paarung.get(`${a}|${b}`) || paarung.get(`${b}|${a}`);
+    const schluessel = (a, b) => [a, b].sort().join('|');
+    for (const k of [...kaempfe].sort((x, y) => Number(x.id) - Number(y.id))) {
+        const s = schluessel(k.kaempfer1_id, k.kaempfer2_id);
+        paarung.set(s, [...(paarung.get(s) || []), k]);
+    }
+    const findeAlle = (a, b) => paarung.get(schluessel(a, b)) || [];
 
     const tabelle = el('table', 'pa-matrix');
     const kopf = el('tr');
@@ -111,23 +116,35 @@ function kampfbogen(titel, kaempfe, aktuellerKampfId) {
             if (i === j) {
                 td.classList.add('pa-diagonale');
             } else {
-                const k = finde(zeileT.id, spalteT.id);
-                if (!k) {
-                    td.textContent = '';
-                } else if (k.status === 'freilos') {
-                    td.textContent = 'FL';
-                } else if (k.status === 'beendet') {
-                    const ichBinK1 = Number(k.kaempfer1_id) === Number(zeileT.id);
-                    const meine = punkte(k, ichBinK1 ? 1 : 2);
-                    const gegner = punkte(k, ichBinK1 ? 2 : 1);
-                    const gewonnen = k.sieger_id != null && Number(k.sieger_id) === Number(zeileT.id);
-                    if (gewonnen) { td.classList.add('pa-gewonnen'); siege += 1; } else td.classList.add('pa-verloren');
-                    td.textContent = `${meine}:${gegner}`;
-                } else {
-                    td.classList.add(k.status === 'gestartet' ? 'pa-laeuft' : 'pa-offen-zelle');
-                    td.textContent = k.status === 'gestartet' ? 'läuft' : `#${k.reihenfolge_nummer}`;
-                }
-                if (k && Number(k.id) === Number(aktuellerKampfId)) td.classList.add('pa-aktuell');
+                const paarKaempfe = findeAlle(zeileT.id, spalteT.id);
+                // Der erste Kampf der Paarung färbt die Zelle; ein Zusatzkampf steht dahinter als gelbe Marke (ohne Trennzeichen).
+                paarKaempfe.forEach((k, idx) => {
+                    const zusatz = idx > 0;
+                    let text;
+                    let gewonnenHier = false;
+                    if (k.status === 'freilos') {
+                        text = 'FL';
+                    } else if (k.status === 'beendet') {
+                        const ichBinK1 = Number(k.kaempfer1_id) === Number(zeileT.id);
+                        const meine = punkte(k, ichBinK1 ? 1 : 2);
+                        const gegner = punkte(k, ichBinK1 ? 2 : 1);
+                        gewonnenHier = k.sieger_id != null && Number(k.sieger_id) === Number(zeileT.id);
+                        if (gewonnenHier) siege += 1;
+                        if (!zusatz) td.classList.add(gewonnenHier ? 'pa-gewonnen' : 'pa-verloren');
+                        text = `${meine}:${gegner}`;
+                    } else {
+                        if (!zusatz) td.classList.add(k.status === 'gestartet' ? 'pa-laeuft' : 'pa-offen-zelle');
+                        text = k.status === 'gestartet' ? 'läuft' : `#${k.reihenfolge_nummer}`;
+                    }
+                    if (zusatz) {
+                        const marke = el('span', 'pa-zusatz' + (gewonnenHier ? ' pa-zusatz-gewonnen' : ''), text);
+                        marke.title = 'Zusatzkampf';
+                        td.appendChild(marke);
+                    } else {
+                        td.appendChild(el('span', 'pa-erster', text));
+                    }
+                    if (Number(k.id) === Number(aktuellerKampfId)) td.classList.add('pa-aktuell');
+                });
             }
             tr.appendChild(td);
         });
@@ -148,14 +165,19 @@ function kampfbogen(titel, kaempfe, aktuellerKampfId) {
  * @param {HTMLElement} container Ziel (wird komplett neu befüllt)
  * @param {Array} kaempfe Kampfliste der Matte (aus baueMattenAnsicht, mit pool_id/pool_modus)
  * @param {number|null} aktuellerKampfId der geladene Kampf; ohne ihn der laufende bzw. nächste der Matte
+ * @param {number|null} [poolId] erzwingt diesen Pool (z.B. ein anderer Pool der Matte oder einer in Prüfung);
+ *        hervorgehoben wird dann nur der geladene Kampf, falls er zu diesem Pool gehört
  */
-export function renderPoolAnsicht(container, kaempfe, aktuellerKampfId) {
+export function renderPoolAnsicht(container, kaempfe, aktuellerKampfId, poolId = null) {
     container.textContent = '';
     const einzel = (kaempfe || []).filter(k => !k.mannschaftskampf_id);
-    const bezug = einzel.find(k => Number(k.id) === Number(aktuellerKampfId))
-        || einzel.find(k => k.status === 'gestartet')
-        || einzel.find(k => k.status === 'bereit')
-        || einzel.find(k => k.status === 'angelegt');
+    const gewaehlt = poolId != null ? einzel.filter(k => Number(k.pool_id) === Number(poolId)) : null;
+    const bezug = gewaehlt
+        ? (gewaehlt.find(k => Number(k.id) === Number(aktuellerKampfId)) || gewaehlt[0])
+        : (einzel.find(k => Number(k.id) === Number(aktuellerKampfId))
+            || einzel.find(k => k.status === 'gestartet')
+            || einzel.find(k => k.status === 'bereit')
+            || einzel.find(k => k.status === 'angelegt'));
     if (!bezug) {
         container.appendChild(el('div', 'pa-hinweis', 'Kein Einzel-Pool auf dieser Matte aktiv.'));
         return;
@@ -171,7 +193,8 @@ export function renderPoolAnsicht(container, kaempfe, aktuellerKampfId) {
     container.appendChild(kopf);
 
     const nachNummer = new Map(poolKaempfe.map(k => [String(k.reihenfolge_nummer), k]));
-    const aktuell = Number(bezug.id);
+    // Beim erzwungenen Pool nur den geladenen Kampf hervorheben, nicht irgendeinen Bezugskampf.
+    const aktuell = gewaehlt && Number(bezug.id) !== Number(aktuellerKampfId) ? null : Number(bezug.id);
 
     if (POOL_RUNDEN[modus]) {
         const haupt = el('div', 'pa-abschnitt');

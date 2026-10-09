@@ -580,3 +580,199 @@ body.padding-steuerung .pa-matrix td.pa-aktuell { outline: 2px solid #ffc107; ou
 
 /* Matte pausieren: Banner "PAUSE" über den kommenden Kämpfen auf der Anzeige. */
 .overlay-vorschau .pause-banner { display: none; position: absolute; left: 0; right: 0; top: 52%; transform: translateY(-50%); z-index: 2; align-items: center; justify-content: center; padding: 3vh 0; background: rgba(220, 53, 69, 0.94); color: #ffffff; font-family: 'Arial Black', sans-serif; font-size: 18vh; font-weight: 900; letter-spacing: 2vh; line-height: 1; box-shadow: 0 0 6vh rgba(0, 0, 0, 0.6); }
+
+/* Live-Durchsage (js/durchsage.js): pulsierendes Mikrofon mittig auf dem Bildschirm, solange Strg gehalten wird */
+.durchsage-overlay { position: fixed; inset: var(--st-top, 0px) 0 0 var(--st-rail, 0px); z-index: 19000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; pointer-events: none; opacity: 0; transition: opacity .15s; }
+.durchsage-overlay.aktiv { opacity: 1; }
+.durchsage-mikro { position: relative; width: 120px; height: 120px; border-radius: 50%; background: #28a745; color: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 30px rgba(0, 0, 0, .5); animation: durchsage-puls 1.1s ease-in-out infinite; }
+.durchsage-mikro .material-icons { font-size: 64px; }
+.durchsage-mikro::before, .durchsage-mikro::after { content: ''; position: absolute; inset: 0; border-radius: 50%; border: 4px solid #28a745; animation: durchsage-ring 1.6s ease-out infinite; }
+.durchsage-mikro::after { animation-delay: .8s; }
+.durchsage-overlay.fehler .durchsage-mikro, .durchsage-overlay.fehler .durchsage-mikro::before, .durchsage-overlay.fehler .durchsage-mikro::after { background-color: #6c757d; border-color: #6c757d; animation-play-state: paused; }
+.durchsage-overlay.fehler .durchsage-mikro::before, .durchsage-overlay.fehler .durchsage-mikro::after { display: none; }
+.durchsage-status { min-height: 20px; max-width: min(520px, 90vw); text-align: center; font-family: sans-serif; font-size: 16px; font-weight: bold; color: #fff; background: rgba(0, 0, 0, .75); padding: 6px 16px; border-radius: 6px; }
+.durchsage-status:empty { display: none; }
+@keyframes durchsage-puls { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.12); } }
+@keyframes durchsage-ring { 0% { transform: scale(1); opacity: .8; } 100% { transform: scale(2.1); opacity: 0; } }
+
+/* Durchsage-Hinweis "Beginn eines neuen Pools" (nur steuerung.html, siehe pruefePoolBeginnMeldung in scoreboard.js) */
+.holen-wrap { position: relative; display: inline-block; }
+.pool-beginn-overlay { position: absolute; top: calc(50% - 10px); left: 50%; transform: translate(-50%, -50%); z-index: 19000; width: max-content; max-width: min(860px, 92vw); }
+.pool-beginn-karte { display: flex; align-items: center; gap: 14px; background: #1d4ed8; color: #fff; border: 2px solid #fff; border-radius: 10px; padding: 8px 16px; text-align: left; font-family: Arial, sans-serif; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5); }
+.pool-beginn-text { min-width: 0; }
+.pool-beginn-zeile { font-size: 16px; font-weight: 800; margin: 2px 0; white-space: nowrap; }
+.pool-beginn-karte .btn-main { flex: none; background-color: #fff; color: #1d4ed8; font-size: 16px; padding: 6px 20px; margin: 0; }
+.pool-beginn-hinweis { font-size: 13px; margin: 2px 0 0; opacity: 0.9; }
+
+/* "RESET ALL" in der Meta-Leiste der eingebetteten Anzeige (nur steuerung.html, ?controls=1), ganz rechts neben Klasse und Gewicht */
+.body-anzeige .top-meta-bar { position: relative; }
+.body-anzeige .iframe-ctrl-rechts { z-index: 1001; position: absolute; right: 1.5vh; top: 50%; transform: translateY(-50%); display: flex; align-items: center; gap: 1.5vh; }
+.body-anzeige .iframe-ctrl-matte-pause { font-size: 3vh; font-weight: bold; padding: 0.6vh 2vh; background: #6c757d; color: #fff; border: 1px solid #000; border-radius: 4px; cursor: pointer; font-family: Arial, sans-serif; }
+.body-anzeige .iframe-ctrl-matte-pause:disabled { opacity: 0.5; cursor: not-allowed; }
+.body-anzeige .iframe-ctrl-reset-all { font-size: 3vh; font-weight: bold; padding: 0.6vh 2vh; background: #ffc107; color: #000; border: 1px solid #000; border-radius: 4px; cursor: pointer; font-family: Arial, sans-serif; }
+.body-anzeige .iframe-ctrl-reset-all:active { background: #e0e0e0; }
+
+/* Videoaufnahme in steuerung.html (js/video.js) */
+.video-panel { padding: 12px 16px; font-family: sans-serif; font-size: 14px; }
+.video-zeile { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin-bottom: 8px; }
+.video-status { min-height: 18px; font-size: 13px; opacity: 0.9; margin-bottom: 4px; }
+.video-vorschau { width: min(100%, 480px); aspect-ratio: 16 / 9; background: #000; border-radius: 6px; display: block; margin: 8px 0; }
+.video-hinweis { font-size: 12px; opacity: 0.8; margin: 4px 0 0; }
+.switch-aufnahme input:checked + .slider { background-color: #28a745; }
+.switch-aufnahme input:checked + .slider:before { background-color: #fff; }
+.switch-aufnahme input:disabled + .slider { opacity: 0.5; cursor: not-allowed; }
+
+/* Aufnahme des laufenden Kampfes ansehen (js/video.js) */
+.video-review { position: fixed; right: 16px; bottom: 16px; z-index: 18000; width: min(560px, calc(100vw - 32px)); background: #1a1a1a; color: #fff; border: 2px solid #fff; border-radius: 10px; padding: 10px 12px; font-family: Arial, sans-serif; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6); }
+.video-review[hidden] { display: none; }
+.video-review-kopf { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.video-review-player { width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 6px; display: block; }
+.video-review-zeile { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
+.video-review-knopf { font: inherit; font-size: 13px; padding: 5px 10px; border-radius: 4px; border: 1px solid #888; background: #333; color: #fff; cursor: pointer; }
+.video-review-knopf:hover { background: #444; }
+.video-review-label { font-size: 13px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.video-review-label select { width: auto; padding: 3px 6px; }
+.video-review-hinweis { font-size: 12px; opacity: 0.8; margin-top: 6px; }
+
+/* "Video ansehen" in der Meta-Leiste der eingebetteten Anzeige (nur steuerung.html, ?controls=1), oben links neben Klasse und Gewicht */
+.body-anzeige .iframe-ctrl-video-ansehen { position: absolute; left: 1.5vh; top: 50%; transform: translateY(-50%); font-size: 3vh; font-weight: bold; padding: 0.6vh 2vh; background: #6f42c1; color: #fff; border: 1px solid #000; border-radius: 4px; cursor: pointer; font-family: Arial, sans-serif; }
+.body-anzeige .iframe-ctrl-video-ansehen:active { background: #5a32a3; }
+
+/* ==========================================================================
+   STEUERUNG: Menü links + Ausklapp-Panels (steuerung.html, js/steuerungMenue.js)
+   Die Scoreboard-Steuerung (.steuerung-buehne) behält ihr Aussehen; hier entsteht nur der Rahmen darum.
+   Farben kommen aus den --st-*-Variablen (hell/dunkel).
+   ========================================================================== */
+body.padding-steuerung {
+    --st-rail: 76px; --st-top: 52px; --st-drawer: 520px;
+    padding: 0; overflow: hidden;
+}
+body.padding-steuerung .st-top {
+    position: fixed; top: 0; left: 0; right: 0; height: var(--st-top); z-index: 30; box-sizing: border-box;
+    display: flex; align-items: center; gap: 12px; padding: 0 16px;
+    background: var(--st-card); border-bottom: 1px solid var(--st-card-rahmen); color: var(--st-text);
+}
+body.padding-steuerung .st-top-titel { color: var(--st-link); font-size: 14px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; min-width: calc(var(--st-rail) - 16px); }
+body.padding-steuerung .st-top-platz { flex: 1; }
+body.padding-steuerung .st-chip {
+    display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; font-size: 12px; white-space: nowrap;
+    border: 1px solid var(--st-card-rahmen); background: var(--st-card-grund); border-radius: 4px; max-width: 34vw; overflow: hidden;
+}
+body.padding-steuerung .st-chip b { color: var(--st-link); overflow: hidden; text-overflow: ellipsis; }
+body.padding-steuerung .st-punkt { width: 9px; height: 9px; border-radius: 50%; background: #28a745; box-shadow: 0 0 6px #28a745; flex: none; }
+
+body.padding-steuerung .st-buehne {
+    position: fixed; top: var(--st-top); bottom: 0; left: var(--st-rail); right: 0; overflow: auto; padding: 14px 18px 24px; box-sizing: border-box;
+}
+body.padding-steuerung .st-buehne-innen { max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+body.padding-steuerung .steuerung-buehne { border: 1px solid var(--st-card-rahmen); border-radius: 6px; overflow: hidden; background: var(--st-card); }
+
+body.padding-steuerung .st-next { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 1px solid var(--st-card-rahmen); background: var(--st-card); border-radius: 6px; }
+body.padding-steuerung .st-next[hidden] { display: none; }
+body.padding-steuerung .st-next-lbl { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: #d98f00; white-space: nowrap; }
+body.padding-steuerung .st-next-items { display: flex; gap: 8px; flex: 1; min-width: 0; }
+body.padding-steuerung .st-nx { flex: 1 1 0; min-width: 0; padding: 6px 10px; font-size: 12px; border: 1px solid var(--st-card-rahmen); border-radius: 4px; background: var(--st-card-grund); cursor: pointer; }
+body.padding-steuerung .st-nx:first-child { border-color: var(--st-link); }
+body.padding-steuerung .st-nx small { display: block; color: var(--st-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.padding-steuerung .st-nx span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.padding-steuerung .st-next-mehr { background: transparent; color: var(--st-text); border: 1px solid var(--st-card-rahmen); border-radius: 4px; padding: 8px 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; cursor: pointer; }
+
+/* Menü links */
+body.padding-steuerung .st-nav {
+    position: fixed; top: var(--st-top); bottom: 0; left: 0; width: var(--st-rail); z-index: 40; box-sizing: border-box;
+    display: flex; flex-direction: column; gap: 6px; padding: 10px 8px;
+    background: var(--st-card); border-right: 1px solid var(--st-card-rahmen);
+}
+body.padding-steuerung .st-nav-btn {
+    position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 10px 4px;
+    background: transparent; border: 1px solid transparent; border-radius: 6px; color: var(--st-muted); cursor: pointer;
+    font: 700 10px Arial, sans-serif; text-transform: uppercase; letter-spacing: .06em; transition: background-color .15s, color .15s;
+}
+body.padding-steuerung .st-nav-btn:hover { background: var(--st-card-kopf-hover); color: var(--st-text); }
+body.padding-steuerung .st-nav-btn.aktiv { background: var(--st-card-kopf); border-color: var(--st-link); color: var(--st-link); }
+body.padding-steuerung .st-badge {
+    position: absolute; top: 4px; right: 8px; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box; border-radius: 9px;
+    background: var(--st-link); color: #fff; font: 700 10px/18px Arial, sans-serif; text-align: center; font-style: normal;
+}
+html[data-theme="dark"] body.padding-steuerung .st-badge { color: #0b0f19; }
+body.padding-steuerung .st-badge[hidden] { display: none; }
+body.padding-steuerung .st-badge-rec { min-width: 10px; width: 10px; height: 10px; padding: 0; background: #dc2626; animation: st-blink 1.2s infinite; }
+@keyframes st-blink { 50% { opacity: .25; } }
+
+/* Panel: überlagert die Bühne, rechts vom Menü */
+body.padding-steuerung .st-scrim { position: fixed; top: var(--st-top); right: 0; bottom: 0; left: var(--st-rail); z-index: 35; background: rgba(0, 0, 0, .35); opacity: 0; pointer-events: none; transition: opacity .2s; }
+body.padding-steuerung .st-scrim.aktiv { opacity: 1; pointer-events: auto; }
+body.padding-steuerung .st-drawer {
+    position: fixed; top: var(--st-top); bottom: 0; left: var(--st-rail); width: var(--st-drawer); max-width: calc(100vw - var(--st-rail)); z-index: 38;
+    display: flex; flex-direction: column; box-sizing: border-box; background: var(--st-card); color: var(--st-text);
+    border-right: 1px solid var(--st-card-rahmen); box-shadow: 0 0 40px rgba(0, 0, 0, .35);
+    transform: translateX(-110%); visibility: hidden; transition: transform .22s ease, visibility 0s .22s;
+}
+body.padding-steuerung .st-drawer.aktiv { transform: none; visibility: visible; transition: transform .22s ease; }
+body.padding-steuerung .st-drawer.breit { --st-drawer: 900px; }
+body.padding-steuerung .st-drawer-kopf { display: flex; align-items: center; justify-content: space-between; padding: 12px 18px; background: var(--st-card-kopf); border-bottom: 1px solid var(--st-card-rahmen); }
+body.padding-steuerung .st-drawer-kopf h2 { margin: 0; font-size: 14px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+body.padding-steuerung .st-drawer-kopf button { width: 32px; height: 32px; background: transparent; color: var(--st-text); border: 1px solid var(--st-card-rahmen); border-radius: 4px; cursor: pointer; }
+body.padding-steuerung .st-drawer-koerper { flex: 1; overflow: auto; padding: 16px 18px 24px; }
+body.padding-steuerung .st-panel { display: none; }
+body.padding-steuerung .st-panel.aktiv { display: block; }
+/* Die früheren Klapp-Inhalte hatten eigenen Kartenrahmen; im Panel nicht mehr nötig */
+body.padding-steuerung .st-panel .keyboard-legend { border: 0; padding: 0; background: transparent; }
+/* Im schmalen Panel statt sechs Spalten zwei */
+body.padding-steuerung .st-panel .meta-grid { grid-template-columns: 1fr 1fr; }
+body.padding-steuerung .st-panel .flex { flex-wrap: wrap; }
+body.padding-steuerung .st-panel .flex > .kaempfer { min-width: 200px; }
+
+/* Pool-Panel: Auswahl der Pools der Matte + Abschluss (scoreboard.js, ermittleWaehlbarePools) */
+body.padding-steuerung .st-poolwahl { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+body.padding-steuerung .st-poolchip { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 6px 12px; font: 700 12px Arial, sans-serif; color: var(--st-text); background: var(--st-card-grund); border: 1px solid var(--st-card-rahmen); border-radius: 6px; cursor: pointer; }
+body.padding-steuerung .st-poolchip small { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: #d98f00; }
+body.padding-steuerung .st-poolchip:hover { background: var(--st-card-kopf-hover); }
+body.padding-steuerung .st-poolchip.aktiv { border-color: var(--st-link); color: var(--st-link); background: var(--st-card-kopf); }
+body.padding-steuerung .st-poolchip.pruefung { border-style: dashed; }
+body.padding-steuerung .st-poolaktion { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
+body.padding-steuerung .st-poolaktion:empty { display: none; }
+body.padding-steuerung .st-pool-hinweis { font-size: 13px; color: var(--st-muted); flex: 1; min-width: 200px; }
+body.padding-steuerung .st-pool-abschliessen { font-size: 14px; padding: 8px 18px; }
+body.padding-steuerung .st-badge-warn { background: #f59f00; color: #000 !important; }
+
+/* Platzierungen eines Pools in Prüfung (scoreboard.js, zeichnePlatzierungen) */
+body.padding-steuerung .st-platzierungen { margin-bottom: 16px; }
+body.padding-steuerung .st-platzierungen:empty { display: none; }
+body.padding-steuerung .st-platz-titel { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--st-muted); margin-bottom: 6px; }
+body.padding-steuerung .st-platz-zeile { display: flex; align-items: baseline; gap: 10px; padding: 6px 10px; margin-bottom: 4px; font-size: 14px; border: 1px solid var(--st-card-rahmen); border-radius: 6px; background: var(--st-card-grund); }
+body.padding-steuerung .st-platz-nr { min-width: 28px; font-weight: 800; }
+body.padding-steuerung .st-platz-name { font-weight: 700; }
+body.padding-steuerung .st-platz-verein { margin-left: auto; font-size: 12px; color: var(--st-muted); }
+body.padding-steuerung .st-platz-1 { border-left: 4px solid #f5c518; }
+body.padding-steuerung .st-platz-2 { border-left: 4px solid #aeb6bf; }
+body.padding-steuerung .st-platz-3 { border-left: 4px solid #cd7f32; }
+body.padding-steuerung .st-platz-zeile { flex-wrap: wrap; }
+body.padding-steuerung .st-platz-detail { flex-basis: 100%; padding-left: 38px; font-size: 12px; color: var(--st-muted); }
+body.padding-steuerung .st-platz-gleich { margin: -2px 0 6px; padding: 4px 10px; font-size: 12px; color: #000; background: #f59f00; border-radius: 4px; }
+
+/* Zusatzkampf-Formular im Pool-Panel (scoreboard.js, baueZusatzkampfFormular) */
+body.padding-steuerung .st-btn-grau { background-color: #6c757d; }
+body.padding-steuerung .st-zusatzform { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; flex-basis: 100%; padding: 10px 12px; border: 1px dashed var(--st-card-rahmen); border-radius: 6px; background: var(--st-card-grund); }
+body.padding-steuerung .st-zusatzform .st-pool-hinweis { flex-basis: 100%; }
+body.padding-steuerung .st-zusatzform label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 700; color: var(--st-muted); }
+body.padding-steuerung .st-zusatzform select { min-width: 190px; padding: 6px 8px; font-size: 14px; background: var(--st-feld-bg); color: var(--st-feld-text); border: 1px solid var(--st-feld-rahmen); border-radius: 4px; }
+
+/* Zusatzkampf in der Zelle des Kampfbogens: gelbe Marke hinter dem Ergebnis des ersten Kampfes */
+body.padding-steuerung .pa-zusatz { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 4px; background: #ffd400; color: #000; font-weight: 700; }
+body.padding-steuerung .pa-zusatz-gewonnen { box-shadow: 0 0 0 2px #198754; }
+body.padding-steuerung .pa-matrix td.pa-matrix-zelle { white-space: nowrap; }
+
+/* Zusatzkampf im Kampfbogen: nur Schriftfarbe. Sieger gelb und fett, Verlierer dezent gelb in normaler Stärke. */
+body.padding-steuerung .pa-zusatz { display: inline-block; margin-left: 8px; padding: 0; background: none; box-shadow: none; font-weight: 400; color: #b79b3c; }
+body.padding-steuerung .pa-zusatz-gewonnen { font-weight: 800; color: #d9a400; box-shadow: none; }
+html[data-theme="dark"] body.padding-steuerung .pa-zusatz { color: #a8985a; }
+html[data-theme="dark"] body.padding-steuerung .pa-zusatz-gewonnen { color: #ffd400; }
+
+/* "Als Nächstes": Klasse (Pool) größer; Pool-Start-Badge */
+body.padding-steuerung .st-nx-klasse { font-size: 16px; font-weight: 800; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.padding-steuerung .st-nx-namen { font-size: 12px; color: var(--st-muted); }
+body.padding-steuerung .st-nx small { display: flex; align-items: center; gap: 6px; }
+body.padding-steuerung .st-poolstart { display: inline-block; padding: 1px 7px; border-radius: 9px; background: #1a5cff; color: #fff; font: 700 10px/16px Arial, sans-serif; text-transform: uppercase; letter-spacing: .06em; vertical-align: middle; }
+html[data-theme="dark"] body.padding-steuerung .st-poolstart { background: #3b82f6; color: #0b0f19; }
+body.padding-steuerung .st-nx small .st-poolstart { display: inline-block; }
