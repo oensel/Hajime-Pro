@@ -7,6 +7,7 @@
 // Quellkampf, siehe src/shared/gruppenUeberkreuzProgression.js). Der Test spielt über die normale
 // steuerung.html-Bedienfolge, NICHT über direkte API-Aufrufe.
 import { test, expect } from '@playwright/test';
+import { schliesseOverlayAutomatisch } from './helpers/pool-beginn-overlay.js';
 
 // 6 Teilnehmer, alle mit unterschiedlichem Verein, aufsteigendes Gewicht -- ergibt bei der
 // Gruppenzuteilung von GruppenUeberKreuzManager._teileTeilnehmerAuf() deterministisch Gruppe A =
@@ -119,6 +120,7 @@ test.describe.serial('Gruppen-Überkreuz komplett austragen über den Hallen-Ser
     test.beforeAll(async ({ browser }) => {
         const onlineContext = await browser.newContext();
         onlinePage = await onlineContext.newPage();
+        await schliesseOverlayAutomatisch(onlinePage);
     });
 
     test.afterAll(async () => {

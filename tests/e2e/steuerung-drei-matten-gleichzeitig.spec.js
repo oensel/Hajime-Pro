@@ -16,6 +16,7 @@
 // Doppel-KO-8, gruppenUeberkreuzProgression.js für Gruppen-Überkreuz, keine Kaskade für
 // Jeder-gegen-Jeden) parallel auf demselben Server sauber nebeneinander laufen.
 import { test, expect } from '@playwright/test';
+import { schliesseOverlayAutomatisch } from './helpers/pool-beginn-overlay.js';
 
 const MATTEN_FIXTUR = [
     {
@@ -151,6 +152,7 @@ test('Drei Kampfflächen spielen gleichzeitig live gegen denselben lokalen Serve
     // Storage-Zustand, alle gegen denselben Server.
     const contexts = await Promise.all(matten.map(() => browser.newContext()));
     const pages = await Promise.all(contexts.map(ctx => ctx.newPage()));
+    await Promise.all(pages.map(schliesseOverlayAutomatisch));
 
     try {
         for (let i = 0; i < matten.length; i++) {

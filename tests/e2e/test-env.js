@@ -26,8 +26,13 @@ export const testDbVerbindung = {
     host: '127.0.0.1', port: TEST_PG_PORT, user: 'postgres', password: '', database: TEST_PG_DB
 };
 
+export const DURCHSAGE_TESTDATEI = './data/test-durchsage/pcm.raw';
+
 export const testServerEnv = {
     ...process.env,
+    // Live-Durchsage: Fake-Player statt Soundkarte (tests/helpers/fake-durchsage-player.mjs schreibt das PCM in eine Datei)
+    DURCHSAGE_PLAYER_BEFEHL: 'node tests/helpers/fake-durchsage-player.mjs',
+    DURCHSAGE_TESTDATEI,
     IS_OFFLINE: 'true',
     DB_HOST: '127.0.0.1',
     DB_PORT: String(TEST_PG_PORT),

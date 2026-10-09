@@ -115,7 +115,7 @@ test.describe.serial('Android-App', () => {
         await expect(page.locator('#handyModusBtn')).toContainText('Tablet-Modus');
         await page.locator('body').click({ position: { x: 5, y: 300 } });
         await expect(page.locator('#handyMehrMenue')).toBeHidden();
-        for (const versteckt of ['.app-sidebar', '.teilnehmer-stats-grid', '#importBtn', '.table-responsive', '#vorlageXlsxLink']) {
+        for (const versteckt of ['.app-sidebar', '.teilnehmer-stats-grid', '#importBtn', '.table-responsive']) {
             await expect(page.locator(versteckt)).toBeHidden();
         }
         await expect(page.locator('#teilnehmerSearchInput')).toBeVisible();

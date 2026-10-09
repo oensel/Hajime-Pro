@@ -357,6 +357,22 @@ body {
 /* Gelbes Achtung-Icon auf einem Menüpunkt (z.B. Pools: mind. ein Pool wartet auf
    Ergebnisprüfung) — absolut positioniert, damit es unabhängig vom Ein-/Ausklapp-Zustand
    der Sidebar immer oben rechts am Menüpunkt sitzt statt den Zeilenfluss zu verschieben. */
+.menu-item-badge {
+    margin-left: auto;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: #f5a623;
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 18px;
+    text-align: center;
+    box-sizing: border-box;
+}
+.menu-item-badge.hoch { background: #ef4444; }
+
 .menu-item-warning {
     font-size: 16px !important;
     color: #f5a623;
@@ -590,10 +606,82 @@ body {
     color: #c62828;
 }
 
+/* --- ICON-LEISTE RECHTS IN DER TITELZEILE (pools.html, teilnehmer.html) ---
+   Die Buttons behalten ihre beschrifteten Markups (Icon + Text); die Beschriftung wird hier
+   ausgeblendet und als Tooltip (data-tooltip) angezeigt. In der Android-App (modus-app) bleiben
+   sie beschriftet, siehe handy.css. */
+.titel-icons {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+html:not(.modus-app) .titel-icons .toolbar-btn {
+    position: relative;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    justify-content: center;
+}
+
+html:not(.modus-app) .titel-icons .toolbar-btn .material-icons {
+    font-size: 20px;
+}
+
+html:not(.modus-app) .titel-icons .toolbar-btn > span:not(.material-icons) {
+    display: none;
+}
+
+html:not(.modus-app) .titel-icons .toolbar-btn::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    background: #333;
+    color: #fff;
+    font-size: 12px;
+    font-weight: normal;
+    text-transform: none;
+    letter-spacing: normal;
+    line-height: 1.3;
+    padding: 4px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s;
+    z-index: 20;
+}
+
+html:not(.modus-app) .titel-icons .toolbar-btn:hover::after,
+html:not(.modus-app) .titel-icons .toolbar-btn:focus-visible::after {
+    opacity: 1;
+}
+
+/* Titelzeile mit exakt zentrierter Überschrift: links Icon/Suche, rechts Icon-Leiste, beide Seiten
+   gleich breit. Erwartet genau drei sichtbare Kinder (links, h1, rechts). */
+.form-title-area.titel-zentriert {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    column-gap: 16px;
+}
+
+.form-title-area.titel-zentriert > :first-child {
+    justify-self: start;
+}
+
+.form-title-area.titel-zentriert > :last-child {
+    justify-self: end;
+}
+
 /* Auf schmalen Bildschirmen rutscht eine größere Aktions-Icon-Gruppe unter den Titel, statt
    die Titelzeile horizontal zum Scrollen zu zwingen. */
 @media (max-width: 480px) {
-    .form-title-area {
+    .form-title-area,
+    .form-title-area.titel-zentriert {
+        display: flex;
         flex-wrap: wrap;
         row-gap: 8px;
     }
@@ -603,7 +691,8 @@ body {
         order: 1;
     }
 
-    .form-title-area .title-action-group {
+    .form-title-area .title-action-group,
+    .form-title-area .titel-icons {
         order: 2;
         width: 100%;
         justify-content: center;

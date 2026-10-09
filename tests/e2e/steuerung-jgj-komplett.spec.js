@@ -5,6 +5,7 @@
 // 'bereit'), geprüft wird also nur die Ergebnis-Erfassung -- nicht die Kaskaden-Engine wie bei den
 // KO-Modi.
 import { test, expect } from '@playwright/test';
+import { schliesseOverlayAutomatisch } from './helpers/pool-beginn-overlay.js';
 
 // 4 Teilnehmer, alle mit unterschiedlichem Verein, aufsteigendes Gewicht.
 const TEILNEHMER_FIXTUR = [
@@ -108,6 +109,7 @@ test.describe.serial('Jeder-gegen-Jeden komplett austragen über den Hallen-Serv
     test.beforeAll(async ({ browser }) => {
         const onlineContext = await browser.newContext();
         onlinePage = await onlineContext.newPage();
+        await schliesseOverlayAutomatisch(onlinePage);
     });
 
     test.afterAll(async () => {

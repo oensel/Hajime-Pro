@@ -54,6 +54,7 @@
     "pouchdb-find": "^9.0.0",
     "pouchdb-node": "^9.0.0",
     "qrcode-generator": "^2.0.4",
+    "ws": "^8.22.0",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.2/xlsx-0.20.2.tgz"
   },
   "devDependencies": {

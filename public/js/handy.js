@@ -160,16 +160,9 @@
         }
     }
 
-    // Vorlagen-Download der Importfunktion gibt es in der App nicht (der Block hat keine eigene Kennung).
-    function blendeImportHinweisAus() {
-        const link = document.getElementById('vorlageXlsxLink');
-        if (link && link.parentElement) link.parentElement.style.display = 'none';
-    }
-
     function initialisiere() {
         baueTopBar();
         verschiebeMattenAuswahl();
-        blendeImportHinweisAus();
     }
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initialisiere);

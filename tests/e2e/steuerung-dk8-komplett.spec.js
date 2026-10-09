@@ -15,6 +15,7 @@
 // Anfrage automatisch an einen Mock-Benutzer (siehe requireAuth in src/middleware/auth.js), daher
 // sind dafür keine Auth-Header nötig.
 import { test, expect } from '@playwright/test';
+import { schliesseOverlayAutomatisch } from './helpers/pool-beginn-overlay.js';
 
 // Acht Teilnehmer, alle mit unterschiedlichem Verein (damit die Vereinstrennung in
 // DoppelKo8Manager.initialisierePool() keine Rolle spielt) und streng aufsteigendem Gewicht.
@@ -143,6 +144,7 @@ test.describe.serial('Doppel-KO-8 komplett austragen über den Hallen-Server', (
     test.beforeAll(async ({ browser }) => {
         const onlineContext = await browser.newContext();
         onlinePage = await onlineContext.newPage();
+        await schliesseOverlayAutomatisch(onlinePage);
     });
 
     test.afterAll(async () => {

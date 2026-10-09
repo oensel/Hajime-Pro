@@ -739,11 +739,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             const bulkDeleteBtnIcon = document.getElementById('bulkDeleteBtnIcon');
             const bulkDeleteBtnLabel = document.getElementById('bulkDeleteBtnLabel');
             if (istGastgeberVerein) {
-                bulkDeleteBtn.title = 'Ausgewählte löschen';
+                bulkDeleteBtn.dataset.tooltip = 'Ausgewählte löschen';
                 if (bulkDeleteBtnIcon) bulkDeleteBtnIcon.textContent = 'delete';
                 if (bulkDeleteBtnLabel) bulkDeleteBtnLabel.textContent = 'Löschen';
             } else {
-                bulkDeleteBtn.title = 'Ausgewählte zurückziehen';
+                bulkDeleteBtn.dataset.tooltip = 'Ausgewählte zurückziehen';
                 if (bulkDeleteBtnIcon) bulkDeleteBtnIcon.textContent = 'person_remove';
                 if (bulkDeleteBtnLabel) bulkDeleteBtnLabel.textContent = 'Zurückziehen';
             }
@@ -1005,34 +1005,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         return 'einzel';
     }
 
-    // --- IMPORT-VORLAGE HERUNTERLADEN ---
-    // fetch() statt <a href>/window.location, da der globale fetch-Wrapper (menu.js) den
-    // Authorization-Header anhängt, den eine native Navigation nicht mitschicken würde.
-    async function ladeVorlageHerunter(format) {
-        try {
-            const response = await fetch(`/api/teilnehmer/import-vorlage?format=${format}`);
-            if (!response.ok) throw new Error('Vorlage konnte nicht geladen werden.');
-
-            const blob = await response.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `teilnehmer_vorlage.${format}`;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            URL.revokeObjectURL(url);
-        } catch (err) {
-            if (window.zeigeNotification) window.zeigeNotification(err.message, 'error');
-            else alert(err.message);
-        }
-    }
-
-    const vorlageXlsxLink = document.getElementById('vorlageXlsxLink');
-    const vorlageCsvLink = document.getElementById('vorlageCsvLink');
-    if (vorlageXlsxLink) vorlageXlsxLink.addEventListener('click', (e) => { e.preventDefault(); ladeVorlageHerunter('xlsx'); });
-    if (vorlageCsvLink) vorlageCsvLink.addEventListener('click', (e) => { e.preventDefault(); ladeVorlageHerunter('csv'); });
-
     // --- IMPORT-VORSCHAU (Spaltenzuordnung, Validierung, Zusammenfassung vor dem Speichern) ---
     const importVorschauModal = document.getElementById('importVorschauModal');
     const importVorschauMappingRow = document.getElementById('importVorschauMappingRow');
@@ -1046,6 +1018,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // erhalten, damit die Datei nur einmal gelesen/hochgeladen werden muss.
     let importDateiName = null;
     let importContentBase64 = null;
+    // Import aus einer E-Mail: die erkannten Kämpfer als bearbeitbare Tabelle {headers, rows, hinweis}.
+    // Solange sie gesetzt ist, zeigt die Vorschau alle Zeilen als editierbare Zellen; jede Änderung
+    // baut daraus wieder eine CSV und läuft durch dieselbe Server-Validierung wie jeder Import.
+    let mailTabelle = null;
 
     function sammleAktuelleZuordnung() {
         const zuordnung = {};
@@ -1059,15 +1035,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         const headers = data.headers || [];
         const zuordnung = data.spaltenZuordnung || {};
 
+        const mailModus = !!mailTabelle;
+        const titel = document.getElementById('importVorschauTitel');
+        const mailHinweis = document.getElementById('importVorschauMailHinweis');
+        if (titel) titel.textContent = mailModus ? 'Import aus E-Mail – bitte prüfen' : 'Import-Vorschau';
+        if (mailHinweis) {
+            mailHinweis.style.display = mailModus ? 'block' : 'none';
+            mailHinweis.textContent = mailModus
+                ? 'Die Angaben wurden automatisch aus der E-Mail gelesen und können unsicher sein. Zellen anklicken zum Korrigieren, mit ✕ eine Zeile entfernen. Gespeichert wird erst mit "Import starten".' + (mailTabelle.hinweis ? ' ' + mailTabelle.hinweis : '')
+                : '';
+        }
+
         importVorschauMappingRow.innerHTML = headers.map((_, idx) => {
             const optionen = [`<option value="">Ignorieren</option>`]
                 .concat(data.systemFelder.map(f => {
                     return `<option value="${f.feld}"${zuordnung[idx] === f.feld ? ' selected' : ''}>${escapeHtml(f.label)}${f.pflicht ? ' *' : ''}</option>`;
                 }));
             return `<th style="padding: 6px; border-bottom: 2px solid var(--border); background: var(--bg-main);"><select data-spalte="${idx}" style="font-size: 11px; width: 100%;">${optionen.join('')}</select></th>`;
-        }).join('');
+        }).join('') + (mailModus ? '<th style="border-bottom: 2px solid var(--border); background: var(--bg-main);"></th>' : '');
 
-        importVorschauHeaderRow.innerHTML = headers.map(h => `<th style="padding: 2px 6px; font-weight: 400;">${escapeHtml(String(h ?? ''))}</th>`).join('');
+        importVorschauHeaderRow.innerHTML = headers.map(h => `<th style="padding: 2px 6px; font-weight: 400;">${escapeHtml(String(h ?? ''))}</th>`).join('') + (mailModus ? '<th></th>' : '');
 
         importVorschauBody.innerHTML = (data.vorschauZeilen || []).map(zeile => {
             const zellen = headers.map((_, idx) => {
@@ -1077,13 +1064,22 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const style = istFehler
                     ? 'padding: 4px 6px; background: rgba(198, 40, 40, 0.15); color: #c62828; font-weight: 600;'
                     : 'padding: 4px 6px;';
+                if (mailModus) {
+                    return `<td contenteditable="plaintext-only" spellcheck="false" data-mail-zeile="${zeile.rowNumber - 2}" data-mail-spalte="${idx}" style="${style} min-width: 60px; cursor: text;">${escapeHtml(String(wert))}</td>`;
+                }
                 return `<td style="${style}">${escapeHtml(String(wert))}</td>`;
             }).join('');
-            return `<tr>${zellen}</tr>`;
+            const loeschen = mailModus
+                ? `<td style="padding: 4px 6px;"><span class="material-icons" data-mail-loeschen="${zeile.rowNumber - 2}" title="Zeile entfernen" style="font-size: 18px; cursor: pointer; color: #c62828;">close</span></td>`
+                : '';
+            return `<tr>${zellen}${loeschen}</tr>`;
         }).join('');
+
+        if (mailModus) bindeMailBearbeitung();
 
         const { gesamt, gueltig, ungueltig } = data.summary;
         importVorschauSummary.textContent = `Es wurden ${gueltig} gültige und ${ungueltig} fehlerhafte Zeile(n) gefunden (von ${gesamt} insgesamt${gesamt > (data.vorschauZeilen || []).length ? ', hier nur die ersten ' + (data.vorschauZeilen || []).length + ' angezeigt' : ''}). Möchtest du den Import starten?`;
+        if (importVorschauStartenBtn) importVorschauStartenBtn.disabled = gueltig === 0 && !!mailTabelle;
 
         // Bei jeder Änderung der Spaltenzuordnung eine neue Vorschau vom Server holen, damit
         // Validierung und Zusammenfassung dieselbe (serverseitige) Logik wie der echte Import nutzen.
@@ -1111,7 +1107,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                     filename: importDateiName,
                     contentBase64: importContentBase64,
                     ziel: importZiel,
-                    spaltenZuordnung: spaltenZuordnungOverride || undefined
+                    spaltenZuordnung: spaltenZuordnungOverride || undefined,
+                    alleZeilen: mailTabelle ? true : undefined
                 })
             });
             const data = await response.json();
@@ -1130,6 +1127,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             importVorschauModal.style.display = 'none';
             importDateiName = null;
             importContentBase64 = null;
+            mailTabelle = null;
         });
     }
 
@@ -1193,6 +1191,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             } finally {
                 importDateiName = null;
                 importContentBase64 = null;
+                mailTabelle = null;
             }
         });
     }
@@ -1212,6 +1211,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!file) return;
 
             try {
+                mailTabelle = null;
                 importDateiName = file.name;
                 importContentBase64 = await readFileAsBase64(file);
                 await ladeImportVorschau();
@@ -1219,6 +1219,164 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (window.zeigeNotification) window.zeigeNotification('Fehler: ' + err.message, 'error');
                 else alert('Fehler: ' + err.message);
             }
+        });
+    }
+
+    // --- IMPORT AUS E-MAIL (Drag & Drop) ---
+    // Eine E-Mail (.eml, oder markierter Text) wird auf die Seite gezogen; src/shared/mailExtraktion.js
+    // sucht darin Kämpfer (Name, Geburtsdatum/-jahr, Geschlecht, Verein, Gewicht …) und zeigt sie
+    // zur Korrektur in der Import-Vorschau. Gespeichert wird erst per "Import starten".
+    let mailModul = null;
+    const mailDropOverlay = document.getElementById('mailDropOverlay');
+
+    async function ladeMailModul() {
+        mailModul = mailModul || await import('/js/shared/mailExtraktion.js');
+        return mailModul;
+    }
+
+    function bytesZuBase64(bytes) {
+        let bin = '';
+        for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+        return btoa(bin);
+    }
+
+    function melde(text, art) {
+        if (window.zeigeNotification) window.zeigeNotification(text, art);
+        else alert(text);
+    }
+
+    function bindeMailBearbeitung() {
+        importVorschauBody.querySelectorAll('[data-mail-spalte]').forEach(zelle => {
+            const original = zelle.textContent.trim();
+            zelle.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); zelle.blur(); } });
+            zelle.addEventListener('blur', () => {
+                const neu = zelle.textContent.replace(/\s+/g, ' ').trim();
+                if (neu === original) return;
+                mailTabelle.rows[Number(zelle.dataset.mailZeile)][Number(zelle.dataset.mailSpalte)] = neu;
+                aktualisiereMailVorschau();
+            });
+        });
+        importVorschauBody.querySelectorAll('[data-mail-loeschen]').forEach(knopf => {
+            knopf.addEventListener('click', () => {
+                mailTabelle.rows.splice(Number(knopf.dataset.mailLoeschen), 1);
+                aktualisiereMailVorschau();
+            });
+        });
+    }
+
+    // Baut aus der (bearbeiteten) Tabelle wieder eine CSV und holt die Server-Prüfung dazu.
+    async function aktualisiereMailVorschau() {
+        mailTabelle.rows = mailTabelle.rows.filter(z => z.some(c => String(c).trim() !== ''));
+        if (mailTabelle.rows.length === 0) {
+            importVorschauModal.style.display = 'none';
+            mailTabelle = null;
+            melde('Keine Zeilen mehr übrig – der Import wurde abgebrochen.', 'error');
+            return;
+        }
+        const zuordnung = importVorschauModal.style.display === 'flex' ? sammleAktuelleZuordnung() : undefined;
+        const csv = (await ladeMailModul()).tabelleZuCsv(mailTabelle.headers, mailTabelle.rows);
+        importDateiName = 'email.csv';
+        importContentBase64 = bytesZuBase64(new TextEncoder().encode(csv));
+        await ladeImportVorschau(zuordnung);
+    }
+
+    async function verarbeiteMailInhalt({ text, anhaenge = [] }) {
+        const modul = await ladeMailModul();
+        const saetze = modul.extrahiereKaempfer(text);
+        const tabellenAnhang = anhaenge.find(a => /\.(xlsx|xls|csv)$/i.test(a.name || ''));
+
+        if (saetze.length === 0 && !tabellenAnhang) {
+            melde('In der E-Mail wurden keine Teilnehmer mit Geburtsdatum oder Jahrgang gefunden.', 'error');
+            return;
+        }
+
+        const ziel = await ermittleImportZiel();
+        if (!ziel) return;
+        importZiel = ziel;
+
+        if (saetze.length === 0) {
+            // Keine Kämpfer im Text, aber eine Tabelle im Anhang: wie eine direkt gewählte Datei.
+            mailTabelle = null;
+            importDateiName = tabellenAnhang.name;
+            importContentBase64 = bytesZuBase64(tabellenAnhang.daten);
+            melde(`Anhang "${tabellenAnhang.name}" wird gelesen.`, 'success');
+            await ladeImportVorschau();
+            return;
+        }
+
+        mailTabelle = {
+            headers: modul.MAIL_SPALTEN,
+            rows: modul.kaempferZuZeilen(saetze),
+            hinweis: tabellenAnhang ? `Die E-Mail hat außerdem den Anhang "${tabellenAnhang.name}" – falls die Liste unvollständig ist, kannst du ihn direkt hineinziehen.` : ''
+        };
+        await aktualisiereMailVorschau();
+    }
+
+    async function verarbeiteAblage(dt) {
+        try {
+            const datei = dt.files && dt.files[0];
+            if (datei) {
+                const name = datei.name.toLowerCase();
+                if (/\.eml$/.test(name)) {
+                    const modul = await ladeMailModul();
+                    await verarbeiteMailInhalt(modul.parseEml(new Uint8Array(await datei.arrayBuffer())));
+                } else if (/\.(txt|text)$/.test(name)) {
+                    await verarbeiteMailInhalt({ text: await datei.text() });
+                } else if (/\.(csv|xlsx|xls)$/.test(name)) {
+                    const ziel = await ermittleImportZiel();
+                    if (!ziel) return;
+                    importZiel = ziel;
+                    mailTabelle = null;
+                    importDateiName = datei.name;
+                    importContentBase64 = await readFileAsBase64(datei);
+                    await ladeImportVorschau();
+                } else if (/\.msg$/.test(name)) {
+                    const { parseMsg } = await import('/js/shared/msgParser.js');
+                    await verarbeiteMailInhalt(parseMsg(new Uint8Array(await datei.arrayBuffer())));
+                } else {
+                    melde('Dieses Dateiformat wird nicht unterstützt (E-Mail als .eml oder .msg, Text, CSV oder XLSX).', 'error');
+                }
+                return;
+            }
+
+            let text = dt.getData('text/plain');
+            if (!text && dt.getData('text/html')) text = (await ladeMailModul()).htmlZuText(dt.getData('text/html'));
+            if (text && text.trim()) await verarbeiteMailInhalt({ text });
+        } catch (err) {
+            melde('E-Mail konnte nicht gelesen werden: ' + err.message, 'error');
+        }
+    }
+
+    if (mailDropOverlay) {
+        let dragTiefe = 0;
+        const istZiehenVonInhalt = (e) => {
+            if (importVorschauModal && importVorschauModal.style.display === 'flex') return false;
+            const typen = Array.from((e.dataTransfer && e.dataTransfer.types) || []);
+            if (typen.includes('Files')) return true;
+            const istEingabe = e.target && e.target.closest && e.target.closest('input, textarea, [contenteditable]');
+            return !istEingabe && (typen.includes('text/plain') || typen.includes('text/html'));
+        };
+        document.addEventListener('dragenter', (e) => {
+            if (!istZiehenVonInhalt(e)) return;
+            e.preventDefault();
+            dragTiefe++;
+            mailDropOverlay.style.display = 'flex';
+        });
+        document.addEventListener('dragover', (e) => {
+            if (!istZiehenVonInhalt(e)) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+        });
+        document.addEventListener('dragleave', () => {
+            dragTiefe = Math.max(0, dragTiefe - 1);
+            if (dragTiefe === 0) mailDropOverlay.style.display = 'none';
+        });
+        document.addEventListener('drop', (e) => {
+            dragTiefe = 0;
+            mailDropOverlay.style.display = 'none';
+            if (!istZiehenVonInhalt(e)) return;
+            e.preventDefault();
+            verarbeiteAblage(e.dataTransfer);
         });
     }
 

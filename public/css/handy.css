@@ -39,7 +39,8 @@ html.modus-app .top-header-bar,
 html.modus-app .kanji-left,
 html.modus-app .kanji-right,
 html.modus-app #zurueckMenue,
-html.modus-app #teilnehmerHauptkarte .form-title-area,
+html.modus-app #teilnehmerHauptkarte .form-title-area h1,
+html.modus-app #startgeldBezahlenBtn,
 html.modus-app .teilnehmer-stats-grid,
 html.modus-app .table-responsive,
 html.modus-app #importStatus,
@@ -249,11 +250,15 @@ html.modus-app #teilnehmerHauptkarte {
     overflow: visible;
 }
 
-html.modus-app .teilnehmer-toolbar {
+/* Suche und Knöpfe liegen in der Titelzeile (die Überschrift selbst ist ausgeblendet). */
+html.modus-app #teilnehmerHauptkarte .form-title-area {
+    display: flex;
     flex-direction: column;
     align-items: stretch;
     gap: 10px;
     margin-bottom: 12px;
+    padding-bottom: 0;
+    border-bottom: none;
 }
 
 html.modus-app .teilnehmer-search {
@@ -267,7 +272,7 @@ html.modus-app .teilnehmer-search input {
     border-radius: 10px;
 }
 
-html.modus-app .teilnehmer-toolbar-buttons {
+html.modus-app .titel-icons {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 10px;
@@ -281,7 +286,7 @@ html.modus-app #scanBtn {
     order: 2;
 }
 
-html.modus-app .teilnehmer-toolbar-buttons .toolbar-btn {
+html.modus-app .titel-icons .toolbar-btn {
     justify-content: center;
     min-height: 46px;
     font-size: 15px;
@@ -304,7 +309,8 @@ html.modus-tablet #handyKarten {
     grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-html.modus-tablet .teilnehmer-toolbar {
+html.modus-tablet #teilnehmerHauptkarte .form-title-area {
+    display: flex;
     flex-direction: row;
     align-items: center;
 }
@@ -314,11 +320,11 @@ html.modus-tablet .teilnehmer-search {
     min-width: 0;
 }
 
-html.modus-tablet .teilnehmer-toolbar-buttons {
+html.modus-tablet .titel-icons {
     display: flex;
 }
 
-html.modus-tablet .teilnehmer-toolbar-buttons .toolbar-btn {
+html.modus-tablet .titel-icons .toolbar-btn {
     padding: 0 22px;
 }
 

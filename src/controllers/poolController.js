@@ -1382,7 +1382,9 @@ export async function getKampfflaechenMitPools(knex, req, res) {
             ...p,
             kampflaeche_id: p.kampfflaeche_id, // Map double 'ff' to single 'f' for frontend compatibility
             reihenfolge: p.matte_reihenfolge,  // Map matte_reihenfolge to reihenfolge for frontend compatibility
-            dauer_minuten: Math.ceil((p.gesamt_kaempfe * p.kampfzeit_sekunden) / 60)
+            dauer_minuten: Math.ceil((p.gesamt_kaempfe * p.kampfzeit_sekunden) / 60),
+            // Verbleibende Dauer: nur die noch nicht beendeten Kämpfe (laufende zählen voll mit)
+            restdauer_minuten: Math.ceil((Math.max(0, p.gesamt_kaempfe - p.beendete_kaempfe) * p.kampfzeit_sekunden) / 60)
         }));
 
         const kampflaechenMitPools = kampfflaechen.map((kf) => ({

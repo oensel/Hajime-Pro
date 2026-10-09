@@ -618,7 +618,12 @@ function gibGeladenenKampfFrei() {
     resetTimer();
 }
 
+function hatIppon() {
+    return state.ipponW > 0 || state.ipponB > 0;
+}
+
 function toggleTimer() {
+    if (!isRunning && hatIppon()) return; // auch per Tastenkürzel: nach einem Ippon läuft die Kampfzeit nicht weiter
     if (isRunning) {
         stopAllTimers();
         state.timeRunning = false;
@@ -919,10 +924,8 @@ function update() {
     // Solange die Vorschau auf die kommenden Kämpfe läuft (nach "Ergebnis senden"), braucht die Steuerung nur
     // "Nächsten Kampf holen" — Start/Reset, "Nicht angetreten" und "Hantei-Sieg" gehören zu keinem Kampf.
     const nurNaechsterKampf = state.overlayMode === 'vorschau';
-    ['btnStartStopLive', 'btnResetLive'].forEach(id => {
-        const btn = document.getElementById(id);
-        if (btn) btn.style.display = nurNaechsterKampf ? 'none' : '';
-    });
+    const btnStartLive = document.getElementById('btnStartStopLive');
+    if (btnStartLive) btnStartLive.style.display = nurNaechsterKampf ? 'none' : '';
 
     // "Ergebnis senden"/"Nächsten Kampf holen" existieren zweifach im Markup (Hauptbedienung +
     // Kurzzugriff neben der Live-Vorschau), daher hier für beide Fundstellen synchron halten.
@@ -943,10 +946,12 @@ function update() {
         const btnHolen = document.getElementById(id);
         if (btnHolen) btnHolen.style.display = !currentFightId ? 'inline-block' : 'none';
     });
+    zeigePoolBeginnOverlay();
 
     ['btnStartStop', 'btnStartStopLive'].forEach(id => {
         const btnStartStop = document.getElementById(id);
-        if (btnStartStop) btnStartStop.disabled = (currentFightId === null);
+        // Mit einem Ippon ist der Kampf entschieden: START bleibt ausgegraut, bis der Ippon wieder zurückgenommen wird.
+        if (btnStartStop) btnStartStop.disabled = (currentFightId === null) || hatIppon();
     });
 
     // "Nicht angetreten": Button wird bei Aktivierung zum Banner (Klick darauf macht es
@@ -1157,6 +1162,9 @@ if (!document.getElementById('matchDuration')) {
         const panelB = document.getElementById('panelB');
         if (panelB) panelB.className = data.fighter2Color;
 
+        const resetAllBtn = document.getElementById('iframeBtnResetAll');
+        if (resetAllBtn) resetAllBtn.style.display = data.overlayMode === 'vorschau' ? 'none' : '';
+
         document.getElementById('outNameW').innerText = data.nameW;
         document.getElementById('outClubW').innerText = data.clubW;
         document.getElementById('outIpponW').innerText = data.outIpponW !== undefined ? data.outIpponW : data.ipponW;
@@ -1325,6 +1333,20 @@ function injiziereBedienButtons() {
         b.textContent = text;
         b.addEventListener('click', onClick);
         return b;
+    }
+
+    // "RESET ALL" ganz rechts in der Meta-Leiste (neben Klasse und Gewicht). Wie die übrigen Buttons ruft er die
+    // Funktion des Eltern-Fensters auf (inkl. Sicherheitsabfrage); in der Vorschau der kommenden Kämpfe blendet ihn
+    // channel.onmessage aus (gehört dort zu keinem Kampf).
+    const metaLeiste = document.querySelector('.top-meta-bar');
+    if (metaLeiste) {
+        const resetAll = document.createElement('button');
+        resetAll.type = 'button';
+        resetAll.id = 'iframeBtnResetAll';
+        resetAll.className = 'iframe-ctrl-reset-all';
+        resetAll.textContent = 'RESET ALL';
+        resetAll.addEventListener('click', () => window.parent.resetTimerBestaetigen());
+        metaLeiste.appendChild(resetAll);
     }
 
     const scoreTypen = { ippon: 'Ippon', waza: 'Waza', yuko: 'Yuko' };
@@ -1637,6 +1659,9 @@ async function updateSelectedMat(val) {
 }
 
 async function naechstenKampfHolen() {
+    // Solange der Durchsage-Hinweis (Beginn eines neuen Pools) nicht mit "Erledigt" bestätigt ist, wird kein Kampf geholt.
+    const poolBeginnOverlay = document.getElementById('poolBeginnOverlay');
+    if (poolBeginnOverlay && poolBeginnOverlay.style.display !== 'none') return;
     if (!selectedMatId) {
         zeigeNotification("Bitte wählen Sie zuerst eine Matte aus.", "error");
         return;
@@ -2102,6 +2127,81 @@ async function renderePoolAnsichtSteuerung(kaempfe) {
     }
 }
 
+// --- Durchsage-Hinweis "Beginn eines neuen Pools" (Overlay #poolBeginnOverlay, nur Steuerung) ---
+// Die Steuerung soll rechtzeitig den Beginn einer neuen Klasse durchsagen können: Liegt der erste Kampf eines Pools,
+// von dem noch kein Kampf begonnen wurde, unter den nächsten POOL_BEGINN_VORLAUF kommenden Kämpfen (der geladene
+// bzw. laufende zählt nicht mit), erscheint das Overlay, bis es mit "Erledigt" weggeklickt wird. Die Matten-Planung
+// verschränkt die Pools (Mindestpausen), daher zählt der erste Kampf des Pools, nicht ein Wechsel zum Vorkampf.
+// Je Turnier, Matte und Pool nur einmal (Merker im sessionStorage, übersteht ein Neuladen).
+const POOL_BEGINN_VORLAUF = 3;
+const POOL_BEGINN_MERKER = 'poolBeginnErledigt';
+
+function ladePoolBeginnErledigt() {
+    try { return new Set(JSON.parse(sessionStorage.getItem(POOL_BEGINN_MERKER) || '[]')); } catch { return new Set(); }
+}
+
+function poolBeginnSchluessel(poolId) {
+    return `${localStorage.getItem('aktiveTurnierId') || ''}:${selectedMatId}:${poolId}`;
+}
+
+function matteFuerDurchsage() {
+    const sel = document.getElementById('matSelect');
+    const name = sel && sel.selectedOptions[0] ? sel.selectedOptions[0].textContent.trim() : '';
+    return /^matte/i.test(name) ? name : `Matte ${name}`;
+}
+
+// Liefert je Pool den ersten Kampf, wenn er unter den nächsten Kämpfen liegt und der Pool noch nicht begonnen hat
+// (kein beendeter/laufender/geladener Kampf). Freilose zählen nicht als Beginn.
+function findePoolBeginne(kaempfe, kommende, geladenId, vorlauf = POOL_BEGINN_VORLAUF) {
+    const begonnen = new Set(kaempfe
+        .filter(k => k.status === 'beendet' || k.status === 'gestartet' || (geladenId && Number(k.id) === Number(geladenId)))
+        .map(k => k.pool_id));
+    const beginne = [];
+    kommende.slice(0, vorlauf).forEach(k => {
+        if (!begonnen.has(k.pool_id) && !beginne.some(x => x.pool_id === k.pool_id)) beginne.push(k);
+    });
+    return beginne;
+}
+
+function pruefePoolBeginnMeldung(kaempfe, kommende) {
+    const overlay = document.getElementById('poolBeginnOverlay');
+    const liste = document.getElementById('poolBeginnListe');
+    if (!overlay || !liste) return;
+    const erledigt = ladePoolBeginnErledigt();
+    const offen = findePoolBeginne(kaempfe, kommende.filter(k => !k.wartet_auf_einzelpools), currentFightId)
+        .filter(k => !erledigt.has(poolBeginnSchluessel(k.pool_id)));
+    liste.innerHTML = '';
+    offen.forEach(k => {
+        const zeile = document.createElement('div');
+        zeile.className = 'pool-beginn-zeile';
+        zeile.textContent = `Durchsage: Beginn ${k.pool_bezeichnung || 'neuer Pool'} auf ${matteFuerDurchsage()}`;
+        liste.appendChild(zeile);
+    });
+    overlay.dataset.poolIds = JSON.stringify(offen.map(k => k.pool_id));
+    zeigePoolBeginnOverlay();
+}
+
+// Sichtbar nur, solange kein Kampf geladen ist (Ansicht der kommenden Kämpfe): das Overlay liegt dann über dem Knopf
+// "Nächsten Kampf holen" und sperrt nur diesen, bis "Erledigt" geklickt ist; die Anzeige der kommenden Kämpfe bleibt
+// während der Durchsage stehen und die übrige Steuerung bedienbar.
+// Wird auch von update() aufgerufen, wenn ein Kampf geladen bzw. freigegeben wird.
+function zeigePoolBeginnOverlay() {
+    const overlay = document.getElementById('poolBeginnOverlay');
+    if (!overlay) return;
+    const offen = JSON.parse(overlay.dataset.poolIds || '[]');
+    overlay.style.display = offen.length && !currentFightId ? 'flex' : 'none';
+}
+
+function poolBeginnErledigtClick() {
+    const overlay = document.getElementById('poolBeginnOverlay');
+    if (!overlay) return;
+    const erledigt = ladePoolBeginnErledigt();
+    JSON.parse(overlay.dataset.poolIds || '[]').forEach(id => erledigt.add(poolBeginnSchluessel(id)));
+    try { sessionStorage.setItem(POOL_BEGINN_MERKER, JSON.stringify([...erledigt])); } catch { /* Merker nicht speicherbar */ }
+    overlay.style.display = 'none';
+}
+document.getElementById('poolBeginnErledigtBtn')?.addEventListener('click', poolBeginnErledigtClick);
+
 // Lädt und rendert die "Kämpfe dieser Matte"-Übersicht (#steuerungUpcomingList /
 // #steuerungFinishedList in steuerung.html): kommende Kämpfe rein zur Information, beendete
 // Kämpfe zusätzlich mit einer "Korrigieren"-Aktion (analog zu kampf.html). Wird an denselben
@@ -2138,6 +2238,8 @@ async function ladeMattenUebersicht() {
         // Der geladene Kampf (noch "bereit", bis START) gehört nicht mehr zu den kommenden Kämpfen.
         const kommende = kaempfe.filter(k => (k.status === 'bereit' || k.status === 'angelegt') && k.id !== currentFightId);
         const beendete = kaempfe.filter(k => k.status === 'beendet' || k.status === 'freilos').reverse();
+
+        pruefePoolBeginnMeldung(kaempfe, kommende);
 
         upcomingList.innerHTML = '';
         if (kommende.length === 0) {

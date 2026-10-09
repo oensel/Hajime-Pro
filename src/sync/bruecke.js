@@ -16,6 +16,7 @@
 import { randomUUID } from 'crypto';
 import { geaenderteFelder, gleicheWerte, mitServerStand } from '../shared/dokumentAbbildung.js';
 import { aktualisiereKampf, setzeMattenReihenfolge, setzeKampfZurueck } from '../controllers/kampfController.js';
+import { FachFehler } from '../utils/fachFehler.js';
 import { pausiereMatte, setzeMatteFort } from '../controllers/kampfflaecheController.js';
 import {
     HALLEN_KONTEXT, legeTeilnehmerAn, aktualisiereTeilnehmerDaten, bestaetigeKampfbereitschaft, werteForfeit
@@ -401,5 +402,56 @@ export function erzeugeBruecke({ knex, zustand, abgleich }) {
         await erledigeKonflikt(id);
     }
 
-    return { starte, stoppe, leerlauf, neuStarten, listeKonflikte, erledigeKonflikt, wiederholeKonflikt };
+    // Entscheidung der Turnierleitung bei einem Klärungsfall (Kampf mit abweichender Paarung):
+    //  'server' — Server-Paarung behalten, das Geräte-Ergebnis verwerfen; der Kampf erhält seinen
+    //             Status von vor der Klärung zurück und wird regulär ausgetragen.
+    //  'geraet' — Paarung und Ergebnis des Geräts übernehmen; der Kampf wird mit dieser Paarung
+    //             beendet, die Kaskade zieht Folgekämpfe nach. Die Vorkämpfe, aus denen der Server die
+    //             Paarung ableitet, bleiben unverändert.
+    async function entscheideKlaerung(id, entscheidung) {
+        const db = zustand.db;
+        if (!['server', 'geraet'].includes(entscheidung)) throw new FachFehler(400, 'Ungültige Entscheidung.');
+        const konflikt = await db.get(id).catch(() => null);
+        if (!konflikt || konflikt.dokumenttyp !== 'konflikt') throw new FachFehler(404, 'Konflikt nicht gefunden.');
+        if (konflikt.konflikt_typ !== 'klaerung') throw new FachFehler(400, 'Nur Klärungsfälle können entschieden werden.');
+        if (konflikt.erledigt) throw new FachFehler(409, 'Der Konflikt ist bereits erledigt.');
+
+        const lokal = konflikt.version_lokal || {};
+        const kampfId = lokal.sql_id;
+        const zeile = kampfId != null ? await knex('kaempfe').where({ id: kampfId }).first() : null;
+        if (!zeile) throw new FachFehler(404, 'Der Kampf existiert nicht mehr.');
+        if (zeile.status !== 'klaerung') {
+            throw new FachFehler(409, `Der Kampf steht nicht mehr auf "Klärung" (Status: ${zeile.status}). Bitte den Konflikt nur als erledigt markieren.`);
+        }
+
+        if (entscheidung === 'server') {
+            const vorher = konflikt.version_server && konflikt.version_server.status;
+            const status = vorher && !['klaerung', 'beendet', 'freilos'].includes(vorher) ? vorher : 'bereit';
+            await knex('kaempfe').where({ id: kampfId }).update({ status, updated_at: knex.fn.now() });
+        } else {
+            const { kaempfer1_id: k1, kaempfer2_id: k2, sieger_id: sieger } = lokal;
+            if (lokal.status !== 'beendet' || !sieger || !k1 || !k2 || k1 === k2 || (sieger !== k1 && sieger !== k2)) {
+                throw new FachFehler(400, 'Das Geräte-Ergebnis ist unvollständig und kann nicht übernommen werden.');
+            }
+            const kaempfer = await knex('turnier_teilnehmer').whereIn('id', [k1, k2]);
+            if (kaempfer.length !== 2 || kaempfer.some(t => t.pool_id !== zeile.pool_id)) {
+                throw new FachFehler(409, 'Mindestens ein Kämpfer des Geräts gehört nicht (mehr) zu diesem Pool.');
+            }
+            await knex.transaction(async (trx) => {
+                // Zuerst auf einen regulären Status, damit die Ergebnisprüfung den Kampf wie einen
+                // gewöhnlichen, noch offenen behandelt.
+                await trx('kaempfe').where({ id: kampfId }).update({ status: 'bereit', updated_at: trx.fn.now() });
+                await aktualisiereKampf(trx, kampfId, {
+                    kaempfer1_id: k1, kaempfer2_id: k2, sieger_id: sieger, status: 'beendet',
+                    unterbewertung_kaempfer1: lokal.unterbewertung_kaempfer1 ?? 0,
+                    unterbewertung_kaempfer2: lokal.unterbewertung_kaempfer2 ?? 0,
+                    ...(lokal.kampfzeit_in_sekunden != null ? { kampfzeit_in_sekunden: lokal.kampfzeit_in_sekunden } : {})
+                });
+            });
+        }
+        await db.put({ ...konflikt, erledigt: true, erledigt_am: new Date().toISOString(), entscheidung });
+        await abgleich.fuehreAus();
+    }
+
+    return { starte, stoppe, leerlauf, neuStarten, listeKonflikte, erledigeKonflikt, wiederholeKonflikt, entscheideKlaerung };
 }

@@ -30,6 +30,7 @@
 // stabilen IDs (Nächsten Kampf holen, Start/Stopp, Nicht angetreten, Sieger Hantei, Ergebnis
 // senden, direktes Hansoku-make im iframe) werden dagegen echte Klicks verwendet.
 import { test, expect } from '@playwright/test';
+import { schliesseOverlayAutomatisch } from './helpers/pool-beginn-overlay.js';
 
 const TURNIER_ID = 9001;
 const MAT_ID = 3;
@@ -110,7 +111,10 @@ test.describe.serial('Steuerung + Anzeigetafel: Scoreboard-Kernfunktionen (steue
         });
 
         steuerungPage = await context.newPage();
+
+        await schliesseOverlayAutomatisch(steuerungPage);
         anzeigePage = await context.newPage();
+        await schliesseOverlayAutomatisch(anzeigePage);
 
         for (const [name, page] of [['steuerung', steuerungPage], ['anzeige', anzeigePage]]) {
             page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(`[${name}] ${msg.text()}`); });

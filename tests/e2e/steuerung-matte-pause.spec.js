@@ -2,6 +2,7 @@
 // Matte ändert sich in der Datenbank, die Anzeige (anzeige.html, separat geöffnet) zeigt die kommenden
 // Kämpfe mit dem Banner "PAUSE", und START sowie "Nächsten Kampf holen" sind währenddessen gesperrt.
 import { test, expect } from '@playwright/test';
+import { schliesseOverlayAutomatisch } from './helpers/pool-beginn-overlay.js';
 
 const TEILNEHMER = [
     { vorname: 'Anna', nachname: 'Adler', verein: 'JC Alpha', gewicht: 60 },
@@ -45,7 +46,9 @@ test('Matte pausieren: Status am Server, PAUSE-Banner auf der Anzeige, START und
     const { turnierId, matId } = await richteTurnierEin(request);
     const context = await browser.newContext();
     const steuerung = await context.newPage();
+    await schliesseOverlayAutomatisch(steuerung);
     const anzeige = await context.newPage();
+    await schliesseOverlayAutomatisch(anzeige);
     const matteStatus = async () => (await (await request.get(`/api/kampfflaechen?turnierId=${turnierId}`)).json()).find(m => m.id === matId).status;
 
     await Promise.all([
@@ -88,6 +91,7 @@ test('Pause-Button nur zusammen mit START; Pause mit geladenem Kampf, danach lä
     const { turnierId, matId } = await richteTurnierEin(request);
     const context = await browser.newContext();
     const steuerung = await context.newPage();
+    await schliesseOverlayAutomatisch(steuerung);
     await steuerung.goto(`/steuerung.html?turnierId=${turnierId}&matId=${matId}`);
     await expect(steuerung.locator('#matSelect')).toHaveValue(String(matId));
 
@@ -126,6 +130,7 @@ test('Pause-Button verschwindet mit dem START; ein anderswo beendeter Kampf wird
     const { turnierId, matId } = await richteTurnierEin(request);
     const context = await browser.newContext();
     const steuerung = await context.newPage();
+    await schliesseOverlayAutomatisch(steuerung);
     await steuerung.goto(`/steuerung.html?turnierId=${turnierId}&matId=${matId}`);
     await expect(steuerung.locator('#matSelect')).toHaveValue(String(matId));
 
@@ -166,6 +171,7 @@ test('"Mit nächstem Kampf tauschen" lädt die neuen Kämpfer ins Scoreboard, we
     const { turnierId, matId } = await richteTurnierEin(request);
     const context = await browser.newContext();
     const steuerung = await context.newPage();
+    await schliesseOverlayAutomatisch(steuerung);
     await steuerung.goto(`/steuerung.html?turnierId=${turnierId}&matId=${matId}`);
     await expect(steuerung.locator('#matSelect')).toHaveValue(String(matId));
     const paarung = () => steuerung.evaluate(() => `${document.getElementById('nameW').value}|${document.getElementById('nameB').value}`);

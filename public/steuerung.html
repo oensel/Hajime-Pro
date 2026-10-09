@@ -114,12 +114,27 @@
                     </div>
                     <div class="live-vorschau-mitte">
                         <button id="btnStartStopLive" class="btn-main" onclick="toggleTimer()">START</button>
-                        <button id="btnResetLive" class="btn-main btn-reset" onclick="resetTimerBestaetigen()">RESET ALL</button>
                       <button id="btnCloseOverlay" class="btn-main" style="background-color: #17a2b8;" onclick="closeOverlay()">Overlay schließen</button>
                         <br>
                         <button id="btnErgebnisSendenLive" class="btn-main" style="background-color: #28a745;" onclick="ergebnisSenden()">Ergebnis senden</button>
-                        <button id="btnNaechsterKampfLive" class="btn-main" style="background-color: #007bff;" onclick="naechstenKampfHolen()">Nächsten Kampf holen</button>
+                        <!-- Durchsage-Hinweis: Beginn eines neuen Pools in den nächsten Kämpfen. Liegt über "Nächsten Kampf holen", bis "Erledigt"
+                             geklickt ist (befüllt von pruefePoolBeginnMeldung() in scoreboard.js; nur Steuerung) -->
+                        <span class="holen-wrap">
+                            <button id="btnNaechsterKampfLive" class="btn-main" style="background-color: #007bff;" onclick="naechstenKampfHolen()">Nächsten Kampf holen</button>
+                            <div id="poolBeginnOverlay" class="pool-beginn-overlay" style="display: none;" role="status" aria-live="assertive">
+                                <div class="pool-beginn-karte">
+                                    <span class="material-icons" style="font-size: 32px;">campaign</span>
+                                    <div class="pool-beginn-text">
+                                        <div id="poolBeginnListe"></div>
+                                        <div class="pool-beginn-hinweis">🎙 Die Durchsage erfolgt bei gedrückter Strg-Taste.</div>
+                                    </div>
+                                    <button type="button" id="poolBeginnErledigtBtn" class="btn-main">Erledigt</button>
+                                </div>
+                            </div>
+                        </span>
                         <button type="button" id="btnMattePauseLive" class="btn-main" style="background-color: #6c757d;" onclick="toggleMattePause()">Matte pausieren</button>
+                        <!-- Live-Durchsage: Strg halten und sprechen, die Stimme kommt am Audioausgang des Hallen-Servers heraus (js/durchsage.js) -->
+                        <div id="durchsageStatus" class="durchsage-status" aria-live="polite"></div>
                     </div>
                     <div class="live-vorschau-btn-col">
                         <button type="button" id="btnLiveNaB" class="btn-main na-toggle-btn" onclick="triggerNichtAngetreten('B')">Nicht angetreten</button>
@@ -233,6 +248,10 @@
                             <div class="key-badge">⇨</div>
                             <div class="legend-text"><strong>Kurz:</strong> Osaekomi Kämpfer 2 an/aus<br><em>Lang (0,5s):</em> Osaekomi Kämpfer 2 Reset</div>
                         </div>
+                        <div class="legend-item">
+                            <div class="key-badge">Strg</div>
+                            <div class="legend-text"><strong>Gedrückt halten:</strong> Live-Durchsage<br>(Mikrofon des Notebooks, Ausgabe über den Lautsprecher des Servers; beim Loslassen endet die Durchsage)</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -257,5 +276,6 @@
     <script src="/js/syncStatus.js"></script>
     <script src="/js/sortierbar.js"></script>
     <script type="module" src="js/scoreboard.js"></script>
+    <script type="module" src="js/durchsage.js"></script>
 </body>
 </html>
