@@ -91,7 +91,8 @@ test('PCM-Blöcke gelangen vom WebSocket in den Player; zweiter Sprecher ist bes
         a.send(Buffer.from([1, 2, 3, 4]));
         a.send(Buffer.from([5, 6]));
         a.send(JSON.stringify({ t: 'ende' }));
-        await pause(700);
+        // Fake-Player = eigener Node-Prozess: unter Last (volle Suite) auf Datei und freien Sprecherplatz warten statt fester Pause
+        for (let i = 0; i < 100 && !(existsSync(datei) && readFileSync(datei).length >= 6 && !dienst.status().besetzt); i++) await pause(50);
         assert.deepEqual([...readFileSync(datei)], [1, 2, 3, 4, 5, 6]);
         assert.equal(dienst.status().besetzt, false);
         a.close();
