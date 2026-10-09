@@ -23,14 +23,17 @@
         try { return JSON.parse(sessionStorage.getItem(SPEICHER)); } catch (e) { return null; }
     }
 
-    function zeige(zustand, text) {
+    // ausstehend: Anzahl der noch nicht zum Server übertragenen Änderungen (die Handy-Ansicht zeigt bei
+    // "offline" damit einen Pfeil nach oben am Status-Icon, wie bei Git für noch nicht gepushte Commits).
+    function zeige(zustand, text, ausstehend = 0) {
         if (zustand !== 'pruefung') {
-            try { sessionStorage.setItem(SPEICHER, JSON.stringify({ zustand, text })); } catch (e) { /* ohne Speicher: kein Übernehmen */ }
+            try { sessionStorage.setItem(SPEICHER, JSON.stringify({ zustand, text, ausstehend })); } catch (e) { /* ohne Speicher: kein Übernehmen */ }
         }
         if (!leiste) erzeugeLeiste();
         const farben = { verbunden: '#2e7d32', offline: '#f9a825', fehler: '#c62828', wechsel: '#1565c0', pruefung: '#607d8b' };
         leiste.style.background = farben[zustand];
         leiste.dataset.zustand = zustand;
+        leiste.dataset.ausstehend = String(ausstehend);
         leiste.textContent = text;
     }
 
@@ -58,12 +61,12 @@
         // als Startwert fest: bis die erste Prüfung fertig ist, den letzten bekannten Zustand zeigen.
         else if (status.verbindung_wird_geprueft && !status.verbunden) {
             const letzter = leseLetztenZustand();
-            if (letzter) zeige(letzter.zustand, letzter.text);
+            if (letzter) zeige(letzter.zustand, letzter.text, letzter.ausstehend || 0);
             else zeige('pruefung', 'Verbindung wird geprüft …');
             return;
         }
-        else if (status.verbunden) zeige('verbunden', status.ausstehend ? `verbunden – ${status.ausstehend} werden übertragen` : 'verbunden');
-        else zeige('offline', `offline – ${status.ausstehend} Änderung${status.ausstehend === 1 ? '' : 'en'} ausstehend`);
+        else if (status.verbunden) zeige('verbunden', status.ausstehend ? `verbunden – ${status.ausstehend} werden übertragen` : 'verbunden', status.ausstehend || 0);
+        else zeige('offline', `offline – ${status.ausstehend} Änderung${status.ausstehend === 1 ? '' : 'en'} ausstehend`, status.ausstehend || 0);
     }
 
     // Mattenwechsel eines Client-Geräts, im Betrieb mit Nachfrage (ausstehende Änderungen, laufender
