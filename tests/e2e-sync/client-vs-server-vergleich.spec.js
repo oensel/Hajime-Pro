@@ -11,6 +11,7 @@
 // offline (HF1/HF2 werden erst nach der Vorrunde spielbar).
 import { test, expect } from '@playwright/test';
 import { legeTurnierAn, syncLeerlauf, warteLeerlauf, clientTrennen, clientVerbinden, clientStatus, CLIENT_BASE_URL } from './helpers.js';
+import { schliesseOverlayAutomatisch } from '../e2e/helpers/pool-beginn-overlay.js';
 
 const TEILNEHMER = [
     ['Anna', 'Adler', 'JC Alpha'], ['Berta', 'Busch', 'JC Beta'], ['Clara', 'Conrad', 'JC Gamma'],
@@ -98,6 +99,7 @@ for (const system of SYSTEME) {
         const referenz = await richteTurnierEin(request, `${system.name} Server`, system.teilnehmer);
         await warteLeerlauf(request);
         await page.goto(`/steuerung.html?turnierId=${referenz.turnierId}&matId=${referenz.matId}`);
+        await schliesseOverlayAutomatisch(page);
         await expect(page.locator('#matSelect')).toHaveValue(String(referenz.matId));
         await spieleAlleKaempfeDurch(page, system.kaempfe);
         await warteLeerlauf(request);
@@ -112,6 +114,7 @@ for (const system of SYSTEME) {
         expect((await request.put(`${CLIENT_BASE_URL}/api/sync/client/matte`, { data: { matte_id: offline.matId } })).ok()).toBeTruthy();
         await clientTrennen(request);
         await page.goto(`${CLIENT_BASE_URL}/steuerung.html?turnierId=${offline.turnierId}&matId=${offline.matId}`);
+        await schliesseOverlayAutomatisch(page);
         await expect(page.locator('#matSelect')).toHaveValue(String(offline.matId));
         await spieleAlleKaempfeDurch(page, system.kaempfe);
         const lokal = await (await request.get(`${CLIENT_BASE_URL}/api/kaempfe?kampfflaecheId=${offline.matId}`)).json();
