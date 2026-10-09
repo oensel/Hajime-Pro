@@ -5,8 +5,8 @@
 // Ippon (siehe spieleKompletteBrackedDurch), damit steht das Endergebnis unabhängig von der
 // Abspielreihenfolge fest.
 //
-// Das Gegenstück für Client-Geräte mit lokaler Dokument-DB (Kaskade offline über
-// src/shared/kaskadeDokumente.js) ist tests/e2e-sync/client-vs-server-vergleich.spec.js.
+// Die Offline-Kaskade auf Client-Geräten (src/shared/kaskadeDokumente.js) deckt
+// tests/e2e-sync/sync-client-offline.spec.js ab (DK8 komplett offline, danach identisch am Server).
 //
 // Turnier/Teilnehmer/Pool-Aufbau läuft bewusst über direkte API-Aufrufe statt über die
 // Verwaltungsseiten (turnier.html/teilnehmer.html/pools.html, siehe die teilnehmer-*.spec.js-

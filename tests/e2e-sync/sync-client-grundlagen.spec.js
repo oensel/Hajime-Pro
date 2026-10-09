@@ -5,6 +5,7 @@ import {
     syncStatus, legeTurnierAn, clientStatus, syncLeerlauf, ladeClientDokument, schreibeClientDokument, ladeDokument,
     clientTrennen, clientVerbinden
 } from './helpers.js';
+import { SYNC_BASE_URL } from './test-env.js';
 
 test.describe.serial('Client-Knoten: Replikation mit dem Hallen-Server', () => {
     let dbName;
@@ -46,8 +47,8 @@ test.describe.serial('Client-Knoten: Replikation mit dem Hallen-Server', () => {
     // Bewusst Nodes fetch statt des Playwright-Request-Kontexts: der sendet laut Konfiguration
     // (extraHTTPHeaders) immer das Secret mit.
     test('Replikation ohne oder mit falschem SYNC_SECRET wird vom Server abgelehnt', async () => {
-        expect((await fetch(`http://localhost:3200/db/${dbName}`)).status).toBe(401);
-        expect((await fetch(`http://localhost:3200/db/${dbName}`, { headers: { 'x-hajime-sync-secret': 'falsch' } })).status).toBe(401);
-        expect((await fetch(`http://localhost:3200/db/${dbName}`, { headers: { 'x-hajime-sync-secret': 'test-geheimnis' } })).status).toBe(200);
+        expect((await fetch(`${SYNC_BASE_URL}/db/${dbName}`)).status).toBe(401);
+        expect((await fetch(`${SYNC_BASE_URL}/db/${dbName}`, { headers: { 'x-hajime-sync-secret': 'falsch' } })).status).toBe(401);
+        expect((await fetch(`${SYNC_BASE_URL}/db/${dbName}`, { headers: { 'x-hajime-sync-secret': 'test-geheimnis' } })).status).toBe(200);
     });
 });

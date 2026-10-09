@@ -10,7 +10,7 @@
     "test:e2e:vollablauf": "playwright test --config=playwright.vollablauf.config.js",
     "ci:lokal": "node scripts/ci-lokal.mjs",
     "test:unit": "node --test \"tests/unit/**/*.test.js\"",
-    "test:e2e:sync": "playwright test --config=playwright.sync.config.js",
+    "test:e2e:sync": "node scripts/test-e2e-sync.mjs",
     "test:e2e:cluster": "playwright test -c playwright.cluster.config.js",
     "test:e2e:mobil": "playwright test -c playwright.mobil.config.js",
     "android:www": "node scripts/baue-android-www.mjs",
