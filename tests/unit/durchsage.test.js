@@ -204,7 +204,8 @@ test('Client-Knoten leitet die Durchsage mit SYNC_SECRET an den Hallen-Server we
         assert.deepEqual(await a.naechste(), { t: 'bereit' });
         a.send(Buffer.from([9, 8, 7, 6]));
         a.send(JSON.stringify({ t: 'ende' }));
-        await pause(700);
+        // Der Fake-Player ist ein eigener Node-Prozess: unter Last (volle Suite) braucht er länger als ein fester Wert
+        for (let i = 0; i < 100 && !(existsSync(datei) && readFileSync(datei).length >= 4); i++) await pause(50);
         assert.deepEqual([...readFileSync(datei)], [9, 8, 7, 6]);
         a.close();
         await pause(200);
