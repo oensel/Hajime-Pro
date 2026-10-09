@@ -15,6 +15,7 @@ import os from 'os';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { merkeVersuch, pruefeUndLade } from './selbstUpdate.js';
+import { baueInstallFensterBefehl } from './installFenster.js';
 import { starteLoesgeloest, startBefehl, tauscheAppImage } from '../updater.js';
 import { MELDUNG, ladeText } from '../../src/shared/updateAnzeige.js';
 
@@ -347,7 +348,16 @@ async function installiereUpdate() {
     // erhöhten) Installer und startet die App danach in jedem Fall wieder — auch wenn die Installation scheitert oder
     // abgelehnt wird, soll der Server nicht ausbleiben. Läuft die neue Version schon, verwirft die Einzelinstanz-Sperre den Zweitstart.
     const befehl = `""${datei}" /S & start "" "${process.execPath}""`;
-    spawn('cmd.exe', ['/d', '/s', '/c', befehl], { detached: true, stdio: 'ignore', windowsVerbatimArguments: true }).unref();
+    const installation = spawn('cmd.exe', ['/d', '/s', '/c', befehl], { detached: true, stdio: 'ignore', windowsVerbatimArguments: true });
+    installation.unref();
+    // Die Installation dauert einige Minuten und läuft still: ein kleines Hajime-Fenster zeigt solange, dass installiert
+    // wird, und schließt sich, sobald die cmd (Installer + Neustart der App) fertig ist. Fehlt es, läuft die Installation trotzdem.
+    try {
+        const { programm, args } = baueInstallFensterBefehl({ version, exePfad: process.execPath, wartePid: installation.pid });
+        spawn(programm, args, { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+    } catch (err) {
+        console.error('[Selbst-Update] Installationsfenster nicht gestartet:', err);
+    }
     app.exit(0);
 }
 
