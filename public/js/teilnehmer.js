@@ -1371,15 +1371,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Auch der Hallen-Server zeigt Änderungen, die Client-Geräte (Notebook, Tablet, Handy) per Sync liefern: die Brücke
     // schreibt sie in die Datenbank, die Liste holt sie hier nach. Ohne Sync-Rolle (Cloud, Einzelbetrieb ohne
     // Client-Geräte) bleibt der Abgleich aus — dort ändert nur diese Seite die Daten.
-    (async () => {
-        let rolle = window.Datenzugriff && window.Datenzugriff.rolle ? window.Datenzugriff.rolle() : null;
-        if (!rolle) {
+    // Der Takt läuft immer; solange die Rolle unbekannt ist (z.B. Laufzeit der App direkt nach dem Start noch nicht
+    // bereit, Server kurz nicht erreichbar), wird sie bei jedem Durchlauf neu erfragt. Sonst bliebe die Liste nach
+    // einer Neuinstallation leer, bis die Seite von Hand neu geöffnet wird.
+    (() => {
+        let rolle; // undefined = noch unbekannt, null = keine Sync-Rolle (Abgleich aus)
+        const ermittleRolle = async () => {
+            const lokal = window.Datenzugriff && window.Datenzugriff.rolle ? window.Datenzugriff.rolle() : null;
+            if (lokal) return lokal;
             try {
-                const status = await fetch('/api/sync/status', { cache: 'no-store' }).then(r => (r.ok ? r.json() : null));
-                rolle = status && status.rolle;
-            } catch (err) { /* ohne Sync-Status kein Hintergrundabgleich */ }
-        }
-        if (rolle === 'client' || rolle === 'server') setInterval(aktualisiereListeImHintergrund, 3000);
+                const antwort = await fetch('/api/sync/status', { cache: 'no-store' });
+                if (!antwort.ok) return undefined;
+                const status = await antwort.json();
+                return (status && status.rolle) || null;
+            } catch (err) {
+                return undefined;
+            }
+        };
+        const takt = setInterval(async () => {
+            if (rolle === undefined) rolle = await ermittleRolle();
+            if (rolle === null) { clearInterval(takt); return; }
+            if (rolle === 'client' || rolle === 'server') await aktualisiereListeImHintergrund();
+        }, 3000);
     })();
 
     // Global exponiert, damit waage-modal.js nach dem manuellen Zuordnen/Ändern einer
