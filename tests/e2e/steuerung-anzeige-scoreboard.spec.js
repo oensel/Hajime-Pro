@@ -140,9 +140,12 @@ test.describe.serial('Steuerung + Anzeigetafel: Scoreboard-Kernfunktionen (steue
         await expect(steuerungPage.locator('#globalLoginModal')).toHaveCount(0);
         await expect(steuerungPage.locator('#matSelect')).toHaveValue(String(MAT_ID));
 
+        // Namen und Pool stehen im Panel "Kampf" des Menüs
+        await steuerungPage.locator('.st-nav-btn[data-st-oeffne="daten"]').click();
         await steuerungPage.locator('#nameW').fill('Synchronisationstest Weiss');
         await steuerungPage.locator('#clubW').fill('JC Sync');
         await steuerungPage.locator('#poolName').fill('Sync-Pool U21');
+        await steuerungPage.keyboard.press('Escape'); // Panel wieder schließen, sonst überdeckt es die Bühne
 
         await expect(anzeigePage.locator('#outNameW')).toHaveText('Synchronisationstest Weiss');
         await expect(anzeigePage.locator('#outClubW')).toHaveText('JC Sync');

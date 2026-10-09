@@ -49,10 +49,11 @@ test('Videoaufnahme: live zum Server, Live-Raster, Ansehen in der Steuerung, vol
     await expect(page.locator('#matSelect')).toHaveValue(String(matId));
 
     // Videoaufnahme einschalten
-    await page.locator('.collapse-header', { hasText: 'Videoaufnahme' }).click();
+    await page.locator('.st-nav-btn[data-st-oeffne="video"]').click();
     const aktiv = page.locator('#videoAktiv');
     await expect(aktiv).toBeEnabled({ timeout: 10_000 });
     await page.locator('label.switch-aufnahme').click();
+    await page.keyboard.press('Escape'); // Panel schließen, es überdeckt sonst die Bühne
     await expect(aktiv).toBeChecked();
     await expect(page.locator('#videoStatus')).toContainText('Kamera bereit', { timeout: 15_000 });
     // "Video ansehen" sitzt oben links in der Meta-Leiste der eingebetteten Anzeige, neben Klasse und Gewicht
@@ -172,9 +173,10 @@ test('Ohne Verbindung bleibt der Clip lokal (auch nach Neuladen) und geht späte
 
     await page.goto(`/steuerung.html?turnierId=${turnierId}&matId=${matId}`);
     await expect(page.locator('#matSelect')).toHaveValue(String(matId));
-    await page.locator('.collapse-header', { hasText: 'Videoaufnahme' }).click();
+    await page.locator('.st-nav-btn[data-st-oeffne="video"]').click();
     await expect(page.locator('#videoAktiv')).toBeEnabled({ timeout: 10_000 });
     await page.locator('label.switch-aufnahme').click();
+    await page.keyboard.press('Escape'); // Panel schließen, es überdeckt sonst die Bühne
     await expect(page.locator('#videoStatus')).toContainText('Kamera bereit', { timeout: 15_000 });
 
     await page.locator('#btnNaechsterKampfLive').click();
@@ -221,9 +223,10 @@ test('Aufnahme nach dem Laden des Kampfes einschalten: Clip, Overlay-Knopf und f
     // Erst den Kampf laden, dann die Aufnahme einschalten: sie beginnt sofort für diesen Kampf
     await page.locator('#btnNaechsterKampfLive').click();
     await expect(page.locator('#nameW')).not.toHaveValue('Kämpfer 1');
-    await page.locator('.collapse-header', { hasText: 'Videoaufnahme' }).click();
+    await page.locator('.st-nav-btn[data-st-oeffne="video"]').click();
     await expect(page.locator('#videoAktiv')).toBeEnabled({ timeout: 10_000 });
     await page.locator('label.switch-aufnahme').click();
+    await page.keyboard.press('Escape'); // Panel schließen, es überdeckt sonst die Bühne
     await expect(page.locator('#videoStatus')).toContainText('Aufnahme läuft', { timeout: 15_000 });
     const ansehen = page.frameLocator('iframe[title="Live-Vorschau Anzeigetafel"]').locator('.top-meta-bar #iframeBtnVideoAnsehen');
     await expect(ansehen).toBeVisible({ timeout: 5000 });

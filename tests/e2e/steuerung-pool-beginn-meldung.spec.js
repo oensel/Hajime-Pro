@@ -79,7 +79,7 @@ test('Overlay liegt über "Nächsten Kampf holen" und sperrt nur diesen, bis "Er
     await expect(holen.click({ trial: true, timeout: 1500 })).rejects.toThrow(/intercepts pointer events/);
     await page.evaluate(() => window.naechstenKampfHolen()); // auch ein Aufruf per Skript/Tastenkürzel holt nichts
     await expect(page.locator('#nameW')).toHaveValue('Kämpfer 1');
-    await page.locator('#matSelect').click({ trial: true, timeout: 1500 });
+    await page.locator('.st-nav-btn[data-st-oeffne="daten"]').click({ trial: true, timeout: 1500 }); // Menü bleibt bedienbar
 
     await page.locator('#poolBeginnErledigtBtn').click();
     await expect(overlay).toBeHidden();

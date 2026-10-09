@@ -606,7 +606,7 @@ body.padding-steuerung .pa-matrix td.pa-aktuell { outline: 2px solid #ffc107; ou
 
 /* "RESET ALL" in der Meta-Leiste der eingebetteten Anzeige (nur steuerung.html, ?controls=1), ganz rechts neben Klasse und Gewicht */
 .body-anzeige .top-meta-bar { position: relative; }
-.body-anzeige .iframe-ctrl-rechts { position: absolute; right: 1.5vh; top: 50%; transform: translateY(-50%); display: flex; align-items: center; gap: 1.5vh; }
+.body-anzeige .iframe-ctrl-rechts { z-index: 1001; position: absolute; right: 1.5vh; top: 50%; transform: translateY(-50%); display: flex; align-items: center; gap: 1.5vh; }
 .body-anzeige .iframe-ctrl-matte-pause { font-size: 3vh; font-weight: bold; padding: 0.6vh 2vh; background: #6c757d; color: #fff; border: 1px solid #000; border-radius: 4px; cursor: pointer; font-family: Arial, sans-serif; }
 .body-anzeige .iframe-ctrl-matte-pause:disabled { opacity: 0.5; cursor: not-allowed; }
 .body-anzeige .iframe-ctrl-reset-all { font-size: 3vh; font-weight: bold; padding: 0.6vh 2vh; background: #ffc107; color: #000; border: 1px solid #000; border-radius: 4px; cursor: pointer; font-family: Arial, sans-serif; }
