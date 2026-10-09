@@ -1175,6 +1175,9 @@ if (!document.getElementById('matchDuration')) {
 
     channel.onmessage = function(event) {
         const data = event.data;
+        // Andere Seiten (z.B. das Dashboard mit { type: 'request_state' }) nutzen denselben Kanal: nur echte Zustände anzeigen,
+        // sonst erscheint kurz "undefined" in der Anzeige.
+        if (!data || data.type === 'request_state' || data.nameW === undefined) return;
         const panelB = document.getElementById('panelB');
         if (panelB) panelB.className = data.fighter2Color;
 

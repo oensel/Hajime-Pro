@@ -582,11 +582,11 @@ body.padding-steuerung .pa-matrix td.pa-aktuell { outline: 2px solid #ffc107; ou
 .overlay-vorschau .pause-banner { display: none; position: absolute; left: 0; right: 0; top: 52%; transform: translateY(-50%); z-index: 2; align-items: center; justify-content: center; padding: 3vh 0; background: rgba(220, 53, 69, 0.94); color: #ffffff; font-family: 'Arial Black', sans-serif; font-size: 18vh; font-weight: 900; letter-spacing: 2vh; line-height: 1; box-shadow: 0 0 6vh rgba(0, 0, 0, 0.6); }
 
 /* Live-Durchsage (js/durchsage.js): pulsierendes Mikrofon mittig auf dem Bildschirm, solange Strg gehalten wird */
-.durchsage-overlay { position: fixed; inset: 0; z-index: 19000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; pointer-events: none; opacity: 0; transition: opacity .15s; }
+.durchsage-overlay { position: fixed; inset: var(--st-top, 0px) 0 0 var(--st-rail, 0px); z-index: 19000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; pointer-events: none; opacity: 0; transition: opacity .15s; }
 .durchsage-overlay.aktiv { opacity: 1; }
-.durchsage-mikro { position: relative; width: 120px; height: 120px; border-radius: 50%; background: #dc3545; color: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 30px rgba(0, 0, 0, .5); animation: durchsage-puls 1.1s ease-in-out infinite; }
+.durchsage-mikro { position: relative; width: 120px; height: 120px; border-radius: 50%; background: #28a745; color: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 30px rgba(0, 0, 0, .5); animation: durchsage-puls 1.1s ease-in-out infinite; }
 .durchsage-mikro .material-icons { font-size: 64px; }
-.durchsage-mikro::before, .durchsage-mikro::after { content: ''; position: absolute; inset: 0; border-radius: 50%; border: 4px solid #dc3545; animation: durchsage-ring 1.6s ease-out infinite; }
+.durchsage-mikro::before, .durchsage-mikro::after { content: ''; position: absolute; inset: 0; border-radius: 50%; border: 4px solid #28a745; animation: durchsage-ring 1.6s ease-out infinite; }
 .durchsage-mikro::after { animation-delay: .8s; }
 .durchsage-overlay.fehler .durchsage-mikro, .durchsage-overlay.fehler .durchsage-mikro::before, .durchsage-overlay.fehler .durchsage-mikro::after { background-color: #6c757d; border-color: #6c757d; animation-play-state: paused; }
 .durchsage-overlay.fehler .durchsage-mikro::before, .durchsage-overlay.fehler .durchsage-mikro::after { display: none; }
