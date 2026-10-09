@@ -67,7 +67,10 @@
         statusBtn.id = 'handyStatusBtn';
         statusBtn.className = 'handy-icon-btn';
         statusBtn.setAttribute('aria-label', 'Server-Status');
-        statusBtn.innerHTML = '<span class="material-icons" id="handyStatusIcon">sync</span>';
+        // Der Pfeil nach oben (wie bei Git: noch nicht gepusht) erscheint, wenn das Gerät offline ist und
+        // noch Änderungen zum Server übertragen werden müssen.
+        statusBtn.innerHTML = '<span class="material-icons" id="handyStatusIcon">sync</span>' +
+            '<span class="material-icons handy-sync-pfeil" id="handyStatusPfeil" hidden>arrow_upward</span>';
         leiste.appendChild(statusBtn);
 
         const mehrBtn = document.createElement('button');
@@ -137,6 +140,8 @@
             const icon = document.getElementById('handyStatusIcon');
             icon.textContent = art.icon;
             icon.style.color = art.farbe;
+            const pfeil = document.getElementById('handyStatusPfeil');
+            if (pfeil) pfeil.hidden = !(quelle.dataset.zustand === 'offline' && Number(quelle.dataset.ausstehend) > 0);
             statusPop.textContent = quelle.textContent;
             statusBtn.title = quelle.textContent;
         };

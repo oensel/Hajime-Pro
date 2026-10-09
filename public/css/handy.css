@@ -166,6 +166,30 @@ html.modus-app #syncStatusLeiste {
     font-size: 24px;
 }
 
+/* Pfeil nach oben am Status-Icon: Änderungen sind noch nicht zum Server übertragen (wie bei Git). */
+#handyStatusBtn {
+    position: relative;
+}
+
+#handyTopBar #handyStatusBtn .handy-sync-pfeil {
+    position: absolute;
+    right: 1px;
+    bottom: 1px;
+    width: 16px;
+    height: 16px;
+    font-size: 13px;
+    line-height: 16px;
+    text-align: center;
+    border-radius: 50%;
+    background: #ffd54f;
+    color: #1a2744;
+    box-shadow: 0 0 0 2px #1a2744;
+}
+
+#handyStatusBtn .handy-sync-pfeil[hidden] {
+    display: none;
+}
+
 .handy-pop {
     position: fixed;
     top: 52px;
