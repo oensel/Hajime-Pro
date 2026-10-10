@@ -2521,6 +2521,32 @@ function poolBeginnErledigtClick() {
 }
 document.getElementById('poolBeginnErledigtBtn')?.addEventListener('click', poolBeginnErledigtClick);
 
+// Pool-Änderung (z.B. Nachzügler eingefügt): Die Kämpfe eines noch nicht begonnenen Pools werden neu erzeugt.
+// Wir merken uns je Pool die Kampf-IDs der Matte; ändert sich die Menge ohne begonnenen Kampf, bekommt die
+// Mattenleitung einen Hinweis.
+let poolKampfIdsMerker = null; // Map<poolId, string>
+let poolKampfIdsMatte = null;
+
+function pruefePoolAenderung(kaempfe) {
+    const proPool = new Map();
+    kaempfe.forEach(k => {
+        if (!proPool.has(k.pool_id)) proPool.set(k.pool_id, { ids: [], begonnen: false, name: k.pool_bezeichnung });
+        const eintrag = proPool.get(k.pool_id);
+        eintrag.ids.push(k.id);
+        if (k.status === 'gestartet' || k.status === 'beendet') eintrag.begonnen = true;
+    });
+    const aktuell = new Map([...proPool].map(([id, e]) => [id, [...e.ids].sort((a, b) => a - b).join(',')]));
+    if (poolKampfIdsMerker && poolKampfIdsMatte === selectedMatId) {
+        proPool.forEach((e, poolId) => {
+            if (!e.begonnen && poolKampfIdsMerker.has(poolId) && poolKampfIdsMerker.get(poolId) !== aktuell.get(poolId)) {
+                zeigeNotification(`Pool ${e.name || ''} wurde geändert: Kämpfe neu aufgebaut.`, 'info');
+            }
+        });
+    }
+    poolKampfIdsMerker = aktuell;
+    poolKampfIdsMatte = selectedMatId;
+}
+
 // Lädt und rendert die "Kämpfe dieser Matte"-Übersicht (#steuerungUpcomingList /
 // #steuerungFinishedList in steuerung.html): kommende Kämpfe rein zur Information, beendete
 // Kämpfe zusätzlich mit einer "Korrigieren"-Aktion (analog zu kampf.html). Wird an denselben
@@ -2546,6 +2572,15 @@ async function ladeMattenUebersicht() {
         }
 
         renderePoolAnsichtSteuerung(kaempfe);
+
+        pruefePoolAenderung(kaempfe);
+
+        // Der geladene Kampf gehört zu einem neu aufgebauten Pool und existiert nicht mehr.
+        if (currentFightId && !isRunning && !ergebnisWirdGesendet
+            && !kaempfe.some(k => Number(k.id) === Number(currentFightId))) {
+            gibGeladenenKampfFrei();
+            zeigeNotification('Der geladene Kampf gehört zu einem geänderten Pool und wurde verworfen. Bitte den nächsten Kampf laden.', 'error');
+        }
 
         // Der geladene Kampf wurde inzwischen anderswo beendet (z.B. in der Kampf-Ansicht): freigeben.
         const geladen = currentFightId ? kaempfe.find(k => Number(k.id) === Number(currentFightId)) : null;
@@ -2775,6 +2810,7 @@ window.changeShido = changeShido;
 window.closeOverlay = closeOverlay;
 window.ergebnisSenden = ergebnisSenden;
 window.naechstenKampfHolen = naechstenKampfHolen;
+window.ladeMattenUebersicht = ladeMattenUebersicht;
 window.toggleMattePause = toggleMattePause;
 window.resetOsae = resetOsae;
 window.resetTimer = resetTimer;
