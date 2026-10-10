@@ -42,6 +42,30 @@ test.describe.serial('Brücke: Dokument-Änderungen landen über die Fachlogik i
         expect(konflikte.map(k => k.konflikt_typ)).toEqual(['dublette']);
     });
 
+    // Nachzügler: Die Altersklasse U18 hat bereits einen Pool (ausgelost), die Nachmeldung per Dokument
+    // wird trotzdem angenommen und bleibt ohne Pool, bis die Turnierleitung sie einsortiert.
+    test('Nachmeldung in ausgeloste Altersklasse wird angenommen und als Nachzügler geführt', async ({ request }) => {
+        const neu = {
+            _id: 'teilnehmer:u-33333333-3333-4333-8333-333333333333', dokumenttyp: 'teilnehmer', sql_id: null, bearbeitet_von: 'test',
+            turnier_id: turnierId, vorname: 'Nora', nachname: 'Nachzug', verein: 'JC Spaet', judopass_id: 'NZ-1',
+            geburtsjahr: 2009, geschlecht: 'männlich', gewicht: 72, altersklasse: 'U18', gewichtsklasse: '-73kg',
+            gewogen: true, lizenz_ablauf: '2099-12-31'
+        };
+        await schreibeDokument(request, dbName, neu);
+        await warteLeerlauf(request);
+        const doc = await ladeDokument(request, dbName, neu._id);
+        expect(doc.sql_id).toBeGreaterThan(0);
+        expect(doc.pool_id ?? null).toBeNull();
+        const abgelehnt = (await alleDokumente(request, dbName))
+            .filter(d => d.dokumenttyp === 'konflikt' && d.bezug_id === neu._id && d.konflikt_typ === 'abgelehnt');
+        expect(abgelehnt).toHaveLength(0);
+
+        const resp = await request.get(`/api/pools/nachzuegler?turnierId=${turnierId}`);
+        expect(resp.ok(), await resp.text()).toBeTruthy();
+        const { nachzuegler } = await resp.json();
+        expect(nachzuegler.map(n => n.teilnehmerId)).toContain(doc.sql_id);
+    });
+
     test('Ergebnis per Dokument -> SQL + Kaskade', async ({ request }) => {
         const erster = (await sqlKaempfe(request)).find(k => k.status === 'bereit');
         const doc = await ladeDokument(request, dbName, `kampf:${erster.id}`);

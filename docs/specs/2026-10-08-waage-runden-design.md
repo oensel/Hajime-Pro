@@ -22,6 +22,7 @@ auf die Matten kommen und kämpfen, während die Waage für die übrigen Altersk
 
 - Nachzügler in eine bereits ausgeloste Altersklasse: gibt es fachlich nicht (die Altersklasse ist nach der
   Waage abgeschlossen). Das Generieren und das Anmelden weisen sie ab.
+  *(Abgelöst durch `2026-10-10-nachzuegler-pool-design.md`: Nachzügler werden angenommen und einsortiert.)*
 - Mannschaften: die manuelle Pool-Anlage bleibt unverändert; ihre Sperre hängt nur an laufenden Mannschafts-Pools.
 - Neue Datenbankspalten: der Zustand einer Altersklasse wird aus den Pools abgeleitet.
 
