@@ -706,6 +706,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
     window.hajimeAktualisiereNachzuegler();
 
+    // Auf allen anderen Seiten holt das Menü den Zähler selbst (einmal beim Start, dann periodisch);
+    // auf pools.html aktualisiert pools.js ihn zusätzlich nach jeder Änderung.
+    let nachzueglerTurnierId = null;
+    try { nachzueglerTurnierId = turnierId || localStorage.getItem('aktiveTurnierId'); } catch { /* localStorage nicht verfügbar */ }
+    if (nachzueglerTurnierId && poolsBadge) {
+        const holeNachzueglerZaehler = async () => {
+            if (document.hidden) return;
+            try {
+                const antwort = await fetch(`/api/pools/nachzuegler?turnierId=${encodeURIComponent(nachzueglerTurnierId)}`);
+                if (!antwort.ok) return; // 403/404 (kein Zugriff, Turnier fehlt): Zähler bleibt unverändert
+                const daten = await antwort.json();
+                const mitVorschlag = (daten.nachzuegler || []).filter(n => n.vorschlag).length;
+                window.hajimeNachzueglerZaehler = mitVorschlag + (daten.imSammelpool || 0);
+                window.hajimeAktualisiereNachzuegler();
+            } catch { /* Netzwerkfehler: still ignorieren */ }
+        };
+        holeNachzueglerZaehler();
+        setInterval(holeNachzueglerZaehler, 30000);
+    }
+
     // --- SERVER-CLUSTER (Hallen-Server mit CLUSTER_KNOTEN, siehe src/cluster/) ---
     // Menüpunkt "Cluster"; auf dem Secondary zusätzlich ein Hinweis, dass nur gelesen werden kann.
     if (syncRolle === 'server') {

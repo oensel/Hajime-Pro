@@ -1142,7 +1142,10 @@ export async function verschiebeTeilnehmer(knex, req, res) {
             .where({ id: teilnehmerId })
             .first();
 
-        if (!athlet) {
+        // Die Berechtigung wird gegen body.turnierId geprüft (ohne diese Angabe leitet die Middleware
+        // das Turnier aus teilnehmerId ab): der Teilnehmer muss zu genau diesem Turnier gehören.
+        const geforderteTurnierId = req.body.turnierId ?? req.body.turnier_id;
+        if (!athlet || (geforderteTurnierId != null && geforderteTurnierId !== '' && Number(athlet.turnier_id) !== Number(geforderteTurnierId))) {
             return res.status(404).json({
                 success: false,
                 error: 'Teilnehmer nicht gefunden.'
@@ -1285,7 +1288,7 @@ export async function getNachzuegler(knex, req, res) {
 }
 
 // Matte des Pools neu planen (die Kämpfe eines neu aufgebauten Pools haben keine Mattenreihenfolge).
-async function aktualisiereMatteNachPoolAenderung(knex, poolId) {
+export async function aktualisiereMatteNachPoolAenderung(knex, poolId) {
     const pool = await knex('pools').where({ id: poolId }).first();
     if (pool && pool.kampfflaeche_id) {
         await planeKaempfeFuerKampfflaeche(knex, pool.kampfflaeche_id);
@@ -1339,16 +1342,27 @@ export async function sortiereNachzuegler(knex, req, res) {
 async function holeOderErzeugeSammelpool(knex, turnierId) {
     const vorhanden = await knex('pools').where({ turnier_id: turnierId, verspaetet: true }).first();
     if (vorhanden) return vorhanden;
-    const [idObj] = await knex('pools').insert({
-        turnier_id: turnierId,
-        bezeichnung: 'Verspätet',
-        modus: 'Nicht startbereit',
-        altersklasse: 'Verspätet',
-        geschlecht: 'mixed',
-        gewichtsklasse: '-',
-        status: 'teilnehmer_zugewiesen',
-        verspaetet: true
-    }).returning('id');
+    let idObj;
+    try {
+        [idObj] = await knex('pools').insert({
+            turnier_id: turnierId,
+            bezeichnung: 'Verspätet',
+            modus: 'Nicht startbereit',
+            altersklasse: 'Verspätet',
+            geschlecht: 'mixed',
+            gewichtsklasse: '-',
+            status: 'teilnehmer_zugewiesen',
+            verspaetet: true
+        }).returning('id');
+    } catch (error) {
+        // Paralleles sammeln: der eindeutige Teil-Index pools_verspaetet_eindeutig lässt nur einen
+        // Sammelpool je Turnier zu -> den bereits angelegten verwenden.
+        if (error.code === '23505') {
+            const bestehender = await knex('pools').where({ turnier_id: turnierId, verspaetet: true }).first();
+            if (bestehender) return bestehender;
+        }
+        throw error;
+    }
     const id = typeof idObj === 'object' ? idObj.id : idObj;
     return knex('pools').where({ id }).first();
 }

@@ -504,7 +504,7 @@ function normalisiereKampfStatus(status, kaempfer1Id, kaempfer2Id) {
 // selbstreferenzierenden Kampf-Quelle-Verknüpfungen). Gemeinsam genutzt von importTurnier
 // (komplette Neuanlage, offline) und importTurnierErgebnisse (Ergebnisse eines bestehenden
 // Turniers ersetzen, online).
-async function importWettkampfdaten(trx, turnierId, { kampfflaechen, pools, teilnehmer, kaempfe, mannschaften = [], mannschaftMitglieder = [] }) {
+export async function importWettkampfdaten(trx, turnierId, { kampfflaechen, pools, teilnehmer, kaempfe, mannschaften = [], mannschaftMitglieder = [] }) {
     const kampfflaecheIdMap = new Map();
     for (const kf of kampfflaechen) {
         const [neueIdObj] = await trx('kampfflaechen').insert({
@@ -537,7 +537,10 @@ async function importWettkampfdaten(trx, turnierId, { kampfflaechen, pools, teil
             mannschafts_gewichtsklassen: p.mannschafts_gewichtsklassen ?? null,
             golden_score_aktiv: p.golden_score_aktiv === undefined ? true : !!p.golden_score_aktiv,
             golden_score_max_sekunden: p.golden_score_max_sekunden ?? null,
-            farbe_kaempfer2: gueltigeFarbe(p.farbe_kaempfer2)
+            farbe_kaempfer2: gueltigeFarbe(p.farbe_kaempfer2),
+            // Sammelpool der Nachzügler ("Verspätet") muss den Marker behalten, sonst wird er nach
+            // dem Import zu einem gewöhnlichen Pool (Siegerliste, Urkunden, Matten ...).
+            verspaetet: !!p.verspaetet
         }).returning('id');
         poolIdMap.set(p.id, typeof neueIdObj === 'object' ? neueIdObj.id : neueIdObj);
     }

@@ -120,6 +120,21 @@ test.describe.serial('Nachzügler', () => {
         expect(zu.status()).toBe(409);
     });
 
+    test('Verschieben mit fremder turnierId wird abgewiesen (Pool-Zuordnung bleibt)', async ({ request }) => {
+        const resp = await request.post('/api/turniere', {
+            data: { bezeichnung: `E2E Verschieben Fremd ${Date.now()}`, ort: 'Halle', datum: '2027-06-15', ausrichter: 'JC Nachzug', anzahl_kampfflaechen: 1 }
+        });
+        const fremdId = (await resp.json()).turnierId;
+        const vorher = (await (await request.get(`/api/teilnehmer?turnierId=${turnierId}`)).json()).find(t => t.id === ids.zuSpaet);
+
+        const abgewiesen = await request.post('/api/pools/verschieben', {
+            data: { teilnehmerId: ids.zuSpaet, zielPoolId: poolId, turnierId: fremdId }
+        });
+        expect(abgewiesen.status()).toBe(404);
+        const nachher = (await (await request.get(`/api/teilnehmer?turnierId=${turnierId}`)).json()).find(t => t.id === ids.zuSpaet);
+        expect(nachher.pool_id).toBe(vorher.pool_id);
+    });
+
     test('Einsortieren mit fremder turnierId wird abgewiesen (Teilnehmer bleibt unverändert)', async ({ request }) => {
         const resp = await request.post('/api/turniere', {
             data: { bezeichnung: `E2E Nachzügler Fremd ${Date.now()}`, ort: 'Halle', datum: '2027-06-13', ausrichter: 'JC Nachzug', anzahl_kampfflaechen: 1 }
@@ -173,5 +188,56 @@ test.describe.serial('Nachzügler: Pools-Seite', () => {
         await page.reload();
         await expect(page.locator('.pool-sammelpool')).toBeVisible();
         await expect(page.locator('.pool-sammelpool .draggable-athlete')).toHaveCount(1);
+    });
+});
+
+test.describe.serial('Nachzügler: Robustheit', () => {
+    let turnierId;
+    const anlegen = async (request, name, gewicht, extra = {}) => {
+        const resp = await request.post('/api/teilnehmer', {
+            data: {
+                turnier_id: turnierId, vorname: name, nachname: 'Robust', verein: 'JC Robust',
+                geburtsjahr: 2016, geschlecht: 'männlich', gewicht, altersklasse: 'U11', gewichtsklasse: '-30',
+                lizenz_ablauf: '2099-12-31', gewogen: true, ...extra
+            }
+        });
+        expect(resp.ok(), await resp.text()).toBeTruthy();
+        return (await resp.json()).teilnehmerId;
+    };
+
+    test('Altersklassenwechsel in offenem Pool auf der Matte: Kämpfe behalten eine Mattenreihenfolge', async ({ request }) => {
+        const resp = await request.post('/api/turniere', {
+            data: { bezeichnung: `E2E Robust ${Date.now()}`, ort: 'Halle', datum: '2027-06-16', ausrichter: 'JC Robust', anzahl_kampfflaechen: 1 }
+        });
+        turnierId = (await resp.json()).turnierId;
+        const ids = [];
+        for (const [i, g] of [28, 29, 29.5, 30].entries()) ids.push(await anlegen(request, `Stamm${i}`, g));
+        expect((await request.post('/api/pools/generieren', { data: { turnierId, altersklassen: ['U11'] } })).ok()).toBeTruthy();
+        expect((await request.post('/api/pools/aufteilen', { data: { turnierId } })).ok()).toBeTruthy();
+
+        const wechsel = await request.put(`/api/teilnehmer/${ids[3]}`, {
+            data: {
+                vorname: 'Stamm3', nachname: 'Robust', geschlecht: 'männlich', gewicht: 30, altersklasse: 'U13',
+                gewichtsklasse: '-30', geburtsjahr: 2016, judopass_id: ''
+            }
+        });
+        expect(wechsel.ok(), await wechsel.text()).toBeTruthy();
+
+        const pools = await (await request.get(`/api/pools/details?turnierId=${turnierId}`)).json();
+        const pool = pools.find(p => p.altersklasse === 'U11');
+        expect(pool.anzahl_teilnehmer).toBe(3);
+        const echte = pool.kaempfe.filter(k => k.status !== 'freilos');
+        expect(echte.length).toBeGreaterThan(0);
+        expect(echte.every(k => k.matten_reihenfolge != null), JSON.stringify(pool.kaempfe)).toBeTruthy();
+    });
+
+    test('Paralleles Sammeln legt genau einen Sammelpool an', async ({ request }) => {
+        await anlegen(request, 'Schwer1', 60, { gewichtsklasse: '-66' });
+        await anlegen(request, 'Schwer2', 61, { gewichtsklasse: '-66' });
+        const antworten = await Promise.all([1, 2, 3].map(() =>
+            request.post('/api/pools/nachzuegler/sammeln', { data: { turnierId } })));
+        for (const a of antworten) expect(a.ok(), await a.text()).toBeTruthy();
+        const pools = await (await request.get(`/api/pools/details?turnierId=${turnierId}&mitVerspaetet=1`)).json();
+        expect(pools.filter(p => p.verspaetet)).toHaveLength(1);
     });
 });

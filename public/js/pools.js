@@ -177,13 +177,20 @@ document.addEventListener('DOMContentLoaded', () => {
             // Ohne Vorschlag: automatisch in den Sammelpool, danach Pools neu laden (die Liste ist dann leer).
             if (!sammelnLaeuft && nachzuegler.some(n => !n.vorschlag)) {
                 sammelnLaeuft = true;
+                let gesammelt = false;
                 try {
                     await postJson('/api/pools/nachzuegler/sammeln', {});
-                    await ladePools();
+                    gesammelt = true;
+                } catch (err) {
+                    // z.B. 409 am Secondary: die Vorschläge werden trotzdem angezeigt.
+                    zeigeNotification(err.message, 'error');
                 } finally {
                     sammelnLaeuft = false;
                 }
-                return;
+                if (gesammelt) {
+                    await ladePools();
+                    return;
+                }
             }
 
             const mitVorschlag = nachzuegler.filter(n => n.vorschlag);
@@ -706,6 +713,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
+                            turnierId: parseInt(turnierId, 10),
                             teilnehmerId: parseInt(athleteId, 10),
                             zielPoolId: parseInt(zielPoolId, 10)
                         })

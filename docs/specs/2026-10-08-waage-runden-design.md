@@ -103,7 +103,7 @@ Heute sperrt `turnierHatEchteKaempfe` die gesamte Teilnehmerliste ab dem ersten 
 (`teilnehmerController.js` an den Stellen Anlegen, Ändern, Löschen/Zurückziehen, Import). Neu je Altersklasse:
 
 - **Anmelden / Nachmelden** (Anlegen, Import) in eine **ausgeloste** Altersklasse: 409 („Die Altersklasse ist
-  bereits ausgelost“).
+  bereits ausgelost“) (abgelöst durch 2026-10-10-nachzuegler-pool-design.md).
 - **Ändern, Wiegen, Löschen** eines Teilnehmers: gesperrt, wenn ein Pool seiner Altersklasse echte Kämpfe hat
   (die bisherige Regel, nur auf die eigene Altersklasse begrenzt). Teilnehmer offener Altersklassen bleiben
   bearbeitbar, auch wenn andere Altersklassen schon kämpfen.
@@ -133,7 +133,7 @@ Heute sperrt `turnierHatEchteKaempfe` die gesamte Teilnehmerliste ab dem ersten 
 - **E2E** (`tests/e2e/waage-runden.spec.js`, echter Server, zwei Matten): drei Runden (U9–U13, U15, U18).
   Prüft: Dialog zeigt nur Altersklassen mit Eingewogenen; frühere Pools, Matten, Reihenfolgen und Kämpfe
   bleiben nach der späteren Runde unverändert; nicht gewogene Teilnehmer anderer Altersklassen bleiben
-  „angemeldet“; Einwiegen in U15 funktioniert, obwohl U13 kämpft; Nachmelden in ausgeloste Klasse → 409;
+  „angemeldet“; Einwiegen in U15 funktioniert, obwohl U13 kämpft; Nachmelden in ausgeloste Klasse → 409 (abgelöst durch 2026-10-10-nachzuegler-pool-design.md);
   Neu-Generieren nur ohne echte Kämpfe; „Pools aufteilen“ lässt bestehende Zuordnungen unberührt.
 - Bestehende Specs zur Pool-Verteilung (`teilnehmer-pools-verteilung.spec.js`) und die Sync-Suite laufen
   unverändert grün (Standardverhalten ohne `altersklassen` bleibt erhalten).
@@ -151,5 +151,5 @@ Heute sperrt `turnierHatEchteKaempfe` die gesamte Teilnehmerliste ab dem ersten 
 
 - **Sperre bestehender Teilnehmer ab dem ersten Kampf der Altersklasse** (statt ab der Auslosung): das ist die
   bisherige Regel, nur je Altersklasse begrenzt. Zwischen Auslosung und erstem Kampf lassen sich Daten eines
-  Teilnehmers also weiter korrigieren (z.B. Gewicht), nur neue Teilnehmer sind sofort abgewiesen. Soll die
+  Teilnehmers also weiter korrigieren (z.B. Gewicht), nur neue Teilnehmer sind sofort abgewiesen (abgelöst durch 2026-10-10-nachzuegler-pool-design.md). Soll die
   Bearbeitung stattdessen schon ab der Auslosung gesperrt sein?

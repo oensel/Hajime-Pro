@@ -3,7 +3,7 @@ import { readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { resolveUserVereinName, hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
-import { turnierHatEchteKaempfe, mannschaftsPoolsHabenEchteKaempfe, ermittleAltersklassenPoolZustand, regeneriereKampfplanFuerPool } from './poolController.js';
+import { turnierHatEchteKaempfe, mannschaftsPoolsHabenEchteKaempfe, ermittleAltersklassenPoolZustand, regeneriereKampfplanFuerPool, aktualisiereMatteNachPoolAenderung } from './poolController.js';
 import { FachFehler } from '../utils/fachFehler.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 const { istEinzelbenutzerBetrieb } = betriebsmodus;
@@ -482,8 +482,14 @@ export async function aktualisiereTeilnehmerDaten(knex, id, daten, kontext) {
     // Der Sammelpool "Verspätet" hat keinen Kampfplan und wird nicht neu aufgebaut.
     if (athlet.pool_id != null && updates.altersklasse && updates.altersklasse !== athlet.altersklasse) {
         const alterPool = await knex('pools').where({ id: athlet.pool_id }).first();
-        await knex('turnier_teilnehmer').where({ id }).update({ pool_id: null });
-        if (alterPool && !alterPool.verspaetet) await regeneriereKampfplanFuerPool(knex, athlet.pool_id);
+        const neuAufbauen = alterPool && !alterPool.verspaetet;
+        // Lösen und Neuaufbau atomar: bricht der Aufbau ab, bleibt der Teilnehmer im Pool.
+        await knex.transaction(async (trx) => {
+            await trx('turnier_teilnehmer').where({ id }).update({ pool_id: null });
+            if (neuAufbauen) await regeneriereKampfplanFuerPool(trx, athlet.pool_id);
+        });
+        // Die neuen Kämpfe haben noch keine Mattenreihenfolge: Matte neu planen.
+        if (neuAufbauen) await aktualisiereMatteNachPoolAenderung(knex, athlet.pool_id);
     }
 }
 

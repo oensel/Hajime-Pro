@@ -75,8 +75,8 @@
         return new Date(Date.now() + (knoten.uhr_offset_ms || 0)).toISOString();
     }
 
-    // Eine abgelehnte Nachmeldung (z.B. Pool mit begonnenen Kämpfen; ausgeloste Altersklassen
-    // nehmen Nachzügler an) räumt der Abgleich des Servers
+    // Eine abgelehnte Nachmeldung (Ablehnungsgründe wie in legeTeilnehmerAn; ausgeloste
+    // Altersklassen nehmen Nachzügler an) räumt der Abgleich des Servers
     // gleich wieder weg, bevor die Ablehnung hier ankommt. Den Grund hält das konflikt:-Dokument fest.
     async function grundFuerEntferntesDokument(docId) {
         const standard = 'Datensatz wurde auf dem Server entfernt.';
