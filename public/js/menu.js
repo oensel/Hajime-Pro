@@ -161,6 +161,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <span class="material-icons">groups</span>
                     <span class="menu-text">Pools</span>
                     <span class="material-icons menu-item-warning" id="nav-pools-warning" style="display: none;" title="Mindestens ein Pool wartet auf Ergebnisprüfung">warning</span>
+                    <span class="menu-item-badge" id="nav-pools-badge" style="display: none;"></span>
                 </a>
                 <a href="/mannschaften.html" class="menu-item" id="nav-mannschaften">
                     <span class="material-icons">groups_2</span>
@@ -714,6 +715,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             videoLink.style.display = '';
             if (currentPath.includes('videobeweis.html')) videoLink.classList.add('active');
         }
+        // Nachzügler-Zähler am Menüpunkt "Pools": wird von pools.js gesetzt, solange pools.html offen ist.
+        const poolsBadge = document.getElementById('nav-pools-badge');
+        window.hajimeAktualisiereNachzuegler = () => {
+            if (!poolsBadge) return;
+            const anzahl = window.hajimeNachzueglerZaehler || 0;
+            poolsBadge.textContent = String(anzahl);
+            poolsBadge.style.display = anzahl > 0 ? 'inline-block' : 'none';
+            poolsBadge.title = anzahl > 0 ? `${anzahl} Nachzügler warten auf einen Pool` : '';
+        };
+        window.hajimeAktualisiereNachzuegler();
         // Sync-Konflikte: Menüpunkt mit Zähler der offenen Konflikte (hohe Priorität: rot).
         const syncKonflikteLink = document.getElementById('nav-sync-konflikte');
         if (syncKonflikteLink) {

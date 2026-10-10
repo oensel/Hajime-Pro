@@ -136,3 +136,42 @@ test.describe.serial('Nachzügler', () => {
         expect(nachher.pool_id).toBe(poolVorher);
     });
 });
+
+test.describe.serial('Nachzügler: Pools-Seite', () => {
+    let turnierId;
+    const anlegen = async (request, name, gewicht, extra = {}) => {
+        const resp = await request.post('/api/teilnehmer', {
+            data: {
+                turnier_id: turnierId, vorname: name, nachname: 'UiTest', verein: 'JC Ui',
+                geburtsjahr: 2016, geschlecht: 'männlich', gewicht, altersklasse: 'U11', gewichtsklasse: '-30',
+                lizenz_ablauf: '2099-12-31', gewogen: true, ...extra
+            }
+        });
+        expect(resp.ok(), await resp.text()).toBeTruthy();
+        return (await resp.json()).teilnehmerId;
+    };
+
+    test('Vorschlag übernehmen und Sammelpool-Zeile', async ({ page, request }) => {
+        const resp = await request.post('/api/turniere', {
+            data: { bezeichnung: `E2E Nachzügler UI ${Date.now()}`, ort: 'Halle', datum: '2027-06-14', ausrichter: 'JC Ui', anzahl_kampfflaechen: 1 }
+        });
+        turnierId = (await resp.json()).turnierId;
+        for (const [i, g] of [28, 29, 29.5, 30].entries()) await anlegen(request, `Stamm${i}`, g);
+        expect((await request.post('/api/pools/generieren', { data: { turnierId, altersklassen: ['U11'] } })).ok()).toBeTruthy();
+        expect((await request.post('/api/pools/aufteilen', { data: { turnierId } })).ok()).toBeTruthy();
+
+        await anlegen(request, 'Spaet', 29.2);
+        await page.goto(`/pools.html?id=${turnierId}`);
+        const zeile = page.locator('.nachzuegler-zeile');
+        await expect(zeile).toHaveCount(1);
+        await expect(zeile).toContainText('Spaet');
+        await page.locator('.nachzuegler-uebernehmen').click();
+        await expect(page.locator('.nachzuegler-zeile')).toHaveCount(0);
+
+        // Nachzügler ohne passenden Pool (Gewicht weit entfernt): landet automatisch im Sammelpool
+        await anlegen(request, 'Schwer', 60, { gewichtsklasse: '-66' });
+        await page.reload();
+        await expect(page.locator('.pool-sammelpool')).toBeVisible();
+        await expect(page.locator('.pool-sammelpool .draggable-athlete')).toHaveCount(1);
+    });
+});

@@ -878,3 +878,46 @@
 @media screen {
     .print-fusszeile { display: none; }
 }
+
+/* --- Nachzügler (nach der Auslosung eingewogen) und Sammelpool "Verspätet" --- */
+.nachzuegler-bereich {
+    margin: 0 0 16px;
+    padding: 12px 16px;
+    border: 1px solid var(--primary);
+    border-radius: 8px;
+    background-color: var(--bg-card);
+}
+
+.nachzuegler-titel {
+    margin: 0 0 8px;
+    font-size: 1rem;
+    color: var(--primary);
+}
+
+.nachzuegler-zeile {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    padding: 8px 0;
+    border-top: 1px solid var(--border);
+    color: var(--text-main);
+}
+
+.nachzuegler-zeile:first-child {
+    border-top: none;
+}
+
+.nachzuegler-info {
+    font-weight: 600;
+}
+
+.nachzuegler-vorschlag {
+    flex: 1 1 260px;
+    color: var(--text-muted);
+}
+
+.pool-sammelpool > .pool-cell {
+    background-color: var(--bg-card);
+    box-shadow: inset 3px 0 0 var(--primary);
+}

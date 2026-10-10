@@ -72,7 +72,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     let mannschaftenGesperrt = false;
     // Einzelstarter mit Mannschaft bleiben bearbeitbar (der Server lehnt nur Änderungen mit Bezug zur
     // Mannschaft ab), können aber nicht gelöscht werden.
-    const istTeilnehmerGesperrt = (athlet) => gesperrteAltersklassen.has(athlet.altersklasse)
+    // Gesperrt sind nur Teilnehmer in Pools mit begonnenen Kämpfen (je Pool, nicht je Altersklasse).
+    let gesperrtePoolIds = new Set();
+    const istTeilnehmerGesperrt = (athlet) => (athlet.pool_id != null && gesperrtePoolIds.has(Number(athlet.pool_id)))
         || (mannschaftenGesperrt && !athlet.auch_einzelwettkampf && teamInfoByTeilnehmerId.has(athlet.id));
     const istLoeschenGesperrt = (athlet) => istTeilnehmerGesperrt(athlet)
         || (mannschaftenGesperrt && teamInfoByTeilnehmerId.has(athlet.id));
@@ -85,7 +87,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Ältere Server liefern nur `gesperrt` (turnierweit).
             gesperrteAltersklassen = new Set(Array.isArray(data.gesperrteAltersklassen) ? data.gesperrteAltersklassen : []);
             mannschaftenGesperrt = !!data.mannschaftenGesperrt;
-            teilnehmerlisteGesperrt = gesperrteAltersklassen.size > 0 || !!data.gesperrt || mannschaftenGesperrt;
+            gesperrtePoolIds = new Set(Array.isArray(data.gesperrtePoolIds) ? data.gesperrtePoolIds.map(Number) : []);
+            teilnehmerlisteGesperrt = gesperrtePoolIds.size > 0 || !!data.gesperrt || mannschaftenGesperrt;
 
             const banner = document.getElementById('teilnehmerGesperrtBanner');
             const link = document.getElementById('teilnehmerGesperrtPoolsLink');
@@ -93,7 +96,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (link) link.href = `/pools.html?turnierId=${turnierId}`;
             if (klassenText) {
                 const teile = [];
-                if (gesperrteAltersklassen.size > 0) teile.push(`Gesperrt (Kämpfe haben begonnen): ${[...gesperrteAltersklassen].join(', ')}.`);
+                if (gesperrtePoolIds.size > 0) teile.push(`Gesperrt (Pools mit begonnenen Kämpfen in: ${[...gesperrteAltersklassen].join(', ')}).`);
                 if (mannschaftenGesperrt) teile.push('Mannschaftsmitglieder sind gesperrt, da Mannschaftskämpfe begonnen haben.');
                 klassenText.textContent = teile.length > 0
                     ? `${teile.join(' ')} Die übrigen Teilnehmer lassen sich weiter bearbeiten.`
@@ -101,8 +104,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             if (banner) banner.style.display = teilnehmerlisteGesperrt ? 'flex' : 'none';
 
-            // Anmelden/Import/Scan bleiben sichtbar: nur bereits ausgeloste Altersklassen weist der
-            // Server ab. bulkDeleteBtn wird ausschließlich von updateBulkActionsBar gesteuert.
+            // Anmelden/Import/Scan bleiben sichtbar: auch für bereits ausgeloste Altersklassen
+            // (Nachzügler); nur Pools mit begonnenen Kämpfen weist der Server ab. bulkDeleteBtn wird ausschließlich von updateBulkActionsBar gesteuert.
             updateBulkActionsBar();
         } catch (err) {
             console.error('Fehler beim Prüfen der Teilnehmerlisten-Sperre:', err);

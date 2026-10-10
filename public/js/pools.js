@@ -118,6 +118,84 @@ document.addEventListener('DOMContentLoaded', () => {
         return confirm(nachricht);
     };
 
+    // --- NACHZÜGLER (nach der Auslosung eingewogen): Vorschlag bestätigen; ohne Vorschlag landet der
+    // Teilnehmer automatisch im Sammelpool "Verspätet" und wird dort per Drag&Drop verschoben ---
+    const nachzueglerBereich = document.getElementById('nachzueglerBereich');
+    const nachzueglerListe = document.getElementById('nachzueglerListe');
+    let sammelnLaeuft = false;
+
+    async function postJson(url, body) {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ turnierId, ...body })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || result.success === false) throw new Error(result.error || 'Aktion fehlgeschlagen.');
+        return result;
+    }
+
+    function erzeugeNachzueglerZeile(n) {
+        const zeile = document.createElement('div');
+        zeile.className = 'nachzuegler-zeile';
+        zeile.dataset.teilnehmerId = String(n.teilnehmerId);
+
+        const info = document.createElement('div');
+        info.className = 'nachzuegler-info';
+        info.textContent = `${n.name} · ${n.altersklasse} · ${n.gewicht ?? '–'} kg · ${n.verein || ''}`;
+
+        const hinweis = document.createElement('div');
+        hinweis.className = 'nachzuegler-vorschlag';
+        const v = n.vorschlag;
+        hinweis.textContent = `Vorschlag: ${v.bezeichnung} (${v.teilnehmerNachher - 1} → ${v.teilnehmerNachher} Teilnehmer, ${v.systemNachher}${v.matteId ? '' : ', noch ohne Matte'})`;
+
+        const uebernehmen = document.createElement('button');
+        uebernehmen.type = 'button';
+        uebernehmen.className = 'btn btn-raised nachzuegler-uebernehmen';
+        uebernehmen.textContent = 'Übernehmen';
+        uebernehmen.addEventListener('click', async () => {
+            try {
+                await postJson(`/api/pools/nachzuegler/${n.teilnehmerId}/einsortieren`, { poolId: v.poolId });
+                zeigeNotification('Nachzügler eingeordnet.', 'success');
+            } catch (err) {
+                zeigeNotification(err.message, 'error');
+            }
+            await ladePools();
+        });
+
+        zeile.append(info, hinweis, uebernehmen);
+        return zeile;
+    }
+
+    async function ladeNachzuegler() {
+        if (!nachzueglerBereich || !nachzueglerListe) return;
+        try {
+            const response = await fetch(`/api/pools/nachzuegler?turnierId=${encodeURIComponent(turnierId)}`);
+            if (!response.ok) { nachzueglerBereich.style.display = 'none'; return; }
+            const { nachzuegler, imSammelpool } = await response.json();
+
+            // Ohne Vorschlag: automatisch in den Sammelpool, danach Pools neu laden (die Liste ist dann leer).
+            if (!sammelnLaeuft && nachzuegler.some(n => !n.vorschlag)) {
+                sammelnLaeuft = true;
+                try {
+                    await postJson('/api/pools/nachzuegler/sammeln', {});
+                    await ladePools();
+                } finally {
+                    sammelnLaeuft = false;
+                }
+                return;
+            }
+
+            const mitVorschlag = nachzuegler.filter(n => n.vorschlag);
+            nachzueglerListe.replaceChildren(...mitVorschlag.map(erzeugeNachzueglerZeile));
+            nachzueglerBereich.style.display = mitVorschlag.length > 0 ? '' : 'none';
+            window.hajimeNachzueglerZaehler = mitVorschlag.length + (imSammelpool || 0);
+            if (window.hajimeAktualisiereNachzuegler) window.hajimeAktualisiereNachzuegler();
+        } catch (err) {
+            console.error('[Pools] Nachzügler konnten nicht geladen werden:', err);
+        }
+    }
+
     // --- MAIN LOADER ---
     async function ladePools() {
         if (!poolsContainer) return;
@@ -163,6 +241,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="pools-empty-banner">
                         Noch keine Pools für dieses Turnier berechnet. Alle Teilnehmer erfasst? Starten Sie oben rechts die automatische Pool-Generierung nach DJB-Reglement.
                     </div>`;
+                ladeNachzuegler();
                 return;
             }
 
@@ -171,8 +250,9 @@ document.addEventListener('DOMContentLoaded', () => {
             aktualisiereWeitereRundeKnopf();
 
             // Rendert das HTML-Tabellengerüst (Schnittstelle zu Teil 2)
-            const sortierteNachAK = [...pools].sort(vergleichePools);
+            const sortierteNachAK = [...pools].sort((a, b) => (b.verspaetet ? 1 : 0) - (a.verspaetet ? 1 : 0) || vergleichePools(a, b));
             renderPoolsHTML(sortierteNachAK);
+            ladeNachzuegler();
 
         } catch (error) {
             console.error('[Pools] Fehler beim Laden:', error);
@@ -218,6 +298,34 @@ document.addEventListener('DOMContentLoaded', () => {
     // Tabellenaufbau als auch beim gezielten Nachladen einzelner Zeilen (nach Drag & Drop,
     // ohne Ruckeln durch Neuladen der ganzen Tabelle) verwendet.
     function renderPoolRow(pool) {
+        if (pool.verspaetet) {
+            return `
+                <tr class="pool-section pool-sammelpool" data-pool-id="${pool.id}">
+                    <td class="pool-cell pool-name-cell">
+                        <strong>Verspätet</strong>
+                        <div class="pool-einstellung-label">Nachzügler ohne passenden Pool. Per Drag&amp;Drop in einen noch nicht begonnenen Pool ziehen.</div>
+                    </td>
+                    <td class="pool-cell pool-align-top"><span class="pool-status-badge vorbereitung">Wartet auf Zuordnung</span></td>
+                    <td class="pool-cell pool-number-cell pool-stat-cell"><span class="pool-system-text">${pool.anzahl_teilnehmer}</span></td>
+                    <td class="pool-cell pool-number-cell pool-stat-cell"><span class="pool-system-text">–</span></td>
+                    <td class="pool-cell pool-number-cell pool-stat-cell"><span class="pool-system-text">–</span></td>
+                    <td class="pool-cell pool-athletes-cell pool-align-top">
+                        <div class="drop-zone" data-pool-id="${pool.id}" data-locked="false">
+                            ${pool.teilnehmer.map(t => `
+                                <div class="draggable-athlete" draggable="true" data-athlete-id="${t.id}" data-current-pool="${pool.id}">
+                                    <div class="athlete-info-wrapper">
+                                        <span class="material-icons athlete-drag-icon">drag_indicator</span>
+                                        <span class="athlete-name">${escapeHtml(t.nachname)}, ${escapeHtml(t.vorname)}</span>
+                                        <span class="athlete-pass-id">(${escapeHtml(t.altersklasse)})</span>
+                                    </div>
+                                    <div class="athlete-weight">${parseFloat(t.gewicht).toFixed(2)} kg</div>
+                                </div>`).join('')}
+                        </div>
+                    </td>
+                    <td class="pool-cell pool-action-cell pool-align-top"></td>
+                </tr>
+            `;
+        }
         const dauerText = pool.gesamt_kaempfe > 0 ? `${pool.dauer_minuten} Min.` : '0 Min.';
             const istLeer = pool.anzahl_teilnehmer === 0;
             const kampfzeitMinuten = Math.min(
