@@ -15,7 +15,7 @@ import { MannschaftDoppelKo16Manager } from '../services/MannschaftDoppelKo16Man
 import { ermittlePausensekunden } from '../shared/pausenRegel.js';
 import { verteilePoolsAufMatten } from '../services/mattenVerteilung.js';
 import { FachFehler } from '../utils/fachFehler.js';
-import { berechneVorschlag } from '../services/nachzuegler.js';
+import { berechneVorschlag, listeOffenePools } from '../services/nachzuegler.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1275,7 +1275,8 @@ export async function getNachzuegler(knex, req, res) {
             altersklasse: t.altersklasse,
             geschlecht: t.geschlecht,
             gewicht: t.gewicht,
-            vorschlag: berechneVorschlag(t, offenePools, { pruefeSpanne: pruefeGewichtsspanne, waehleSystem: waehleWettkampfsystem })
+            vorschlag: berechneVorschlag(t, offenePools, { pruefeSpanne: pruefeGewichtsspanne, waehleSystem: waehleWettkampfsystem }),
+            offenePools: listeOffenePools(t, offenePools, { pruefeSpanne: pruefeGewichtsspanne, waehleSystem: waehleWettkampfsystem })
         }));
         const sammelpool = await knex('pools').where({ turnier_id: turnierId, verspaetet: true }).first();
         const imSammelpool = sammelpool
@@ -1296,14 +1297,21 @@ export async function aktualisiereMatteNachPoolAenderung(knex, poolId) {
     }
 }
 
+// Turnier, gegen das die Middleware die Berechtigung geprüft hat (req.tournament; im Einzelbenutzer-Betrieb
+// ohne Middleware-Prüfung: Query vor Body, wie resolveTurnierId in middleware/auth.js).
+function autorisiertesTurnierId(req) {
+    if (req.tournament?.id != null) return Number(req.tournament.id);
+    return parseInt(req.query.turnierId || req.body.turnierId || req.body.turnier_id, 10);
+}
+
 export async function sortiereNachzuegler(knex, req, res) {
     try {
         const teilnehmerId = parseInt(req.params.teilnehmerId, 10);
         const poolId = parseInt(req.body.poolId, 10);
-        const turnierId = parseInt(req.body.turnierId, 10);
+        const turnierId = autorisiertesTurnierId(req);
         if (!poolId) return res.status(400).json({ success: false, error: 'poolId ist erforderlich.' });
 
-        // Die Berechtigung wurde gegen body.turnierId geprüft: der Teilnehmer muss zu genau diesem Turnier gehören.
+        // Die Berechtigung wurde gegen das autorisierte Turnier geprüft: der Teilnehmer muss zu genau diesem Turnier gehören.
         const athlet = await knex('turnier_teilnehmer').where({ id: teilnehmerId }).first();
         if (!athlet || !turnierId || Number(athlet.turnier_id) !== turnierId) return res.status(404).json({ success: false, error: 'Teilnehmer nicht gefunden.' });
         if (athlet.pool_id != null || athlet.status !== 'kampfbereit') {
@@ -1367,10 +1375,34 @@ async function holeOderErzeugeSammelpool(knex, turnierId) {
     return knex('pools').where({ id }).first();
 }
 
+// Genau diesen Nachzügler in den Sammelpool "Verspätet" legen (Auswahl im Dialog nach dem Speichern).
+export async function verspaeteNachzuegler(knex, req, res) {
+    try {
+        const teilnehmerId = parseInt(req.params.teilnehmerId, 10);
+        const turnierId = autorisiertesTurnierId(req);
+        const athlet = await knex('turnier_teilnehmer').where({ id: teilnehmerId }).first();
+        if (!athlet || !turnierId || Number(athlet.turnier_id) !== turnierId) {
+            return res.status(404).json({ success: false, error: 'Teilnehmer nicht gefunden.' });
+        }
+        const nachzuegler = await ladeNachzuegler(knex, turnierId);
+        if (!nachzuegler.some(t => t.id === teilnehmerId)) {
+            return res.status(409).json({ success: false, error: NACHZUEGLER_FEHLER_KEIN_NACHZUEGLER });
+        }
+        const sammelpool = await holeOderErzeugeSammelpool(knex, turnierId);
+        const aktualisiert = await knex('turnier_teilnehmer')
+            .where({ id: teilnehmerId, status: 'kampfbereit' }).whereNull('pool_id')
+            .update({ pool_id: sammelpool.id });
+        if (!aktualisiert) return res.status(409).json({ success: false, error: NACHZUEGLER_FEHLER_KEIN_NACHZUEGLER });
+        return res.json({ success: true, poolId: sammelpool.id });
+    } catch (error) {
+        return res.status(error.statusCode || 500).json({ success: false, error: error.message });
+    }
+}
+
 // Nachzügler ohne passenden offenen Pool in den Sammelpool legen (idempotent).
 export async function sammleVerspaetete(knex, req, res) {
     try {
-        const turnierId = parseInt(req.body.turnierId, 10);
+        const turnierId = autorisiertesTurnierId(req);
         if (!turnierId) return res.status(400).json({ success: false, error: 'turnierId ist erforderlich.' });
 
         const nachzuegler = await ladeNachzuegler(knex, turnierId);

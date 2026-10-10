@@ -902,6 +902,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     kampfbereitBtn.style.display = 'none';
                     delete kampfbereitBtn.dataset.teilnehmerId;
                     if (window.ladeTeilnehmerListe) window.ladeTeilnehmerListe();
+                    if (window.NachzueglerDialog) await window.NachzueglerDialog.frageNachSpeichern({ turnierId, teilnehmerId });
                 } else {
                     window.zeigeNotification(result.fehler || 'Fehler bei der Bestätigung.', 'error');
                 }
@@ -1089,6 +1090,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             kampfbereitBtn.style.display = 'inline-flex';
                             kampfbereitBtn.dataset.teilnehmerId = gespeicherteId;
                         }
+                    }
+
+                    // Nachzügler (Altersklasse schon ausgelost): Pool-Auswahl anbieten.
+                    if (gespeicherteId && window.NachzueglerDialog) {
+                        await window.NachzueglerDialog.frageNachSpeichern({ turnierId, teilnehmerId: gespeicherteId });
                     }
                 } else {
                     window.zeigeNotification(result.fehler || 'Fehler beim Speichern', 'error');

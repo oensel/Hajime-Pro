@@ -305,34 +305,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Tabellenaufbau als auch beim gezielten Nachladen einzelner Zeilen (nach Drag & Drop,
     // ohne Ruckeln durch Neuladen der ganzen Tabelle) verwendet.
     function renderPoolRow(pool) {
-        if (pool.verspaetet) {
-            return `
-                <tr class="pool-section pool-sammelpool" data-pool-id="${pool.id}">
-                    <td class="pool-cell pool-name-cell">
-                        <strong>Verspätet</strong>
-                        <div class="pool-einstellung-label">Nachzügler ohne passenden Pool. Per Drag&amp;Drop in einen noch nicht begonnenen Pool ziehen.</div>
-                    </td>
-                    <td class="pool-cell pool-align-top"><span class="pool-status-badge vorbereitung">Wartet auf Zuordnung</span></td>
-                    <td class="pool-cell pool-number-cell pool-stat-cell"><span class="pool-system-text">${pool.anzahl_teilnehmer}</span></td>
-                    <td class="pool-cell pool-number-cell pool-stat-cell"><span class="pool-system-text">–</span></td>
-                    <td class="pool-cell pool-number-cell pool-stat-cell"><span class="pool-system-text">–</span></td>
-                    <td class="pool-cell pool-athletes-cell pool-align-top">
-                        <div class="drop-zone" data-pool-id="${pool.id}" data-locked="false">
-                            ${pool.teilnehmer.map(t => `
-                                <div class="draggable-athlete" draggable="true" data-athlete-id="${t.id}" data-current-pool="${pool.id}">
-                                    <div class="athlete-info-wrapper">
-                                        <span class="material-icons athlete-drag-icon">drag_indicator</span>
-                                        <span class="athlete-name">${escapeHtml(t.nachname)}, ${escapeHtml(t.vorname)}</span>
-                                        <span class="athlete-pass-id">(${escapeHtml(t.altersklasse)})</span>
-                                    </div>
-                                    <div class="athlete-weight">${parseFloat(t.gewicht).toFixed(2)} kg</div>
-                                </div>`).join('')}
-                        </div>
-                    </td>
-                    <td class="pool-cell pool-action-cell pool-align-top"></td>
-                </tr>
-            `;
-        }
         const dauerText = pool.gesamt_kaempfe > 0 ? `${pool.dauer_minuten} Min.` : '0 Min.';
             const istLeer = pool.anzahl_teilnehmer === 0;
             const kampfzeitMinuten = Math.min(
@@ -357,7 +329,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 abgeschlossen: { text: 'Abgeschlossen', klasse: 'beendet' }
             };
             let { text: statusText, klasse: statusClass } = POOL_STATUS_LABELS[pool.status] || { text: 'Bereit', klasse: 'bereit' };
-            if (pool.anzahl_teilnehmer === 0) {
+            if (pool.anzahl_teilnehmer === 0 || pool.verspaetet) {
+                // Sammelpool "Verspätet": hat nie Kämpfe, "Kampflos"/"Bereit" wären irreführend.
                 statusText = 'In Vorbereitung';
                 statusClass = 'vorbereitung';
             } else if (pool.anzahl_teilnehmer === 1) {
@@ -389,7 +362,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                         <div class="pool-einstellungen">
                                             <span class="pool-einstellung-label">System</span>
                                             <div class="pool-einstellung-wert">
-                                                <span class="pool-system-text">${mapWettkampfsystem(pool.modus, pool.anzahl_teilnehmer)}</span>
+                                                <span class="pool-system-text">${pool.verspaetet ? 'Sammelpool' : mapWettkampfsystem(pool.modus, pool.anzahl_teilnehmer)}</span>
                                                 ${kannSystemWechseln ? `
                                                     <button type="button" class="btn-switch-system material-icons" data-id="${pool.id}" data-ziel-modus="${sechserZielModus}" title="Auf ${sechserZielModus === 'Jeder-gegen-Jeden' ? 'Jeder-gegen-Jeden' : 'Gruppen-Überkreuz'} umstellen" style="color: var(--text-muted); background: none; border: none; cursor: pointer; font-size: 15px; padding: 2px; vertical-align: middle;">swap_horiz</button>
                                                 ` : ''}

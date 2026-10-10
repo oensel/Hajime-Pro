@@ -66,3 +66,23 @@ test('bevorzugt den Pool mit gleicher Gewichtsklasse, dann den mit geringerem Ab
     const c = pool(22, { gewichtsklasse: '-30', teilnehmer: [{ gewicht: 27.4 }, { gewicht: 27.6 }] });
     assert.equal(berechneVorschlag(nz, [c, b], optionen).poolId, 21);
 });
+
+import { listeOffenePools } from '../../src/services/nachzuegler.js';
+
+test('listeOffenePools: Vorschlag zuerst, dann gleiche Altersklasse, Spanne wird markiert', () => {
+    const nah = pool(20, { teilnehmer: [{ gewicht: 40 }, { gewicht: 41 }], gewichtsklasse: '-42' });
+    const passend = pool(21);
+    const andere = pool(22, { altersklasse: 'U13', teilnehmer: [{ gewicht: 29 }] });
+    const liste = listeOffenePools(nz, [nah, andere, passend], optionen);
+    assert.deepEqual(liste.map(p => p.poolId), [21, 20, 22]);
+    assert.deepEqual(liste[0], { poolId: 21, bezeichnung: 'Pool 21', teilnehmerNachher: 4, systemNachher: 'Jeder-gegen-Jeden', matteId: 2, gewichtsspanneUeberschritten: false, gleicheAltersklasse: true });
+    assert.equal(liste[1].gewichtsspanneUeberschritten, true);
+    assert.equal(liste[2].gleicheAltersklasse, false);
+});
+
+test('listeOffenePools: Pool ohne mögliches System entfällt, ohne Gewicht ist die Spanne überschritten', () => {
+    const voll = pool(30, { teilnehmer: Array.from({ length: 32 }, () => ({ gewicht: 29 })) });
+    assert.deepEqual(listeOffenePools(nz, [voll], optionen), []);
+    const ohneGewicht = listeOffenePools({ ...nz, gewicht: null }, [pool(31)], optionen);
+    assert.equal(ohneGewicht[0].gewichtsspanneUeberschritten, true);
+});

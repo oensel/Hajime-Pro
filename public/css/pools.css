@@ -916,8 +916,3 @@
     flex: 1 1 260px;
     color: var(--text-muted);
 }
-
-.pool-sammelpool > .pool-cell {
-    background-color: var(--bg-card);
-    box-shadow: inset 3px 0 0 var(--primary);
-}

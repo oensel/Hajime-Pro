@@ -22,7 +22,8 @@ import {
     getPoolUebersicht,
     getNachzuegler,
     sortiereNachzuegler,
-    sammleVerspaetete
+    sammleVerspaetete,
+    verspaeteNachzuegler
 } from '../controllers/poolController.js';
 import { legeZusatzkampfAnRoute } from '../controllers/kampfController.js';
 import { requireAuth, requireTournamentEditAccess, requireTurnierAktiv } from '../middleware/auth.js';
@@ -53,6 +54,7 @@ export function getPoolRoutes(knex) {
     // Nachzügler in ausgeloste Altersklassen
     router.get('/nachzuegler', requireTournamentEditAccess(knex), (req, res) => getNachzuegler(knex, req, res));
     router.post('/nachzuegler/sammeln', requireTournamentEditAccess(knex), aktiv, (req, res) => sammleVerspaetete(knex, req, res));
+    router.post('/nachzuegler/:teilnehmerId/verspaetet', requireTournamentEditAccess(knex), aktiv, (req, res) => verspaeteNachzuegler(knex, req, res));
     router.post('/nachzuegler/:teilnehmerId/einsortieren', requireTournamentEditAccess(knex), aktiv, (req, res) => sortiereNachzuegler(knex, req, res));
 
     // Kampfflächen (formerly Matten) pool assignments

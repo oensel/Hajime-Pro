@@ -186,8 +186,17 @@ test.describe.serial('Nachzügler: Pools-Seite', () => {
         // Nachzügler ohne passenden Pool (Gewicht weit entfernt): landet automatisch im Sammelpool
         await anlegen(request, 'Schwer', 60, { gewichtsklasse: '-66' });
         await page.reload();
-        await expect(page.locator('.pool-sammelpool')).toBeVisible();
-        await expect(page.locator('.pool-sammelpool .draggable-athlete')).toHaveCount(1);
+        const sammelzeile = page.locator('tr.pool-section', { has: page.locator('.pool-name-input[value="Verspätet"]') });
+        await expect(sammelzeile).toHaveCount(1);
+        await expect(sammelzeile.locator('.draggable-athlete')).toHaveCount(1);
+
+        // Der Sammelpool sieht aus wie jeder andere Pool: gleiche Spalten, gleiche Bedienelemente.
+        const normaleZeile = page.locator('tr.pool-section', { has: page.locator('.pool-name-input:not([value="Verspätet"])') }).first();
+        await expect(sammelzeile.locator('td')).toHaveCount(await normaleZeile.locator('td').count());
+        await expect(sammelzeile.locator('.pool-name-input')).toHaveValue('Verspätet');
+        await expect(sammelzeile.locator('.pool-time-select')).toHaveCount(1);
+        await expect(sammelzeile.locator('.pool-gs-select')).toHaveCount(1);
+        await expect(sammelzeile.locator('.pool-einstellung-label')).toHaveCount(await normaleZeile.locator('.pool-einstellung-label').count());
     });
 });
 
@@ -239,5 +248,118 @@ test.describe.serial('Nachzügler: Robustheit', () => {
         for (const a of antworten) expect(a.ok(), await a.text()).toBeTruthy();
         const pools = await (await request.get(`/api/pools/details?turnierId=${turnierId}&mitVerspaetet=1`)).json();
         expect(pools.filter(p => p.verspaetet)).toHaveLength(1);
+    });
+});
+
+test.describe.serial('Nachzügler: Pool-Auswahl nach dem Speichern', () => {
+    let turnierId;
+    let poolId;
+    const anlegen = async (request, name, gewicht, extra = {}) => {
+        const resp = await request.post('/api/teilnehmer', {
+            data: {
+                turnier_id: turnierId, vorname: name, nachname: 'Auswahl', verein: 'JC Auswahl',
+                geburtsjahr: 2016, geschlecht: 'männlich', gewicht, altersklasse: 'U11', gewichtsklasse: '-30',
+                lizenz_ablauf: '2099-12-31', gewogen: true, ...extra
+            }
+        });
+        expect(resp.ok(), await resp.text()).toBeTruthy();
+        return (await resp.json()).teilnehmerId;
+    };
+    const alleTeilnehmer = async (request) => (await (await request.get(`/api/teilnehmer?turnierId=${turnierId}`)).json());
+    const nachVorname = async (request, vorname) => (await alleTeilnehmer(request)).find(t => t.vorname === vorname);
+    const nachzuegler = async (request) =>
+        (await (await request.get(`/api/pools/nachzuegler?turnierId=${turnierId}`)).json()).nachzuegler;
+
+    async function neuesFormular(page, name, gewicht, geburtsjahr = '2016', altersklasse = 'U11') {
+        await page.goto(`/teilnehmer.html?turnierId=${turnierId}`);
+        await page.locator('#addBtn').click();
+        await expect(page.locator('#waageModal')).toBeVisible();
+        await page.locator('#vorname').fill(name);
+        await page.locator('#nachname').fill('Auswahl');
+        await page.locator('#judopass_id').fill(`JP-AUSWAHL-${name}-${turnierId}`);
+        await page.locator('#verein').fill('JC Auswahl');
+        await page.locator('#geburtsjahr').fill(geburtsjahr);
+        await page.locator('#geschlecht').selectOption('männlich');
+        await page.locator('#lizenz_ablauf').fill('2099-12-31');
+        await page.locator('#gewicht').fill(String(gewicht).replace('.', ','));
+        await page.locator('#altersklasse').selectOption(altersklasse);
+        await page.locator('#gewichtsklasse').selectOption({ index: 1 });
+        await page.locator('#submitBtn').click();
+        await page.locator('#modalConfirmBtn').click();
+    }
+
+    test('Aufbau: U11 ausgelost, offene Pools samt Vorschlag in der Nachzügler-Liste', async ({ request }) => {
+        const resp = await request.post('/api/turniere', {
+            data: { bezeichnung: `E2E Auswahl ${Date.now()}`, ort: 'Halle', datum: '2027-06-18', ausrichter: 'JC Auswahl', anzahl_kampfflaechen: 1 }
+        });
+        turnierId = (await resp.json()).turnierId;
+        for (const [i, g] of [28, 29, 29.5, 30].entries()) await anlegen(request, `Stamm${i}`, g);
+        for (const [i, g] of [50, 51].entries()) await anlegen(request, `Schwer${i}`, g, { gewichtsklasse: '-55' });
+        expect((await request.post('/api/pools/generieren', { data: { turnierId, altersklassen: ['U11'] } })).ok()).toBeTruthy();
+        expect((await request.post('/api/pools/aufteilen', { data: { turnierId } })).ok()).toBeTruthy();
+        const pools = await (await request.get(`/api/pools/details?turnierId=${turnierId}`)).json();
+        poolId = pools.find(p => p.teilnehmer.some(t => t.vorname === 'Stamm0')).id;
+
+        const spaet = await anlegen(request, 'Probe', 29.2);
+        const eintrag = (await nachzuegler(request)).find(n => n.teilnehmerId === spaet);
+        expect(eintrag.vorschlag.poolId).toBe(poolId);
+        expect(eintrag.offenePools[0]).toMatchObject({ poolId, gleicheAltersklasse: true, gewichtsspanneUeberschritten: false });
+        expect(eintrag.offenePools.length).toBeGreaterThanOrEqual(2);
+        const andere = eintrag.offenePools.find(p => p.poolId !== poolId);
+        expect(andere.gewichtsspanneUeberschritten).toBe(true);
+    });
+
+    test('POST /verspaetet legt genau diesen Teilnehmer in den Sammelpool; fremdes Turnier -> 404', async ({ request }) => {
+        const id = (await nachVorname(request, 'Probe')).id;
+        const anderesTurnier = await request.post('/api/turniere', {
+            data: { bezeichnung: `E2E Fremd ${Date.now()}`, ort: 'Halle', datum: '2027-06-19', ausrichter: 'JC Auswahl', anzahl_kampfflaechen: 1 }
+        });
+        const fremdId = (await anderesTurnier.json()).turnierId;
+        const fremd = await request.post(`/api/pools/nachzuegler/${id}/verspaetet`, { data: { turnierId: fremdId } });
+        expect(fremd.status()).toBe(404);
+
+        const ok = await request.post(`/api/pools/nachzuegler/${id}/verspaetet`, { data: { turnierId } });
+        expect(ok.ok(), await ok.text()).toBeTruthy();
+        const sammelpools = (await (await request.get(`/api/pools/details?turnierId=${turnierId}&mitVerspaetet=1`)).json()).filter(p => p.verspaetet);
+        expect(sammelpools).toHaveLength(1);
+        expect(sammelpools[0].teilnehmer.map(t => t.id)).toEqual([id]);
+        const doppelt = await request.post(`/api/pools/nachzuegler/${id}/verspaetet`, { data: { turnierId } });
+        expect(doppelt.status()).toBe(409);
+    });
+
+    test('Dialog nach dem Speichern: Vorschlag vorgewählt, "Einsortieren" setzt in den Pool', async ({ page, request }) => {
+        await neuesFormular(page, 'Dialog', 29.3);
+        const dialog = page.locator('#nachzueglerDialog');
+        await expect(dialog).toBeVisible();
+        await expect(dialog).toContainText('In welchen Pool soll Dialog Auswahl');
+        await expect(page.locator('#nachzueglerPoolSelect')).toHaveValue(String(poolId));
+        await expect(page.locator('#nachzueglerPoolSelect option:checked')).toContainText('Vorschlag');
+        await page.locator('#nachzueglerEinsortierenBtn').click();
+        await expect(dialog).toHaveCount(0);
+        await expect.poll(async () => (await nachVorname(request, 'Dialog')).pool_id).toBe(poolId);
+    });
+
+    test('"Später" lässt den Teilnehmer in der Nachzügler-Liste', async ({ page, request }) => {
+        await neuesFormular(page, 'Spaeter', 29.4);
+        await expect(page.locator('#nachzueglerDialog')).toBeVisible();
+        await page.locator('#nachzueglerSpaeterBtn').click();
+        await expect(page.locator('#nachzueglerDialog')).toHaveCount(0);
+        const t = await nachVorname(request, 'Spaeter');
+        expect((await nachzuegler(request)).some(n => n.teilnehmerId === t.id)).toBe(true);
+        expect(t.pool_id).toBeNull();
+    });
+
+    test('Auswahl "Verspätet (Sammelpool)" im Dialog', async ({ page, request }) => {
+        await neuesFormular(page, 'Sammel', 29.5);
+        await page.locator('#nachzueglerPoolSelect').selectOption('verspaetet');
+        await page.locator('#nachzueglerEinsortierenBtn').click();
+        const sammelpool = (await (await request.get(`/api/pools/details?turnierId=${turnierId}&mitVerspaetet=1`)).json()).find(p => p.verspaetet);
+        await expect.poll(async () => (await nachVorname(request, 'Sammel')).pool_id).toBe(sammelpool.id);
+    });
+
+    test('Kein Dialog für eine nicht ausgeloste Altersklasse', async ({ page, request }) => {
+        await neuesFormular(page, 'Jung', 40, '2014', 'U13');
+        await expect.poll(async () => Boolean(await nachVorname(request, 'Jung'))).toBe(true);
+        await expect(page.locator('#nachzueglerDialog')).toHaveCount(0);
     });
 });
