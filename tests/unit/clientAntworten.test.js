@@ -76,3 +76,21 @@ test('/pools/vorhanden liefert gesperrte Pool-IDs und Altersklassen', async () =
     assert.deepEqual(antwort.body.gesperrtePoolIds, [7]);
     assert.deepEqual(antwort.body.gesperrteAltersklassen, ['U11']);
 });
+
+test('/pools/vorhanden ignoriert den Sammelpool "Verspätet"', async () => {
+    const dokumente = [
+        { _id: 'pool:7', dokumenttyp: 'pool', id: 7, turnier_id: 1, typ: 'einzel', altersklasse: 'U11' },
+        { _id: 'pool:9', dokumenttyp: 'pool', id: 9, turnier_id: 1, typ: 'einzel', altersklasse: 'Verspätet', verspaetet: true },
+        { _id: 'teilnehmer:1', dokumenttyp: 'teilnehmer', id: 1, turnier_id: 1, nachname: 'Adler', vorname: 'Anna', pool_id: 7 },
+        { _id: 'teilnehmer:2', dokumenttyp: 'teilnehmer', id: 2, turnier_id: 1, nachname: 'Bauer', vorname: 'Ben', pool_id: 9 },
+        { _id: 'kampf:1', dokumenttyp: 'kampf', id: 1, pool_id: 7, status: 'beendet' },
+        { _id: 'kampf:2', dokumenttyp: 'kampf', id: 2, pool_id: 9, status: 'beendet' }
+    ];
+    const antwort = await beantworteClientAnfrage(
+        { methode: 'GET', pfad: '/pools/vorhanden', query: { turnierId: '1' } },
+        { db: fakeDb(dokumente), sha256Hex }
+    );
+    assert.deepEqual(antwort.body.gesperrtePoolIds, [7]);
+    assert.deepEqual(antwort.body.gesperrteAltersklassen, ['U11']);
+    assert.deepEqual(antwort.body.ausgelosteAltersklassen, ['U11']);
+});

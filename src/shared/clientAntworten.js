@@ -133,7 +133,7 @@ export async function beantworteClientAnfrage({ methode, pfad, query = {}, body 
         if (pfad === '/pools/vorhanden') {
             const docs = await dokumenteNachTyp(db);
             const turnierPools = (docs.pool || []).filter(p => String(p.turnier_id) === String(query.turnierId));
-            const pools = turnierPools.filter(p => p.typ !== 'mannschaft');
+            const pools = turnierPools.filter(p => p.typ !== 'mannschaft' && !p.verspaetet);
             // Wie ermittleAltersklassenPoolZustand: "ausgelost" erst mit mindestens einem Teilnehmer im Pool.
             const poolIdsMitTeilnehmern = new Set((docs.teilnehmer || []).filter(t => t.pool_id != null).map(t => String(t.pool_id)));
             const poolIdsMitEchtenKaempfen = new Set((docs.kampf || [])
