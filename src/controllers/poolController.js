@@ -15,6 +15,7 @@ import { MannschaftDoppelKo16Manager } from '../services/MannschaftDoppelKo16Man
 import { ermittlePausensekunden } from '../shared/pausenRegel.js';
 import { verteilePoolsAufMatten } from '../services/mattenVerteilung.js';
 import { FachFehler } from '../utils/fachFehler.js';
+import { berechneVorschlag } from '../services/nachzuegler.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1193,6 +1194,9 @@ export async function verschiebeTeilnehmer(knex, req, res) {
             }
         }
 
+        const betroffenePools = await knex('pools').whereIn('id', betroffenePoolIds).select('id', 'verspaetet');
+        const sammelpoolIds = new Set(betroffenePools.filter(p => p.verspaetet).map(p => Number(p.id)));
+
         const aktualisiertePools = await knex.transaction(async (trx) => {
             await trx('turnier_teilnehmer')
                 .where({ id: teilnehmerId })
@@ -1203,6 +1207,7 @@ export async function verschiebeTeilnehmer(knex, req, res) {
             const ergebnisse = [];
 
             for (const poolId of betroffenePoolIds) {
+                if (sammelpoolIds.has(poolId)) continue; // der Sammelpool hat nie Kämpfe
                 const ergebnis = await regeneriereKampfplanFuerPool(trx, poolId);
                 if (ergebnis) ergebnisse.push(ergebnis);
             }
@@ -1210,12 +1215,154 @@ export async function verschiebeTeilnehmer(knex, req, res) {
             return ergebnisse;
         });
 
+        for (const poolId of betroffenePoolIds) {
+            if (!sammelpoolIds.has(poolId)) await aktualisiereMatteNachPoolAenderung(knex, poolId);
+        }
+
         return res.json({
             success: true,
             aktualisiertePools
         });
     } catch (error) {
         return res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+// ---------- Nachzügler (Spec 2026-10-10-nachzuegler-pool-design.md) ----------
+
+const NACHZUEGLER_FEHLER_KEIN_NACHZUEGLER = 'Der Teilnehmer ist kein Nachzügler (bereits einem Pool zugeordnet oder nicht kampfbereit).';
+
+// Offene Einzel-Pools des Turniers (ohne gestartete/beendete Kämpfe, ohne Sammelpool) samt Teilnehmern.
+async function ladeOffeneEinzelPools(knex, turnierId) {
+    const { gesperrtePoolIds } = await ermittleAltersklassenPoolZustand(knex, turnierId);
+    const gesperrt = new Set(gesperrtePoolIds);
+    const pools = (await knex('pools').where({ turnier_id: turnierId, verspaetet: false }).andWhereNot({ typ: 'mannschaft' }))
+        .filter(p => !gesperrt.has(p.id));
+    const teilnehmer = pools.length === 0 ? [] : await knex('turnier_teilnehmer').whereIn('pool_id', pools.map(p => p.id));
+    return pools.map(p => ({ ...p, teilnehmer: teilnehmer.filter(t => t.pool_id === p.id) }));
+}
+
+// Nachzügler: kampfbereit, ohne Pool, Altersklasse bereits ausgelost, kein reines Mannschaftsmitglied.
+async function ladeNachzuegler(knex, turnierId) {
+    const { ausgelosteAltersklassen } = await ermittleAltersklassenPoolZustand(knex, turnierId);
+    if (ausgelosteAltersklassen.length === 0) return [];
+    const mannschaftsMitgliedIds = new Set(
+        await knex('mannschaft_mitglieder')
+            .join('mannschaften', 'mannschaft_mitglieder.mannschaft_id', 'mannschaften.id')
+            .where('mannschaften.turnier_id', turnierId)
+            .pluck('mannschaft_mitglieder.turnier_teilnehmer_id')
+    );
+    return (await knex('turnier_teilnehmer')
+        .where({ turnier_id: turnierId, status: 'kampfbereit' })
+        .whereNull('pool_id')
+        .whereIn('altersklasse', ausgelosteAltersklassen))
+        .filter(t => !mannschaftsMitgliedIds.has(t.id) || t.auch_einzelwettkampf);
+}
+
+export async function getNachzuegler(knex, req, res) {
+    try {
+        const { turnierId } = req.query;
+        if (!turnierId) return res.status(400).json({ success: false, error: 'turnierId ist erforderlich.' });
+        const nachzuegler = await ladeNachzuegler(knex, turnierId);
+        const offenePools = nachzuegler.length === 0 ? [] : await ladeOffeneEinzelPools(knex, turnierId);
+        const liste = nachzuegler.map(t => ({
+            teilnehmerId: t.id,
+            name: `${t.vorname} ${t.nachname}`.trim(),
+            verein: t.verein,
+            altersklasse: t.altersklasse,
+            geschlecht: t.geschlecht,
+            gewicht: t.gewicht,
+            vorschlag: berechneVorschlag(t, offenePools, { pruefeSpanne: pruefeGewichtsspanne, waehleSystem: waehleWettkampfsystem })
+        }));
+        const sammelpool = await knex('pools').where({ turnier_id: turnierId, verspaetet: true }).first();
+        const imSammelpool = sammelpool
+            ? parseInt((await knex('turnier_teilnehmer').where({ pool_id: sammelpool.id }).count('* as n').first()).n, 10)
+            : 0;
+        return res.json({ success: true, nachzuegler: liste, imSammelpool });
+    } catch (error) {
+        return res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+// Matte des Pools neu planen (die Kämpfe eines neu aufgebauten Pools haben keine Mattenreihenfolge).
+async function aktualisiereMatteNachPoolAenderung(knex, poolId) {
+    const pool = await knex('pools').where({ id: poolId }).first();
+    if (pool && pool.kampfflaeche_id) {
+        await planeKaempfeFuerKampfflaeche(knex, pool.kampfflaeche_id);
+        await synchronisiereMattenStatus(knex, pool.kampfflaeche_id);
+    }
+}
+
+export async function sortiereNachzuegler(knex, req, res) {
+    try {
+        const teilnehmerId = parseInt(req.params.teilnehmerId, 10);
+        const poolId = parseInt(req.body.poolId, 10);
+        if (!poolId) return res.status(400).json({ success: false, error: 'poolId ist erforderlich.' });
+
+        const athlet = await knex('turnier_teilnehmer').where({ id: teilnehmerId }).first();
+        if (!athlet) return res.status(404).json({ success: false, error: 'Teilnehmer nicht gefunden.' });
+        if (athlet.pool_id != null || athlet.status !== 'kampfbereit') {
+            return res.status(409).json({ success: false, error: NACHZUEGLER_FEHLER_KEIN_NACHZUEGLER });
+        }
+        const pool = await knex('pools').where({ id: poolId }).first();
+        if (!pool || Number(pool.turnier_id) !== Number(athlet.turnier_id) || pool.typ === 'mannschaft' || pool.verspaetet) {
+            return res.status(404).json({ success: false, error: 'Pool nicht gefunden.' });
+        }
+
+        // Prüfung und Zuordnung in einer Transaktion unter Zeilensperre auf den Kämpfen: beginnt parallel
+        // ein Kampf, wird der Teilnehmer nicht mehr eingefügt.
+        let ergebnis;
+        await knex.transaction(async (trx) => {
+            const kaempfe = await trx('kaempfe').where({ pool_id: poolId }).forUpdate().select('status');
+            if (kaempfe.some(k => k.status === 'gestartet' || k.status === 'beendet')) {
+                throw new FachFehler(409, 'In diesem Pool haben die Kämpfe bereits begonnen.');
+            }
+            await trx('turnier_teilnehmer').where({ id: teilnehmerId }).update({ pool_id: poolId });
+            ergebnis = await regeneriereKampfplanFuerPool(trx, poolId);
+        });
+
+        await aktualisiereMatteNachPoolAenderung(knex, poolId);
+        return res.json({ success: true, poolId, modus: ergebnis.modus });
+    } catch (error) {
+        return res.status(error.statusCode || 500).json({ success: false, error: error.message });
+    }
+}
+
+// Sammelpool "Verspätet" des Turniers (wird beim ersten Bedarf angelegt).
+async function holeOderErzeugeSammelpool(knex, turnierId) {
+    const vorhanden = await knex('pools').where({ turnier_id: turnierId, verspaetet: true }).first();
+    if (vorhanden) return vorhanden;
+    const [idObj] = await knex('pools').insert({
+        turnier_id: turnierId,
+        bezeichnung: 'Verspätet',
+        modus: 'Nicht startbereit',
+        altersklasse: 'Verspätet',
+        geschlecht: 'mixed',
+        gewichtsklasse: '-',
+        status: 'teilnehmer_zugewiesen',
+        verspaetet: true
+    }).returning('id');
+    const id = typeof idObj === 'object' ? idObj.id : idObj;
+    return knex('pools').where({ id }).first();
+}
+
+// Nachzügler ohne passenden offenen Pool in den Sammelpool legen (idempotent).
+export async function sammleVerspaetete(knex, req, res) {
+    try {
+        const turnierId = parseInt(req.body.turnierId, 10);
+        if (!turnierId) return res.status(400).json({ success: false, error: 'turnierId ist erforderlich.' });
+
+        const nachzuegler = await ladeNachzuegler(knex, turnierId);
+        const offenePools = nachzuegler.length === 0 ? [] : await ladeOffeneEinzelPools(knex, turnierId);
+        const ohneVorschlag = nachzuegler.filter(t =>
+            !berechneVorschlag(t, offenePools, { pruefeSpanne: pruefeGewichtsspanne, waehleSystem: waehleWettkampfsystem }));
+        if (ohneVorschlag.length === 0) return res.json({ success: true, anzahl: 0 });
+
+        const sammelpool = await holeOderErzeugeSammelpool(knex, turnierId);
+        await knex('turnier_teilnehmer').whereIn('id', ohneVorschlag.map(t => t.id)).update({ pool_id: sammelpool.id });
+        return res.json({ success: true, anzahl: ohneVorschlag.length, poolId: sammelpool.id });
+    } catch (error) {
+        return res.status(error.statusCode || 500).json({ success: false, error: error.message });
     }
 }
 

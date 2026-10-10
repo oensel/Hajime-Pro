@@ -19,7 +19,10 @@ import {
     verteilePools,
     planeKaempfe,
     getDashboardData,
-    getPoolUebersicht
+    getPoolUebersicht,
+    getNachzuegler,
+    sortiereNachzuegler,
+    sammleVerspaetete
 } from '../controllers/poolController.js';
 import { legeZusatzkampfAnRoute } from '../controllers/kampfController.js';
 import { requireAuth, requireTournamentEditAccess, requireTurnierAktiv } from '../middleware/auth.js';
@@ -46,6 +49,11 @@ export function getPoolRoutes(knex) {
     router.get('/altersklassen-status', requireTournamentEditAccess(knex), (req, res) => getAltersklassenStatus(knex, req, res));
     router.get('/vorhanden', (req, res) => pruefeTeilnehmerlisteGesperrt(knex, req, res));
     router.post('/verschieben', requireTournamentEditAccess(knex), aktiv, (req, res) => verschiebeTeilnehmer(knex, req, res));
+
+    // Nachzügler in ausgeloste Altersklassen
+    router.get('/nachzuegler', requireTournamentEditAccess(knex), (req, res) => getNachzuegler(knex, req, res));
+    router.post('/nachzuegler/sammeln', requireTournamentEditAccess(knex), aktiv, (req, res) => sammleVerspaetete(knex, req, res));
+    router.post('/nachzuegler/:teilnehmerId/einsortieren', requireTournamentEditAccess(knex), aktiv, (req, res) => sortiereNachzuegler(knex, req, res));
 
     // Kampfflächen (formerly Matten) pool assignments
     router.get('/kampfflaechen', requireTournamentEditAccess(knex), (req, res) => getKampfflaechenMitPools(knex, req, res));
