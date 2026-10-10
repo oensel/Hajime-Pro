@@ -484,7 +484,7 @@ export async function ermittleAltersklassenPoolZustand(knex, turnierId) {
     };
 }
 
-async function regeneriereKampfplanFuerPool(knex, poolId) {
+export async function regeneriereKampfplanFuerPool(knex, poolId) {
     if (!poolId) return null;
 
     const teilnehmer = await knex('turnier_teilnehmer').where({ pool_id: poolId });

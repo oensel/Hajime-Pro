@@ -95,16 +95,21 @@ test.describe.serial('Waage in Runden', () => {
         for (const id of teilnehmer.U11.slice(0, 4)) expect(status(id)).toBe('kampfbereit');
     });
 
-    test('Ausgeloste Altersklasse ist ohne Neu-Generieren abgewiesen (409), Nachmeldung ebenso', async ({ request }) => {
+    test('Ausgeloste Altersklasse ist ohne Neu-Generieren abgewiesen (409), Nachmeldung ist möglich', async ({ request }) => {
         const doppelt = await generiere(request, { altersklassen: ['U11'] });
         expect(doppelt.status()).toBe(409);
 
-        const { resp } = await legeTeilnehmerAn(request, 'U11', 99, { gewogen: true, gewichtsklasse: '-30' });
-        expect(resp.status()).toBe(409);
+        // Nachmeldung in ausgeloste Klasse: wird angenommen, der Teilnehmer startet ohne Pool
+        const { resp, body } = await legeTeilnehmerAn(request, 'U11', 99, { gewogen: true, gewichtsklasse: '-30' });
+        expect(resp.status(), JSON.stringify(body)).toBe(201);
+        const alle = await holeTeilnehmer(request);
+        expect(alle.find(t => t.id === body.teilnehmerId).pool_id).toBeNull();
+        await request.delete(`/api/teilnehmer/${body.teilnehmerId}`); // wieder aufräumen
 
         const vorhanden = await (await request.get(`/api/pools/vorhanden?turnierId=${turnierId}`)).json();
         expect(vorhanden.ausgelosteAltersklassen).toEqual(['U11', 'U13']);
         expect(vorhanden.gesperrteAltersklassen).toEqual([]);
+        expect(vorhanden.gesperrtePoolIds).toEqual([]);
         expect(vorhanden.gesperrt).toBe(false);
     });
 
@@ -134,6 +139,7 @@ test.describe.serial('Waage in Runden', () => {
 
         const vorhanden = await (await request.get(`/api/pools/vorhanden?turnierId=${turnierId}`)).json();
         expect(vorhanden.gesperrteAltersklassen).toEqual(['U11']);
+        expect(vorhanden.gesperrtePoolIds).toEqual([u11Pool.id]);
         expect(vorhanden.gesperrt).toBe(true);
         expect(vorhanden.mannschaftenGesperrt).toBe(false);
     });
@@ -145,7 +151,7 @@ test.describe.serial('Waage in Runden', () => {
         expect(resp.status(), await resp.text()).toBe(201);
     });
 
-    test('Teilnehmer gesperrter Klassen sind gesperrt, offene Klassen bleiben bearbeitbar', async ({ request }) => {
+    test('Teilnehmer gesperrter Pools sind gesperrt, offene Pools bleiben bearbeitbar', async ({ request }) => {
         const gesperrt = await request.delete(`/api/teilnehmer/${teilnehmer.U11[0]}`);
         expect(gesperrt.status()).toBe(409);
         const aendern = await request.put(`/api/teilnehmer/${teilnehmer.U11[0]}`, { data: { vorname: 'Neu', nachname: 'Name' } });

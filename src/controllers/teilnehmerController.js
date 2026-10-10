@@ -3,7 +3,7 @@ import { readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { resolveUserVereinName, hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
-import { turnierHatEchteKaempfe, mannschaftsPoolsHabenEchteKaempfe, ermittleAltersklassenPoolZustand } from './poolController.js';
+import { turnierHatEchteKaempfe, mannschaftsPoolsHabenEchteKaempfe, ermittleAltersklassenPoolZustand, regeneriereKampfplanFuerPool } from './poolController.js';
 import { FachFehler } from '../utils/fachFehler.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 const { istEinzelbenutzerBetrieb } = betriebsmodus;
@@ -53,16 +53,15 @@ function ermittleEffektivenStatus(turnier, { hatEchteKaempfe = false } = {}) {
 // mannschaftsPoolsHabenEchteKaempfe in poolController.js). Einzelkämpfe sperren sie nicht.
 const MANNSCHAFTEN_GESPERRT_FEHLER = 'Mannschaften können nicht mehr geändert werden, da für dieses Turnier bereits Mannschaftskämpfe stattgefunden haben.';
 
-// Waage in Runden: die Sperre gilt je Altersklasse. Bestehende Teilnehmer sind gesperrt, sobald ein
-// Pool ihrer Altersklasse echte Kämpfe hat; neue Anmeldungen schon, sobald die Altersklasse
-// ausgelost ist (Zustand wird aus den Pools abgeleitet).
-const ALTERSKLASSE_GESPERRT_FEHLER = 'Die Teilnehmer dieser Altersklasse sind gesperrt, da für sie bereits Kämpfe stattgefunden haben.';
-const ALTERSKLASSE_AUSGELOST_FEHLER = 'Die Altersklasse ist bereits ausgelost.';
+// Waage in Runden: die Sperre gilt je Pool. Ein Teilnehmer ist gesperrt, sobald sein eigener Pool echte
+// Kämpfe hat; Teilnehmer ohne Pool (oder im Sammelpool "Verspätet") sind nie gesperrt. Neue Anmeldungen
+// sind auch in ausgeloste Altersklassen möglich (Nachzügler, siehe poolController getNachzuegler).
+const POOL_GESPERRT_FEHLER = 'Der Pool dieses Teilnehmers ist gesperrt, da dort bereits Kämpfe stattgefunden haben.';
 
-async function istAltersklasseGesperrt(knex, turnierId, altersklasse) {
-    if (!altersklasse) return false;
-    const { gesperrteAltersklassen } = await ermittleAltersklassenPoolZustand(knex, turnierId);
-    return gesperrteAltersklassen.includes(altersklasse);
+async function istPoolGesperrt(knex, athlet) {
+    if (athlet.pool_id == null) return false;
+    const { gesperrtePoolIds } = await ermittleAltersklassenPoolZustand(knex, athlet.turnier_id);
+    return gesperrtePoolIds.includes(Number(athlet.pool_id));
 }
 
 // Felder, die die Position in der Mannschaft bestimmen (Gewichtsklassen-Zuordnung).
@@ -84,20 +83,14 @@ function aendertMannschaftsRelevantes(athlet, aenderung) {
 //   Hat das Mitglied auch einen Einzelstart (auch_einzelwettkampf), bleiben Änderungen ohne Bezug zur
 //   Mannschaft möglich (`aenderung` = geänderte Felder); Löschen und Zurückziehen (ohne `aenderung`)
 //   und Änderungen an Gewicht, Klasse, Geschlecht oder Alter nicht — sie würden die Aufstellung ändern.
-// - Alle Teilnehmer sind gesperrt, wenn ihre eigene Altersklasse echte Kämpfe hat.
+// - Alle Teilnehmer sind gesperrt, wenn ihr eigener Pool echte Kämpfe hat.
 async function ermittleSperrgrund(knex, athlet, aenderung = null) {
     const mitglied = await knex('mannschaft_mitglieder').where({ turnier_teilnehmer_id: athlet.id }).first();
     if (mitglied && await mannschaftsPoolsHabenEchteKaempfe(knex, athlet.turnier_id)) {
         const betrifftMannschaft = !athlet.auch_einzelwettkampf || !aenderung || aendertMannschaftsRelevantes(athlet, aenderung);
         if (betrifftMannschaft) return MANNSCHAFTEN_GESPERRT_FEHLER;
     }
-    return await istAltersklasseGesperrt(knex, athlet.turnier_id, athlet.altersklasse) ? ALTERSKLASSE_GESPERRT_FEHLER : null;
-}
-
-async function istAltersklasseAusgelost(knex, turnierId, altersklasse) {
-    if (!altersklasse) return false;
-    const { ausgelosteAltersklassen } = await ermittleAltersklassenPoolZustand(knex, turnierId);
-    return ausgelosteAltersklassen.includes(altersklasse);
+    return await istPoolGesperrt(knex, athlet) ? POOL_GESPERRT_FEHLER : null;
 }
 
 // Stichtag der Lizenzprüfung: die Lizenz muss am Wettkampftag noch gültig sein (nicht nur heute). Liegt der
@@ -223,10 +216,6 @@ export async function legeTeilnehmerAn(knex, daten, kontext) {
         turnier.datum ? new Date(turnier.datum).getFullYear() : new Date().getFullYear(),
         ermittleTurnierAltersklassenKeys(turnier)
     );
-
-    if (await istAltersklasseAusgelost(knex, turnier.id, ermittelteAltersklasse)) {
-        throw new FachFehler(409, ALTERSKLASSE_AUSGELOST_FEHLER);
-    }
 
     // Gewicht robust parsen (deutsches Komma-Dezimaltrennzeichen wie beim CSV-Import zulassen).
     const gewichtGeparst = parseFloat(String(gewicht ?? '').replace(',', '.')) || 0.00;
@@ -434,11 +423,6 @@ export async function aktualisiereTeilnehmerDaten(knex, id, daten, kontext) {
     if (sperrgrund) {
         throw new FachFehler(409, sperrgrund);
     }
-    // Wechsel in eine bereits ausgeloste Altersklasse wäre eine Nachmeldung durch die Hintertür.
-    if (altersklasse && altersklasse !== athlet.altersklasse
-        && await istAltersklasseAusgelost(knex, athlet.turnier_id, altersklasse)) {
-        throw new FachFehler(409, ALTERSKLASSE_AUSGELOST_FEHLER);
-    }
 
     const istGastgeberVerein = kontext.istGastgeberVerein;
     const userVereinName = kontext.userVereinName;
@@ -492,6 +476,15 @@ export async function aktualisiereTeilnehmerDaten(knex, id, daten, kontext) {
     await knex('turnier_teilnehmer')
         .where({ id })
         .update({ ...updates, updated_at: knex.fn.now() });
+
+    // Wechselt ein Teilnehmer die Altersklasse, passt er nicht mehr in seinen Pool: Pool lösen und neu
+    // aufbauen; er erscheint dann als Nachzügler (der Pool ist wegen ermittleSperrgrund ohne echte Kämpfe).
+    // Der Sammelpool "Verspätet" hat keinen Kampfplan und wird nicht neu aufgebaut.
+    if (athlet.pool_id != null && updates.altersklasse && updates.altersklasse !== athlet.altersklasse) {
+        const alterPool = await knex('pools').where({ id: athlet.pool_id }).first();
+        await knex('turnier_teilnehmer').where({ id }).update({ pool_id: null });
+        if (alterPool && !alterPool.verspaetet) await regeneriereKampfplanFuerPool(knex, athlet.pool_id);
+    }
 }
 
 export async function updateTeilnehmer(knex, req, res) {
@@ -1288,9 +1281,6 @@ export async function importTeilnehmer(knex, req, res) {
         // Cache: (verein, bezeichnung) -> mannschaft_id, damit mehrere Zeilen desselben Teams
         // innerhalb eines Imports nur eine einzige Mannschaft anlegen statt einer pro Zeile.
         const mannschaftCache = new Map();
-        const ausgelosteAltersklassen = ziel === 'einzel'
-            ? new Set((await ermittleAltersklassenPoolZustand(knex, turnier.id)).ausgelosteAltersklassen)
-            : new Set();
 
         for (const { rowNumber, record } of records) {
             const { felder, gewicht, altersklasse, gewichtsklasse, fehlerFelder } = verarbeiteImportZeile(record, ctx);
@@ -1298,11 +1288,6 @@ export async function importTeilnehmer(knex, req, res) {
             if (fehlerFelder.length > 0) {
                 const feldLabels = fehlerFelder.map(f => IMPORT_SYSTEMFELDER.find(sf => sf.feld === f)?.label || f);
                 skipped.push({ row: rowNumber, reason: `Pflichtfeld(er) fehlen oder ungültig: ${feldLabels.join(', ')}.` });
-                continue;
-            }
-
-            if (ausgelosteAltersklassen.has(altersklasse)) {
-                skipped.push({ row: rowNumber, reason: `${ALTERSKLASSE_AUSGELOST_FEHLER} (${altersklasse})` });
                 continue;
             }
 
