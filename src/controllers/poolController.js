@@ -1297,15 +1297,17 @@ export async function sortiereNachzuegler(knex, req, res) {
     try {
         const teilnehmerId = parseInt(req.params.teilnehmerId, 10);
         const poolId = parseInt(req.body.poolId, 10);
+        const turnierId = parseInt(req.body.turnierId, 10);
         if (!poolId) return res.status(400).json({ success: false, error: 'poolId ist erforderlich.' });
 
+        // Die Berechtigung wurde gegen body.turnierId geprüft: der Teilnehmer muss zu genau diesem Turnier gehören.
         const athlet = await knex('turnier_teilnehmer').where({ id: teilnehmerId }).first();
-        if (!athlet) return res.status(404).json({ success: false, error: 'Teilnehmer nicht gefunden.' });
+        if (!athlet || !turnierId || Number(athlet.turnier_id) !== turnierId) return res.status(404).json({ success: false, error: 'Teilnehmer nicht gefunden.' });
         if (athlet.pool_id != null || athlet.status !== 'kampfbereit') {
             return res.status(409).json({ success: false, error: NACHZUEGLER_FEHLER_KEIN_NACHZUEGLER });
         }
         const pool = await knex('pools').where({ id: poolId }).first();
-        if (!pool || Number(pool.turnier_id) !== Number(athlet.turnier_id) || pool.typ === 'mannschaft' || pool.verspaetet) {
+        if (!pool || Number(pool.turnier_id) !== turnierId || pool.typ === 'mannschaft' || pool.verspaetet) {
             return res.status(404).json({ success: false, error: 'Pool nicht gefunden.' });
         }
 
@@ -1313,6 +1315,11 @@ export async function sortiereNachzuegler(knex, req, res) {
         // ein Kampf, wird der Teilnehmer nicht mehr eingefügt.
         let ergebnis;
         await knex.transaction(async (trx) => {
+            // Teilnehmer unter Sperre neu lesen: zwei parallele Aufrufe dürfen ihn nicht beide einsortieren.
+            const aktuell = await trx('turnier_teilnehmer').where({ id: teilnehmerId }).forUpdate().first();
+            if (!aktuell || aktuell.pool_id != null || aktuell.status !== 'kampfbereit') {
+                throw new FachFehler(409, NACHZUEGLER_FEHLER_KEIN_NACHZUEGLER);
+            }
             const kaempfe = await trx('kaempfe').where({ pool_id: poolId }).forUpdate().select('status');
             if (kaempfe.some(k => k.status === 'gestartet' || k.status === 'beendet')) {
                 throw new FachFehler(409, 'In diesem Pool haben die Kämpfe bereits begonnen.');

@@ -119,4 +119,20 @@ test.describe.serial('Nachzügler', () => {
         const zu = await request.post('/api/pools/verschieben', { data: { teilnehmerId: ids.zuSpaet, zielPoolId: poolId, turnierId } });
         expect(zu.status()).toBe(409);
     });
+
+    test('Einsortieren mit fremder turnierId wird abgewiesen (Teilnehmer bleibt unverändert)', async ({ request }) => {
+        const resp = await request.post('/api/turniere', {
+            data: { bezeichnung: `E2E Nachzügler Fremd ${Date.now()}`, ort: 'Halle', datum: '2027-06-13', ausrichter: 'JC Nachzug', anzahl_kampfflaechen: 1 }
+        });
+        const fremdId = (await resp.json()).turnierId;
+        expect(fremdId).not.toBe(turnierId);
+        const teilnehmerVorher = (await (await request.get(`/api/teilnehmer?turnierId=${turnierId}`)).json()).find(t => t.id === ids.zuSpaet);
+        const poolVorher = teilnehmerVorher.pool_id;
+
+        const abgewiesen = await request.post(`/api/pools/nachzuegler/${ids.zuSpaet}/einsortieren`, { data: { turnierId: fremdId, poolId } });
+        expect(abgewiesen.status()).toBe(404);
+
+        const nachher = (await (await request.get(`/api/teilnehmer?turnierId=${turnierId}`)).json()).find(t => t.id === ids.zuSpaet);
+        expect(nachher.pool_id).toBe(poolVorher);
+    });
 });
