@@ -40,7 +40,7 @@ const MAX_ABSOLUTE_DIFFERENZ_ERWACHSENE_U18_KG = 8;
 const MAX_ABSOLUTE_DIFFERENZ_U13_U15_KG = 5;
 const MAX_ABSOLUTE_DIFFERENZ_KINDERSCHUTZ_KG = 3.5;
 
-function waehleWettkampfsystem(anzahl) {
+export function waehleWettkampfsystem(anzahl) {
     if (anzahl < 2) return 'Nicht startbereit';
     if (anzahl <= 5) return 'Jeder-gegen-Jeden';
     if (anzahl === 6) return 'Gruppen-Überkreuz';
@@ -109,7 +109,7 @@ function ermittleMaximaleAbsoluteGewichtsdifferenz(leichtester, altersklasse) {
     return MAX_ABSOLUTE_DIFFERENZ_ERWACHSENE_U18_KG;
 }
 
-function pruefeGewichtsspanne(poolTeilnehmer, altersklasse) {
+export function pruefeGewichtsspanne(poolTeilnehmer, altersklasse) {
     if (poolTeilnehmer.length <= 1) {
         return {
             zulaessig: true,
