@@ -60,5 +60,19 @@ test('Nur Lesezugriffe der Client-Seiten: alles andere gibt es nur am Hallen-Ser
     assert.equal((await anfrage('DELETE', '/turniere/1')).status, 403);
     assert.equal((await anfrage('GET', '/kaempfe')).status, 400);
     assert.deepEqual((await anfrage('GET', '/mannschaften')).body, []);
-    assert.deepEqual((await anfrage('GET', '/pools/vorhanden', { query: { turnierId: '1' } })).body, { mannschaftenGesperrt: false, gesperrt: false, gesperrteAltersklassen: [], ausgelosteAltersklassen: [] });
+    assert.deepEqual((await anfrage('GET', '/pools/vorhanden', { query: { turnierId: '1' } })).body, { mannschaftenGesperrt: false, gesperrt: false, gesperrteAltersklassen: [], gesperrtePoolIds: [], ausgelosteAltersklassen: [] });
+});
+
+test('/pools/vorhanden liefert gesperrte Pool-IDs und Altersklassen', async () => {
+    const dokumente = [
+        { _id: 'pool:7', dokumenttyp: 'pool', id: 7, turnier_id: 1, typ: 'einzel', altersklasse: 'U11' },
+        { _id: 'teilnehmer:1', dokumenttyp: 'teilnehmer', id: 1, turnier_id: 1, nachname: 'Adler', vorname: 'Anna', pool_id: 7 },
+        { _id: 'kampf:1', dokumenttyp: 'kampf', id: 1, pool_id: 7, status: 'beendet' }
+    ];
+    const antwort = await beantworteClientAnfrage(
+        { methode: 'GET', pfad: '/pools/vorhanden', query: { turnierId: '1' } },
+        { db: fakeDb(dokumente), sha256Hex }
+    );
+    assert.deepEqual(antwort.body.gesperrtePoolIds, [7]);
+    assert.deepEqual(antwort.body.gesperrteAltersklassen, ['U11']);
 });

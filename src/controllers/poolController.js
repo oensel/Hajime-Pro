@@ -477,7 +477,11 @@ export async function ermittleAltersklassenPoolZustand(knex, turnierId) {
         if (mitTeilnehmern.has(pool.id)) ausgelost.add(pool.altersklasse);
         if (poolIdsMitEchtenKaempfen.has(pool.id)) gesperrt.add(pool.altersklasse);
     }
-    return { ausgelosteAltersklassen: [...ausgelost].sort(), gesperrteAltersklassen: [...gesperrt].sort() };
+    return {
+        ausgelosteAltersklassen: [...ausgelost].sort(),
+        gesperrteAltersklassen: [...gesperrt].sort(),
+        gesperrtePoolIds: pools.filter(p => poolIdsMitEchtenKaempfen.has(p.id)).map(p => p.id).sort((a, b) => a - b)
+    };
 }
 
 async function regeneriereKampfplanFuerPool(knex, poolId) {
@@ -1004,7 +1008,7 @@ export async function generierePools(knex, req, res) {
     }
 }
 
-// Leichtgewichtiger Check, welche Altersklassen eines Turniers gesperrt (= mind. ein Pool der
+// Leichtgewichtiger Check, welche Pools bzw. Altersklassen eines Turniers gesperrt (= mind. ein Pool der
 // Altersklasse hatte bereits einen echten, nicht Freilos-Kampf) bzw. ausgelost sind — bewusst OHNE
 // requireTournamentEditAccess (siehe poolRoutes.js), da auch Nicht-Ausrichter-Vereinsmitglieder
 // (die z.B. nur eigene Teilnehmer anmelden) das wissen müssen, ohne selbst Bearbeitungsrechte
@@ -1015,10 +1019,11 @@ export async function pruefeTeilnehmerlisteGesperrt(knex, req, res) {
         if (!turnierId) {
             return res.status(400).json({ success: false, error: 'turnierId ist erforderlich.' });
         }
-        const { gesperrteAltersklassen, ausgelosteAltersklassen } = await ermittleAltersklassenPoolZustand(knex, turnierId);
+        const { gesperrteAltersklassen, ausgelosteAltersklassen, gesperrtePoolIds } = await ermittleAltersklassenPoolZustand(knex, turnierId);
         return res.json({
             gesperrt: gesperrteAltersklassen.length > 0,
             gesperrteAltersklassen,
+            gesperrtePoolIds,
             ausgelosteAltersklassen,
             mannschaftenGesperrt: await mannschaftsPoolsHabenEchteKaempfe(knex, turnierId)
         });
@@ -1044,7 +1049,7 @@ export async function getAltersklassenStatus(knex, req, res) {
                 .where('mannschaften.turnier_id', turnierId)
                 .pluck('mannschaft_mitglieder.turnier_teilnehmer_id')
         );
-        const { gesperrteAltersklassen, ausgelosteAltersklassen } = await ermittleAltersklassenPoolZustand(knex, turnierId);
+        const { gesperrteAltersklassen, ausgelosteAltersklassen, gesperrtePoolIds } = await ermittleAltersklassenPoolZustand(knex, turnierId);
 
         const proKlasse = new Map();
         for (const t of teilnehmer) {
