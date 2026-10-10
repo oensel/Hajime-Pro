@@ -131,7 +131,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             poolsContainer.innerHTML = `<div class="pools-loading-banner">Pools werden geladen...</div>`;
 
-            const response = await fetch(`/api/pools/details?turnierId=${encodeURIComponent(turnierId)}`);
+            const response = await fetch(`/api/pools/details?turnierId=${encodeURIComponent(turnierId)}&mitVerspaetet=1`);
             const responseText = await response.text();
 
             let pools;
@@ -624,7 +624,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // das sichtbare Ruckeln nach dem Verschieben eines Athleten per Drag & Drop.
     async function aktualisierePoolZeilen(poolIds) {
         try {
-            const response = await fetch(`/api/pools/details?turnierId=${encodeURIComponent(turnierId)}`);
+            const response = await fetch(`/api/pools/details?turnierId=${encodeURIComponent(turnierId)}&mitVerspaetet=1`);
             const pools = await response.json();
 
             if (!response.ok || !Array.isArray(pools)) {

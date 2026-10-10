@@ -123,6 +123,7 @@ async function main() {
             table.boolean('golden_score_aktiv').notNullable().defaultTo(true);
             table.string('farbe_kaempfer2').nullable();
             table.integer('golden_score_max_sekunden').nullable().defaultTo(null);
+            table.boolean('verspaetet').notNullable().defaultTo(false);
             table.timestamps(true, true);
             table.index('turnier_id', 'idx_pools_turnier_id');
         });

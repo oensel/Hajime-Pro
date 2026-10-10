@@ -456,7 +456,7 @@ export async function mannschaftsPoolsHabenEchteKaempfe(knex, turnierId) {
 // ausgelost = es gibt einen Einzel-Pool dieser Altersklasse mit Teilnehmern, gesperrt = einer davon hat echte Kämpfe.
 export async function ermittleAltersklassenPoolZustand(knex, turnierId) {
     const pools = await knex('pools')
-        .where({ turnier_id: turnierId })
+        .where({ turnier_id: turnierId, verspaetet: false })
         .andWhereNot({ typ: 'mannschaft' })
         .select('id', 'altersklasse');
     const mitTeilnehmern = new Set(
@@ -1090,7 +1090,10 @@ export async function getPoolsMitDetails(knex, req, res) {
         // einzelner Teilnehmer, Kämpfer-Bracket-Baum) ist strukturell auf Einzelwettkampf-Pools
         // zugeschnitten. Mannschafts-Pools werden vollständig auf der eigenen
         // Mannschaften-Seite (mannschaften.html) verwaltet und angezeigt.
-        const pools = await knex('pools').where({ turnier_id: turnierId }).andWhereNot({ typ: 'mannschaft' });
+        // Der Sammelpool "Verspätet" erscheint nur in der Pool-Verwaltung (pools.js, mitVerspaetet=1).
+        const abfrage = knex('pools').where({ turnier_id: turnierId }).andWhereNot({ typ: 'mannschaft' });
+        if (req.query.mitVerspaetet !== '1') abfrage.andWhere({ verspaetet: false });
+        const pools = await abfrage;
 
         const ergebnis = await Promise.all(pools.map(async (pool) => {
             const teilnehmer = await knex('turnier_teilnehmer').where({ pool_id: pool.id });
@@ -1382,7 +1385,8 @@ export async function getKampfflaechenMitPools(knex, req, res) {
                 knex.raw("(SELECT COUNT(*) FROM kaempfe WHERE kaempfe.pool_id = pools.id AND kaempfe.status = 'beendet') as echte_beendete_kaempfe"),
                 knex.raw("(SELECT COUNT(*) FROM kaempfe WHERE kaempfe.pool_id = pools.id AND kaempfe.status = 'gestartet') as laufende_kaempfe" )
             )
-            .where('pools.turnier_id', turnierId);
+            .where('pools.turnier_id', turnierId)
+            .andWhere('pools.verspaetet', false);
 
         const poolsMitDauer = pools.map((p) => ({
             ...p,
@@ -1607,7 +1611,7 @@ export async function verteilePools(knex, req, res) {
             return res.status(400).json({ success: false, error: 'Es wurden keine Kampfflächen für dieses Turnier angelegt.' });
         }
 
-        const pools = await knex('pools').where({ turnier_id: parseInt(turnierId) });
+        const pools = await knex('pools').where({ turnier_id: parseInt(turnierId), verspaetet: false });
 
         // Pools mit bereits gestarteten/beendeten echten Kämpfen dürfen von der automatischen
         // Verteilung nicht angerührt werden — ihre aktuelle Mattenzuordnung bleibt unverändert
@@ -2023,7 +2027,8 @@ export async function getDashboardData(knex, req, res) {
                 knex.raw('(SELECT COUNT(*) FROM kaempfe WHERE kaempfe.pool_id = pools.id) as gesamt_kaempfe'),
                 knex.raw("(SELECT COUNT(*) FROM kaempfe WHERE kaempfe.pool_id = pools.id AND kaempfe.status IN ('beendet', 'freilos')) as beendete_kaempfe")
             )
-            .where('pools.turnier_id', parseInt(turnierId));
+            .where('pools.turnier_id', parseInt(turnierId))
+            .andWhere('pools.verspaetet', false);
 
         const resultMats = [];
 
@@ -2173,12 +2178,12 @@ export async function getPoolUebersicht(knex, req, res) {
             .orderBy('id', 'asc');
 
         const pools = await knex('pools')
-            .where({ turnier_id: parseInt(turnierId) })
+            .where({ turnier_id: parseInt(turnierId), verspaetet: false })
             .orderBy('id', 'asc');
 
         const teilnehmer = await knex('turnier_teilnehmer')
             .where({ turnier_id: parseInt(turnierId) })
-            .whereNotNull('pool_id')
+            .whereIn('pool_id', pools.map(p => p.id))
             .select('id', 'pool_id', 'vorname', 'nachname', 'verein')
             .orderBy('nachname', 'asc')
             .orderBy('vorname', 'asc');
