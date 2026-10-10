@@ -75,6 +75,20 @@
         return new Date(Date.now() + (knoten.uhr_offset_ms || 0)).toISOString();
     }
 
+    // Eine abgelehnte Nachmeldung (z.B. Altersklasse bereits ausgelost) räumt der Abgleich des Servers
+    // gleich wieder weg, bevor die Ablehnung hier ankommt. Den Grund hält das konflikt:-Dokument fest.
+    async function grundFuerEntferntesDokument(docId) {
+        const standard = 'Datensatz wurde auf dem Server entfernt.';
+        try {
+            const konflikte = (await alleDokumente())
+                .filter(d => d.dokumenttyp === 'konflikt' && d.bezug_id === docId && d.grund)
+                .sort((a, b) => String(b.erstellt_am || b.zeit || '').localeCompare(String(a.erstellt_am || a.zeit || '')));
+            return konflikte.length ? konflikte[0].grund : standard;
+        } catch (err) {
+            return standard;
+        }
+    }
+
     // Wartet, bis der Server die eigene Revision verarbeitet hat (bearbeitet_von: 'server' mit
     // höherer Revision). Nach WARTE_MS gilt die Änderung als lokal gespeichert, aber unbestätigt.
     async function warteAufServer(docId, eigeneRev) {
@@ -86,7 +100,7 @@
             try {
                 doc = await db.get(docId);
             } catch (err) {
-                if (err.status === 404) return { ok: false, fehler: 'Datensatz wurde auf dem Server entfernt.' };
+                if (err.status === 404) return { ok: false, fehler: await grundFuerEntferntesDokument(docId) };
                 continue;
             }
             if (doc.bearbeitet_von === 'server' && revNummer(doc._rev) > revNummer(eigeneRev)) {
