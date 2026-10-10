@@ -695,6 +695,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
     }
 
+    // Nachzügler-Zähler am Menüpunkt "Pools" (alle Rollen außer client): wird von pools.js gesetzt, solange pools.html offen ist.
+    const poolsBadge = document.getElementById('nav-pools-badge');
+    window.hajimeAktualisiereNachzuegler = () => {
+        if (!poolsBadge) return;
+        const anzahl = window.hajimeNachzueglerZaehler || 0;
+        poolsBadge.textContent = String(anzahl);
+        poolsBadge.style.display = anzahl > 0 ? 'inline-block' : 'none';
+        poolsBadge.title = anzahl > 0 ? `${anzahl} Nachzügler warten auf einen Pool` : '';
+    };
+    window.hajimeAktualisiereNachzuegler();
+
     // --- SERVER-CLUSTER (Hallen-Server mit CLUSTER_KNOTEN, siehe src/cluster/) ---
     // Menüpunkt "Cluster"; auf dem Secondary zusätzlich ein Hinweis, dass nur gelesen werden kann.
     if (syncRolle === 'server') {
@@ -715,16 +726,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             videoLink.style.display = '';
             if (currentPath.includes('videobeweis.html')) videoLink.classList.add('active');
         }
-        // Nachzügler-Zähler am Menüpunkt "Pools": wird von pools.js gesetzt, solange pools.html offen ist.
-        const poolsBadge = document.getElementById('nav-pools-badge');
-        window.hajimeAktualisiereNachzuegler = () => {
-            if (!poolsBadge) return;
-            const anzahl = window.hajimeNachzueglerZaehler || 0;
-            poolsBadge.textContent = String(anzahl);
-            poolsBadge.style.display = anzahl > 0 ? 'inline-block' : 'none';
-            poolsBadge.title = anzahl > 0 ? `${anzahl} Nachzügler warten auf einen Pool` : '';
-        };
-        window.hajimeAktualisiereNachzuegler();
         // Sync-Konflikte: Menüpunkt mit Zähler der offenen Konflikte (hohe Priorität: rot).
         const syncKonflikteLink = document.getElementById('nav-sync-konflikte');
         if (syncKonflikteLink) {

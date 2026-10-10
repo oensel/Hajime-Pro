@@ -717,6 +717,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         // ganze Tabelle neu zu laden — verhindert das sichtbare Ruckeln. Keine
                         // Erfolgs-Notification, da der Drag&Drop selbst schon sichtbares Feedback ist.
                         await aktualisierePoolZeilen([sourcePoolId, zielPoolId]);
+                        ladeNachzuegler(); // Zähler/Vorschläge nach dem Verschieben aktualisieren
                     } else {
                         zeigeNotification('Fehler beim Verschieben: ' + result.error, 'error');
                     }
