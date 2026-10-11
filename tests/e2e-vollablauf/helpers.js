@@ -507,11 +507,6 @@ export async function generierePoolsUndPruefeKampflos(page, baseUrl, request, tu
     await expect(page.locator('#altersklassenDialog')).toBeVisible();
     await page.locator('#altersklassenBestaetigen').click();
 
-    // "Waage für die gewählten Altersklassen schließen und auslosen? ..." (kein vorheriger Warn-Dialog, da alle
-    // 103 Teilnehmer bereits kampfbereit sind, siehe warneVorNichtKampfbereitenTeilnehmern).
-    await expect(page.locator('#customConfirmModal')).toBeVisible();
-    await page.locator('#modalConfirmBtn').click();
-
     await expect(page.locator('#snackbarText')).toHaveText('Pools erfolgreich generiert und ausgelost!');
 
     const detailsResp = await request.get(`${baseUrl}/api/pools/details?turnierId=${turnierId}`, {

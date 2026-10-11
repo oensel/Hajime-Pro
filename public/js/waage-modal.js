@@ -902,7 +902,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     kampfbereitBtn.style.display = 'none';
                     delete kampfbereitBtn.dataset.teilnehmerId;
                     if (window.ladeTeilnehmerListe) window.ladeTeilnehmerListe();
-                    if (window.NachzueglerDialog) await window.NachzueglerDialog.frageNachSpeichern({ turnierId, teilnehmerId });
+                    if (window.NachzueglerDialog) {
+                        const nachzuegler = await window.NachzueglerDialog.frageNachSpeichern({ turnierId, teilnehmerId });
+                        if (nachzuegler && nachzuegler.aktion !== 'keine') schliesseModal();
+                    }
                 } else {
                     window.zeigeNotification(result.fehler || 'Fehler bei der Bestätigung.', 'error');
                 }
@@ -1093,8 +1096,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
 
                     // Nachzügler (Altersklasse schon ausgelost): Pool-Auswahl anbieten.
+                    // Nach der Pool-Auswahl ist der Nachzügler erledigt: das Fenster schließt sich.
                     if (gespeicherteId && window.NachzueglerDialog) {
-                        await window.NachzueglerDialog.frageNachSpeichern({ turnierId, teilnehmerId: gespeicherteId });
+                        const nachzuegler = await window.NachzueglerDialog.frageNachSpeichern({ turnierId, teilnehmerId: gespeicherteId });
+                        if (nachzuegler && nachzuegler.aktion !== 'keine' && !editId) schliesseModal();
                     }
                 } else {
                     window.zeigeNotification(result.fehler || 'Fehler beim Speichern', 'error');

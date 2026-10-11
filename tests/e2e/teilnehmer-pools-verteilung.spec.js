@@ -338,13 +338,9 @@ test.describe.serial('Pool-Verteilung nach Alters-/Gewichtsklasse und Wettkampfs
         await expect(page.locator('#altersklassenDialog')).toBeVisible();
         await page.locator('#altersklassenBestaetigen').click();
 
-        // Da bereits alle Teilnehmer kampfbereit sind, entfällt die Warnung vor nicht
-        // kampfbereiten Teilnehmern (siehe warneVorNichtKampfbereitenTeilnehmern in pools.js) — nur
-        // die zweite, immer erscheinende Bestätigung ("Waage schließen & Auslosen") muss bestätigt
-        // werden.
-        await expect(page.locator('#customConfirmModal')).toBeVisible();
-        await page.locator('#modalConfirmBtn').click();
-
+        // Da bereits alle Teilnehmer kampfbereit sind, entfällt die Warnung vor nicht kampfbereiten
+        // Teilnehmern (siehe warneVorNichtKampfbereitenTeilnehmern in pools.js); die Pools werden
+        // direkt generiert.
         await expect(page.locator('#snackbarText')).toHaveText('Pools erfolgreich generiert und ausgelost!');
         await expect(page.locator('tr.pool-section')).toHaveCount(10);
     });

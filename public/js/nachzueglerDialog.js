@@ -37,28 +37,29 @@
         return new Promise((resolve) => {
             const vorschlagId = nachzuegler.vorschlag ? nachzuegler.vorschlag.poolId : null;
             const select = element('select', { id: 'nachzueglerPoolSelect' });
-            select.style.cssText = 'width:100%;padding:8px;margin:12px 0;font:inherit;';
+            select.style.cssText = 'width:100%;height:auto;padding:10px 12px;margin:0 0 20px;font-size:14px;cursor:pointer;';
             for (const pool of nachzuegler.offenePools || []) {
                 select.append(element('option', { value: String(pool.poolId), textContent: optionsText(pool, pool.poolId === vorschlagId) }));
             }
             select.append(element('option', { value: 'verspaetet', textContent: 'Verspätet (Sammelpool)' }));
             select.value = vorschlagId != null ? String(vorschlagId) : 'verspaetet';
 
-            const btnEinsortieren = element('button', { type: 'button', id: 'nachzueglerEinsortierenBtn', className: 'mdc-button mdc-button--raised', textContent: 'Einsortieren' });
-            const btnSpaeter = element('button', { type: 'button', id: 'nachzueglerSpaeterBtn', className: 'mdc-button', textContent: 'Später' });
+            const btnEinsortieren = element('button', { type: 'button', id: 'nachzueglerEinsortierenBtn', className: 'btn btn-raised', textContent: 'Einsortieren' });
+            const btnSpaeter = element('button', { type: 'button', id: 'nachzueglerSpaeterBtn', className: 'btn btn-outlined', textContent: 'Später' });
             const knoepfe = element('div', {}, [btnSpaeter, btnEinsortieren]);
-            knoepfe.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;';
+            knoepfe.style.cssText = 'display:flex;justify-content:flex-end;gap:12px;';
+            for (const b of [btnSpaeter, btnEinsortieren]) b.style.padding = '2px 16px';
 
             const titel = element('h2', { textContent: `In welchen Pool soll ${nachzuegler.name} ?` });
-            titel.style.cssText = 'margin:0 0 8px;font-size:1.15rem;';
+            titel.style.cssText = 'margin:0 0 8px;font-size:18px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-main);';
             const hinweis = element('p', { textContent: `Die Altersklasse ${nachzuegler.altersklasse} ist bereits ausgelost.` });
-            hinweis.style.cssText = 'margin:0;color:var(--text-muted,#666);';
+            hinweis.style.cssText = 'margin:0 0 16px;font-size:13px;color:var(--text-muted);';
 
             const karte = element('div', { role: 'dialog' }, [titel, hinweis, select, knoepfe]);
-            karte.style.cssText = 'background:var(--bg-card,#fff);color:var(--text,#222);border-radius:8px;padding:20px;max-width:520px;width:calc(100% - 32px);box-shadow:0 8px 32px rgba(0,0,0,.35);';
+            karte.style.cssText = 'background:var(--bg-card);color:var(--text-main);border:2px solid var(--border);border-radius:4px;padding:24px;max-width:560px;width:90%;box-shadow:var(--shadow);';
 
             const overlay = element('div', { id: 'nachzueglerDialog' }, [karte]);
-            overlay.style.cssText = 'position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5);';
+            overlay.style.cssText = 'position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.4);backdrop-filter:blur(2px);';
 
             const beiTaste = (e) => { if (e.key === 'Escape') beenden(null); };
             const beenden = (ergebnis) => {

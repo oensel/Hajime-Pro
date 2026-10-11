@@ -336,6 +336,8 @@ test.describe.serial('Nachzügler: Pool-Auswahl nach dem Speichern', () => {
         await expect(page.locator('#nachzueglerPoolSelect option:checked')).toContainText('Vorschlag');
         await page.locator('#nachzueglerEinsortierenBtn').click();
         await expect(dialog).toHaveCount(0);
+        // Das "Teilnehmer hinzufügen"-Fenster schließt sich nach der Pool-Auswahl.
+        await expect(page.locator('#waageModal')).toBeHidden();
         await expect.poll(async () => (await nachVorname(request, 'Dialog')).pool_id).toBe(poolId);
     });
 

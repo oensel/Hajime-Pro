@@ -886,18 +886,11 @@ document.addEventListener('DOMContentLoaded', () => {
             titel: 'Pools generieren',
             hinweis: 'Welche Altersklassen sind fertig gewogen und sollen jetzt ausgelost werden?',
             eintraege,
-            bestaetigenText: 'Weiter'
+            bestaetigenText: 'Pools generieren'
         });
         if (!gewaehlt) return;
 
         if (!await warneVorNichtKampfbereitenTeilnehmern(gewaehlt)) return;
-
-        const waageSchliessen = await zeigeBestaetigung(
-            'Waage für die gewählten Altersklassen schließen und auslosen? Die Pools dieser Altersklassen werden berechnet; nicht gewogene Teilnehmer dieser Klassen gelten als nicht erschienen.',
-            'Waage schließen & Auslosen',
-            'lock_clock'
-        );
-        if (!waageSchliessen) return;
 
         await fuehrePoolGenerierungAus({ neuGenerieren: false, altersklassen: gewaehlt });
     }
