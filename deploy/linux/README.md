@@ -22,18 +22,30 @@ git clone <repo-url> Hajime-Pro && cd Hajime-Pro && sudo bash deploy/linux/insta
 nach `git pull` = Update (`.env` und Daten bleiben). **Automatisch:** der Dienst prüft bei jedem Start auf ein neueres GitHub-Release und installiert es selbst (Paket laden, Signatur prüfen, `npm ci`, Migration, Neustart; vorherige Version unter `/opt/hajime-pro/.update/alt-<version>/`). Im Cluster aus, dort von Hand; abschalten mit `HAJIME_SELBSTUPDATE=false` in der `.env`; privates Repository: `CLIENT_RELEASE_TOKEN`. CouchDB ist nicht nötig: die Dokument-DB
 für die Client-Geräte ist in die App eingebaut. Den Zwei-Server-Cluster richtet das nächste Skript ein.
 
-## Schnellstart: Zwei-Server-Cluster (geführt)
+## Schnellstart: Zwei-Server-Cluster (drei Befehle je Server)
 
-Beide Server: Debian 12/13 oder Ubuntu 24.04+ ohne Desktop, feste IPs, eine freie VIP im selben Netz.
+Beide Server: frisches Debian 12/13 (oder Ubuntu 24.04+) ohne Desktop, als `root`, Internetzugang, **feste IPs**
+(am Router reservieren oder statisch eintragen) und eine **freie VIP** im selben Netz. Nichts anderes ist vorab nötig.
 
 ```bash
-# server1 (legt alle Geheimnisse an -> /root/hajime-cluster-geheimnisse.env)
-sudo bash deploy/linux/install-cluster.sh --knoten server1 --eigene-ip 192.168.10.11 --partner-ip 192.168.10.12 --vip 192.168.10.10
-scp /root/hajime-cluster-geheimnisse.env root@192.168.10.12:/root/
-# server2 (baut PostgreSQL als Standby von server1 auf; server1 muss fertig sein)
-sudo bash deploy/linux/install-cluster.sh --knoten server2 --eigene-ip 192.168.10.12 --partner-ip 192.168.10.11 --vip 192.168.10.10
-hajime-cluster-status   # Zustand jederzeit (Rolle, Replikation, VIP, Partner)
+# server1 (Master) – eigene IP und Netzwerkschnittstelle erkennt das Skript selbst
+apt-get update && apt-get install -y git
+git clone https://github.com/oensel/Hajime-Pro.git && cd Hajime-Pro
+bash deploy/linux/install-cluster.sh --partner-ip 192.168.10.12 --vip 192.168.10.10
 ```
+
+Am Ende gibt server1 die drei Zeilen für server2 samt **Kopplungscode** aus (auch in
+`/root/hajime-kopplungscode.txt`); sie werden auf server2 (Standby) einfach eingefügt:
+
+```bash
+apt-get update && apt-get install -y git
+git clone https://github.com/oensel/Hajime-Pro.git && cd Hajime-Pro
+bash deploy/linux/install-cluster.sh --kopplungscode 'HJ1:…'
+```
+
+Der Kopplungscode enthält die Adresse von server1, VIP, Zeuge und alle Geheimnisse – ein Datei-Kopieren
+(`scp`) entfällt. server1 muss fertig sein, bevor server2 läuft. Zustand jederzeit: `hajime-cluster-status`.
+Die ausführliche Form (`--knoten`, `--eigene-ip`, Geheimnis-Datei per `scp`) funktioniert weiterhin.
 
 Das Skript richtet Node.js, PostgreSQL-Replikation, Rollen, `pg_hba`, `.env`, systemd, Rückstufungs-Skript,
 keepalived und ufw ein (alle Optionen: `--help`); eine vorhandene Einzelserver-Installation wird zum server1.

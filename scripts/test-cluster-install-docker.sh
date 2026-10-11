@@ -30,8 +30,10 @@ installiere() { # container knoten eigene partner
         --zeuge "$IP2" --schnittstelle eth0
 }
 echo "== server1 einrichten"; installiere "$S1" server1 "$IP1" "$IP2"
-docker cp "$S1":/root/hajime-cluster-geheimnisse.env - | docker cp - "$S2":/root/
-echo "== server2 einrichten"; installiere "$S2" server2 "$IP2" "$IP1"
+# server2 über den Kopplungscode von server1 (eigene IP wird aus der Route zu server1 erkannt, kein scp)
+CODE="$(docker exec "$S1" cat /root/hajime-kopplungscode.txt)"
+echo "== server2 einrichten (Kopplungscode)"
+docker exec "$S2" bash /quelle/deploy/linux/install-cluster.sh --kopplungscode "$CODE" --schnittstelle eth0
 
 fehler=0
 pruefe() { # beschreibung befehl...
