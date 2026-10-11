@@ -97,6 +97,8 @@ export function htmlZuText(html) {
     return String(html || '')
         .replace(/<(style|script|head)[\s\S]*?<\/\1>/gi, '')
         .replace(/<!--[\s\S]*?-->/g, '')
+        // Zellinhalt auf eine Zeile bringen: Tabellen aus Webseiten stecken Absätze/Divs in die Zellen
+        .replace(/<(t[dh])\b[^>]*>([\s\S]*?)<\/\1>/gi, (_, tag, inner) => `<${tag}>${inner.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()}</${tag}>`)
         .replace(/<br\s*\/?>/gi, '\n')
         .replace(/<\/(p|div|tr|li|h[1-6]|table|ul|ol)>/gi, '\n')
         .replace(/<\/t[dh]>/gi, '\t')
@@ -356,6 +358,10 @@ const KOPF_FELD = {
     gewicht: 'gewicht', kg: 'gewicht', gewichtkg: 'gewicht',
     pass: 'judopass_id', passnr: 'judopass_id', passnummer: 'judopass_id', judopass: 'judopass_id', judopassnr: 'judopass_id',
     graduierung: 'graduierung', kyu: 'graduierung', gurt: 'graduierung', grad: 'graduierung', guertel: 'graduierung',
+    nation: 'ignoriert', region: 'ignoriert', land: 'ignoriert', bundesland: 'ignoriert', landesverband: 'ignoriert',
+    gewichtskategorie: 'ignoriert', gewichtsklasse: 'ignoriert',
+    lizenz: 'judopass_id', lizenznr: 'judopass_id', lizenznummer: 'judopass_id',
+    alterskategorie: 'altersklasse', altersklasse: 'altersklasse',
     team: 'mannschaft_name', mannschaft: 'mannschaft_name', teamname: 'mannschaft_name'
 };
 
@@ -370,7 +376,7 @@ function parseTabellenZeile(zellen, spalten, kontext) {
     const satz = leereZeile();
     spalten.forEach((feld, i) => {
         const wert = (zellen[i] || '').trim();
-        if (!feld || !wert) return;
+        if (!feld || feld === 'ignoriert' || !wert) return;
         if (feld === 'voll') {
             const n = teileName(wert);
             if (n) { satz.vorname = n.vorname; satz.nachname = n.nachname; }
@@ -378,6 +384,10 @@ function parseTabellenZeile(zellen, spalten, kontext) {
             satz.geburtsjahr = leseGeburt(wert)?.wert || wert;
         } else if (feld === 'geschlecht') {
             satz.geschlecht = normalisiereGeschlecht(wert) || wert;
+        } else if (feld === 'altersklasse') {
+            // "U15w" / "U11m": das Geschlecht steht am Ende, die Altersklasse leitet das Turnier selbst ab
+            const g = wert.match(/\d([mw])$/i);
+            if (g) satz.geschlecht = normalisiereGeschlecht(g[1]);
         } else if (feld === 'gewicht') {
             satz.gewicht = wert.replace(/\s*kg$/i, '').replace('.', ',');
         } else {
@@ -390,13 +400,96 @@ function parseTabellenZeile(zellen, spalten, kontext) {
     return satz;
 }
 
+// Aus einer Webseite kopierter Text trennt manche Zellen per Zeilenumbruch statt per Tab
+// (Kopfzeile, danach "Name<TAB>Vorname<TAB>", Leerzeilen, "U15w", "-36kg", … und zuletzt
+// "09.03.2013<TAB>J-1<TAB>Club"). Nach einer erkannten Kopfzeile werden zu kurze Zeilen mit den
+// folgenden zu einer Zeile mit genug Zellen zusammengesetzt.
+function fuegeZellumbruecheZusammen(text) {
+    const ausgabe = [];
+    let spaltenZahl = 0;
+    let puffer = null;
+    let umbrueche = 0;
+    const zellenZahl = (z) => z.split('\t').length;
+    const leere = () => {
+        if (puffer !== null) ausgabe.push(puffer);
+        puffer = null;
+        umbrueche = 0;
+    };
+
+    for (const zeile of String(text || '').replace(/\r\n?/g, '\n').split('\n')) {
+        const getrimmt = zeile.trim();
+        if (!getrimmt) {
+            if (puffer === null) ausgabe.push(zeile);
+            continue;
+        }
+        const hatTab = zeile.includes('\t');
+        if (hatTab && erkenneKopfzeile(zeile.split('\t').map(z => z.trim()))) {
+            leere();
+            spaltenZahl = zeile.split('\t').length;
+            ausgabe.push(zeile);
+            continue;
+        }
+        if (puffer !== null) {
+            // Zeilen mit Tab gehören nur dazu, wenn schon eine tab-lose Fortsetzung vorkam
+            if (!hatTab || umbrueche > 0) {
+                puffer = puffer.endsWith('\t') ? puffer + getrimmt : `${puffer}\t${getrimmt}`;
+                if (!hatTab) umbrueche++;
+                if (zellenZahl(puffer) >= spaltenZahl) leere();
+                continue;
+            }
+            leere();
+        }
+        if (spaltenZahl && hatTab && zellenZahl(zeile) < spaltenZahl) {
+            puffer = zeile.trimStart();
+            continue;
+        }
+        ausgabe.push(zeile);
+    }
+    leere();
+    return ausgabe.join('\n');
+}
+
+// Kopfzeile und Zellen stehen nicht in einer Tab-Zeile (Zellen per Zeilenumbruch getrennt, leere Zellen
+// fehlen): die Zeichenkette in Zellen zerlegen, die Kopfzeile als Folge bekannter Spaltennamen
+// suchen und die Zellen über die Geburtsdatum-Spalte zu Zeilen gruppieren.
+function gruppiereZellen(text) {
+    const zellen = String(text || '').split(/[\t\r\n]+/).map(z => z.trim()).filter(Boolean);
+    const feldVon = (z) => KOPF_FELD[z.toLowerCase().replace(/[^a-zäöüß]/g, '')] || null;
+    const istDatum = (z) => /^\d{1,2}\.\d{1,2}\.(\d{4}|\d{2})$/.test(z) || /^(19|20)\d{2}-\d{2}-\d{2}$/.test(z) || /^(19|20)\d{2}$/.test(z);
+
+    for (let i = 0; i < zellen.length; i++) {
+        let j = i;
+        while (j < zellen.length && feldVon(zellen[j])) j++;
+        const kopf = zellen.slice(i, j);
+        if (kopf.length < 3 || !erkenneKopfzeile(kopf)) { i = Math.max(i, j - 1); continue; }
+
+        const felder = kopf.map(feldVon);
+        const datumIdx = felder.indexOf('geburt');
+        if (datumIdx < 0) return null;
+        const nachDatum = kopf.length - 1 - datumIdx;
+        const zeilen = [kopf.join('\t')];
+        let start = j;
+        for (let k = j; k < zellen.length; k++) {
+            if (!istDatum(zellen[k]) || k - start < 1) continue;
+            const ende = Math.min(k + nachDatum, zellen.length - 1);
+            zeilen.push(zellen.slice(start, ende + 1).join('\t'));
+            start = ende + 1;
+            k = ende;
+        }
+        return [...zellen.slice(0, i), ...zeilen, ...zellen.slice(start)].join('\n');
+    }
+    return null;
+}
+
 // text -> Array von Kämpfer-Datensätzen (Felder wie in FELDER)
 export function extrahiereKaempfer(text, optionen = {}) {
     const kontext = { verein: optionen.verein || '', geschlecht: '' };
     const ergebnis = [];
     let spalten = null;
 
-    for (const zeile of String(text || '').replace(/\r\n?/g, '\n').split('\n')) {
+    const hatTabKopf = String(text || '').split(/\r?\n/).some(z => z.includes('\t') && erkenneKopfzeile(z.split('\t').map(c => c.trim())));
+    const aufbereitet = (!hatTabKopf && gruppiereZellen(text)) || fuegeZellumbruecheZusammen(text);
+    for (const zeile of aufbereitet.split('\n')) {
         const getrimmt = zeile.trim();
         if (!getrimmt) continue;
         if (/^>/.test(getrimmt)) continue; // zitierte Antwort-Zeilen

@@ -131,3 +131,53 @@ test('Tabelle -> Zeilen -> CSV', () => {
     const csv = tabelleZuCsv(MAIL_SPALTEN, zeilen);
     assert.match(csv.split('\n')[0], /^Vorname,Name,Passnr,Geburtsdatum/);
 });
+
+const MELDELISTE_KOPF = 'Nachname\tVorname\tAlterskategorie\tGewichtskategorie\tNation\tRegion\tGeburtstag\tLizenz\tClub';
+
+test('Meldeliste aus dem Browser (HTML-Tabelle mit mehrzeiligen Zellen)', () => {
+    const zelle = (t) => `<td><div>${t}</div></td>`;
+    const zeile = (...z) => `<tr>${z.map(zelle).join('')}</tr>`;
+    const html = '<table><tr><th>Nachname</th><th>Vorname</th><th>Alterskategorie</th><th>Gewichtskategorie</th><th>Nation</th><th>Region</th><th>Geburtstag</th><th>Lizenz</th><th>Club</th></tr>'
+        + zeile('Jannemann', 'Lea', '\n U15w\n', '-36kg', 'GER - Deutschland', 'NW – Nordrhein-Westfalen', '09.03.2013', 'J-0064792', 'Judo Club Senden')
+        + zeile('Jannemann', 'Lea', 'U15w', '-44kg', 'GER - Deutschland', 'NW – Nordrhein-Westfalen', '09.03.2013', 'J-0064792', 'Judo Club Senden')
+        + zeile('Könn', 'Levi', 'U13m', '-31kg', 'GER - Deutschland', 'NW – Nordrhein-Westfalen', '19.04.2014', 'J-0029315', 'Judo Club Senden')
+        + '</table>';
+    const s = extrahiereKaempfer(htmlZuText(html));
+    assert.equal(s.length, 2, 'Doppelmeldung derselben Person wird zusammengefasst');
+    assert.deepEqual(
+        { v: s[0].vorname, n: s[0].nachname, g: s[0].geschlecht, d: s[0].geburtsjahr, p: s[0].judopass_id, c: s[0].verein },
+        { v: 'Lea', n: 'Jannemann', g: 'weiblich', d: '09.03.2013', p: 'J-0064792', c: 'Judo Club Senden' }
+    );
+    assert.equal(s[1].geschlecht, 'männlich');
+});
+
+test('Meldeliste als Klartext mit Zeilenumbrüchen in den Zellen', () => {
+    const text = [
+        MELDELISTE_KOPF,
+        'Jannemann\tLea\t', '', 'U15w', '', '-36kg', '', 'GER - Deutschland', '', 'NW – Nordrhein-Westfalen',
+        '09.03.2013\tJ-0064792\tJudo Club Senden',
+        'Lehmann\tTim\t', '', 'U11m', '', 'Gewichtsnah', '', 'GER - Deutschland', '', 'NW – Nordrhein-Westfalen',
+        '05.06.2018\tJ-0126408\tJudo Club Senden'
+    ].join('\n');
+    const s = extrahiereKaempfer(text);
+    assert.equal(s.length, 2);
+    assert.equal(s[1].nachname, 'Lehmann');
+    assert.equal(s[1].geschlecht, 'männlich');
+    assert.equal(s[1].geburtsjahr, '05.06.2018');
+    assert.equal(s[1].verein, 'Judo Club Senden');
+});
+
+test('Meldeliste, Kopfzeile und Zellen nur per Zeilenumbruch getrennt, leere Zellen fehlen', () => {
+    const text = [
+        'Nachname', 'Vorname', 'Alterskategorie', 'Gewichtskategorie', 'Nation', 'Region', 'Geburtstag', 'Lizenz', 'Club',
+        'Rieger', 'Emilia', 'U15w', '-48kg', 'GER - Deutschland', 'NW – Nordrhein-Westfalen', '25.12.2013', 'J-0029332', 'Judo Club Senden',
+        'Lehmann', 'Tim', 'U11m', 'Gewichtsnah', 'GER - Deutschland', 'NW – Nordrhein-Westfalen', '05.06.2018', 'J-0126408', 'Judo Club Senden'
+    ].join('\n\n');
+    const s = extrahiereKaempfer(text);
+    assert.equal(s.length, 2);
+    assert.equal(s[0].nachname, 'Rieger');
+    assert.equal(s[0].geschlecht, 'weiblich');
+    assert.equal(s[0].judopass_id, 'J-0029332');
+    assert.equal(s[1].vorname, 'Tim');
+    assert.equal(s[1].verein, 'Judo Club Senden');
+});

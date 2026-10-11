@@ -1289,7 +1289,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const tabellenAnhang = anhaenge.find(a => /\.(xlsx|xls|csv)$/i.test(a.name || ''));
 
         if (saetze.length === 0 && !tabellenAnhang) {
-            melde('In der E-Mail wurden keine Teilnehmer mit Geburtsdatum oder Jahrgang gefunden.', 'error');
+            melde('Im abgelegten Inhalt wurden keine Teilnehmer mit Geburtsdatum oder Jahrgang gefunden.', 'error');
             return;
         }
 
@@ -1342,11 +1342,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return;
             }
 
+            // Markierte Tabellen aus dem Browser: aus dem HTML lesen, dort sind die Zellen sauber getrennt
+            // (der Klartext trennt Zellen mit mehrzeiligem Inhalt teils per Zeilenumbruch).
+            const html = dt.getData('text/html');
             let text = dt.getData('text/plain');
-            if (!text && dt.getData('text/html')) text = (await ladeMailModul()).htmlZuText(dt.getData('text/html'));
+            if (html && (!text || /<t[dh][\s>]/i.test(html))) text = (await ladeMailModul()).htmlZuText(html);
             if (text && text.trim()) await verarbeiteMailInhalt({ text });
         } catch (err) {
-            melde('E-Mail konnte nicht gelesen werden: ' + err.message, 'error');
+            melde('Der abgelegte Inhalt konnte nicht gelesen werden: ' + err.message, 'error');
         }
     }
 
