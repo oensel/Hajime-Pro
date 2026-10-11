@@ -36,7 +36,7 @@ try {
         }
 
         return originalFetch(url, options).then(response => {
-            if (response.status === 401 && !url.includes('/api/auth/login') && !url.includes('/api/auth/verify') && !url.includes('/api/auth/mode')) {
+            if (response.status === 401 && !url.includes('/api/auth/login') && !url.includes('/api/auth/verify') && !url.includes('/api/auth/mode') && !url.includes('/api/auth/steuerung-passwort')) {
                 localStorage.removeItem('dokume_token');
                 localStorage.removeItem('dokume_user');
                 window.location.href = '/login.html';
@@ -95,9 +95,14 @@ function showGlobalLoginModal() {
                 body: JSON.stringify({ password: pw })
             });
             if (verifyResp.ok) {
+                const antwort = await verifyResp.json().catch(() => ({}));
                 localStorage.setItem('steuerung_password', pw);
                 document.body.removeChild(modal);
-                window.location.reload();
+                if (antwort.aenderungErforderlich) {
+                    zeigePasswortAenderungModal();
+                } else {
+                    window.location.reload();
+                }
             } else {
                 errorMsg.style.display = 'block';
                 passwordInput.value = '';
@@ -108,6 +113,64 @@ function showGlobalLoginModal() {
             errorMsg.style.display = 'block';
         }
     });
+}
+
+// Erzwungene Änderung des Start-Passworts (vom Installationsskript erzeugt): erscheint bei der ersten
+// Anmeldung mit diesem Passwort und lässt sich nicht schließen. Das bisherige Passwort steht schon
+// in localStorage (der fetch-Wrapper sendet es als Nachweis mit).
+function zeigePasswortAenderungModal() {
+    if (document.getElementById('passwortAenderungModal')) return;
+
+    const modal = document.createElement('div');
+    modal.id = 'passwortAenderungModal';
+    modal.style = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(17, 24, 39, 0.96); z-index: 999999; display: flex; align-items: center; justify-content: center; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;';
+    const feld = 'padding: 10px 14px; border: 1px solid #4b5563; border-radius: 4px; background: #111827; color: #ffffff; font-size: 14px; text-align: center; font-weight: bold; width: 100%; box-sizing: border-box; outline: none;';
+    modal.innerHTML = `
+        <div style="background: #1f2937; border: 2px solid #374151; border-radius: 8px; padding: 32px; width: 90%; max-width: 400px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.5); color: #f3f4f6;">
+            <div style="font-size: 40px; color: #3b82f6; margin-bottom: 16px;">🔑</div>
+            <h2 style="margin: 0 0 12px 0; font-size: 20px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Passwort ändern</h2>
+            <p style="margin: 0 0 24px 0; font-size: 13px; color: #9ca3af; font-weight: 600;">Das bei der Installation erzeugte Passwort muss geändert werden. Bitte vergeben Sie ein eigenes Passwort für den Schreibzugriff (mindestens 8 Zeichen).</p>
+            <form id="passwortAenderungForm" style="display: flex; flex-direction: column; gap: 16px;">
+                <input type="password" id="passwortAenderungNeu" placeholder="Neues Passwort" autocomplete="new-password" required minlength="8" style="${feld}">
+                <input type="password" id="passwortAenderungWiederholung" placeholder="Neues Passwort wiederholen" autocomplete="new-password" required minlength="8" style="${feld}">
+                <button type="submit" style="background: #3b82f6; color: #ffffff; border: none; padding: 12px; font-size: 14px; font-weight: 700; border-radius: 4px; cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px;">Passwort speichern</button>
+            </form>
+            <div id="passwortAenderungFehler" style="margin-top: 12px; color: #ef4444; font-size: 12px; font-weight: 700; display: none;"></div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    const fehler = document.getElementById('passwortAenderungFehler');
+    const zeigeFehler = (text) => {
+        fehler.innerText = text;
+        fehler.style.display = 'block';
+    };
+    document.getElementById('passwortAenderungForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const neu = document.getElementById('passwortAenderungNeu').value;
+        const wiederholung = document.getElementById('passwortAenderungWiederholung').value;
+        if (neu !== wiederholung) {
+            zeigeFehler('Die beiden Eingaben stimmen nicht überein.');
+            return;
+        }
+        try {
+            const resp = await fetch('/api/auth/steuerung-passwort', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ neuesPasswort: neu })
+            });
+            const daten = await resp.json().catch(() => ({}));
+            if (resp.ok) {
+                localStorage.setItem('steuerung_password', neu);
+                window.location.reload();
+            } else {
+                zeigeFehler(daten.error || 'Das Passwort konnte nicht gespeichert werden.');
+            }
+        } catch (err) {
+            zeigeFehler('Verbindungsfehler: ' + err.message);
+        }
+    });
+    document.getElementById('passwortAenderungNeu').focus();
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -129,6 +192,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (!verifyResp.ok) {
                     localStorage.removeItem('steuerung_password');
                     showGlobalLoginModal();
+                    return;
+                }
+                const antwort = await verifyResp.json().catch(() => ({}));
+                if (antwort.aenderungErforderlich) {
+                    zeigePasswortAenderungModal();
                     return;
                 }
             }

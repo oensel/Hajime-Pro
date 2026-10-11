@@ -1,6 +1,6 @@
 import express from 'express';
-import { register, login, getMe, updateProfile, getAuthMode, verifyPasswordEndpoint } from '../controllers/authController.js';
-import { requireAuth } from '../middleware/auth.js';
+import { register, login, getMe, updateProfile, getAuthMode, verifyPasswordEndpoint, aendereSteuerungPasswort } from '../controllers/authController.js';
+import { requireAuth, requireSteuerungPasswort } from '../middleware/auth.js';
 
 export function getAuthRoutes(knex) {
     const router = express.Router();
@@ -11,6 +11,7 @@ export function getAuthRoutes(knex) {
     router.put('/profile', requireAuth, (req, res) => updateProfile(knex, req, res));
     router.get('/mode', (req, res) => getAuthMode(knex, req, res));
     router.post('/verify', (req, res) => verifyPasswordEndpoint(knex, req, res));
+    router.post('/steuerung-passwort', requireSteuerungPasswort, (req, res) => aendereSteuerungPasswort(knex, req, res));
 
     return router;
 }

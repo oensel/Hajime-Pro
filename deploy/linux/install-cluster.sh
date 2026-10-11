@@ -666,7 +666,7 @@ if [ "$KNOTEN" = "server1" ]; then
   Clients tragen die VIP ein:  SYNC_SERVER_URL=http://$VIP:$APP_PORT
   Turnierleitung öffnet:       http://$VIP:$APP_PORT   (Cluster-Seite: /cluster.html)
   Passwörter und Geheimnisse:  $GEHEIMNIS_DATEI  und  $ENV_DATEI
-  Turnierleitungs-Passwort:    $G_STEUERUNG_PASSWORD
+  Start-Passwort (Schreibzugriff): $G_STEUERUNG_PASSWORD  (muss bei der ersten Anmeldung geändert werden)
 EOF
 else
     cat <<EOF

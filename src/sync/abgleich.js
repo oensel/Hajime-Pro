@@ -5,7 +5,7 @@
 //
 // Nicht angefasst werden Dokumente mit einer Änderung von Matte/Waage, die die Brücke noch nicht
 // verarbeitet hat (sonst würde der Abgleich sie überschreiben, bevor sie in SQL angekommen ist).
-import { createHash } from 'crypto';
+import { sha256Aktuell } from '../utils/steuerungPasswort.js';
 import { LIVE_PRAEFIXE, dokumentIdFuer, mitServerStand, unterscheidetSichVomServerStand } from '../shared/dokumentAbbildung.js';
 import { TURNIER_SPALTEN_OHNE_PDF, ermittleEffektivenStatus } from '../controllers/turnierController.js';
 import { turnierHatEchteKaempfe } from '../controllers/poolController.js';
@@ -44,7 +44,6 @@ async function baueTurnierDokument(knex, turnierId, bestehend) {
 }
 
 function baueKonfigDokument(turnier, bestehend) {
-    const passwort = process.env.STEUERUNG_PASSWORD || '';
     const soll = {
         _id: 'konfig:steuerung',
         dokumenttyp: 'konfig',
@@ -52,7 +51,7 @@ function baueKonfigDokument(turnier, bestehend) {
         bezeichnung: turnier.bezeichnung,
         datum: turnier.datum instanceof Date ? turnier.datum.toISOString().slice(0, 10) : turnier.datum,
         instanz_id: turnier.instanz_id,
-        steuerung_passwort_sha256: passwort ? createHash('sha256').update(passwort).digest('hex') : null,
+        steuerung_passwort_sha256: sha256Aktuell(),
         bearbeitet_von: 'server'
     };
     if (bestehend) {

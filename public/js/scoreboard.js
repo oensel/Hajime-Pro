@@ -1071,6 +1071,11 @@ window.addEventListener('DOMContentLoaded', async () => {
                         showGlobalLoginModal();
                         return;
                     }
+                    const antwort = await verifyResp.json().catch(() => ({}));
+                    if (antwort.aenderungErforderlich && typeof zeigePasswortAenderungModal === 'function') {
+                        zeigePasswortAenderungModal();
+                        return;
+                    }
                 }
             }
         }

@@ -118,7 +118,7 @@ sobald der Standby streamt, und nach 5 s ohne Standby auf **asynchron** („ohne
 | `CLUSTER_PARTNER_URL` | `http://192.168.10.12:3000` | `http://192.168.10.11:3000` |
 | `CLUSTER_VIP` | `192.168.10.10` (nur Anzeige) | gleich |
 | `CLUSTER_ZEUGE` | leer = Default-Gateway, sonst IP des Routers | gleich |
-| `STEUERUNG_PASSWORD` | Turnierleitungs-Passwort (auch für die geplante Übergabe) | gleich |
+| `STEUERUNG_PASSWORD` | Start-Passwort für den Schreibzugriff (auch für die geplante Übergabe); bei der ersten Anmeldung im Frontend wird eine Änderung erzwungen, das neue Passwort liegt gehasht in der DB (Tabelle `steuerung_passwort`, repliziert) und löst diesen Wert ab | gleich |
 
 ```bash
 cp systemd/hajime-pro.service /etc/systemd/system/ && systemctl enable --now hajime-pro
