@@ -129,6 +129,14 @@ async function ladeBilder() {
     }));
 }
 
+const FELD_KNOEPFE = ['btnFeldPlatzhalter', 'btnFeldText', 'btnFeldLinie', 'btnFeldBild'];
+
+// Solange der Editor die Vorlage aufbaut (PDF rendern, Canvas neu erzeugen), sind die Knöpfe zum Einfügen
+// gesperrt: ein währenddessen eingefügtes Feld würde beim Neuaufbau seine Auswahl verlieren.
+function sperreFeldKnoepfe(gesperrt) {
+    for (const id of FELD_KNOEPFE) $(id).disabled = gesperrt;
+}
+
 async function zeigeVorlage(id) {
     if (state.geaendert && !confirm('Ungespeicherte Änderungen verwerfen?')) {
         $('vorlagenAuswahl').value = String(state.vorlage.id);
@@ -137,6 +145,7 @@ async function zeigeVorlage(id) {
     state.vorlage = state.vorlagen.find(v => v.id === id);
     if (!state.vorlage) return leereEditor();
     state.felder = structuredClone(state.vorlage.felder || []);
+    sperreFeldKnoepfe(true);
     try {
         state.hintergrund = await renderHintergrund();
         await ladeBilder();
@@ -147,6 +156,8 @@ async function zeigeVorlage(id) {
         // Ohne Meldung bliebe der Editor stumm leer (z.B. wenn der Browser pdf.js nicht ausführen kann).
         console.error('[Urkunden-Designer] Vorlage konnte nicht angezeigt werden:', e);
         melde(`Die Vorlage konnte nicht angezeigt werden: ${e.message}`, 'error');
+    } finally {
+        sperreFeldKnoepfe(false);
     }
 }
 
