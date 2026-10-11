@@ -251,6 +251,7 @@ if (syncKonfig.istClient) {
             downloadsVerzeichnis,
             version: serverVersion,
             kopplung,
+            vip: clusterKonfig.vip,
             clientDateienStatus: () => clientDateien.status()
         }));
     }
