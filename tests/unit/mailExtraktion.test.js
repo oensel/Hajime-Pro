@@ -181,3 +181,17 @@ test('Meldeliste, Kopfzeile und Zellen nur per Zeilenumbruch getrennt, leere Zel
     assert.equal(s[1].vorname, 'Tim');
     assert.equal(s[1].verein, 'Judo Club Senden');
 });
+
+test('Meldeliste mit Eingabefeldern, Auswahllisten und Knöpfen (nur Werte, keine Optionslisten)', () => {
+    const optionen = '<option>AFG - Afghanistan</option><option selected>GER - Deutschland</option><option>GBR - Vereinigtes Königreich GBS</option>';
+    const html = '<table><tr><th>Nachname</th><th>Vorname</th><th>Alterskategorie</th><th>Gewichtskategorie</th><th>Nation</th><th>Region</th><th>Geburtstag</th><th>Lizenz</th><th>Club</th></tr>'
+        + '<tr><td>Jannemann</td><td>Lea</td><td><input type="text" value="U15w"><button>+</button></td><td><input value="-36kg"></td>'
+        + `<td><select disabled>${optionen}</select></td><td><select disabled>${optionen}</select></td>`
+        + '<td>09.03.2013</td><td>J-0064792</td><td>Judo Club Senden</td></tr></table>';
+    const s = extrahiereKaempfer(htmlZuText(html));
+    assert.equal(s.length, 1);
+    assert.deepEqual(
+        { g: s[0].geschlecht, p: s[0].judopass_id, c: s[0].verein },
+        { g: 'weiblich', p: 'J-0064792', c: 'Judo Club Senden' }
+    );
+});

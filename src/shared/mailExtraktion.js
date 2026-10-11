@@ -97,6 +97,19 @@ export function htmlZuText(html) {
     return String(html || '')
         .replace(/<(style|script|head)[\s\S]*?<\/\1>/gi, '')
         .replace(/<!--[\s\S]*?-->/g, '')
+        // Formularfelder: Eingabefelder liefern ihren Wert, Auswahllisten nur den gewählten Eintrag
+        // (sonst landet die ganze Optionsliste im Text), Knöpfe ("+") gar nichts
+        .replace(/<select\b[^>]*>([\s\S]*?)<\/select>/gi, (_, inner) => {
+            const gewaehlt = inner.match(/<option\b[^>]*\bselected\b[^>]*>([\s\S]*?)(?=<\/option>|<option\b|$)/i);
+            return gewaehlt ? gewaehlt[1].replace(/<[^>]*>/g, '') : '';
+        })
+        .replace(/<button\b[^>]*>[\s\S]*?<\/button>/gi, '')
+        .replace(/<textarea\b[^>]*>([\s\S]*?)<\/textarea>/gi, '$1')
+        .replace(/<input\b[^>]*>/gi, (tag) => {
+            if (/\btype\s*=\s*["']?(hidden|button|submit|checkbox|radio|image|reset)\b/i.test(tag)) return '';
+            const m = tag.match(/\bvalue\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+            return m ? (m[1] ?? m[2] ?? m[3] ?? '') : '';
+        })
         // Zellinhalt auf eine Zeile bringen: Tabellen aus Webseiten stecken Absätze/Divs in die Zellen
         .replace(/<(t[dh])\b[^>]*>([\s\S]*?)<\/\1>/gi, (_, tag, inner) => `<${tag}>${inner.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()}</${tag}>`)
         .replace(/<br\s*\/?>/gi, '\n')
@@ -390,7 +403,8 @@ function parseTabellenZeile(zellen, spalten, kontext) {
             if (g) satz.geschlecht = normalisiereGeschlecht(g[1]);
         } else if (feld === 'gewicht') {
             satz.gewicht = wert.replace(/\s*kg$/i, '').replace('.', ',');
-        } else {
+        } else if (!satz[feld]) {
+            // bei mehreren Spalten für dasselbe Feld gilt die erste mit Inhalt
             satz[feld] = wert;
         }
     });

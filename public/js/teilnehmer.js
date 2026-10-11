@@ -1041,11 +1041,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         const mailModus = !!mailTabelle;
         const titel = document.getElementById('importVorschauTitel');
         const mailHinweis = document.getElementById('importVorschauMailHinweis');
-        if (titel) titel.textContent = mailModus ? 'Import aus E-Mail – bitte prüfen' : 'Import-Vorschau';
+        if (titel) titel.textContent = mailModus ? 'Import – bitte prüfen' : 'Import-Vorschau';
         if (mailHinweis) {
             mailHinweis.style.display = mailModus ? 'block' : 'none';
             mailHinweis.textContent = mailModus
-                ? 'Die Angaben wurden automatisch aus der E-Mail gelesen und können unsicher sein. Zellen anklicken zum Korrigieren, mit ✕ eine Zeile entfernen. Gespeichert wird erst mit "Import starten".' + (mailTabelle.hinweis ? ' ' + mailTabelle.hinweis : '')
+                ? 'Die Angaben wurden automatisch gelesen und können unsicher sein. Zellen anklicken zum Korrigieren, mit ✕ eine Zeile entfernen. Gespeichert wird erst mit "Import starten".' + (mailTabelle.hinweis ? ' ' + mailTabelle.hinweis : '')
                 : '';
         }
 
