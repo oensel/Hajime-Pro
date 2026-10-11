@@ -35,16 +35,19 @@ bash deploy/linux/install-cluster.sh --partner-ip 192.168.10.12 --vip 192.168.10
 ```
 
 Am Ende gibt server1 die drei Zeilen für server2 samt **Kopplungscode** aus (auch in
-`/root/hajime-kopplungscode.txt`); sie werden auf server2 (Standby) einfach eingefügt:
+`/root/hajime-kopplungscode.txt`); sie werden auf server2 (Standby) einfach eingefügt. Der letzte Befehl fragt
+nach dem Code (einfügen, Enter, die Eingabe bleibt unsichtbar):
 
 ```bash
 apt-get update && apt-get install -y git
 git clone https://github.com/oensel/Hajime-Pro.git && cd Hajime-Pro
-bash deploy/linux/install-cluster.sh --kopplungscode 'HJ1:…'
+bash deploy/linux/install-cluster.sh --kopplungscode -
 ```
 
-Der Kopplungscode enthält die Adresse von server1, VIP, Zeuge und alle Geheimnisse – ein Datei-Kopieren
-(`scp`) entfällt. server1 muss fertig sein, bevor server2 läuft. Zustand jederzeit: `hajime-cluster-status`.
+Der Kopplungscode enthält die Adresse von server1, VIP, Zeuge und alle Geheimnisse und steht deshalb nicht in der
+Kommandozeile (`ps`, Shell-Verlauf). Alternativ liest `--kopplungscode-datei DATEI` ihn aus einer Datei (z. B. die
+`hajime-kopplungscode.txt` von server1). server1 muss fertig sein, bevor server2 läuft. Zustand jederzeit:
+`hajime-cluster-status`.
 Die ausführliche Form (`--knoten`, `--eigene-ip`, Geheimnis-Datei per `scp`) funktioniert weiterhin.
 
 Das Skript richtet Node.js, PostgreSQL-Replikation, Rollen, `pg_hba`, `.env`, systemd, Rückstufungs-Skript,

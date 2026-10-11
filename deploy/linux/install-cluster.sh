@@ -12,9 +12,10 @@
 #      Kopplungscode aus (auch in /root/hajime-kopplungscode.txt).
 #
 #   server2 (Standby): die ausgegebenen Zeilen von server1 einfügen, der letzte Befehl lautet
-#     bash deploy/linux/install-cluster.sh --kopplungscode 'HJ1:...'
-#   -> baut PostgreSQL als Standby von server1 auf (server1 muss vorher fertig sein). Der Kopplungscode enthält
-#      server1-Adresse, VIP, Zeuge und alle Geheimnisse; ein Kopieren von Dateien (scp) entfällt.
+#     bash deploy/linux/install-cluster.sh --kopplungscode -
+#   -> fragt nach dem Kopplungscode (HJ1:..., einfügen und Enter; die Eingabe bleibt unsichtbar) und baut
+#      PostgreSQL als Standby von server1 auf (server1 muss vorher fertig sein). Der Code enthält server1-Adresse,
+#      VIP, Zeuge und alle Geheimnisse; er steht bewusst nicht in der Kommandozeile (ps, Shell-Verlauf).
 #
 # Die ausführliche Form (alle Angaben von Hand, Geheimnis-Datei per scp) funktioniert weiterhin:
 #     --knoten server1|server2 --eigene-ip IP --partner-ip IP --vip IP [--geheimnisse DATEI]
@@ -31,7 +32,10 @@
 #   --eigene-ip IP                  feste IP dieses Servers im Hallennetz (Standard: die Adresse, über die der Partner erreicht wird)
 #   --partner-ip IP                 feste IP des anderen Servers (Pflicht auf server1, kommt auf server2 aus dem Kopplungscode)
 #   --vip IP                        virtuelle IP, die immer der Master hält (Pflicht auf server1; Clients: SYNC_SERVER_URL=http://<vip>:3000)
-#   --kopplungscode CODE            Code von server1 (HJ1:...): liefert server1-IP, VIP, Zeuge, VRRP-ID und Geheimnisse
+#   --kopplungscode -               Code von server1 (HJ1:...) abfragen (verdeckte Eingabe; ohne Terminal aus stdin);
+#                                   liefert server1-IP, VIP, Zeuge, VRRP-ID und Geheimnisse
+#   --kopplungscode-datei DATEI     Code aus einer Datei lesen (z. B. /root/hajime-kopplungscode.txt von server1)
+#   --kopplungscode CODE            Code direkt angeben (nicht empfohlen: sichtbar in ps und im Shell-Verlauf)
 #   --zeuge IP|URL                  Gegenstelle gegen Split-Brain (Hallen-Router); leer = Default-Gateway
 #   --schnittstelle NAME            Netzwerkschnittstelle zum Router (Standard: die mit --eigene-ip)
 #   --vrrp-id N                     virtual_router_id, im Hallennetz eindeutig (Standard 51)
@@ -58,7 +62,7 @@ MARKE_ANFANG="# >>> hajime-cluster (automatisch erzeugt, nicht von Hand ändern)
 MARKE_ENDE="# <<< hajime-cluster"
 
 KNOTEN=""; EIGENE_IP=""; PARTNER_IP=""; VIP=""; ZEUGE=""; SCHNITTSTELLE=""; VRRP_ID="51"
-GEHEIMNIS_DATEI=""; NUR_KONFIG=""; KOPPLUNGSCODE=""
+GEHEIMNIS_DATEI=""; NUR_KONFIG=""; KOPPLUNGSCODE=""; KOPPLUNGSCODE_DATEI=""
 URSPRUENGLICHE_ARGUMENTE=("$@")
 REPO_URL_STANDARD="https://github.com/oensel/Hajime-Pro.git"
 KOPPLUNGS_DATEI="/root/hajime-kopplungscode.txt"
@@ -84,6 +88,7 @@ while [ $# -gt 0 ]; do
         --geheimnisse) GEHEIMNIS_DATEI="${2:-}"; shift 2 ;;
         --nur-konfig) NUR_KONFIG="${2:-}"; shift 2 ;;
         --kopplungscode) KOPPLUNGSCODE="${2:-}"; shift 2 ;;
+        --kopplungscode-datei) KOPPLUNGSCODE_DATEI="${2:-}"; shift 2 ;;
         -h|--help) hilfe; exit 0 ;;
         *) fehler "Unbekannte Option: $1 (Hilfe: --help)" ;;
     esac
@@ -180,6 +185,21 @@ eigene_ip_ermitteln() {
     ip -4 route get "$PARTNER_IP" 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") {print $(i + 1); exit}}'
 }
 
+# Code nicht über die Kommandozeile: aus Datei, per Eingabeaufforderung oder aus stdin ("-").
+if [ -n "$KOPPLUNGSCODE_DATEI" ]; then
+    [ -f "$KOPPLUNGSCODE_DATEI" ] || fehler "Die Datei $KOPPLUNGSCODE_DATEI mit dem Kopplungscode gibt es nicht."
+    KOPPLUNGSCODE="$(head -n 1 "$KOPPLUNGSCODE_DATEI")"
+elif [ "$KOPPLUNGSCODE" = "-" ]; then
+    if [ -t 0 ]; then
+        printf 'Kopplungscode von server1 (HJ1:...) einfügen und Enter drücken: ' >&2
+        IFS= read -rs KOPPLUNGSCODE || true
+        printf '
+' >&2
+    else
+        IFS= read -r KOPPLUNGSCODE || true
+    fi
+fi
+KOPPLUNGSCODE="$(printf '%s' "$KOPPLUNGSCODE" | tr -d '[:space:]')"
 [ -z "$KOPPLUNGSCODE" ] || kopplungscode_lesen
 if [ -z "$KNOTEN" ]; then if [ -n "$KOPPLUNGSCODE" ]; then KNOTEN="server2"; else KNOTEN="server1"; fi; fi
 [ -z "$KOPPLUNGSCODE" ] || [ "$KNOTEN" = "server2" ] || fehler "Der Kopplungscode gehört zu server2 (--knoten server2 oder weglassen)."
@@ -362,7 +382,7 @@ NEUE_GEHEIMNISSE=0
 if [ "$KNOTEN" = "server2" ]; then
     GEHEIMNIS_DATEI="${GEHEIMNIS_DATEI:-$GEHEIMNIS_STANDARD}"
     [ -f "$GEHEIMNIS_DATEI" ] || fehler "Weder Kopplungscode noch Geheimnis-Datei $GEHEIMNIS_DATEI vorhanden. Zuerst server1 einrichten;
-    er gibt am Ende den Befehl für server2 mit --kopplungscode aus (oder die Datei per scp nach $GEHEIMNIS_STANDARD kopieren)."
+    er gibt am Ende die Befehle für server2 samt Kopplungscode aus (--kopplungscode - oder --kopplungscode-datei)."
 else
     GEHEIMNIS_DATEI="${GEHEIMNIS_DATEI:-$GEHEIMNIS_STANDARD}"
     if [ ! -f "$GEHEIMNIS_DATEI" ]; then NEUE_GEHEIMNISSE=1; fi
@@ -635,7 +655,11 @@ if [ "$KNOTEN" = "server1" ]; then
 
     apt-get update && apt-get install -y git
     git clone $REPO_URL && cd $(basename "$REPO_URL" .git)
-    bash deploy/linux/install-cluster.sh --kopplungscode '$CODE'
+    bash deploy/linux/install-cluster.sh --kopplungscode -
+
+  Beim letzten Befehl wird nach dem Kopplungscode gefragt – diese Zeile einfügen und Enter drücken (unsichtbar):
+
+    $CODE
 
   (Der Kopplungscode enthält alle Geheimnisse – nicht weitergeben. Er steht auch in $KOPPLUNGS_DATEI.)
 

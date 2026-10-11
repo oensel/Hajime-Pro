@@ -113,3 +113,21 @@ test('server1 braucht --partner-ip und --vip, die eigene IP ist im Nur-Konfig-Mo
     assert.notEqual(lauf('--eigene-ip', '10.0.0.11', '--partner-ip', '10.0.0.12').status, 0);    // VIP fehlt
     assert.equal(lauf('--eigene-ip', '10.0.0.11', '--partner-ip', '10.0.0.12', '--vip', '10.0.0.10').status, 0); // --knoten entfällt (server1)
 });
+
+test('Kopplungscode ohne Kommandozeile: aus Datei und aus stdin ("-")', { skip: !hatBash }, () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hajime-kopplung-'));
+    const code = kopplungscode(CODE_ZEILEN);
+    const datei = path.join(dir, 'code.txt');
+    fs.writeFileSync(datei, `${code}\n`);
+
+    const ausDatei = spawnSync('bash', [SKRIPT, '--nur-konfig', path.join(dir, 'a'), '--eigene-ip', '10.0.0.12', '--kopplungscode-datei', datei], { encoding: 'utf8' });
+    assert.equal(ausDatei.status, 0, ausDatei.stderr);
+    assert.match(fs.readFileSync(path.join(dir, 'a', 'env'), 'utf8'), /^CLUSTER_PARTNER_URL=http:\/\/10\.0\.0\.11:3000$/m);
+
+    const ausStdin = spawnSync('bash', [SKRIPT, '--nur-konfig', path.join(dir, 'b'), '--eigene-ip', '10.0.0.12', '--kopplungscode', '-'], { encoding: 'utf8', input: `${code}\n` });
+    assert.equal(ausStdin.status, 0, ausStdin.stderr);
+    assert.match(fs.readFileSync(path.join(dir, 'b', 'env'), 'utf8'), /^CLUSTER_VIP=10\.0\.0\.10$/m);
+
+    const fehlt = spawnSync('bash', [SKRIPT, '--nur-konfig', path.join(dir, 'c'), '--eigene-ip', '10.0.0.12', '--kopplungscode-datei', path.join(dir, 'gibtsnicht')], { encoding: 'utf8' });
+    assert.notEqual(fehlt.status, 0);
+});
