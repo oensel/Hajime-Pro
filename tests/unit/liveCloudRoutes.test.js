@@ -62,11 +62,11 @@ test('Ingest: ohne und mit falschem Token 401, mit Token 204 (auch gzip), Daten 
     assert.equal(liste.serverzeit, '2026-10-12T10:01:00.000Z');
 });
 
-test('Ingest: ungültiges Paket 400, veraltetes Paket 204 ohne Änderung, gebundenes Token nur für sein Turnier', async () => {
+test('Ingest: ungültiges Paket 400, veraltetes Paket 409 ohne Änderung, gebundenes Token nur für sein Turnier', async () => {
     assert.equal((await sende('/ingest', { methode: 'POST', body: { version: 1 }, ...mitToken() })).status, 400);
     await sende('/ingest', { methode: 'POST', body: paket('R2', { sequenz: 500, name: 'Neu' }), ...mitToken() });
     const alt = await sende('/ingest', { methode: 'POST', body: paket('R2', { sequenz: 100, name: 'Alt' }), ...mitToken() });
-    assert.equal(alt.status, 204);
+    assert.equal(alt.status, 409);
     assert.equal((await (await sende('/turniere/R2')).json()).name, 'Neu');
 
     const fremd = await sende('/ingest', { methode: 'POST', body: paket('R3'), header: { Authorization: `Bearer ${gebundenerToken}` } });
@@ -143,4 +143,13 @@ test('Aufbewahrung: Turniere älter als 7 Tage und alte Grabsteine werden gelös
     assert.equal(await knex('live_teilnehmer').where({ turnier_key: 'ALT' }).first(), undefined);
     assert.equal(await knex('live_turniere').where({ turnier_key: 'GRAB' }).first(), undefined);
     assert.ok(await knex('live_turniere').where({ turnier_key: 'FRISCH' }).first());
+});
+
+test('Ingest: eine veraltete Rücknahme wird nicht still geschluckt (409), das Turnier bleibt sichtbar', async () => {
+    await sende('/ingest', { methode: 'POST', body: paket('R7', { sequenz: 900 }), ...mitToken() });
+    const rueck = { version: 1, turnierKey: 'R7', zurueckgezogen: true, stand: '2026-10-12T10:00:00.000Z', sequenz: 100 };
+    assert.equal((await sende('/ingest', { methode: 'POST', body: rueck, ...mitToken() })).status, 409);
+    const zeile = await db.knex('live_turniere').where({ turnier_key: 'R7' }).first();
+    assert.equal(zeile.zurueckgezogen, false);
+    assert.equal(Number(zeile.sequenz), 900);
 });

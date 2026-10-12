@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { erzeugeRatenbegrenzung, clientIp } from '../../src/liveCloud/ratenbegrenzung.js';
+import { erzeugeRatenbegrenzung, clientIp, ratenGrenzeAusEnv } from '../../src/liveCloud/ratenbegrenzung.js';
 
 test('Festfenster: bis max erlaubt, danach gesperrt, im neuen Fenster wieder erlaubt', () => {
     let jetzt = 0;
@@ -64,4 +64,23 @@ test('clientIp: Port, Klammern und Zonen-ID werden vor der Prüfung entfernt', (
     assert.equal(mit('[2001:db8::1]'), '2001:db8::1');
     assert.equal(mit('fe80::1%eth0'), 'fe80::1');
     assert.equal(mit('2001:db8::1'), '2001:db8::1');
+});
+
+test('ratenGrenzeAusEnv: Standard 1200, LIVE_RATE_MAX überschreibt, Unsinn fällt auf den Standard', () => {
+    assert.equal(ratenGrenzeAusEnv({}), 1200);
+    assert.equal(ratenGrenzeAusEnv({ LIVE_RATE_MAX: '5000' }), 5000);
+    assert.equal(ratenGrenzeAusEnv({ LIVE_RATE_MAX: 'viel' }), 1200);
+    assert.equal(ratenGrenzeAusEnv({ LIVE_RATE_MAX: '-3' }), 1200);
+});
+
+test('clientIp: X-Forwarded-For ohne LIVE_PROXY_VERTRAUEN warnt einmal (Fehlkonfiguration hinter Proxy)', () => {
+    const meldungen = [];
+    const log = { warn: (m) => meldungen.push(m) };
+    const req = { headers: { 'x-forwarded-for': '203.0.113.7' }, socket: { remoteAddress: '10.0.0.1' } };
+    assert.equal(clientIp(req, {}, log), '10.0.0.1');
+    assert.equal(clientIp(req, {}, log), '10.0.0.1');
+    assert.equal(meldungen.length, 1);
+    assert.match(meldungen[0], /LIVE_PROXY_VERTRAUEN/);
+    assert.equal(clientIp({ headers: {}, socket: { remoteAddress: '10.0.0.1' } }, {}, { warn: (m) => meldungen.push(m) }), '10.0.0.1');
+    assert.equal(meldungen.length, 1);
 });

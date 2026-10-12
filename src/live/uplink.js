@@ -15,6 +15,9 @@ export function erzeugeUplink({
     let naechsterVersuch = 0;
     let letzterErfolg = null;
     let letzterFehler = null;
+    // Streng monoton, auch wenn die Uhr stehen bleibt oder zurückspringt (NTP, Failover): die Cloud verwirft Pakete
+    // mit kleinerer oder gleicher Sequenz.
+    let letzteSequenz = 0;
 
     // Zuletzt gesendete Turniere überleben einen Neustart, damit eine in der Zwischenzeit zurückgenommene Freigabe
     // trotzdem als Rücknahme in der Cloud ankommt (Spec 5.3/10). Ohne Datei läuft der Uplink wie bisher nur im Speicher.
@@ -36,8 +39,9 @@ export function erzeugeUplink({
 
     async function poste(nutzlast) {
         const zeit = jetzt();
+        letzteSequenz = Math.max(zeit, letzteSequenz + 1);
         const koerper = zlib.gzipSync(Buffer.from(JSON.stringify({
-            ...nutzlast, stand: new Date(zeit).toISOString(), sequenz: zeit
+            ...nutzlast, stand: new Date(zeit).toISOString(), sequenz: letzteSequenz
         }), 'utf8'));
         const antwort = await fetchFn(url, {
             method: 'POST',

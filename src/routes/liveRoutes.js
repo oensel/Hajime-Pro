@@ -4,16 +4,16 @@ import express from 'express';
 import { uebernimmPaket } from '../liveCloud/ingest.js';
 import { pruefeToken } from '../liveCloud/token.js';
 import { listeTurniere, ladeTurnier, suche, ladePool, ladeVerein, uebersicht } from '../liveCloud/abfrage.js';
-import { erzeugeRatenbegrenzung, clientIp } from '../liveCloud/ratenbegrenzung.js';
+import { erzeugeRatenbegrenzung, clientIp, ratenGrenzeAusEnv } from '../liveCloud/ratenbegrenzung.js';
 
 const SCHLUESSEL = /^[A-Za-z0-9_-]{1,64}$/;
 const POOL_ID = /^\d{1,9}$/;
 
 export function getLiveRoutes(knex, {
-    begrenzung = erzeugeRatenbegrenzung({ max: 300 }),
-    fehlerBegrenzung = erzeugeRatenbegrenzung({ max: 30, beiVollstand: 'sperren' }),
     jetzt = () => new Date(),
-    env = process.env
+    env = process.env,
+    begrenzung = erzeugeRatenbegrenzung({ max: ratenGrenzeAusEnv(env) }),
+    fehlerBegrenzung = erzeugeRatenbegrenzung({ max: 30, beiVollstand: 'sperren' })
 } = {}) {
     const router = express.Router();
     router.use((req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
@@ -27,7 +27,10 @@ export function getLiveRoutes(knex, {
             }
             const paket = req.body;
             if (token.turnierKey && paket?.turnierKey !== token.turnierKey) return res.status(403).end();
-            await uebernimmPaket(knex, paket, { jetzt });
+            const ergebnis = await uebernimmPaket(knex, paket, { jetzt });
+            // 409: das Paket wurde verworfen, weil die Cloud einen neueren Stand hat. Der Uplink soll das nicht für
+            // zugestellt halten (sonst ginge eine Rücknahme still verloren), sondern loggen und mit Backoff erneut senden.
+            if (ergebnis === 'veraltet') return res.status(409).end();
             return res.status(204).end();
         } catch (fehler) {
             if (fehler.code === 'UNGUELTIG') return res.status(400).json({ error: fehler.message });

@@ -122,3 +122,15 @@ test('bereinigeAlte entfernt Turniere, die es nicht mehr gibt', () => {
     assert.notEqual(storage.getItem('hajime-live:cache:T1'), null);
     assert.equal(storage.getItem('fremd'), 'bleibt');
 });
+
+test('gecachteTurniere: findet Turniere mit zwischengespeicherter Übersicht (Offline-Start)', async () => {
+    const { gecachteTurniere } = await import('../../teilnehmer-app/js/speicher.js');
+    const storage = speicherAttrappe();
+    storage.setItem('hajime-live:cache:T1', '{}');
+    storage.setItem('hajime-live:cache:T/2', '{}');
+    storage.setItem('hajime-live:T3', '{}');
+    storage.setItem('fremd', 'x');
+    assert.deepEqual(gecachteTurniere(storage).sort(), ['T/2', 'T1']);
+    const werfend = { key() { throw new Error('gesperrt'); }, length: 3 };
+    assert.deepEqual(gecachteTurniere(werfend), []);
+});

@@ -59,8 +59,9 @@ Das Token gehört als `LIVE_UPLINK_TOKEN` in die `live.env` des Slaves, die URL 
 | `LIVE_AUFBEWAHRUNG_TAGE` | Löschfrist nach dem Turnierdatum, Standard 7 |
 | `LIVE_PROXY_VERTRAUEN=true` | Absenderadresse für die Ratenbegrenzung aus `X-Forwarded-For` (nur hinter einem eigenen Proxy setzen) |
 | `LIVE_PROXY_HOPS` | Anzahl vertrauenswürdiger Proxys in der Kette, vom Ende gezählt (Standard 1) |
+| `LIVE_RATE_MAX` | Anfragen je Absender und Minute für die App-API, Standard 1200 (Mobilfunk und Hallen-WLAN bündeln viele Geräte hinter einer Adresse) |
 | `LIVE_API_AKTIV=true` | schaltet die Routen außerhalb der Cloud ein (nur für Tests) |
 
-Die App-API ist je Absender auf 300 Anfragen/Minute begrenzt, falsche Token am Ingest auf 30/Minute. Fällt die Halle aus,
+Die App-API ist je Absender auf `LIVE_RATE_MAX` Anfragen/Minute begrenzt (Standard 1200), falsche Token am Ingest auf 30/Minute. Kommt ein veraltetes Paket an (die Cloud hat schon einen neueren Stand, z. B. wegen einer zurückgesprungenen Uhr des Slaves), antwortet der Ingest mit 409; der Uplink loggt das und sendet mit Backoff erneut. Fällt die Halle aus,
 zeigt die App „Halle nicht verbunden“, sobald seit 3 Minuten kein Paket ankam. Die Geräte sind zustandslos: Sterne und
 Glocken liegen im Browser, die Übersicht schickt die Schlüsselliste bei jeder Anfrage mit.

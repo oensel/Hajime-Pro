@@ -4,8 +4,10 @@ import crypto from 'node:crypto';
 import knexLib from 'knex';
 import { testDbVerbindung } from './test-env.js';
 
-// Eindeutig je Lauf: eine Rücknahme (Test 3) setzt die Sequenz hoch, spätere Wiederholungen würden sonst ignoriert.
-const KEY = `E2E-LIVE-${Date.now()}`;
+// Eindeutig je Test: eine Rücknahme setzt die Sequenz hoch, spätere Pakete desselben Turniers würden sonst verworfen.
+let KEY = '';
+let zaehler = 0;
+test.beforeEach(() => { KEY = `E2E-LIVE-${Date.now()}-${zaehler++}`; });
 const TOKEN = 'hjl_e2e_token_0123456789abcdef0123456789abcdef';
 const t = (key, vorname, nachname, extra = {}) => ({
     key, vorname, nachname, vereinKey: 'v1', verein: 'JC Muster', altersklasse: 'U15', gewichtsklasse: '-44', geschlecht: 'w',
@@ -29,7 +31,7 @@ test.beforeAll(async () => {
     try {
         await db('live_ingest_tokens').where({ name: 'e2e' }).del();
         await db('live_ingest_tokens').insert({ name: 'e2e', token_hash: crypto.createHash('sha256').update(TOKEN).digest('hex') });
-        await db('live_turniere').where({ turnier_key: KEY }).del();
+        await db('live_turniere').where('turnier_key', 'like', 'E2E-LIVE-%').del();
     } finally {
         await db.destroy();
     }
@@ -48,6 +50,7 @@ test('Ingest → Suche → Pool → Stern → Übersicht', async ({ page, reques
 
     await page.getByTestId('suchfeld').fill('mus');
     await expect(page.getByTestId('treffer-a1')).toContainText('Anna Muster');
+    await expect(page.getByTestId('treffer-a1')).toContainText('JC Muster');
     await expect(page.getByTestId('treffer-a1')).toContainText('nächster Kampf: in 3 Kämpfen');
     await page.getByTestId('treffer-a1').click();
 
@@ -85,4 +88,39 @@ test('Zurückgezogenes Turnier ist nicht mehr auswählbar', async ({ page, reque
     await sende(request, { version: 1, turnierKey: KEY, zurueckgezogen: true, stand: new Date().toISOString(), sequenz: Date.now() + 100000 });
     await page.goto('/live/');
     await expect(page.getByTestId(`turnier-${KEY}`)).toHaveCount(0);
+});
+
+test('Offline-Start: die Startseite bietet die zuletzt geladene Übersicht an', async ({ page, request, context }) => {
+    await sende(request, paket(Date.now() + 2000));
+    await page.goto(`/live/#/t/${KEY}/pool/10`);
+    await page.getByTestId('stern-a1').click();
+    await page.getByTestId('menue-uebersicht').click();
+    await expect(page.getByRole('heading', { name: 'Übersicht' })).toBeVisible();
+    await expect(page.getByTestId('statuszeile')).toContainText('Stand von');
+    // Startseite einmal online besuchen, damit der Service Worker die Hülle hat und die Turnierliste gemerkt ist.
+    await page.goto('/live/#/');
+    await expect(page.getByTestId(`turnier-${KEY}`)).toBeVisible();
+
+    await context.setOffline(true);
+    await page.reload();
+    await expect(page.getByTestId(`zuletzt-${KEY}`)).toContainText('Live-E2E-Turnier');
+    await page.getByTestId(`zuletzt-${KEY}`).click();
+    await expect(page.getByTestId('kachel-a1')).toContainText('nächster Kampf: in 3 Kämpfen');
+    await expect(page.getByTestId('statuszeile')).toContainText('Keine Verbindung');
+});
+
+test('Zurückgezogenes Turnier: die Übersicht zeigt keine alten Namen mehr und räumt den Merkzettel auf', async ({ page, request }) => {
+    await sende(request, paket(Date.now() + 3000));
+    await page.goto(`/live/#/t/${KEY}/pool/10`);
+    await page.getByTestId('stern-a1').click();
+    await page.getByTestId('menue-uebersicht').click();
+    await expect(page.getByTestId('statuszeile')).toContainText('Stand von');
+
+    await sende(request, { version: 1, turnierKey: KEY, zurueckgezogen: true, stand: new Date().toISOString(), sequenz: Date.now() + 200000 });
+    await page.reload();
+    await expect(page.getByText('nicht mehr verfügbar')).toBeVisible();
+    await expect(page.getByTestId('kachel-a1')).toHaveCount(0);
+    await expect(page.getByTestId('statuszeile')).not.toContainText('Keine Verbindung');
+    const gemerkt = await page.evaluate((k) => localStorage.getItem(`hajime-live:cache:${k}`), KEY);
+    expect(gemerkt).toBeNull();
 });

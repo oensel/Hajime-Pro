@@ -70,3 +70,16 @@ export function bereinigeAlte(storage, behalteTurnierKeys) {
     } catch { /* Speicher nicht verfügbar */ }
     return zuLoeschen.length;
 }
+
+// Turniere, für die dieses Gerät noch eine zwischengespeicherte Übersicht hat (Offline-Start ohne Cloud).
+export function gecachteTurniere(storage) {
+    const praefix = `${PRAEFIX}cache:`;
+    const keys = [];
+    try {
+        for (let i = 0; i < storage.length; i++) {
+            const k = storage.key(i);
+            if (k && k.startsWith(praefix)) keys.push(k.slice(praefix.length));
+        }
+    } catch { /* Speicher nicht verfügbar */ }
+    return keys;
+}

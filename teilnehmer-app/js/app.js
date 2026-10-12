@@ -2,7 +2,11 @@
 // Alle Namen werden ausschließlich über textContent in die Seite gesetzt.
 import { api } from './api.js';
 import { kachelZeilen, verbindung } from './anzeige.js';
-import { erzeugeSpeicher, bereinigeAlte } from './speicher.js';
+import { erzeugeSpeicher, bereinigeAlte, gecachteTurniere } from './speicher.js';
+
+// Namen der zuletzt gesehenen Turniere, damit der Offline-Start sie benennen kann (bewusst außerhalb des Präfixes
+// hajime-live:, das bereinigeAlte aufräumt).
+const META_TURNIERE = 'hajime-live-meta:turniere';
 
 const inhalt = document.getElementById('inhalt');
 const statuszeile = document.getElementById('statuszeile');
@@ -76,7 +80,10 @@ async function zeigeStart() {
     inhalt.replaceChildren(h('h1', {}, 'Turnier wählen'), h('p', { class: 'hinweis' }, 'Lade …'));
     try {
         const { turniere } = await api.turniere();
-        try { bereinigeAlte(window.localStorage, turniere.map(x => x.key)); } catch { /* ohne Speicher */ }
+        try {
+            bereinigeAlte(window.localStorage, turniere.map(x => x.key));
+            window.localStorage.setItem(META_TURNIERE, JSON.stringify(turniere.map(x => ({ key: x.key, name: x.name, datum: x.datum }))));
+        } catch { /* ohne Speicher */ }
         if (!turniere.length) {
             inhalt.replaceChildren(h('h1', {}, 'Turnier wählen'), h('p', { class: 'hinweis' }, 'Zurzeit ist kein Turnier freigegeben.'));
             return;
@@ -85,7 +92,20 @@ async function zeigeStart() {
             h('ul', { class: 'knopf-liste' }, turniere.map(x => h('li', {},
                 h('a', { href: `#/t/${encodeURIComponent(x.key)}`, 'data-testid': `turnier-${x.key}` }, `${x.name} · ${x.datum}`)))));
     } catch {
-        inhalt.replaceChildren(h('h1', {}, 'Turnier wählen'), h('p', { class: 'hinweis' }, 'Keine Verbindung. Bitte später erneut versuchen.'));
+        // Ohne Verbindung (typisch in der Halle): die zuletzt geladene Übersicht je Turnier anbieten.
+        let gemerkt = [];
+        try { gemerkt = gecachteTurniere(window.localStorage); } catch { /* ohne Speicher */ }
+        let namen = [];
+        try { namen = JSON.parse(window.localStorage.getItem(META_TURNIERE)) || []; } catch { /* ohne Meta */ }
+        const hinweis = h('p', { class: 'hinweis' }, 'Keine Verbindung. Bitte später erneut versuchen.');
+        if (!gemerkt.length) { inhalt.replaceChildren(h('h1', {}, 'Turnier wählen'), hinweis); return; }
+        setzeStatus('Keine Verbindung', true);
+        inhalt.replaceChildren(h('h1', {}, 'Turnier wählen'), hinweis, h('p', {}, 'Zuletzt geladen:'),
+            h('ul', { class: 'knopf-liste' }, gemerkt.map(k => {
+                const meta = namen.find(x => x.key === k);
+                return h('li', {}, h('a', { href: `#/t/${encodeURIComponent(k)}/uebersicht`, 'data-testid': `zuletzt-${k}` },
+                    meta ? `${meta.name} · ${meta.datum}` : k));
+            })));
     }
 }
 
@@ -104,7 +124,7 @@ async function zeigeTurnier(key) {
     const trefferListe = h('div', { 'data-testid': 'treffer' });
     function trefferEintrag(t) {
         const z = kachelZeilen(t);
-        const text = `${z.titel} · ${[z.zeile1, z.zeile2 ?? z.zeile3].filter(Boolean).join(' · ')}`;
+        const text = [z.titel, t.verein, z.zeile1, z.zeile2 ?? z.zeile3].filter(Boolean).join(' · ');
         const ziel = t.poolId != null ? `#/t/${encodeURIComponent(key)}/pool/${t.poolId}` : null;
         return h('ul', { class: 'knopf-liste' }, h('li', {},
             ziel ? h('a', { href: ziel, 'data-testid': `treffer-${t.key}` }, text)
@@ -185,7 +205,15 @@ async function zeigeUebersicht(key) {
         try {
             antwort = await api.uebersicht(key, anfrage);
             try { localStorage.setItem(cacheName, JSON.stringify(antwort)); } catch { /* ohne Speicher */ }
-        } catch {
+        } catch (f) {
+            if (f.status === 404) {
+                // Die Cloud kennt das Turnier nicht mehr (Freigabe zurückgenommen): keine alten Namen weiter anzeigen.
+                stoppeAktualisierung();
+                try { localStorage.removeItem(cacheName); } catch { /* ohne Speicher */ }
+                inhalt.replaceChildren(h('h1', {}, 'Übersicht'), h('p', { class: 'hinweis' }, 'Das Turnier ist nicht mehr verfügbar.'));
+                setzeStatus('');
+                return;
+            }
             try { antwort = JSON.parse(localStorage.getItem(cacheName)); } catch { antwort = null; }
             ausCache = true;
         }

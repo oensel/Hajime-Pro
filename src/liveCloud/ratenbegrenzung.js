@@ -48,7 +48,21 @@ function normalisiereAdresse(roh) {
     return a.replace(/%.*$/, '');
 }
 
-let proxyHinweisGegeben = false;
+// Grenze der öffentlichen App-API je Absender und Minute. Mobilfunk-Provider und Hallen-WLAN bündeln viele Geräte hinter
+// einer Adresse; pro Gerät fallen ca. 4 Übersicht-Abrufe je Minute an, daher der hohe Standard.
+export function ratenGrenzeAusEnv(env = process.env) {
+    const wert = Number(env.LIVE_RATE_MAX);
+    return Number.isFinite(wert) && wert > 0 ? Math.floor(wert) : 1200;
+}
+
+const hinweise = new WeakMap();
+function hinweisEinmal(log, art, text) {
+    let gegeben = hinweise.get(log);
+    if (!gegeben) { gegeben = new Set(); hinweise.set(log, gegeben); }
+    if (gegeben.has(art)) return;
+    gegeben.add(art);
+    log.warn(text);
+}
 
 // Absenderadresse. Hinter einem vertrauenswürdigen Proxy (LIVE_PROXY_VERTRAUEN=true) zählt X-Forwarded-For vom Ende
 // der Kette: der eigene Proxy hängt die Adresse hinten an, was ein Client selbst vorn mitschickt, ist frei erfunden.
@@ -57,14 +71,16 @@ let proxyHinweisGegeben = false;
 // einen Hinweis im Log, damit eine Fehlkonfiguration des Proxys nicht unbemerkt bleibt.
 export function clientIp(req, env = process.env, log = console) {
     const socket = req.socket?.remoteAddress || 'unbekannt';
-    if (env.LIVE_PROXY_VERTRAUEN !== 'true') return socket;
+    if (env.LIVE_PROXY_VERTRAUEN !== 'true') {
+        if (req.headers?.['x-forwarded-for']) {
+            hinweisEinmal(log, 'vertrauen', '[LiveCloud] Anfragen kommen mit X-Forwarded-For an, LIVE_PROXY_VERTRAUEN ist aber nicht gesetzt: alle Nutzer teilen sich dann die Proxy-Adresse als Absender (LIVE_PROXY_VERTRAUEN=true setzen, wenn ein eigener Proxy davorsteht)');
+        }
+        return socket;
+    }
     const hops = Math.max(1, Math.floor(Number(env.LIVE_PROXY_HOPS) || 1));
     const teile = String(req.headers?.['x-forwarded-for'] || '').split(',').map(s => s.trim()).filter(Boolean);
     const kandidat = normalisiereAdresse(teile[teile.length - hops]);
     if (kandidat && net.isIP(kandidat)) return kandidat;
-    if (!proxyHinweisGegeben) {
-        proxyHinweisGegeben = true;
-        log.warn('[LiveCloud] LIVE_PROXY_VERTRAUEN=true, aber X-Forwarded-For enthält keine gültige Adresse (LIVE_PROXY_HOPS prüfen); die Ratenbegrenzung zählt vorerst je Proxy-Adresse');
-    }
+    hinweisEinmal(log, 'ungueltig', '[LiveCloud] LIVE_PROXY_VERTRAUEN=true, aber X-Forwarded-For enthält keine gültige Adresse (LIVE_PROXY_HOPS prüfen); die Ratenbegrenzung zählt vorerst je Proxy-Adresse');
     return socket;
 }
