@@ -806,6 +806,9 @@ const HEADER_FIELD_MAP = {
     passnummer: 'judopass_id',
     judopassnr: 'judopass_id',
     judopassnummer: 'judopass_id',
+    lizenz: 'judopass_id',
+    lizenznr: 'judopass_id',
+    lizenznummer: 'judopass_id',
     geburtsdatum: 'geburtsjahr',
     geburtstag: 'geburtsjahr',
     geburtsjahr: 'geburtsjahr',
@@ -1145,6 +1148,23 @@ function verarbeiteImportZeile(record, ctx) {
         felder.verein = ctx.userVereinName || '';
     }
 
+    // Ziel "auto": Ist "Team" gefüllt UND trägt das Turnier für die Altersklasse der Person
+    // Mannschaften aus, wird sie als Mannschaftsteilnehmer gemeldet, sonst als Einzelkämpfer (je
+    // Zeile, auch in gemischten Listen). Die festen Ziele gelten für alle Zeilen.
+    let ziel = ctx.ziel;
+    let turnierAltersklassenKeys = ctx.turnierAltersklassenKeys;
+    if (ctx.ziel === 'auto') {
+        ziel = 'einzel';
+        if (felder.mannschaft_name && ctx.keysMannschaft) {
+            const akMannschaft = ermittleAltersklasse(felder.geburtsjahr, felder.geschlecht, ctx.wettkampfJahr, ctx.keysMannschaft);
+            const ausgetragen = akMannschaft && (
+                ctx.keysMannschaft.includes(`${felder.geschlecht}_${akMannschaft}`) || ctx.keysMannschaft.includes(`mixed_${akMannschaft}`)
+            );
+            if (ausgetragen) ziel = 'mannschaft';
+        }
+        turnierAltersklassenKeys = ziel === 'mannschaft' ? ctx.keysMannschaft : ctx.keysEinzel;
+    }
+
     const fehlerFelder = [];
     if (!felder.vorname) fehlerFelder.push('vorname');
     if (!felder.nachname) fehlerFelder.push('nachname');
@@ -1154,22 +1174,24 @@ function verarbeiteImportZeile(record, ctx) {
     // Nur beim Import-Ziel "Mannschaft" Pflicht (siehe ermittleOderErstelleMannschaft in
     // importTeilnehmer) — ohne Team-Namen bliebe der Judoka sonst stillschweigend ein "loser"
     // Teilnehmer ohne jede Mannschaftszuordnung, statt dass der Import das sichtbar meldet.
-    if (ctx.ziel === 'mannschaft' && !felder.mannschaft_name) fehlerFelder.push('mannschaft_name');
+    if (ziel === 'mannschaft' && !felder.mannschaft_name) fehlerFelder.push('mannschaft_name');
 
     // Gewicht robust parsen: deutsches Komma-Dezimaltrennzeichen (z.B. "26,5" aus Excel-Exporten)
     // wird wie bei der manuellen Eingabe in waage.js in einen Punkt umgewandelt, sonst schneidet
     // parseFloat bei "26,5" auf 26 ab.
-    const gewicht = parseFloat(String(record.gewicht ?? '').replace(',', '.')) || 0;
+    // "-58kg"/"+90kg" (Gewichtsklasse) und "56kg" werden als positive Zahl übernommen.
+    const gewichtMatch = String(record.gewicht ?? '').match(/\d+(?:[.,]\d+)?/);
+    const gewicht = gewichtMatch ? parseFloat(gewichtMatch[0].replace(',', '.')) || 0 : 0;
 
     let altersklasse = '';
     let gewichtsklasse = '';
     if (fehlerFelder.length === 0) {
         // Altersklasse anhand des Geburtsjahres ermitteln (analog zu waage.html)
-        altersklasse = ermittleAltersklasse(felder.geburtsjahr, felder.geschlecht, ctx.wettkampfJahr, ctx.turnierAltersklassenKeys);
-        gewichtsklasse = ermittleGewichtsklasse(felder.geschlecht, altersklasse, gewicht, ctx.ziel, ctx.turnierAltersklassenKeys);
+        altersklasse = ermittleAltersklasse(felder.geburtsjahr, felder.geschlecht, ctx.wettkampfJahr, turnierAltersklassenKeys);
+        gewichtsklasse = ermittleGewichtsklasse(felder.geschlecht, altersklasse, gewicht, ziel, turnierAltersklassenKeys);
     }
 
-    return { felder, gewicht, altersklasse, gewichtsklasse, fehlerFelder };
+    return { felder, gewicht, altersklasse, gewichtsklasse, fehlerFelder, ziel };
 }
 
 // Lädt Turnier + Berechtigungsprüfung + Datei-Puffer, die importTeilnehmer und
@@ -1191,7 +1213,8 @@ async function ladeImportKontext(knex, req) {
     const hatEchteKaempfe = await turnierHatEchteKaempfe(knex, turnier.id);
     // Einzel-Import: Sperre je Altersklasse (Zeilenprüfung in importTeilnehmer); Mannschaften sind erst
     // gesperrt, wenn ein Mannschafts-Pool echte Kämpfe hatte.
-    if (req.body.ziel === 'mannschaft' && await mannschaftsPoolsHabenEchteKaempfe(knex, turnier.id)) {
+    const mannschaftenGesperrt = await mannschaftsPoolsHabenEchteKaempfe(knex, turnier.id);
+    if (req.body.ziel === 'mannschaft' && mannschaftenGesperrt) {
         return { fehler: { status: 409, body: { success: false, error: MANNSCHAFTEN_GESPERRT_FEHLER } } };
     }
 
@@ -1221,7 +1244,7 @@ async function ladeImportKontext(knex, req) {
         return { fehler: { status: 400, body: { success: false, error: 'Ungültiger Dateiinhalt.' } } };
     }
 
-    return { turnier, user, userVereinName, istOffline, istGastgeberVerein, istSuperAdmin, buffer, filename };
+    return { turnier, user, userVereinName, istOffline, istGastgeberVerein, istSuperAdmin, buffer, filename, mannschaftenGesperrt };
 }
 
 // Findet eine bereits im selben Import angelegte/wiederverwendete Mannschaft für (verein,
@@ -1260,7 +1283,7 @@ export async function importTeilnehmer(knex, req, res) {
         // Import-Ziel: 'einzel' (Standard, Rückwärtskompatibilität) oder 'mannschaft' — steuert,
         // gegen welche Altersklassen-Liste des Turniers importierte Athlet:innen validiert werden
         // (siehe Auswahl-Dialog in teilnehmer.html/teilnehmer.js).
-        const ziel = req.body.ziel === 'mannschaft' ? 'mannschaft' : 'einzel';
+        const ziel = ['mannschaft', 'auto'].includes(req.body.ziel) ? req.body.ziel : 'einzel';
 
         const kontext = await ladeImportKontext(knex, req);
         if (kontext.fehler) return res.status(kontext.fehler.status).json(kontext.fehler.body);
@@ -1278,9 +1301,11 @@ export async function importTeilnehmer(knex, req, res) {
         }
 
         const wettkampfJahr = turnier.datum ? new Date(turnier.datum).getFullYear() : new Date().getFullYear();
-        const turnierAltersklassenKeys = ermittleTurnierAltersklassenKeys(turnier, ziel);
+        const turnierAltersklassenKeys = ermittleTurnierAltersklassenKeys(turnier, ziel === 'auto' ? 'einzel' : ziel);
+        const keysEinzel = ermittleTurnierAltersklassenKeys(turnier, 'einzel');
+        const keysMannschaft = ermittleTurnierAltersklassenKeys(turnier, 'mannschaft');
         const darfVereinAusDateiUebernehmen = istGastgeberVerein || istSuperAdmin;
-        const ctx = { istOffline, darfVereinAusDateiUebernehmen, userVereinName, wettkampfJahr, turnierAltersklassenKeys, ziel };
+        const ctx = { istOffline, darfVereinAusDateiUebernehmen, userVereinName, wettkampfJahr, turnierAltersklassenKeys, keysEinzel, keysMannschaft, ziel };
 
         let imported = 0;
         const skipped = [];
@@ -1289,11 +1314,16 @@ export async function importTeilnehmer(knex, req, res) {
         const mannschaftCache = new Map();
 
         for (const { rowNumber, record } of records) {
-            const { felder, gewicht, altersklasse, gewichtsklasse, fehlerFelder } = verarbeiteImportZeile(record, ctx);
+            const { felder, gewicht, altersklasse, gewichtsklasse, fehlerFelder, ziel: zeilenZiel } = verarbeiteImportZeile(record, ctx);
 
             if (fehlerFelder.length > 0) {
                 const feldLabels = fehlerFelder.map(f => IMPORT_SYSTEMFELDER.find(sf => sf.feld === f)?.label || f);
                 skipped.push({ row: rowNumber, reason: `Pflichtfeld(er) fehlen oder ungültig: ${feldLabels.join(', ')}.` });
+                continue;
+            }
+
+            if (zeilenZiel === 'mannschaft' && kontext.mannschaftenGesperrt) {
+                skipped.push({ row: rowNumber, reason: MANNSCHAFTEN_GESPERRT_FEHLER });
                 continue;
             }
 
@@ -1329,7 +1359,7 @@ export async function importTeilnehmer(knex, req, res) {
                     // Steuert nur die Anzeige ("... Team") in teilnehmer.html (siehe
                     // formatiereAltersklasse in teilnehmer.js) — der Judoka bleibt ein normaler
                     // turnier_teilnehmer, der z.B. auch für Einzelwettkämpfe startberechtigt ist.
-                    fuer_mannschaft: ziel === 'mannschaft'
+                    fuer_mannschaft: zeilenZiel === 'mannschaft'
                 }).returning('id');
 
                 imported++;
@@ -1339,7 +1369,7 @@ export async function importTeilnehmer(knex, req, res) {
                 // ermittleOderErstelleMannschaft). Nur bei Ziel "Mannschaft" und wenn tatsächlich
                 // ein Team-Name in der Datei angegeben wurde — sonst bleibt der Judoka wie bisher
                 // ein "loser" Teilnehmer, der manuell in mannschaften.html zugeordnet werden kann.
-                if (ziel === 'mannschaft' && felder.mannschaft_name) {
+                if (zeilenZiel === 'mannschaft' && felder.mannschaft_name) {
                     const teilnehmerId = typeof neuerIdObj === 'object' ? neuerIdObj.id : neuerIdObj;
                     const mannschaftId = await ermittleOderErstelleMannschaft(
                         knex,
@@ -1379,7 +1409,7 @@ export async function importTeilnehmer(knex, req, res) {
 export async function previewTeilnehmerImport(knex, req, res) {
     try {
         const { spaltenZuordnung } = req.body;
-        const ziel = req.body.ziel === 'mannschaft' ? 'mannschaft' : 'einzel';
+        const ziel = ['mannschaft', 'auto'].includes(req.body.ziel) ? req.body.ziel : 'einzel';
 
         const kontext = await ladeImportKontext(knex, req);
         if (kontext.fehler) return res.status(kontext.fehler.status).json(kontext.fehler.body);
@@ -1397,9 +1427,11 @@ export async function previewTeilnehmerImport(knex, req, res) {
         }
 
         const wettkampfJahr = turnier.datum ? new Date(turnier.datum).getFullYear() : new Date().getFullYear();
-        const turnierAltersklassenKeys = ermittleTurnierAltersklassenKeys(turnier, ziel);
+        const turnierAltersklassenKeys = ermittleTurnierAltersklassenKeys(turnier, ziel === 'auto' ? 'einzel' : ziel);
+        const keysEinzel = ermittleTurnierAltersklassenKeys(turnier, 'einzel');
+        const keysMannschaft = ermittleTurnierAltersklassenKeys(turnier, 'mannschaft');
         const darfVereinAusDateiUebernehmen = istGastgeberVerein || istSuperAdmin;
-        const ctx = { istOffline, darfVereinAusDateiUebernehmen, userVereinName, wettkampfJahr, turnierAltersklassenKeys, ziel };
+        const ctx = { istOffline, darfVereinAusDateiUebernehmen, userVereinName, wettkampfJahr, turnierAltersklassenKeys, keysEinzel, keysMannschaft, ziel };
 
         let gueltig = 0;
         const vorschauZeilen = [];
@@ -1411,7 +1443,7 @@ export async function previewTeilnehmerImport(knex, req, res) {
             // Zusammenfassung darunter zählt aber immer über die komplette Datei.
             // Beim Import aus einer E-Mail (alleZeilen) werden alle Zeilen zur Korrektur gebraucht.
             if (req.body.alleZeilen || idx < 5) {
-                vorschauZeilen.push({ rowNumber, raw: rawRow, felder: ergebnis.felder, fehlerFelder: ergebnis.fehlerFelder });
+                vorschauZeilen.push({ rowNumber, raw: rawRow, felder: ergebnis.felder, fehlerFelder: ergebnis.fehlerFelder, ziel: ergebnis.ziel });
             }
         });
 

@@ -19,6 +19,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // — die eigentliche Prüfung erfolgt ohnehin erst beim Einwiegen durch den Ausrichter.
     let istGastgeberVerein = false;
     let istPrivilegiertFuerLizenzUndStartgeld = false;
+    // Ohne Startgeld des Turniers (0 €) entfällt das Feld "Startgeld bezahlt".
+    let turnierOhneStartgeld = false;
     let aktuellerVereinName = '';
     // Wird weiter unten gesetzt (braucht editId/scanMatchedId) und von aktualisiereSpeicherButtonStatus aufgerufen.
     let aktualisiereLizenzAnzeige = null;
@@ -52,6 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
             istGastgeberVerein = istOffline || !!(user.verein_id && user.verein_freigegeben && turnier && turnier.verein_id === user.verein_id);
             istPrivilegiertFuerLizenzUndStartgeld = istGastgeberVerein || !!user.ist_super_admin;
             // Stichtag der Lizenzprüfung (Wettkampftag) schon hier setzen, nicht erst mit dem Laden der DJB-Klassen.
+            turnierOhneStartgeld = !!turnier && (parseFloat(turnier.startgeld) || 0) === 0;
             if (turnier && turnier.datum) turnierDatum = lokalesDatum(turnier.datum);
             aktuellerVereinName = user.verein_name || '';
         } catch (err) {
@@ -83,7 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!istGastgeberVerein) vereinFeld.value = aktuellerVereinName;
         }
         if (lizenzFeld) lizenzFeld.disabled = !istPrivilegiertFuerLizenzUndStartgeld;
-        if (startgeldRow) startgeldRow.style.display = istPrivilegiertFuerLizenzUndStartgeld ? '' : 'none';
+        if (startgeldRow) startgeldRow.style.display = (istPrivilegiertFuerLizenzUndStartgeld && !turnierOhneStartgeld) ? '' : 'none';
     };
 
     // --- STRIKTE FORMULAR- UND LIZENZVALIDIERUNG ---

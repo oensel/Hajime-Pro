@@ -132,6 +132,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             turnierStartgeldWert = parseFloat(turnier.startgeld) || 0;
             turnierKostenlos = turnierStartgeldWert === 0;
+            aktualisiereStartgeldSichtbarkeit();
             turnierDatumText = turnier.datum ? lokalerTag(turnier.datum) : null;
 
             turnierBezeichnung = turnier.bezeichnung || '';
@@ -209,7 +210,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (athlet.status !== 'kampfbereit') return false;
         const lizenzDatumRoh = athlet.lizenz_ablauf ? String(athlet.lizenz_ablauf).split('T')[0] : null;
         const lizenzBestaetigt = !!lizenzDatumRoh && lizenzDatumRoh !== '1970-01-01';
-        return !!athlet.gewogen && lizenzBestaetigt && !!athlet.startgeld_bezahlt;
+        // Verlangt das Turnier kein Startgeld, verhindert das Feld "bezahlt" den Status "bereit" nicht.
+        return !!athlet.gewogen && lizenzBestaetigt && (turnierKostenlos || !!athlet.startgeld_bezahlt);
     }
 
     // --- GRADUIERUNGEN (Gürtelfarben) ---
@@ -362,6 +364,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Gewogen/Lizenz sind physische Verifikationen am Wiegetisch des Ausrichters — für Nutzer
     // anderer Vereine weder einsehbar noch änderbar, daher Spalte + Kachel komplett ausgeblendet
     // (Bezahlt bleibt sichtbar: das verantwortet jeder Verein für seine eigenen Kämpfer selbst).
+    // Ohne Startgeld (0 €) gibt es keine Startgeld-Spalte, keine Bezahlt-Kachel und keinen
+    // Sammel-Knopf "Bezahlt".
+    function aktualisiereStartgeldSichtbarkeit() {
+        const anzeigen = !turnierKostenlos;
+        const header = document.getElementById('startgeldSpalteHeader');
+        const kachel = document.getElementById('statBezahltKachel');
+        if (header) header.style.display = anzeigen ? '' : 'none';
+        if (kachel) kachel.style.display = anzeigen ? '' : 'none';
+    }
+
     function aktualisiereGewogenLizenzSichtbarkeit() {
         const anzeigen = istGastgeberVerein;
         const gewogenHeader = document.getElementById('gewogenSpalteHeader');
@@ -559,7 +571,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <td style="text-align: center;${istGastgeberVerein ? '' : ' display: none;'}">
                         <span class="material-icons action-icon icon-toggle ${lizenzBestaetigt ? 'active' : ''}" data-id="${athlet.id}" data-toggle="lizenz" title="${lizenzBestaetigt ? 'Lizenz-Bestätigung zurücknehmen' : 'Lizenz bestätigen'}">badge</span>
                     </td>
-                    <td style="text-align: center;">
+                    <td style="text-align: center;${turnierKostenlos ? ' display: none;' : ''}">
                         <span class="material-icons action-icon icon-toggle ${startgeldBezahltRoh ? 'active' : ''}" data-id="${athlet.id}" data-toggle="bezahlt" title="${startgeldBezahltRoh ? 'Als unbezahlt markieren' : 'Als bezahlt markieren'}">payments</span>
                     </td>
                     <td>
@@ -716,7 +728,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         [bulkMarkPaidBtn].forEach(btn => {
             if (!btn) return;
             btn.disabled = keineAuswahl;
-            btn.style.display = keineAuswahl ? 'none' : '';
+            btn.style.display = (keineAuswahl || turnierKostenlos) ? 'none' : '';
         });
 
         // Gewogen/Lizenz bleiben Nicht-Gastgeber-Vereinen komplett verborgen (analog zur Spalte,
@@ -967,43 +979,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     const importStatus = document.getElementById('importStatus');
     const importSkippedList = document.getElementById('importSkippedList');
 
-    // Merkt sich, für welchen Bereich importiert werden soll (vom Dialog gesetzt oder automatisch
-    // hergeleitet), bis der change-Handler des Datei-Inputs feuert.
+    // Merkt sich, für welchen Bereich importiert werden soll ('einzel', 'mannschaft' oder 'auto'),
+    // bis der change-Handler des Datei-Inputs feuert.
     let importZiel = 'einzel';
 
-    // Fragt bei einem Turnier mit sowohl Einzel- als auch Mannschafts-Altersklassen nach, wohin
-    // importiert werden soll. Trägt das Turnier nur eine der beiden Arten aus, entfällt der Dialog
-    // und das Ziel steht automatisch fest (siehe turnier.html: "Austragungs-Altersklassen").
+    // Trägt das Turnier nur eine der beiden Arten aus, steht das Ziel fest (siehe turnier.html:
+    // "Austragungs-Altersklassen"). Hat das Turnier Einzel- UND Mannschaftsklassen, entscheidet je Zeile das Feld "Team":
+    // gefüllt = Mannschaftsteilnehmer, leer = Einzelkämpfer (Ziel "auto", siehe verarbeiteImportZeile).
     async function ermittleImportZiel() {
-        if (turnierHatEinzelKlassen && turnierHatMannschaftKlassen) {
-            const modal = document.getElementById('importZielModal');
-            if (!modal) return 'einzel';
-
-            return new Promise((resolve) => {
-                modal.style.display = 'flex';
-                const schliessen = (ziel) => {
-                    modal.style.display = 'none';
-                    resolve(ziel);
-                };
-
-                const btnEinzel = document.getElementById('importZielEinzelBtn');
-                const btnMannschaft = document.getElementById('importZielMannschaftBtn');
-                const btnAbbrechen = document.getElementById('importZielAbbrechenBtn');
-
-                // Alte Listener (aus einem vorherigen Aufruf) per Klonen entfernen.
-                const neuEinzel = btnEinzel.cloneNode(true);
-                btnEinzel.replaceWith(neuEinzel);
-                const neuMannschaft = btnMannschaft.cloneNode(true);
-                btnMannschaft.replaceWith(neuMannschaft);
-                const neuAbbrechen = btnAbbrechen.cloneNode(true);
-                btnAbbrechen.replaceWith(neuAbbrechen);
-
-                neuEinzel.addEventListener('click', () => schliessen('einzel'));
-                neuMannschaft.addEventListener('click', () => schliessen('mannschaft'));
-                neuAbbrechen.addEventListener('click', () => schliessen(null));
-            });
-        }
-
+        if (turnierHatEinzelKlassen && turnierHatMannschaftKlassen) return 'auto';
         if (turnierHatMannschaftKlassen && !turnierHatEinzelKlassen) return 'mannschaft';
         return 'einzel';
     }

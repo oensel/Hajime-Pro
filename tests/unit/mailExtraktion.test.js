@@ -195,3 +195,44 @@ test('Meldeliste mit Eingabefeldern, Auswahllisten und Knöpfen (nur Werte, kein
         { g: 'weiblich', p: 'J-0064792', c: 'Judo Club Senden' }
     );
 });
+
+test('Meldeliste ohne erkannte Kopfzeile: Altersklasse liefert Geschlecht, Lizenz die Passnummer, "-36kg" kein Gewicht', () => {
+    const s = extrahiereKaempfer('Lea Jannemann\tU15w\t-36kg\tGER - Deutschland\tNW – Nordrhein-Westfalen\t09.03.2013\tJ-0064792\tJudo Club Senden');
+    assert.equal(s.length, 1);
+    assert.deepEqual(
+        { g: s[0].geschlecht, p: s[0].judopass_id, w: s[0].gewicht, c: s[0].verein },
+        { g: 'weiblich', p: 'J-0064792', w: '36', c: 'Judo Club Senden' }
+    );
+});
+
+for (const spaltenName of ['Team', 'Mannschaft']) {
+    test(`Meldeliste mit Spalte "${spaltenName}" liefert den Mannschaftsnamen`, () => {
+        const text = [
+            `Nachname\tVorname\tAlterskategorie\tGewichtskategorie\tNation\tRegion\tGeburtstag\tLizenz\tClub\t${spaltenName}`,
+            '',
+            'Jannemann\tLea\t', '', 'U15w', '', '-44kg', '', 'GER - Deutschland', '', 'NW – Nordrhein-Westfalen',
+            '09.03.2013\tJ-0064792\tJudo Club Senden\tIppon-Girls',
+            'Lehmann\tTim\t', '', 'U11m', '', 'Gewichtsnah', '', 'GER - Deutschland', '', 'NW – Nordrhein-Westfalen',
+            '05.06.2018\tJ-0126408\tJudo Club Senden\tIppon-Boys'
+        ].join('\n');
+        const s = extrahiereKaempfer(text);
+        assert.equal(s.length, 2);
+        assert.deepEqual(
+            { n: s[0].nachname, g: s[0].geschlecht, w: s[0].gewicht, p: s[0].judopass_id, c: s[0].verein, t: s[0].mannschaft_name },
+            { n: 'Jannemann', g: 'weiblich', w: '44', p: 'J-0064792', c: 'Judo Club Senden', t: 'Ippon-Girls' }
+        );
+        assert.deepEqual({ w: s[1].gewicht, t: s[1].mannschaft_name }, { w: '', t: 'Ippon-Boys' });
+    });
+}
+
+test('HTML-Tabelle mit Team-Spalte: leere Zellen bleiben erhalten', () => {
+    const z = (...c) => '<tr>' + c.map(t => `<td>${t}</td>`).join('') + '</tr>';
+    const html = '<table><tr><th>Nachname</th><th>Vorname</th><th>Alterskategorie</th><th>Gewichtskategorie</th><th>Nation</th><th>Region</th><th>Geburtstag</th><th>Lizenz</th><th>Club</th><th>Team</th></tr>'
+        + z('Rieger', 'Lioba', '<input value="U11w">', 'Gewichtsnah', 'GER - Deutschland', 'NW', '26.01.2016', 'J-0029331', 'Judo Club Senden', '')
+        + z('Rieger', 'Emilia', '<input value="U15w">', '-48kg', 'GER - Deutschland', 'NW', '25.12.2013', 'J-0029332', 'Judo Club Senden', 'Ippon-Girls')
+        + '</table>';
+    const s = extrahiereKaempfer(htmlZuText(html));
+    assert.equal(s.length, 2);
+    assert.deepEqual({ t: s[0].mannschaft_name, g: s[0].geschlecht }, { t: '', g: 'weiblich' });
+    assert.deepEqual({ t: s[1].mannschaft_name, w: s[1].gewicht }, { t: 'Ippon-Girls', w: '48' });
+});

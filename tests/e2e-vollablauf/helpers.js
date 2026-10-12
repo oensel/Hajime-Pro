@@ -277,17 +277,13 @@ export function ermittleZielgewicht(geschlecht, zielAltersklasse, gruppenIndex) 
 // --- TEILNEHMER-IMPORT (echte UI, siehe teilnehmer.html) — expliziter Szenario-Schritt ---
 
 /**
- * Führt einen kompletten Import-Durchlauf über teilnehmer.html aus: Ziel wählen (das
- * #importZielModal erscheint, weil unser Turnier sowohl Einzel- als auch Mannschafts-
- * Altersklassen anbietet), Datei liefern, Vorschau bestätigen, Import starten. `ziel` ist
- * 'einzel' oder 'mannschaft'.
+ * Führt einen kompletten Import-Durchlauf über teilnehmer.html aus: Datei liefern, Vorschau
+ * bestätigen, Import starten. Einzel oder Mannschaft entscheidet je Zeile das Feld "Team"
+ * (`ziel` dient nur der Lesbarkeit der Aufrufer).
  */
 export async function importiereTeilnehmerDatei(page, ziel, dateiName, zeilen) {
-    await page.locator('#importBtn').click();
-    await expect(page.locator('#importZielModal')).toBeVisible();
-
     const fileChooserPromise = page.waitForEvent('filechooser');
-    await page.locator(ziel === 'mannschaft' ? '#importZielMannschaftBtn' : '#importZielEinzelBtn').click();
+    await page.locator('#importBtn').click();
     const fileChooser = await fileChooserPromise;
     await fileChooser.setFiles(xlsxDatei(dateiName, zeilen));
 

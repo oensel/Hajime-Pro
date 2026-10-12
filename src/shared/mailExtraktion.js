@@ -230,7 +230,8 @@ function leseGeburt(text) {
 }
 
 function leseGewicht(text) {
-    const m = String(text || '').match(/(?:gewicht\s*:?\s*)?(\d{2,3}(?:[.,]\d{1,2})?)\s*kg\b/i)
+    // "-36kg" (Gewichtsklasse) wird als positive Zahl 36 übernommen
+    const m = String(text || '').match(/(?<![\d.,])(?:gewicht\s*:?\s*)?(\d{2,3}(?:[.,]\d{1,2})?)\s*kg\b/i)
         || String(text || '').match(/gewicht\s*:?\s*(\d{2,3}(?:[.,]\d{1,2})?)/i);
     return m ? { wert: m[1].replace('.', ','), treffer: m[0] } : null;
 }
@@ -249,7 +250,16 @@ function leseGraduierung(text) {
 
 function lesePass(text) {
     const m = String(text || '').match(/(?:judo)?pass(?:nummer|nr\.?|-nr\.?)?\s*[:#]?\s*([A-Za-z]{0,3}-?\d{3,}[\w-]*)/i);
-    return m ? { wert: m[1], treffer: m[0] } : null;
+    if (m) return { wert: m[1], treffer: m[0] };
+    // Lizenznummer wie "J-0064792"
+    const lizenz = String(text || '').match(/(?<![\w-])([A-Za-z]-\d{4,})(?![\w-])/);
+    return lizenz ? { wert: lizenz[1], treffer: lizenz[0] } : null;
+}
+
+// Altersklasse mit Geschlecht am Ende ("U15w", "U11 m", "U18M") -> { wert, treffer }
+function leseAltersklassenGeschlecht(text) {
+    const m = String(text || '').match(/(?<![\wäöüß])U\s?\d{1,2}\s?([mw])(?![\wäöüß])/i);
+    return m ? { wert: normalisiereGeschlecht(m[1]), treffer: m[0], index: m.index } : null;
 }
 
 function leseGeschlechtImText(text) {
@@ -311,7 +321,7 @@ function parseFreiZeile(zeile, kontext) {
         }
     }
 
-    const geschlecht = leseGeschlechtImText(rest);
+    const geschlecht = leseAltersklassenGeschlecht(rest) || leseGeschlechtImText(rest);
     if (geschlecht) {
         satz.geschlecht = geschlecht.wert;
         // an der Fundstelle entfernen: ein einzelnes "m" käme sonst zuerst im Namen vor
@@ -372,7 +382,7 @@ const KOPF_FELD = {
     pass: 'judopass_id', passnr: 'judopass_id', passnummer: 'judopass_id', judopass: 'judopass_id', judopassnr: 'judopass_id',
     graduierung: 'graduierung', kyu: 'graduierung', gurt: 'graduierung', grad: 'graduierung', guertel: 'graduierung',
     nation: 'ignoriert', region: 'ignoriert', land: 'ignoriert', bundesland: 'ignoriert', landesverband: 'ignoriert',
-    gewichtskategorie: 'ignoriert', gewichtsklasse: 'ignoriert',
+    gewichtskategorie: 'gewichtsklasse', gewichtsklasse: 'gewichtsklasse',
     lizenz: 'judopass_id', lizenznr: 'judopass_id', lizenznummer: 'judopass_id',
     alterskategorie: 'altersklasse', altersklasse: 'altersklasse',
     team: 'mannschaft_name', mannschaft: 'mannschaft_name', teamname: 'mannschaft_name'
@@ -387,6 +397,7 @@ function erkenneKopfzeile(zellen) {
 
 function parseTabellenZeile(zellen, spalten, kontext) {
     const satz = leereZeile();
+    let klasse = '';
     spalten.forEach((feld, i) => {
         const wert = (zellen[i] || '').trim();
         if (!feld || feld === 'ignoriert' || !wert) return;
@@ -401,13 +412,19 @@ function parseTabellenZeile(zellen, spalten, kontext) {
             // "U15w" / "U11m": das Geschlecht steht am Ende, die Altersklasse leitet das Turnier selbst ab
             const g = wert.match(/\d([mw])$/i);
             if (g) satz.geschlecht = normalisiereGeschlecht(g[1]);
-        } else if (feld === 'gewicht') {
-            satz.gewicht = wert.replace(/\s*kg$/i, '').replace('.', ',');
+        } else if (feld === 'gewicht' || feld === 'gewichtsklasse') {
+            // "-36kg" (Klasse) wird als positive Zahl 36 übernommen, "Gewichtsnah" o. Ä. ignoriert;
+            // ein eigenes Gewicht hat Vorrang vor der Klasse
+            const zahl = wert.match(/(\d{1,3}(?:[.,]\d{1,2})?)\s*(?:kg)?$/i);
+            if (!zahl) return;
+            if (feld === 'gewicht') satz.gewicht = zahl[1].replace('.', ',');
+            else klasse = zahl[1].replace('.', ',');
         } else if (!satz[feld]) {
             // bei mehreren Spalten für dasselbe Feld gilt die erste mit Inhalt
             satz[feld] = wert;
         }
     });
+    if (!satz.gewicht) satz.gewicht = klasse;
     if (!satz.nachname || !satz.vorname) return null;
     if (!satz.verein) satz.verein = kontext.verein || '';
     if (!satz.geschlecht) satz.geschlecht = kontext.geschlecht || '';
