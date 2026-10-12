@@ -51,6 +51,7 @@ fi
 
 # Die Rolle live_ro entsteht NICHT hier: der Standby ist schreibgeschützt. Sie wird am Master angelegt und
 # repliziert zum Slave (Rollen und ihre Einstellungen liegen in den replizierten Systemkatalogen).
+# shellcheck source=/dev/null
 . "$ENV_DATEI"
 echo "Am MASTER ausführen (mit Administrator-Zugang, z. B. postgres):"
 echo "  cd $BASIS && DB_ADMIN_USER=postgres DB_ADMIN_PASSWORD=... LIVE_DB_PASSWORD='$LIVE_DB_PASSWORD' npm run live:rolle"
