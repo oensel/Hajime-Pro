@@ -232,6 +232,11 @@ test.describe.serial('Teilnehmer-Import und -Verwaltung, reines Mannschaftsturni
         await page.locator('input[name="mannschaft_altersklasse_cb"][value="männlich_U15"]').check();
         await page.locator('input[name="mannschaft_altersklasse_cb"][value="weiblich_U15"]').check();
 
+        // Mit Startgeld, damit Spalte, Bezahlt-Icons und die Regel "bereit nur mit bezahltem Startgeld" getestet werden.
+        await page.locator('#startgeld').fill('8');
+        await page.locator('#iban').fill('DE89370400440532013000');
+        await page.locator('#kontoinhaber').fill('E2E Judoverein');
+        await page.locator('#verwendungszweck').fill('Startgeld E2E');
         await page.locator('#submitBtn').click();
         await expect(page.locator('#snackbarText')).toHaveText('Turnier erfolgreich angelegt!');
         await expect(page).toHaveURL(/\/turnier\.html\?id=\d+/);

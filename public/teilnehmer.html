@@ -83,7 +83,7 @@
                 <th class="sortable" data-sort="gewicht">Gewicht <span class="sort-icon material-icons"></span></th>
                 <th id="gewogenSpalteHeader" style="text-align: center;">Gewogen</th>
                 <th id="lizenzSpalteHeader" style="text-align: center;">Lizenz</th>
-                <th style="text-align: center;">Startgeld</th>
+                <th id="startgeldSpalteHeader" style="text-align: center;">Startgeld</th>
                 <th style="text-align: center;">Aktionen</th>
             </tr>
             </thead>
@@ -123,7 +123,7 @@
             <div class="teilnehmer-stat-bar"><div class="teilnehmer-stat-bar-fill" id="statLizenzBar" style="width: 0%;"></div></div>
             <div class="teilnehmer-stat-sub" id="statLizenzAnteil"></div>
         </div>
-        <div class="teilnehmer-stat-card">
+        <div class="teilnehmer-stat-card" id="statBezahltKachel">
             <div class="teilnehmer-stat-header">
                 <span class="teilnehmer-stat-label">Bezahlt</span>
                 <span class="material-icons teilnehmer-stat-icon">payments</span>
@@ -139,7 +139,7 @@
 <div id="mailDropOverlay" style="display: none; position: fixed; inset: 0; z-index: 9998; background: rgba(30, 58, 138, 0.18); backdrop-filter: blur(1px); align-items: center; justify-content: center; pointer-events: none;">
     <div style="padding: 28px 40px; border-radius: 8px; border: 3px dashed var(--primary); background: var(--bg-card); color: var(--primary); font-weight: 800; font-size: 18px; text-align: center;">
         <span class="material-icons" style="font-size: 40px; display: block; margin-bottom: 6px;">mail</span>
-        E-Mail hier ablegen, um Teilnehmer daraus zu lesen
+        Hier ablegen, um Teilnehmer einzulesen<br><span style="font-weight: 500; font-size: 14px;">E-Mail, Datei (CSV/XLSX) oder markierte Tabelle</span>
     </div>
 </div>
 
@@ -172,30 +172,6 @@
                     <input type="text" id="startgeldVerwendungszweckFeld" readonly>
                 </div>
             </div>
-        </div>
-    </div>
-</div>
-
-<!-- Import-Ziel-Auswahl-Modal (nur wenn das Turnier sowohl Einzel- als auch Mannschafts-Altersklassen austrägt) -->
-<div id="importZielModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(2px); z-index: 9999; align-items: center; justify-content: center;">
-    <div class="mdc-card" style="max-width: 420px; width: 90%; padding: 24px; border-radius: 4px; border: 2px solid var(--border); box-shadow: var(--shadow); background-color: var(--bg-card);">
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px;">
-            <span class="material-icons" style="font-size: 28px; color: var(--primary);">upload_file</span>
-            <h2 style="margin: 0; font-size: 18px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Import-Ziel wählen</h2>
-        </div>
-        <p style="margin: 0 0 20px; font-size: 13px; color: var(--text-muted);">
-            Dieses Turnier trägt sowohl Einzel- als auch Mannschaftswettkämpfe aus. Für welchen Bereich sollen die Teilnehmer aus der Datei importiert werden?
-        </p>
-        <div style="display: flex; flex-direction: column; gap: 10px;">
-            <button type="button" class="btn btn-outlined" id="importZielEinzelBtn" style="justify-content: flex-start; gap: 10px;">
-                Einzelwettkämpfe
-            </button>
-            <button type="button" class="btn btn-outlined" id="importZielMannschaftBtn" style="justify-content: flex-start; gap: 10px;">
-                Mannschaften
-            </button>
-        </div>
-        <div style="display: flex; justify-content: flex-end; margin-top: 20px;">
-            <button type="button" class="btn btn-outlined" id="importZielAbbrechenBtn">Abbrechen</button>
         </div>
     </div>
 </div>
@@ -385,6 +361,7 @@
 <script src="/js/datenzugriff.js"></script>
 <script src="/js/syncStatus.js"></script>
 <script src="/js/teilnehmer.js"></script>
+<script src="/js/nachzueglerDialog.js"></script>
 <script type="module" src="/js/waage-modal.js"></script>
 </body>
 </html>

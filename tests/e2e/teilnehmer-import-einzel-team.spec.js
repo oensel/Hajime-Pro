@@ -132,15 +132,12 @@ function xlsxDatei(name, zeilen) {
     return { name, mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: baueXlsxBuffer(zeilen) };
 }
 
-// Wählt im Import-Ziel-Modal (erscheint, weil unser Turnier sowohl Einzel- als auch
-// Mannschafts-Altersklassen austrägt, siehe ermittleImportZiel in teilnehmer.js) den gewünschten
-// Bereich, fängt den dadurch ausgelösten nativen Datei-Dialog (importFileInput.click()) über das
-// Playwright-"filechooser"-Event ab und liefert die Datei direkt aus dem Speicher statt von der
-// Festplatte.
+// Klickt "Import", fängt den ausgelösten nativen Datei-Dialog (importFileInput.click()) über das
+// Playwright-"filechooser"-Event ab und liefert die Datei direkt aus dem Speicher. Es gibt keine
+// Ziel-Auswahl mehr: bei Einzel- und Mannschaftsklassen entscheidet das Feld "Team" je Zeile.
 async function waehleZielUndLiefereDatei(page, ziel, datei) {
-    await expect(page.locator('#importZielModal')).toBeVisible();
     const fileChooserPromise = page.waitForEvent('filechooser');
-    await page.locator(ziel === 'mannschaft' ? '#importZielMannschaftBtn' : '#importZielEinzelBtn').click();
+    await page.locator('#importBtn').click();
     const fileChooser = await fileChooserPromise;
     await fileChooser.setFiles(datei);
 }
@@ -205,7 +202,6 @@ test.describe.serial('Teilnehmer-Import und -Verwaltung (teilnehmer.html)', () =
     // Meldungslogik aus importTeilnehmer()/previewTeilnehmerImport() in teilnehmerController.js,
     // damit ein Abweichen dort den Test tatsächlich bricht.
     async function importiereUndPruefe(ziel, datei, { erwarteGueltig, erwarteFehlerhaft = 0, erwarteMannschaften = null, erwarteSkipHinweis = null }) {
-        await page.locator('#importBtn').click();
         await waehleZielUndLiefereDatei(page, ziel, datei);
 
         const importVorschauModal = page.locator('#importVorschauModal');
@@ -300,6 +296,11 @@ test.describe.serial('Teilnehmer-Import und -Verwaltung (teilnehmer.html)', () =
         await page.locator('input[name="mannschaft_altersklasse_cb"][value="männlich_U15"]').check();
         await page.locator('input[name="mannschaft_altersklasse_cb"][value="weiblich_U15"]').check();
 
+        // Mit Startgeld, damit Spalte, Bezahlt-Icons und die Regel "bereit nur mit bezahltem Startgeld" getestet werden.
+        await page.locator('#startgeld').fill('8');
+        await page.locator('#iban').fill('DE89370400440532013000');
+        await page.locator('#kontoinhaber').fill('E2E Judoverein');
+        await page.locator('#verwendungszweck').fill('Startgeld E2E');
         await page.locator('#submitBtn').click();
         await expect(page.locator('#snackbarText')).toHaveText('Turnier erfolgreich angelegt!');
         await expect(page).toHaveURL(/\/turnier\.html\?id=\d+/);
@@ -324,11 +325,11 @@ test.describe.serial('Teilnehmer-Import und -Verwaltung (teilnehmer.html)', () =
         await importiereUndPruefe('einzel', xlsxDatei('psv-einzel.xlsx', psvEinzel), { erwarteGueltig: psvEinzel.length });
 
         // --- PSV Münster: Mannschaft U15 männlich, 12 Mitglieder + 1 Zeile OHNE Team-Name (CSV) ---
-        // Prüft gezielt die Pflichtfeld-Regel "Bei Mannschaften ist der Team-Name ein Pflichtfeld":
-        // die Zeile ohne Team-Name muss als fehlerhaft erkannt und beim Import übersprungen werden.
+        // Je Zeile entscheidet das Feld "Team": die Zeile ohne Team-Name wird nicht abgelehnt, sondern
+        // als Einzelkämpfer angemeldet (13 gültige Zeilen, 1 Mannschaft).
         psvMannschaft = baueMannschaftsZeilen('PSV Münster', 'U15 männlich', 'männlich', 13, [40, 48, 58, 65], 4);
         await importiereUndPruefe('mannschaft', csvDatei('psv-mannschaft.csv', psvMannschaft), {
-            erwarteGueltig: 12, erwarteFehlerhaft: 1, erwarteMannschaften: 1, erwarteSkipHinweis: 'Team-Name'
+            erwarteGueltig: 13, erwarteMannschaften: 1
         });
 
         // --- JC Essen: nur Mannschaften U15 männlich + U15 weiblich (XLSX) ---
@@ -363,7 +364,7 @@ test.describe.serial('Teilnehmer-Import und -Verwaltung (teilnehmer.html)', () =
 
         // --- GESAMTZAHL PRÜFEN: Summe aller tatsächlich importierten (nicht der hochgeladenen) Zeilen ---
         erwarteteGesamtzahl =
-            arminiaEinzel.length + psvEinzel.length + 12 /* PSV-Mannschaft ohne die übersprungene Zeile */
+            arminiaEinzel.length + psvEinzel.length + 13 /* PSV-Mannschaft inkl. der Zeile ohne Team (Einzelkämpfer) */
             + jcEssen.length + fcMg.length
             + tsEinfeldEinzel.length + tsEinfeldMannschaft.length
             + ftnEinzel.length + ftnMannschaft.length;

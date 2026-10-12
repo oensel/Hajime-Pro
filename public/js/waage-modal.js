@@ -19,6 +19,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // — die eigentliche Prüfung erfolgt ohnehin erst beim Einwiegen durch den Ausrichter.
     let istGastgeberVerein = false;
     let istPrivilegiertFuerLizenzUndStartgeld = false;
+    // Ohne Startgeld des Turniers (0 €) entfällt das Feld "Startgeld bezahlt".
+    let turnierOhneStartgeld = false;
     let aktuellerVereinName = '';
     // Wird weiter unten gesetzt (braucht editId/scanMatchedId) und von aktualisiereSpeicherButtonStatus aufgerufen.
     let aktualisiereLizenzAnzeige = null;
@@ -52,6 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
             istGastgeberVerein = istOffline || !!(user.verein_id && user.verein_freigegeben && turnier && turnier.verein_id === user.verein_id);
             istPrivilegiertFuerLizenzUndStartgeld = istGastgeberVerein || !!user.ist_super_admin;
             // Stichtag der Lizenzprüfung (Wettkampftag) schon hier setzen, nicht erst mit dem Laden der DJB-Klassen.
+            turnierOhneStartgeld = !!turnier && (parseFloat(turnier.startgeld) || 0) === 0;
             if (turnier && turnier.datum) turnierDatum = lokalesDatum(turnier.datum);
             aktuellerVereinName = user.verein_name || '';
         } catch (err) {
@@ -83,7 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!istGastgeberVerein) vereinFeld.value = aktuellerVereinName;
         }
         if (lizenzFeld) lizenzFeld.disabled = !istPrivilegiertFuerLizenzUndStartgeld;
-        if (startgeldRow) startgeldRow.style.display = istPrivilegiertFuerLizenzUndStartgeld ? '' : 'none';
+        if (startgeldRow) startgeldRow.style.display = (istPrivilegiertFuerLizenzUndStartgeld && !turnierOhneStartgeld) ? '' : 'none';
     };
 
     // --- STRIKTE FORMULAR- UND LIZENZVALIDIERUNG ---
@@ -902,6 +905,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     kampfbereitBtn.style.display = 'none';
                     delete kampfbereitBtn.dataset.teilnehmerId;
                     if (window.ladeTeilnehmerListe) window.ladeTeilnehmerListe();
+                    if (window.NachzueglerDialog) {
+                        const nachzuegler = await window.NachzueglerDialog.frageNachSpeichern({ turnierId, teilnehmerId });
+                        if (nachzuegler && nachzuegler.aktion !== 'keine') schliesseModal();
+                    }
                 } else {
                     window.zeigeNotification(result.fehler || 'Fehler bei der Bestätigung.', 'error');
                 }
@@ -1089,6 +1096,13 @@ document.addEventListener('DOMContentLoaded', () => {
                             kampfbereitBtn.style.display = 'inline-flex';
                             kampfbereitBtn.dataset.teilnehmerId = gespeicherteId;
                         }
+                    }
+
+                    // Nachzügler (Altersklasse schon ausgelost): Pool-Auswahl anbieten.
+                    // Nach der Pool-Auswahl ist der Nachzügler erledigt: das Fenster schließt sich.
+                    if (gespeicherteId && window.NachzueglerDialog) {
+                        const nachzuegler = await window.NachzueglerDialog.frageNachSpeichern({ turnierId, teilnehmerId: gespeicherteId });
+                        if (nachzuegler && nachzuegler.aktion !== 'keine' && !editId) schliesseModal();
                     }
                 } else {
                     window.zeigeNotification(result.fehler || 'Fehler beim Speichern', 'error');

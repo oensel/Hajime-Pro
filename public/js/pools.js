@@ -118,6 +118,91 @@ document.addEventListener('DOMContentLoaded', () => {
         return confirm(nachricht);
     };
 
+    // --- NACHZÜGLER (nach der Auslosung eingewogen): Vorschlag bestätigen; ohne Vorschlag landet der
+    // Teilnehmer automatisch im Sammelpool "Verspätet" und wird dort per Drag&Drop verschoben ---
+    const nachzueglerBereich = document.getElementById('nachzueglerBereich');
+    const nachzueglerListe = document.getElementById('nachzueglerListe');
+    let sammelnLaeuft = false;
+
+    async function postJson(url, body) {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ turnierId, ...body })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || result.success === false) throw new Error(result.error || 'Aktion fehlgeschlagen.');
+        return result;
+    }
+
+    function erzeugeNachzueglerZeile(n) {
+        const zeile = document.createElement('div');
+        zeile.className = 'nachzuegler-zeile';
+        zeile.dataset.teilnehmerId = String(n.teilnehmerId);
+
+        const info = document.createElement('div');
+        info.className = 'nachzuegler-info';
+        info.textContent = `${n.name} · ${n.altersklasse} · ${n.gewicht ?? '–'} kg · ${n.verein || ''}`;
+
+        const hinweis = document.createElement('div');
+        hinweis.className = 'nachzuegler-vorschlag';
+        const v = n.vorschlag;
+        hinweis.textContent = `Vorschlag: ${v.bezeichnung} (${v.teilnehmerNachher - 1} → ${v.teilnehmerNachher} Teilnehmer, ${v.systemNachher}${v.matteId ? '' : ', noch ohne Matte'})`;
+
+        const uebernehmen = document.createElement('button');
+        uebernehmen.type = 'button';
+        uebernehmen.className = 'btn btn-raised nachzuegler-uebernehmen';
+        uebernehmen.textContent = 'Übernehmen';
+        uebernehmen.addEventListener('click', async () => {
+            try {
+                await postJson(`/api/pools/nachzuegler/${n.teilnehmerId}/einsortieren`, { poolId: v.poolId });
+                zeigeNotification('Nachzügler eingeordnet.', 'success');
+            } catch (err) {
+                zeigeNotification(err.message, 'error');
+            }
+            await ladePools();
+        });
+
+        zeile.append(info, hinweis, uebernehmen);
+        return zeile;
+    }
+
+    async function ladeNachzuegler() {
+        if (!nachzueglerBereich || !nachzueglerListe) return;
+        try {
+            const response = await fetch(`/api/pools/nachzuegler?turnierId=${encodeURIComponent(turnierId)}`);
+            if (!response.ok) { nachzueglerBereich.style.display = 'none'; return; }
+            const { nachzuegler, imSammelpool } = await response.json();
+
+            // Ohne Vorschlag: automatisch in den Sammelpool, danach Pools neu laden (die Liste ist dann leer).
+            if (!sammelnLaeuft && nachzuegler.some(n => !n.vorschlag)) {
+                sammelnLaeuft = true;
+                let gesammelt = false;
+                try {
+                    await postJson('/api/pools/nachzuegler/sammeln', {});
+                    gesammelt = true;
+                } catch (err) {
+                    // z.B. 409 am Secondary: die Vorschläge werden trotzdem angezeigt.
+                    zeigeNotification(err.message, 'error');
+                } finally {
+                    sammelnLaeuft = false;
+                }
+                if (gesammelt) {
+                    await ladePools();
+                    return;
+                }
+            }
+
+            const mitVorschlag = nachzuegler.filter(n => n.vorschlag);
+            nachzueglerListe.replaceChildren(...mitVorschlag.map(erzeugeNachzueglerZeile));
+            nachzueglerBereich.style.display = mitVorschlag.length > 0 ? '' : 'none';
+            window.hajimeNachzueglerZaehler = mitVorschlag.length + (imSammelpool || 0);
+            if (window.hajimeAktualisiereNachzuegler) window.hajimeAktualisiereNachzuegler();
+        } catch (err) {
+            console.error('[Pools] Nachzügler konnten nicht geladen werden:', err);
+        }
+    }
+
     // --- MAIN LOADER ---
     async function ladePools() {
         if (!poolsContainer) return;
@@ -131,7 +216,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             poolsContainer.innerHTML = `<div class="pools-loading-banner">Pools werden geladen...</div>`;
 
-            const response = await fetch(`/api/pools/details?turnierId=${encodeURIComponent(turnierId)}`);
+            const response = await fetch(`/api/pools/details?turnierId=${encodeURIComponent(turnierId)}&mitVerspaetet=1`);
             const responseText = await response.text();
 
             let pools;
@@ -163,6 +248,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="pools-empty-banner">
                         Noch keine Pools für dieses Turnier berechnet. Alle Teilnehmer erfasst? Starten Sie oben rechts die automatische Pool-Generierung nach DJB-Reglement.
                     </div>`;
+                ladeNachzuegler();
                 return;
             }
 
@@ -171,8 +257,9 @@ document.addEventListener('DOMContentLoaded', () => {
             aktualisiereWeitereRundeKnopf();
 
             // Rendert das HTML-Tabellengerüst (Schnittstelle zu Teil 2)
-            const sortierteNachAK = [...pools].sort(vergleichePools);
+            const sortierteNachAK = [...pools].sort((a, b) => (b.verspaetet ? 1 : 0) - (a.verspaetet ? 1 : 0) || vergleichePools(a, b));
             renderPoolsHTML(sortierteNachAK);
+            ladeNachzuegler();
 
         } catch (error) {
             console.error('[Pools] Fehler beim Laden:', error);
@@ -242,7 +329,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 abgeschlossen: { text: 'Abgeschlossen', klasse: 'beendet' }
             };
             let { text: statusText, klasse: statusClass } = POOL_STATUS_LABELS[pool.status] || { text: 'Bereit', klasse: 'bereit' };
-            if (pool.anzahl_teilnehmer === 0) {
+            if (pool.anzahl_teilnehmer === 0 || pool.verspaetet) {
+                // Sammelpool "Verspätet": hat nie Kämpfe, "Kampflos"/"Bereit" wären irreführend.
                 statusText = 'In Vorbereitung';
                 statusClass = 'vorbereitung';
             } else if (pool.anzahl_teilnehmer === 1) {
@@ -274,7 +362,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                         <div class="pool-einstellungen">
                                             <span class="pool-einstellung-label">System</span>
                                             <div class="pool-einstellung-wert">
-                                                <span class="pool-system-text">${mapWettkampfsystem(pool.modus, pool.anzahl_teilnehmer)}</span>
+                                                <span class="pool-system-text">${pool.verspaetet ? 'Sammelpool' : mapWettkampfsystem(pool.modus, pool.anzahl_teilnehmer)}</span>
                                                 ${kannSystemWechseln ? `
                                                     <button type="button" class="btn-switch-system material-icons" data-id="${pool.id}" data-ziel-modus="${sechserZielModus}" title="Auf ${sechserZielModus === 'Jeder-gegen-Jeden' ? 'Jeder-gegen-Jeden' : 'Gruppen-Überkreuz'} umstellen" style="color: var(--text-muted); background: none; border: none; cursor: pointer; font-size: 15px; padding: 2px; vertical-align: middle;">swap_horiz</button>
                                                 ` : ''}
@@ -598,6 +686,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
+                            turnierId: parseInt(turnierId, 10),
                             teilnehmerId: parseInt(athleteId, 10),
                             zielPoolId: parseInt(zielPoolId, 10)
                         })
@@ -609,6 +698,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         // ganze Tabelle neu zu laden — verhindert das sichtbare Ruckeln. Keine
                         // Erfolgs-Notification, da der Drag&Drop selbst schon sichtbares Feedback ist.
                         await aktualisierePoolZeilen([sourcePoolId, zielPoolId]);
+                        ladeNachzuegler(); // Zähler/Vorschläge nach dem Verschieben aktualisieren
                     } else {
                         zeigeNotification('Fehler beim Verschieben: ' + result.error, 'error');
                     }
@@ -624,7 +714,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // das sichtbare Ruckeln nach dem Verschieben eines Athleten per Drag & Drop.
     async function aktualisierePoolZeilen(poolIds) {
         try {
-            const response = await fetch(`/api/pools/details?turnierId=${encodeURIComponent(turnierId)}`);
+            const response = await fetch(`/api/pools/details?turnierId=${encodeURIComponent(turnierId)}&mitVerspaetet=1`);
             const pools = await response.json();
 
             if (!response.ok || !Array.isArray(pools)) {
@@ -796,18 +886,11 @@ document.addEventListener('DOMContentLoaded', () => {
             titel: 'Pools generieren',
             hinweis: 'Welche Altersklassen sind fertig gewogen und sollen jetzt ausgelost werden?',
             eintraege,
-            bestaetigenText: 'Weiter'
+            bestaetigenText: 'Pools generieren'
         });
         if (!gewaehlt) return;
 
         if (!await warneVorNichtKampfbereitenTeilnehmern(gewaehlt)) return;
-
-        const waageSchliessen = await zeigeBestaetigung(
-            'Waage für die gewählten Altersklassen schließen und auslosen? Die Pools dieser Altersklassen werden berechnet; nicht gewogene Teilnehmer dieser Klassen gelten als nicht erschienen.',
-            'Waage schließen & Auslosen',
-            'lock_clock'
-        );
-        if (!waageSchliessen) return;
 
         await fuehrePoolGenerierungAus({ neuGenerieren: false, altersklassen: gewaehlt });
     }

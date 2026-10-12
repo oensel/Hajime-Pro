@@ -337,6 +337,13 @@ select.status-select:focus {
     border: 1px solid rgba(106, 27, 154, 0.3);
 }
 
+/* Dunkler Modus: das dunkle Violett hätte auf dem dunklen Hintergrund zu wenig Kontrast */
+[data-theme="dark"] .klasse-badge.team {
+    background-color: rgba(206, 147, 216, 0.16);
+    color: #e1bee7;
+    border: 1px solid rgba(206, 147, 216, 0.55);
+}
+
 /* Graduierung (Gürtelfarbe): einfarbig oder bei Zwischengurten links/rechts geteilt */
 .graduierung-kreis {
     display: inline-block;

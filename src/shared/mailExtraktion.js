@@ -97,6 +97,21 @@ export function htmlZuText(html) {
     return String(html || '')
         .replace(/<(style|script|head)[\s\S]*?<\/\1>/gi, '')
         .replace(/<!--[\s\S]*?-->/g, '')
+        // Formularfelder: Eingabefelder liefern ihren Wert, Auswahllisten nur den gewählten Eintrag
+        // (sonst landet die ganze Optionsliste im Text), Knöpfe ("+") gar nichts
+        .replace(/<select\b[^>]*>([\s\S]*?)<\/select>/gi, (_, inner) => {
+            const gewaehlt = inner.match(/<option\b[^>]*\bselected\b[^>]*>([\s\S]*?)(?=<\/option>|<option\b|$)/i);
+            return gewaehlt ? gewaehlt[1].replace(/<[^>]*>/g, '') : '';
+        })
+        .replace(/<button\b[^>]*>[\s\S]*?<\/button>/gi, '')
+        .replace(/<textarea\b[^>]*>([\s\S]*?)<\/textarea>/gi, '$1')
+        .replace(/<input\b[^>]*>/gi, (tag) => {
+            if (/\btype\s*=\s*["']?(hidden|button|submit|checkbox|radio|image|reset)\b/i.test(tag)) return '';
+            const m = tag.match(/\bvalue\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+            return m ? (m[1] ?? m[2] ?? m[3] ?? '') : '';
+        })
+        // Zellinhalt auf eine Zeile bringen: Tabellen aus Webseiten stecken Absätze/Divs in die Zellen
+        .replace(/<(t[dh])\b[^>]*>([\s\S]*?)<\/\1>/gi, (_, tag, inner) => `<${tag}>${inner.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()}</${tag}>`)
         .replace(/<br\s*\/?>/gi, '\n')
         .replace(/<\/(p|div|tr|li|h[1-6]|table|ul|ol)>/gi, '\n')
         .replace(/<\/t[dh]>/gi, '\t')
@@ -215,7 +230,8 @@ function leseGeburt(text) {
 }
 
 function leseGewicht(text) {
-    const m = String(text || '').match(/(?:gewicht\s*:?\s*)?(\d{2,3}(?:[.,]\d{1,2})?)\s*kg\b/i)
+    // "-36kg" (Gewichtsklasse) wird als positive Zahl 36 übernommen
+    const m = String(text || '').match(/(?<![\d.,])(?:gewicht\s*:?\s*)?(\d{2,3}(?:[.,]\d{1,2})?)\s*kg\b/i)
         || String(text || '').match(/gewicht\s*:?\s*(\d{2,3}(?:[.,]\d{1,2})?)/i);
     return m ? { wert: m[1].replace('.', ','), treffer: m[0] } : null;
 }
@@ -234,7 +250,16 @@ function leseGraduierung(text) {
 
 function lesePass(text) {
     const m = String(text || '').match(/(?:judo)?pass(?:nummer|nr\.?|-nr\.?)?\s*[:#]?\s*([A-Za-z]{0,3}-?\d{3,}[\w-]*)/i);
-    return m ? { wert: m[1], treffer: m[0] } : null;
+    if (m) return { wert: m[1], treffer: m[0] };
+    // Lizenznummer wie "J-0064792"
+    const lizenz = String(text || '').match(/(?<![\w-])([A-Za-z]-\d{4,})(?![\w-])/);
+    return lizenz ? { wert: lizenz[1], treffer: lizenz[0] } : null;
+}
+
+// Altersklasse mit Geschlecht am Ende ("U15w", "U11 m", "U18M") -> { wert, treffer }
+function leseAltersklassenGeschlecht(text) {
+    const m = String(text || '').match(/(?<![\wäöüß])U\s?\d{1,2}\s?([mw])(?![\wäöüß])/i);
+    return m ? { wert: normalisiereGeschlecht(m[1]), treffer: m[0], index: m.index } : null;
 }
 
 function leseGeschlechtImText(text) {
@@ -296,7 +321,7 @@ function parseFreiZeile(zeile, kontext) {
         }
     }
 
-    const geschlecht = leseGeschlechtImText(rest);
+    const geschlecht = leseAltersklassenGeschlecht(rest) || leseGeschlechtImText(rest);
     if (geschlecht) {
         satz.geschlecht = geschlecht.wert;
         // an der Fundstelle entfernen: ein einzelnes "m" käme sonst zuerst im Namen vor
@@ -356,6 +381,10 @@ const KOPF_FELD = {
     gewicht: 'gewicht', kg: 'gewicht', gewichtkg: 'gewicht',
     pass: 'judopass_id', passnr: 'judopass_id', passnummer: 'judopass_id', judopass: 'judopass_id', judopassnr: 'judopass_id',
     graduierung: 'graduierung', kyu: 'graduierung', gurt: 'graduierung', grad: 'graduierung', guertel: 'graduierung',
+    nation: 'ignoriert', region: 'ignoriert', land: 'ignoriert', bundesland: 'ignoriert', landesverband: 'ignoriert',
+    gewichtskategorie: 'gewichtsklasse', gewichtsklasse: 'gewichtsklasse',
+    lizenz: 'judopass_id', lizenznr: 'judopass_id', lizenznummer: 'judopass_id',
+    alterskategorie: 'altersklasse', altersklasse: 'altersklasse',
     team: 'mannschaft_name', mannschaft: 'mannschaft_name', teamname: 'mannschaft_name'
 };
 
@@ -368,9 +397,10 @@ function erkenneKopfzeile(zellen) {
 
 function parseTabellenZeile(zellen, spalten, kontext) {
     const satz = leereZeile();
+    let klasse = '';
     spalten.forEach((feld, i) => {
         const wert = (zellen[i] || '').trim();
-        if (!feld || !wert) return;
+        if (!feld || feld === 'ignoriert' || !wert) return;
         if (feld === 'voll') {
             const n = teileName(wert);
             if (n) { satz.vorname = n.vorname; satz.nachname = n.nachname; }
@@ -378,16 +408,108 @@ function parseTabellenZeile(zellen, spalten, kontext) {
             satz.geburtsjahr = leseGeburt(wert)?.wert || wert;
         } else if (feld === 'geschlecht') {
             satz.geschlecht = normalisiereGeschlecht(wert) || wert;
-        } else if (feld === 'gewicht') {
-            satz.gewicht = wert.replace(/\s*kg$/i, '').replace('.', ',');
-        } else {
+        } else if (feld === 'altersklasse') {
+            // "U15w" / "U11m": das Geschlecht steht am Ende, die Altersklasse leitet das Turnier selbst ab
+            const g = wert.match(/\d([mw])$/i);
+            if (g) satz.geschlecht = normalisiereGeschlecht(g[1]);
+        } else if (feld === 'gewicht' || feld === 'gewichtsklasse') {
+            // "-36kg" (Klasse) wird als positive Zahl 36 übernommen, "Gewichtsnah" o. Ä. ignoriert;
+            // ein eigenes Gewicht hat Vorrang vor der Klasse
+            const zahl = wert.match(/(\d{1,3}(?:[.,]\d{1,2})?)\s*(?:kg)?$/i);
+            if (!zahl) return;
+            if (feld === 'gewicht') satz.gewicht = zahl[1].replace('.', ',');
+            else klasse = zahl[1].replace('.', ',');
+        } else if (!satz[feld]) {
+            // bei mehreren Spalten für dasselbe Feld gilt die erste mit Inhalt
             satz[feld] = wert;
         }
     });
+    if (!satz.gewicht) satz.gewicht = klasse;
     if (!satz.nachname || !satz.vorname) return null;
     if (!satz.verein) satz.verein = kontext.verein || '';
     if (!satz.geschlecht) satz.geschlecht = kontext.geschlecht || '';
     return satz;
+}
+
+// Aus einer Webseite kopierter Text trennt manche Zellen per Zeilenumbruch statt per Tab
+// (Kopfzeile, danach "Name<TAB>Vorname<TAB>", Leerzeilen, "U15w", "-36kg", … und zuletzt
+// "09.03.2013<TAB>J-1<TAB>Club"). Nach einer erkannten Kopfzeile werden zu kurze Zeilen mit den
+// folgenden zu einer Zeile mit genug Zellen zusammengesetzt.
+function fuegeZellumbruecheZusammen(text) {
+    const ausgabe = [];
+    let spaltenZahl = 0;
+    let puffer = null;
+    let umbrueche = 0;
+    const zellenZahl = (z) => z.split('\t').length;
+    const leere = () => {
+        if (puffer !== null) ausgabe.push(puffer);
+        puffer = null;
+        umbrueche = 0;
+    };
+
+    for (const zeile of String(text || '').replace(/\r\n?/g, '\n').split('\n')) {
+        const getrimmt = zeile.trim();
+        if (!getrimmt) {
+            if (puffer === null) ausgabe.push(zeile);
+            continue;
+        }
+        const hatTab = zeile.includes('\t');
+        if (hatTab && erkenneKopfzeile(zeile.split('\t').map(z => z.trim()))) {
+            leere();
+            spaltenZahl = zeile.split('\t').length;
+            ausgabe.push(zeile);
+            continue;
+        }
+        if (puffer !== null) {
+            // Zeilen mit Tab gehören nur dazu, wenn schon eine tab-lose Fortsetzung vorkam
+            if (!hatTab || umbrueche > 0) {
+                puffer = puffer.endsWith('\t') ? puffer + getrimmt : `${puffer}\t${getrimmt}`;
+                if (!hatTab) umbrueche++;
+                if (zellenZahl(puffer) >= spaltenZahl) leere();
+                continue;
+            }
+            leere();
+        }
+        if (spaltenZahl && hatTab && zellenZahl(zeile) < spaltenZahl) {
+            puffer = zeile.trimStart();
+            continue;
+        }
+        ausgabe.push(zeile);
+    }
+    leere();
+    return ausgabe.join('\n');
+}
+
+// Kopfzeile und Zellen stehen nicht in einer Tab-Zeile (Zellen per Zeilenumbruch getrennt, leere Zellen
+// fehlen): die Zeichenkette in Zellen zerlegen, die Kopfzeile als Folge bekannter Spaltennamen
+// suchen und die Zellen über die Geburtsdatum-Spalte zu Zeilen gruppieren.
+function gruppiereZellen(text) {
+    const zellen = String(text || '').split(/[\t\r\n]+/).map(z => z.trim()).filter(Boolean);
+    const feldVon = (z) => KOPF_FELD[z.toLowerCase().replace(/[^a-zäöüß]/g, '')] || null;
+    const istDatum = (z) => /^\d{1,2}\.\d{1,2}\.(\d{4}|\d{2})$/.test(z) || /^(19|20)\d{2}-\d{2}-\d{2}$/.test(z) || /^(19|20)\d{2}$/.test(z);
+
+    for (let i = 0; i < zellen.length; i++) {
+        let j = i;
+        while (j < zellen.length && feldVon(zellen[j])) j++;
+        const kopf = zellen.slice(i, j);
+        if (kopf.length < 3 || !erkenneKopfzeile(kopf)) { i = Math.max(i, j - 1); continue; }
+
+        const felder = kopf.map(feldVon);
+        const datumIdx = felder.indexOf('geburt');
+        if (datumIdx < 0) return null;
+        const nachDatum = kopf.length - 1 - datumIdx;
+        const zeilen = [kopf.join('\t')];
+        let start = j;
+        for (let k = j; k < zellen.length; k++) {
+            if (!istDatum(zellen[k]) || k - start < 1) continue;
+            const ende = Math.min(k + nachDatum, zellen.length - 1);
+            zeilen.push(zellen.slice(start, ende + 1).join('\t'));
+            start = ende + 1;
+            k = ende;
+        }
+        return [...zellen.slice(0, i), ...zeilen, ...zellen.slice(start)].join('\n');
+    }
+    return null;
 }
 
 // text -> Array von Kämpfer-Datensätzen (Felder wie in FELDER)
@@ -396,7 +518,9 @@ export function extrahiereKaempfer(text, optionen = {}) {
     const ergebnis = [];
     let spalten = null;
 
-    for (const zeile of String(text || '').replace(/\r\n?/g, '\n').split('\n')) {
+    const hatTabKopf = String(text || '').split(/\r?\n/).some(z => z.includes('\t') && erkenneKopfzeile(z.split('\t').map(c => c.trim())));
+    const aufbereitet = (!hatTabKopf && gruppiereZellen(text)) || fuegeZellumbruecheZusammen(text);
+    for (const zeile of aufbereitet.split('\n')) {
         const getrimmt = zeile.trim();
         if (!getrimmt) continue;
         if (/^>/.test(getrimmt)) continue; // zitierte Antwort-Zeilen

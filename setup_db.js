@@ -123,9 +123,12 @@ async function main() {
             table.boolean('golden_score_aktiv').notNullable().defaultTo(true);
             table.string('farbe_kaempfer2').nullable();
             table.integer('golden_score_max_sekunden').nullable().defaultTo(null);
+            table.boolean('verspaetet').notNullable().defaultTo(false);
             table.timestamps(true, true);
             table.index('turnier_id', 'idx_pools_turnier_id');
         });
+        // Höchstens ein Sammelpool "Verspätet" je Turnier (siehe Migration 20261010110000).
+        await knex.raw('CREATE UNIQUE INDEX pools_verspaetet_eindeutig ON pools (turnier_id) WHERE verspaetet = true');
 
         // 6. turnier_teilnehmer
         await knex.schema.createTable('turnier_teilnehmer', (table) => {

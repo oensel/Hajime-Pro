@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { hashPassword, verifyPassword } from '../utils/password.js';
 import { ladeBenutzerMitAktivemVerein, ladeVereineFuerBenutzer } from '../utils/vereinHelper.js';
+import * as steuerungPasswort from '../utils/steuerungPasswort.js';
 import dotenv from 'dotenv';
 dotenv.config({ quiet: true });
 
@@ -216,15 +217,30 @@ export async function updateProfile(knex, req, res) {
 }
 
 export function getAuthMode(knex, req, res) {
-    return res.json({ passwordRequired: !!process.env.STEUERUNG_PASSWORD });
+    return res.json({ passwordRequired: steuerungPasswort.istGesetzt() });
 }
 
 export function verifyPasswordEndpoint(knex, req, res) {
-    const password = process.env.STEUERUNG_PASSWORD;
-    const clientPassword = req.headers['x-steuerung-password'] || req.body.password;
+    const clientPassword = req.headers['x-steuerung-password'] || (req.body && req.body.password);
 
-    if (password && clientPassword === password) {
-        return res.json({ success: true });
+    if (steuerungPasswort.istGesetzt() && steuerungPasswort.pruefe(clientPassword)) {
+        // aenderungErforderlich: es gilt noch das vom Installationsskript erzeugte Start-Passwort —
+        // das Frontend verlangt dann sofort ein eigenes Passwort (POST /api/auth/steuerung-passwort).
+        return res.json({ success: true, aenderungErforderlich: steuerungPasswort.istStartPasswort() });
     }
     return res.status(401).json({ success: false, error: 'Ungültiges Passwort.' });
+}
+
+// Setzt ein eigenes Turnierleitungs-Passwort. Das bisherige Passwort steht im Header
+// x-steuerung-password (requireSteuerungPasswort in der Route); gilt als Nachweis für die Änderung.
+export async function aendereSteuerungPasswort(knex, req, res) {
+    const neu = req.body && req.body.neuesPasswort;
+    try {
+        await steuerungPasswort.aendere(neu);
+        return res.json({ success: true });
+    } catch (error) {
+        if (error.status === 400) return res.status(400).json({ success: false, error: error.message });
+        console.error('[Steuerungs-Passwort-Fehler]:', error);
+        return res.status(500).json({ success: false, error: 'Das Passwort konnte nicht gespeichert werden.' });
+    }
 }

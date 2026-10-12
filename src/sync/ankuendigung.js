@@ -18,6 +18,16 @@ export function lokaleIpv4Adressen(netzwerk = os.networkInterfaces()) {
     return ergebnis;
 }
 
+// Reihenfolge der Server-Adressen für Kopplungs-QR/-Anzeige: zuerst die VIP (folgt dem Master, wenn
+// dieser Knoten sie gerade hält), dann die Adresse, über die der Browser den Server erreicht hat, dann
+// der Rest; Link-Local-Adressen (169.254.x.x) sind für andere Geräte unbrauchbar und entfallen.
+export function ordneServerAdressen(adressen, { angefragt = '', vip = '' } = {}) {
+    const bereinigt = [...new Set(adressen)].filter(ip => !ip.startsWith('169.254.'));
+    const gewuenscht = [vip, String(angefragt).replace(/^::ffff:/, '')];
+    const vorn = gewuenscht.filter((ip, i) => ip && bereinigt.includes(ip) && gewuenscht.indexOf(ip) === i);
+    return [...vorn, ...bereinigt.filter(ip => !vorn.includes(ip))];
+}
+
 export function beantworteAnfrage(fragen, { hostname, adressen }) {
     const gesucht = fragen.some(f => String(f.name).toLowerCase() === hostname.toLowerCase() && (f.type === 'A' || f.type === 'ANY'));
     return gesucht ? adressen.map(data => ({ name: hostname, type: 'A', ttl: 120, data })) : [];

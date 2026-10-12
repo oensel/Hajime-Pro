@@ -71,7 +71,7 @@ test.describe.serial('Import aus E-Mail (Drag & Drop)', () => {
 
         const modal = page.locator('#importVorschauModal');
         await expect(modal).toBeVisible();
-        await expect(page.locator('#importVorschauTitel')).toContainText('E-Mail');
+        await expect(page.locator('#importVorschauTitel')).toContainText('bitte prüfen');
 
         const zeilen = page.locator('#importVorschauBody tr');
         await expect(zeilen).toHaveCount(3);

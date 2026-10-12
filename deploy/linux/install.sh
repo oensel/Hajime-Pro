@@ -162,7 +162,7 @@ if [ "$NEUE_INSTALLATION" -eq 1 ]; then
     cat <<EOF
 
   Erst-Anmeldung (Super-Admin): siehe SUPER_ADMIN_INITIAL_PASSWORD in $ENV_DATEI
-  Turnierleitungs-Passwort:     $STEUERUNG_PASSWORT
+  Start-Passwort (Schreibzugriff): $STEUERUNG_PASSWORT  (muss bei der ersten Anmeldung geändert werden)
   (Wird nur beim ersten Lauf angezeigt – sonst in der .env nachlesen.)
 EOF
 fi

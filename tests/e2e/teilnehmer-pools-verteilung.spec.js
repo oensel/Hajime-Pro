@@ -72,14 +72,12 @@ function csvDatei(name, zeilen) {
     return { name, mimeType: 'text/csv', buffer: Buffer.from(baueCsv(zeilen), 'utf-8') };
 }
 
-// Wählt im Import-Ziel-Modal (erscheint, weil unser Turnier sowohl Einzel- als auch
-// Mannschafts-Altersklassen austrägt, siehe ermittleImportZiel in teilnehmer.js) den gewünschten
-// Bereich, fängt den dadurch ausgelösten nativen Datei-Dialog über das Playwright-
-// "filechooser"-Event ab und liefert die Datei direkt aus dem Speicher statt von der Festplatte.
+// Klickt "Import", fängt den ausgelösten nativen Datei-Dialog (importFileInput.click()) über das
+// Playwright-"filechooser"-Event ab und liefert die Datei direkt aus dem Speicher. Es gibt keine
+// Ziel-Auswahl mehr: bei Einzel- und Mannschaftsklassen entscheidet das Feld "Team" je Zeile.
 async function waehleZielUndLiefereDatei(page, ziel, datei) {
-    await expect(page.locator('#importZielModal')).toBeVisible();
     const fileChooserPromise = page.waitForEvent('filechooser');
-    await page.locator(ziel === 'mannschaft' ? '#importZielMannschaftBtn' : '#importZielEinzelBtn').click();
+    await page.locator('#importBtn').click();
     const fileChooser = await fileChooserPromise;
     await fileChooser.setFiles(datei);
 }
@@ -174,7 +172,6 @@ test.describe.serial('Pool-Verteilung nach Alters-/Gewichtsklasse und Wettkampfs
     }
 
     async function importiereUndPruefe(ziel, datei, { erwarteGueltig, erwarteMannschaften = null }) {
-        await page.locator('#importBtn').click();
         await waehleZielUndLiefereDatei(page, ziel, datei);
 
         const importVorschauModal = page.locator('#importVorschauModal');
@@ -320,7 +317,8 @@ test.describe.serial('Pool-Verteilung nach Alters-/Gewichtsklasse und Wettkampfs
 
         await markiereAlle(page.locator('#bulkMarkWeighedBtn'), `${gesamt} Teilnehmer erfolgreich als gewogen markiert.`);
         await markiereAlle(page.locator('#bulkMarkLizenzBtn'), `Lizenz für ${gesamt} Teilnehmer erfolgreich bestätigt.`);
-        await markiereAlle(page.locator('#bulkMarkPaidBtn'), `${gesamt} Teilnehmer erfolgreich aktualisiert.`);
+        // Das Turnier verlangt kein Startgeld: Bezahlt-Knopf entfällt, "bereit" braucht es nicht.
+        await expect(page.locator('#bulkMarkPaidBtn')).toBeHidden();
 
         const statusWerte = await page.locator('[data-status-select]').evaluateAll(nodes => nodes.map(n => n.value));
         expect(statusWerte).toHaveLength(gesamt);
@@ -338,13 +336,9 @@ test.describe.serial('Pool-Verteilung nach Alters-/Gewichtsklasse und Wettkampfs
         await expect(page.locator('#altersklassenDialog')).toBeVisible();
         await page.locator('#altersklassenBestaetigen').click();
 
-        // Da bereits alle Teilnehmer kampfbereit sind, entfällt die Warnung vor nicht
-        // kampfbereiten Teilnehmern (siehe warneVorNichtKampfbereitenTeilnehmern in pools.js) — nur
-        // die zweite, immer erscheinende Bestätigung ("Waage schließen & Auslosen") muss bestätigt
-        // werden.
-        await expect(page.locator('#customConfirmModal')).toBeVisible();
-        await page.locator('#modalConfirmBtn').click();
-
+        // Da bereits alle Teilnehmer kampfbereit sind, entfällt die Warnung vor nicht kampfbereiten
+        // Teilnehmern (siehe warneVorNichtKampfbereitenTeilnehmern in pools.js); die Pools werden
+        // direkt generiert.
         await expect(page.locator('#snackbarText')).toHaveText('Pools erfolgreich generiert und ausgelost!');
         await expect(page.locator('tr.pool-section')).toHaveCount(10);
     });
