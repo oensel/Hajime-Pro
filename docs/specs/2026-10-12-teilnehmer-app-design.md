@@ -70,8 +70,9 @@ nächster Kampf: in 3 Kämpfen | als Nächstes | läuft jetzt | keine weiteren K
 Abgeschlossen · Platz 3                      (nur bei abgeschlossenem Pool; Platz nur 1–3)
 ```
 
-**Abstand n** = Anzahl noch nicht beendeter Kämpfe vor dem nächsten eigenen Kampf auf derselben Matte (nach `matten_reihenfolge`);
-ein laufender Kampf zählt mit. Mehrere eigene Kämpfe: maßgeblich ist der nächste offene.
+**Abstand n** = Anzahl noch nicht beendeter Kämpfe (Status `bereit`, `vorbereiten`, `gestartet`) vor dem nächsten eigenen Kampf auf
+derselben Matte (nach `matten_reihenfolge`, ohne Position zuletzt, dann `id`); ein laufender Kampf zählt mit. Nur Kämpfe im Status
+`bereit` bekommen von der Matten-Planung eine Position, Kämpfe im Status `angelegt` (Gegner noch offen) haben keine. Mehrere eigene Kämpfe: maßgeblich ist der nächste offene.
 
 | Zustand (aus Pool-/Teilnehmer-/Kampfstatus) | Zeile 2 | Zeile 3 |
 |---|---|---|
@@ -81,7 +82,8 @@ ein laufender Kampf zählt mit. Mehrere eigene Kämpfe: maßgeblich ist der näc
 | eigener Kampf `gestartet` | läuft jetzt | – |
 | n = 0 | als Nächstes | – |
 | n ≥ 1 | in n Kämpfen (bei 1: „in 1 Kampf") | – |
-| Kampf mit nur einem bekannten Kämpfer (Folgekampf, Gegner offen) | wie n (Position steht fest) | – |
+| Teilnehmer steht in einem Folgekampf, dessen Gegner noch offen ist (`angelegt`, hat noch keine Matten-Position) | wartet auf Gegner | – |
+| Teilnehmer `nicht_erschienen` | nicht erschienen | – |
 | keine offenen Kämpfe, Pool läuft noch (`nicht_angetreten`, `disqualifiziert`, ausgeschieden) | keine weiteren Kämpfe | – |
 | Pool `abgeschlossen` | entfällt | Abgeschlossen · Platz 1–3 (sonst nur „Abgeschlossen") |
 
@@ -98,10 +100,12 @@ Wird die Reihenfolge später geändert (Drag & Drop, Matte neu verteilt), gibt e
 - Schema `live` mit Views, die nur die benötigten Spalten liefern: Turnier (Freigabe, Name, Datum), Teilnehmer (Name, Verein,
   Alters-/Gewichtsklasse, Geschlecht, Status, Pool), Pool (Bezeichnung, Matte, Status, `verspaetet`), Kampf (Status, Matte,
   Reihenfolge, Kämpfer-Schlüssel), Platzierung.
-- **Nicht** in den Views: Geburtsdatum, Gewicht, Passnummer, Zahlungs-/Anmeldedaten, E-Mail.
+- **Nicht** in den Views: Geburtsdatum, Gewicht, Passnummer im Klartext, Zahlungs-/Anmeldedaten, E-Mail. Für den stabilen
+  Teilnehmerschlüssel liefert die View nur `passnummer_hash` (SHA-256 aus Turnier-ID und Passnummer, im Prozess zusätzlich mit
+  dem Geheimnis `LIVE_SCHLUESSEL` per HMAC verknüpft).
 - Rolle `live_ro`: `LOGIN`, nur `SELECT` auf `live.*`, `default_transaction_read_only = on`, `statement_timeout = 3s`;
   `pg_hba` erlaubt sie nur von localhost. Der Prozess hat keine Zugangsdaten für andere Rollen.
-- Abfrage **alle 5 s**, ein Statement, Ergebnis im Speicher gehalten. `LISTEN/NOTIFY` entfällt (auf einem Standby nicht möglich).
+- Abfrage **alle 5 s**, wenige kurze Statements (je freigegebenem Turnier fünf), Ergebnis im Speicher gehalten. `LISTEN/NOTIFY` entfällt (auf einem Standby nicht möglich).
 - Läuft auf dem Standby (Hot Standby). `synchronous_commit` bleibt `on` (nicht `remote_apply`), sonst könnte eine Leseabfrage am
   Standby den Master ausbremsen; `hot_standby_feedback = on` ist laut `deploy/linux/postgresql/hajime-cluster.conf` bereits gesetzt,
   die Abfrage bleibt kurz und harmlos.
@@ -112,7 +116,8 @@ Wird die Reihenfolge später geändert (Drag & Drop, Matte neu verteilt), gibt e
   Alters-/Gewichtsklasse, Pool, Matte, Zustand), Matten-Warteschlangen (Kampf-Schlüssel, Position, Teilnehmer-Schlüssel, Status),
   Platzierungen abgeschlossener Pools. Die Kachelzustände werden an der Quelle mit `liveKachel.js` berechnet.
 - **Stabile Schlüssel:** `turniere.urspruengliche_id` identifiziert das Turnier. Teilnehmer-IDs ändern sich bei Export/Import,
-  daher `key = HMAC(turnierSalz, turnierKey + judopass_id)`; die Passnummer selbst wird nie ausgeliefert.
+  daher `key = HMAC(LIVE_SCHLUESSEL, passnummer_hash)`; die Passnummer selbst wird nie ausgeliefert. Turniere ohne `urspruengliche_id`
+  (am Hallen-Server neu angelegt, nicht aus der Cloud) sind der Cloud unbekannt und werden nicht gesendet; die Freigabe ist für sie gesperrt.
 - **Vereine:** `turnier_teilnehmer.verein` ist Freitext. Der Verein-Schlüssel entsteht durch Normalisierung (Kleinschreibung,
   Leerzeichen, Rechtsformzusätze wie „e.V."); als Anzeigename dient die häufigste Schreibweise. Die Vereinsauswahl listet nur im
   Turnier vorkommende Vereine.
@@ -123,6 +128,8 @@ Wird die Reihenfolge später geändert (Drag & Drop, Matte neu verteilt), gibt e
 ### 5.3 Uplink
 - `POST /api/live/ingest` über HTTPS, Zertifikatsprüfung, Token im Header (in der Cloud sperrbar, an das Turnier gebunden),
   gzip. Antwort: nur Statuscode. Wiederholung mit Backoff.
+- Wird die Freigabe zurückgenommen oder verschwindet ein Turnier aus der Auswahl, sendet der Prozess **einmalig** eine Rücknahme
+  (`zurueckgezogen: true`), damit die Cloud den Stand entfernt. Die Antwort wird weiterhin nur nach Statuscode bewertet.
 - Kein Listener in Phase 1.
 
 ### 5.4 Netzwerk
