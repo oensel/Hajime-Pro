@@ -9,7 +9,8 @@ test('systemd-Unit startet den Live-Prozess ohne Netzwerk-Rechte', () => {
     const unit = lies('deploy/linux/systemd/hajime-live.service');
     assert.match(unit, /ExecStart=\/usr\/bin\/node src\/live\/main\.js/);
     assert.match(unit, /EnvironmentFile=\/opt\/hajime-pro\/live\.env/);
-    assert.match(unit, /User=hajime/);
+    assert.match(unit, /User=hajime-live/);
+    assert.match(unit, /StateDirectory=hajime-live/);
     assert.match(unit, /NoNewPrivileges=true/);
     assert.doesNotMatch(unit, /CAP_NET_BIND_SERVICE/);
 });
@@ -33,4 +34,22 @@ test('Anleitung nennt Tethering, Weiterleitung aus und die Firewall', () => {
     for (const text of ['ip_forward', 'nftables', 'USB', 'live.env', 'LIVE_SCHLUESSEL']) {
         assert.match(doku, new RegExp(text));
     }
+});
+
+test('install-live.sh: Firewall übersteht den Neustart, DNS ist Pflicht, eigener Benutzer, .env gesperrt', () => {
+    const skript = lies('deploy/linux/install-live.sh');
+    assert.match(skript, /include "\/etc\/nftables\.d\/\*\.conf"/);
+    assert.match(skript, /systemctl enable nftables/);
+    assert.match(skript, /--dns-ip/);
+    assert.doesNotMatch(skript, /DNS_IP="192\.168/);
+    assert.match(skript, /useradd --system[^\n]*hajime-live/);
+    assert.match(skript, /chmod 600 "\$BASIS\/\.env"/);
+});
+
+test('Live-Prozess liest die .env der App nicht (kein dotenv)', () => {
+    assert.doesNotMatch(lies('src/live/main.js'), /imports+dotenv|dotenv.config/);
+});
+
+test('Anleitung nennt --dns-ip', () => {
+    assert.match(lies('docs/live-uplink.md'), /--dns-ip/);
 });

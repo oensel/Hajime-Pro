@@ -8,7 +8,7 @@ import { baueSnapshot, ladeSnapshots } from '../../src/live/snapshot.js';
 const turnier = { id: 7, urspruengliche_id: 42, bezeichnung: 'Sommerturnier', datum: '2026-10-12', status: 'veroeffentlicht', live_freigabe: true };
 const matten = [{ id: 1, turnier_id: 7, bezeichnung: 'Matte 1' }];
 const pool = (extra = {}) => ({ id: 10, turnier_id: 7, kampfflaeche_id: 1, bezeichnung: 'U15 w -44', modus: 'Jeder-gegen-Jeden', typ: 'einzel', status: 'matte_zugewiesen', verspaetet: false, altersklasse: 'U15', geschlecht: 'w', gewichtsklasse: '-44', matte_reihenfolge: 1, ...extra });
-const teil = (id, extra = {}) => ({ id, turnier_id: 7, pool_id: 10, vorname: `V${id}`, nachname: `N${id}`, verein: 'JC Muster', geschlecht: 'w', altersklasse: 'U15', gewichtsklasse: '-44', status: 'kampfbereit', passnummer_hash: `hash${id}`, ...extra });
+const teil = (id, extra = {}) => ({ id, turnier_id: 7, pool_id: 10, gewicht_rang: id, nur_mannschaft: false, vorname: `V${id}`, nachname: `N${id}`, verein: 'JC Muster', geschlecht: 'w', altersklasse: 'U15', gewichtsklasse: '-44', status: 'kampfbereit', passnummer_hash: `hash${id}`, ...extra });
 const kampf = (id, k1, k2, extra = {}) => ({ id, pool_id: 10, status: 'bereit', matten_reihenfolge: id, reihenfolge_nummer: `R${id}`, kaempfer1_id: k1, kaempfer2_id: k2, sieger_id: null, unterbewertung_kaempfer1: 0, unterbewertung_kaempfer2: 0, mannschaftskampf_id: null, ...extra });
 
 test('baueSnapshot: Teilnehmer mit Matte, Abstand und stabilen Schlüsseln', () => {
@@ -91,10 +91,40 @@ test('ladeSnapshots: nur freigegebene Turniere mit urspruengliche_id, über die 
         const snapshots = await ladeSnapshots(live, { geheimnis: 'g' });
         assert.equal(snapshots.length, 1);
         assert.equal(snapshots[0].turnierKey, '100');
+        assert.equal(snapshots[0].datum, '2026-10-12');
         assert.equal(snapshots[0].teilnehmer.length, 1);
         assert.equal(snapshots[0].teilnehmer[0].vorname, 'Anna');
     } finally {
         if (live) await live.destroy();
         await db.stoppe();
     }
+});
+
+test('baueSnapshot: Datum als Date-Objekt (node-pg ohne Type-Parser) wird zu YYYY-MM-DD', () => {
+    const roh = { turnier: { ...turnier, datum: new Date(2026, 9, 12) }, kampfflaechen: matten, pools: [pool()], teilnehmer: [teil(1)], kaempfe: [] };
+    assert.equal(baueSnapshot(roh, { geheimnis: 'g' }).datum, '2026-10-12');
+});
+
+test('baueSnapshot: Gleichstand im Jeder-gegen-Jeden wird nach Gewichtsrang entschieden wie in der Siegerliste', () => {
+    const roh = {
+        turnier, kampfflaechen: matten, pools: [pool({ status: 'abgeschlossen' })],
+        // V3 ist der Leichteste (Rang 1), alle haben einen Sieg bei gleicher Wertung
+        teilnehmer: [teil(1, { gewicht_rang: 2 }), teil(2, { gewicht_rang: 3 }), teil(3, { gewicht_rang: 1 })],
+        kaempfe: [
+            kampf(1, 1, 2, { status: 'beendet', sieger_id: 1 }),
+            kampf(2, 2, 3, { status: 'beendet', sieger_id: 2 }),
+            kampf(3, 3, 1, { status: 'beendet', sieger_id: 3 })
+        ]
+    };
+    const s = baueSnapshot(roh, { geheimnis: 'g' });
+    const platzVon = vorname => s.teilnehmer.find(t => t.vorname === vorname).platz;
+    assert.equal(platzVon('V3'), 1);
+    assert.equal(platzVon('V1'), 2);
+    assert.equal(platzVon('V2'), 3);
+});
+
+test('baueSnapshot: Judoka, die nur in der Mannschaft starten, erscheinen nicht als Einzelteilnehmer', () => {
+    const roh = { turnier, kampfflaechen: matten, pools: [pool()], teilnehmer: [teil(1), teil(2, { nur_mannschaft: true, pool_id: null })], kaempfe: [] };
+    const s = baueSnapshot(roh, { geheimnis: 'g' });
+    assert.deepEqual(s.teilnehmer.map(t => t.vorname), ['V1']);
 });

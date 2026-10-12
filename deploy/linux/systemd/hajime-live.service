@@ -5,7 +5,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=hajime
+User=hajime-live
+StateDirectory=hajime-live
 WorkingDirectory=/opt/hajime-pro
 EnvironmentFile=/opt/hajime-pro/live.env
 ExecStart=/usr/bin/node src/live/main.js

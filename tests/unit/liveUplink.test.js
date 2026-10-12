@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import zlib from 'node:zlib';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { erzeugeUplink } from '../../src/live/uplink.js';
 
 const snap = (key, extra = {}) => ({ version: 1, turnierKey: key, name: 'T', datum: '2026-10-12', vereine: [], matten: [], teilnehmer: [], warteschlangen: [], ...extra });
@@ -87,4 +90,31 @@ test('Antwortinhalt wird nicht gelesen, nur der Statuscode zählt', async () => 
     const u = erzeugeUplink({ url: 'u', token: 't', fetchFn, log: still });
     await u.sende([snap('1')]);
     assert.equal(gelesen, false);
+});
+
+test('Rücknahme überlebt einen Neustart: zuletzt gesendete Turniere werden persistiert', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hajime-live-'));
+    const datei = path.join(dir, 'gesendet.json');
+    try {
+        const w1 = werkzeug();
+        const u1 = erzeugeUplink({ url: 'u', token: 't', fetchFn: w1.fetchFn, jetzt: w1.jetzt, zustandDatei: datei, log: still });
+        await u1.sende([snap('1')]);
+        assert.deepEqual(JSON.parse(fs.readFileSync(datei, 'utf8')), ['1']);
+
+        // Neustart: neue Instanz, Turnier ist inzwischen nicht mehr freigegeben
+        const w2 = werkzeug();
+        const u2 = erzeugeUplink({ url: 'u', token: 't', fetchFn: w2.fetchFn, jetzt: w2.jetzt, zustandDatei: datei, log: still });
+        const r = await u2.sende([]);
+        assert.equal(r.zurueckgezogen, 1);
+        assert.deepEqual([w2.aufrufe[0].body.turnierKey, w2.aufrufe[0].body.zurueckgezogen], ['1', true]);
+        assert.deepEqual(JSON.parse(fs.readFileSync(datei, 'utf8')), []);
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test('Zustandsdatei nicht beschreibbar: Uplink läuft weiter', async () => {
+    const w = werkzeug();
+    const u = erzeugeUplink({ url: 'u', token: 't', fetchFn: w.fetchFn, jetzt: w.jetzt, zustandDatei: path.join(os.tmpdir(), 'gibt-es-nicht', 'x', 'y.json'), log: still });
+    assert.deepEqual(await u.sende([snap('1')]), { gesendet: 1, zurueckgezogen: 0, fehler: 0 });
 });

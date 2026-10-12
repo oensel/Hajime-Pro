@@ -39,3 +39,8 @@ test('Uplink-URL muss https sein (außer localhost)', () => {
 test('Intervall unter 1 s wird abgelehnt', () => {
     assert.throws(() => liesLiveKonfig({ ...basis, LIVE_INTERVALL_MS: '200' }), /LIVE_INTERVALL_MS/);
 });
+
+test('Zustandsdatei: Standard und Überschreibung', () => {
+    assert.equal(liesLiveKonfig(basis).zustandDatei, '/var/lib/hajime-live/gesendet.json');
+    assert.equal(liesLiveKonfig({ ...basis, LIVE_ZUSTAND_DATEI: '/tmp/x.json' }).zustandDatei, '/tmp/x.json');
+});

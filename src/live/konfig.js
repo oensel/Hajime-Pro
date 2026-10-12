@@ -26,6 +26,7 @@ export function liesLiveKonfig(env = process.env) {
         uplinkUrl: env.LIVE_UPLINK_URL,
         token: env.LIVE_UPLINK_TOKEN,
         geheimnis: env.LIVE_SCHLUESSEL,
+        zustandDatei: env.LIVE_ZUSTAND_DATEI || '/var/lib/hajime-live/gesendet.json',
         intervallMs
     };
 }

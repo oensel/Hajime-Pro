@@ -2,18 +2,35 @@
 // gelesen noch ausgewertet, es gibt keinen Rückkanal. Gesendet wird bei Änderung (Hash ohne Zeitstempel), spätestens
 // alle 60 s als Lebenszeichen; Fehler führen zu Backoff, der letzte erfolgreich gesendete Hash bleibt unverändert.
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import zlib from 'node:zlib';
 
 export function erzeugeUplink({
     url, token, fetchFn = fetch, jetzt = Date.now,
     lebenszeichenMs = 60_000, backoffStartMs = 2000, backoffMaxMs = 60_000, timeoutMs = 10_000,
-    log = console
+    zustandDatei = null, log = console
 }) {
     const gesendet = new Map(); // turnierKey -> { hash, zeit }
     let backoffMs = 0;
     let naechsterVersuch = 0;
     let letzterErfolg = null;
     let letzterFehler = null;
+
+    // Zuletzt gesendete Turniere überleben einen Neustart, damit eine in der Zwischenzeit zurückgenommene Freigabe
+    // trotzdem als Rücknahme in der Cloud ankommt (Spec 5.3/10). Ohne Datei läuft der Uplink wie bisher nur im Speicher.
+    if (zustandDatei) {
+        try {
+            for (const key of JSON.parse(fs.readFileSync(zustandDatei, 'utf8'))) gesendet.set(String(key), { hash: null, zeit: 0 });
+        } catch { /* noch keine Datei */ }
+    }
+    function speichereZustand() {
+        if (!zustandDatei) return;
+        try {
+            fs.writeFileSync(zustandDatei, JSON.stringify([...gesendet.keys()]));
+        } catch (fehler) {
+            log.warn(`[Live] Zustandsdatei nicht beschreibbar (${fehler.message}); Rücknahmen gehen bei einem Neustart verloren`);
+        }
+    }
 
     const hashVon = (snapshot) => crypto.createHash('sha256').update(JSON.stringify(snapshot)).digest('hex');
 
@@ -59,9 +76,11 @@ export function erzeugeUplink({
                 if (auftrag.art === 'snapshot') {
                     gesendet.set(auftrag.key, { hash: auftrag.hash, zeit: jetzt() });
                     ergebnis.gesendet += 1;
+                    speichereZustand();
                 } else {
                     gesendet.delete(auftrag.key);
                     ergebnis.zurueckgezogen += 1;
+                    speichereZustand();
                 }
                 letzterErfolg = jetzt();
                 letzterFehler = null;

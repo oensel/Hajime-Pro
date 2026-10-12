@@ -7,11 +7,22 @@ import { teilnehmerSchluessel, vereinSchluessel, waehleAnzeigename } from './sch
 
 const OFFEN = new Set(['bereit', 'vorbereiten', 'gestartet']);
 
+// node-pg liefert DATE ohne Type-Parser als Date (lokale Mitternacht); die App setzt den Parser in src/app.js, der
+// Live-Prozess nicht. Beides wird zu YYYY-MM-DD.
+function datumText(wert) {
+    if (wert instanceof Date) {
+        const monat = String(wert.getMonth() + 1).padStart(2, '0');
+        const tag = String(wert.getDate()).padStart(2, '0');
+        return `${wert.getFullYear()}-${monat}-${tag}`;
+    }
+    return String(wert).slice(0, 10);
+}
+
 function platzierungenJePool(pools, teilnehmer, kaempfe) {
     const ergebnis = {};
     for (const pool of pools) {
         if (pool.typ === 'mannschaft' || pool.status !== 'abgeschlossen') continue;
-        const mitglieder = teilnehmer.filter(t => t.pool_id === pool.id).map(t => ({ id: t.id, gewicht: 0 }));
+        const mitglieder = teilnehmer.filter(t => t.pool_id === pool.id).map(t => ({ id: t.id, gewicht: Number(t.gewicht_rang) || 0 }));
         const poolKaempfe = kaempfe.filter(k => k.pool_id === pool.id);
         const r = berechnePlatzierungen(pool, poolKaempfe, mitglieder);
         ergebnis[pool.id] = Object.fromEntries(r.eintraege.map(e => [e.teilnehmer.id, e.platz]));
@@ -20,7 +31,7 @@ function platzierungenJePool(pools, teilnehmer, kaempfe) {
 }
 
 export function baueSnapshot({ turnier, kampfflaechen, pools, teilnehmer, kaempfe }, { geheimnis }) {
-    const sichtbar = teilnehmer.filter(t => t.status !== 'zurueckgezogen');
+    const sichtbar = teilnehmer.filter(t => t.status !== 'zurueckgezogen' && !t.nur_mannschaft);
     const kacheln = berechneKacheln({
         pools, teilnehmer: sichtbar, kaempfe, platzierungen: platzierungenJePool(pools, sichtbar, kaempfe)
     });
@@ -78,7 +89,7 @@ export function baueSnapshot({ turnier, kampfflaechen, pools, teilnehmer, kaempf
         version: 1,
         turnierKey: String(turnier.urspruengliche_id),
         name: turnier.bezeichnung,
-        datum: String(turnier.datum).slice(0, 10),
+        datum: datumText(turnier.datum),
         vereine,
         matten: kampfflaechen.map(m => ({ id: m.id, bezeichnung: m.bezeichnung })).sort((a, b) => a.id - b.id),
         teilnehmer: eintraege,
