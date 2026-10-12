@@ -42,3 +42,26 @@ test('harte Obergrenze: auch ohne abgelaufene Einträge wird der älteste verdr�
     for (let i = 0; i < 1000; i++) b.erlaube(`ip${i}`);
     assert.ok(b.groesse() <= 10, `Größe ${b.groesse()}`);
 });
+
+test('bei Vollstand "sperren": unbekannte Schlüssel werden abgewiesen, laufende Zähler bleiben erhalten', () => {
+    const b = erzeugeRatenbegrenzung({ fensterMs: 60_000, max: 2, jetzt: () => 0, maxEintraege: 3, beiVollstand: 'sperren' });
+    assert.equal(b.erlaube('a'), true);
+    assert.equal(b.erlaube('b'), true);
+    assert.equal(b.erlaube('c'), true);
+    assert.equal(b.erlaube('neu'), false);
+    assert.equal(b.groesse(), 3);
+    // Der Zähler von "a" ist nicht verloren gegangen: der dritte Treffer überschreitet max.
+    assert.equal(b.erlaube('a'), true);
+    assert.equal(b.erlaube('a'), false);
+});
+
+test('clientIp: Port, Klammern und Zonen-ID werden vor der Prüfung entfernt', () => {
+    const env = { LIVE_PROXY_VERTRAUEN: 'true' };
+    const socket = { remoteAddress: '10.0.0.1' };
+    const mit = (xff) => clientIp({ headers: { 'x-forwarded-for': xff }, socket }, env);
+    assert.equal(mit('203.0.113.7:51234'), '203.0.113.7');
+    assert.equal(mit('[2001:db8::1]:443'), '2001:db8::1');
+    assert.equal(mit('[2001:db8::1]'), '2001:db8::1');
+    assert.equal(mit('fe80::1%eth0'), 'fe80::1');
+    assert.equal(mit('2001:db8::1'), '2001:db8::1');
+});

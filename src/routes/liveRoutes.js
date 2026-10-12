@@ -11,7 +11,7 @@ const POOL_ID = /^\d{1,9}$/;
 
 export function getLiveRoutes(knex, {
     begrenzung = erzeugeRatenbegrenzung({ max: 300 }),
-    fehlerBegrenzung = erzeugeRatenbegrenzung({ max: 30 }),
+    fehlerBegrenzung = erzeugeRatenbegrenzung({ max: 30, beiVollstand: 'sperren' }),
     jetzt = () => new Date(),
     env = process.env
 } = {}) {
