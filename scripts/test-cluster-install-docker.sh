@@ -22,7 +22,7 @@ starte() { # name ip
 starte "$S1" "$IP1"; starte "$S2" "$IP2"
 for c in "$S1" "$S2"; do
     for _ in $(seq 1 30); do docker exec "$c" systemctl is-system-running 2>/dev/null | grep -qE 'running|degraded' && break; sleep 1; done
-    docker exec "$c" bash -c 'apt-get update -qq && apt-get install -y -qq rsync >/dev/null'
+    docker exec "$c" bash -c 'apt-get update -qq && apt-get install -y -qq rsync iproute2 >/dev/null'
 done
 
 installiere() { # container knoten eigene partner
