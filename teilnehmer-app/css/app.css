@@ -1,0 +1,34 @@
+:root {
+    --farbe-primaer: #0d47a1; --farbe-text: #1c1b1f; --farbe-flaeche: #ffffff; --farbe-karte: #f3f4f8;
+    --farbe-rand: #d0d4de; --farbe-laeuft: #b3261e; --farbe-bald: #8a5a00; --farbe-fertig: #1b6e2b; --farbe-grau: #5f6368;
+}
+@media (prefers-color-scheme: dark) {
+    :root {
+        --farbe-primaer: #90b4ff; --farbe-text: #e6e1e5; --farbe-flaeche: #121317; --farbe-karte: #1d1f26;
+        --farbe-rand: #3a3d48; --farbe-laeuft: #ff8a80; --farbe-bald: #ffcc66; --farbe-fertig: #7edc8a; --farbe-grau: #a0a4ad;
+    }
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 16px/1.4 system-ui, sans-serif; background: var(--farbe-flaeche); color: var(--farbe-text); padding-bottom: 3rem; }
+.kopf { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .75rem 1rem; border-bottom: 1px solid var(--farbe-rand); }
+.titel { font-weight: 700; color: var(--farbe-primaer); text-decoration: none; }
+nav a { margin-left: 1rem; color: var(--farbe-primaer); }
+main { padding: 1rem; max-width: 40rem; margin: 0 auto; }
+h1 { font-size: 1.25rem; margin: 0 0 .75rem; }
+.knopf-liste { display: grid; gap: .5rem; padding: 0; list-style: none; margin: 0; }
+.knopf-liste button, .knopf-liste a { width: 100%; text-align: left; padding: .75rem 1rem; border: 1px solid var(--farbe-rand); border-radius: .5rem; background: var(--farbe-karte); color: inherit; font: inherit; text-decoration: none; display: block; }
+input[type="search"], select { width: 100%; padding: .75rem; font: inherit; border: 1px solid var(--farbe-rand); border-radius: .5rem; background: var(--farbe-flaeche); color: inherit; margin-bottom: .5rem; }
+.kachel { display: grid; grid-template-columns: 1fr auto; gap: .25rem .75rem; padding: .75rem 1rem; border: 1px solid var(--farbe-rand); border-radius: .5rem; background: var(--farbe-karte); margin-bottom: .5rem; }
+.kachel .name { font-weight: 600; }
+.kachel .zeile { color: var(--farbe-grau); font-size: .9rem; grid-column: 1; }
+.kachel .zeile.laeuft { color: var(--farbe-laeuft); font-weight: 600; }
+.kachel .zeile.bald { color: var(--farbe-bald); font-weight: 600; }
+.kachel .zeile.fertig { color: var(--farbe-fertig); font-weight: 600; }
+.kachel .aktionen { grid-column: 2; grid-row: 1 / span 3; display: flex; gap: .25rem; align-items: center; }
+.icon-knopf { min-width: 2.75rem; min-height: 2.75rem; border: 0; background: transparent; font-size: 1.4rem; cursor: pointer; color: var(--farbe-grau); }
+.icon-knopf[aria-pressed="true"] { color: var(--farbe-bald); }
+.hinweis { padding: .75rem 1rem; border-radius: .5rem; background: var(--farbe-karte); color: var(--farbe-grau); }
+.status { position: fixed; left: 0; right: 0; bottom: 0; padding: .5rem 1rem; background: var(--farbe-karte); border-top: 1px solid var(--farbe-rand); font-size: .85rem; color: var(--farbe-grau); }
+.status.getrennt { color: var(--farbe-laeuft); }
+.verein-leiste { display: flex; gap: .5rem; align-items: center; margin: .5rem 0 1rem; flex-wrap: wrap; }
+.verein-leiste label { display: flex; gap: .25rem; align-items: center; }

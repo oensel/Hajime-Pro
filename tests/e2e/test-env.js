@@ -37,6 +37,8 @@ export const testServerEnv = {
     // Videoaufnahme: Clips der Tests in einem eigenen Verzeichnis
     VIDEO_VERZEICHNIS: VIDEO_TESTVERZEICHNIS,
     IS_OFFLINE: 'true',
+    // Teilnehmer-App (Phase 2): Ingest und App-API sind sonst nur im Modus cloud eingehängt.
+    LIVE_API_AKTIV: 'true',
     DB_HOST: '127.0.0.1',
     DB_PORT: String(TEST_PG_PORT),
     DB_USER: 'postgres',
