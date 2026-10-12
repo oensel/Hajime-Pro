@@ -12,8 +12,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         anzeige.textContent = `${code.slice(0, 3)} ${code.slice(3)}`;
         const bereich = document.getElementById('kopplungQrBereich');
         if (!bereich || !window.qrcode || !urls || !urls.length) return;
-        // Bevorzugt die Adresse, unter der diese Seite gerade geöffnet ist; sonst die erste LAN-Adresse.
-        const adresse = urls.find(u => new URL(u).hostname === location.hostname) || urls[0];
+        // Der Server liefert die Adressen nach Eignung sortiert (VIP, dann die Adresse dieser Seite, dann
+        // der Rest), und zwar bei jedem Aufruf frisch — die erste gilt.
+        const adresse = urls[0];
         const qr = window.qrcode(0, 'M');
         qr.addData(baueKopplungsUrl(adresse, code));
         qr.make();

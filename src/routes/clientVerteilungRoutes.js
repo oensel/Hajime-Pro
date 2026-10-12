@@ -6,9 +6,9 @@ import { existsSync, readFileSync } from 'fs';
 import path from 'path';
 import { requireSteuerungPasswort } from '../middleware/auth.js';
 import { erneuereCode, erzeugeSperre, normalisiereCode } from '../sync/kopplung.js';
-import { lokaleIpv4Adressen } from '../sync/ankuendigung.js';
+import { lokaleIpv4Adressen, ordneServerAdressen } from '../sync/ankuendigung.js';
 
-export function getClientVerteilungRoutes({ datenverzeichnis, downloadsVerzeichnis, version, kopplung, clientDateienStatus = () => null }) {
+export function getClientVerteilungRoutes({ datenverzeichnis, downloadsVerzeichnis, version, kopplung, vip = '', clientDateienStatus = () => null }) {
     const router = express.Router();
     const sperre = erzeugeSperre();
 
@@ -39,9 +39,12 @@ export function getClientVerteilungRoutes({ datenverzeichnis, downloadsVerzeichn
 
     // LAN-Adressen des Servers (IP statt turnier.local): Android löst .local-Namen in Apps nicht
     // zuverlässig auf, der QR-Code für die Android-App enthält deshalb eine IP-Adresse.
+    // Die Adressen werden bei jedem Aufruf neu ermittelt (VIP-Wechsel, neue DHCP-Adresse); die erste ist
+    // die beste (VIP, sonst die Adresse, unter der die Seite geöffnet wurde).
     const serverUrls = (req) => {
         const port = req.socket.localPort;
-        return lokaleIpv4Adressen().map(ip => `http://${ip}${port === 80 ? '' : `:${port}`}`);
+        const adressen = ordneServerAdressen(lokaleIpv4Adressen(), { angefragt: req.socket.localAddress, vip });
+        return adressen.map(ip => `http://${ip}${port === 80 ? '' : `:${port}`}`);
     };
 
     router.get('/kopplungscode', requireSteuerungPasswort, (req, res) => res.json({ code: kopplung.code, urls: serverUrls(req) }));

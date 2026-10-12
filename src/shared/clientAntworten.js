@@ -133,7 +133,7 @@ export async function beantworteClientAnfrage({ methode, pfad, query = {}, body 
         if (pfad === '/pools/vorhanden') {
             const docs = await dokumenteNachTyp(db);
             const turnierPools = (docs.pool || []).filter(p => String(p.turnier_id) === String(query.turnierId));
-            const pools = turnierPools.filter(p => p.typ !== 'mannschaft');
+            const pools = turnierPools.filter(p => p.typ !== 'mannschaft' && !p.verspaetet);
             // Wie ermittleAltersklassenPoolZustand: "ausgelost" erst mit mindestens einem Teilnehmer im Pool.
             const poolIdsMitTeilnehmern = new Set((docs.teilnehmer || []).filter(t => t.pool_id != null).map(t => String(t.pool_id)));
             const poolIdsMitEchtenKaempfen = new Set((docs.kampf || [])
@@ -146,11 +146,17 @@ export async function beantworteClientAnfrage({ methode, pfad, query = {}, body 
                 if (poolIdsMitTeilnehmern.has(String(pool.id))) ausgelost.add(pool.altersklasse);
                 if (poolIdsMitEchtenKaempfen.has(String(pool.id))) gesperrt.add(pool.altersklasse);
             }
+            const einzelPoolIds = new Set(pools.map(p => String(p.id)));
+            const gesperrtePoolIds = [...poolIdsMitEchtenKaempfen]
+                .filter(id => einzelPoolIds.has(id))
+                .map(Number)
+                .sort((a, b) => a - b);
             const mannschaftsPoolIds = new Set(turnierPools.filter(p => p.typ === 'mannschaft').map(p => String(p.id)));
             return ok({
                 mannschaftenGesperrt: [...mannschaftsPoolIds].some(id => poolIdsMitEchtenKaempfen.has(id)),
                 gesperrt: gesperrt.size > 0,
                 gesperrteAltersklassen: [...gesperrt].sort(),
+                gesperrtePoolIds,
                 ausgelosteAltersklassen: [...ausgelost].sort()
             });
         }

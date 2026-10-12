@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import { hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
+import * as steuerungPasswort from '../utils/steuerungPasswort.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 const { istEinzelbenutzerBetrieb } = betriebsmodus;
 dotenv.config({ quiet: true });
@@ -247,19 +248,18 @@ export function requireSuperAdmin(knex) {
 }
 
 export function requireWriteAuth(req, res, next) {
-    const password = process.env.STEUERUNG_PASSWORD;
-    if (!password) {
+    if (!steuerungPasswort.istGesetzt()) {
         return next();
     }
-    
+
     // Allow read-only operations for all clients (dashboard, public screens)
     if (req.method === 'GET') {
         return next();
     }
-    
+
     // Verify password for write operations (POST, PUT, DELETE)
     const clientPassword = req.headers['x-steuerung-password'];
-    if (clientPassword === password) {
+    if (steuerungPasswort.pruefe(clientPassword)) {
         return next();
     }
     
@@ -270,7 +270,6 @@ export function requireWriteAuth(req, res, next) {
 // (z.B. den Kopplungscode für neue Client-Geräte). Ohne STEUERUNG_PASSWORD offen wie alle
 // Verwaltungsseiten im Hallenbetrieb.
 export function requireSteuerungPasswort(req, res, next) {
-    const password = process.env.STEUERUNG_PASSWORD;
-    if (!password || req.headers['x-steuerung-password'] === password) return next();
+    if (!steuerungPasswort.istGesetzt() || steuerungPasswort.pruefe(req.headers['x-steuerung-password'])) return next();
     return res.status(401).json({ success: false, error: 'Passwort erforderlich.' });
 }

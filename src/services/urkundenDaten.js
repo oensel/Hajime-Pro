@@ -76,7 +76,8 @@ async function ladeMannschaftsPool(knex, pool) {
 }
 
 async function ladePools(knex, turnierId, poolIds) {
-    let abfrage = knex('pools').where({ turnier_id: turnierId });
+    // Der Sammelpool "Verspätet" (Nachzügler) erhält keine Siegerehrung und damit keine Urkunden.
+    let abfrage = knex('pools').where({ turnier_id: turnierId, verspaetet: false });
     if (poolIds) abfrage = abfrage.whereIn('id', poolIds);
     const pools = (await abfrage).sort(vergleichePools);
     const ergebnis = [];

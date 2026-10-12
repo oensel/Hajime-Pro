@@ -1,15 +1,24 @@
 #!/usr/bin/env bash
 # Hajime Pro – geführte Einrichtung des Zwei-Server-Clusters (siehe deploy/linux/README.md).
 #
-# Wird auf JEDEM der beiden Server ausgeführt (Debian 12/13 oder Ubuntu 24.04+, PostgreSQL >= 15, ohne Desktop):
+# Wird auf JEDEM der beiden Server ausgeführt (Debian 12/13 oder Ubuntu 24.04+, PostgreSQL >= 15, ohne Desktop,
+# als root; feste IPs, dazu eine freie VIP im selben Netz). Je Server drei Befehle:
 #
-#   1. server1:  sudo bash deploy/linux/install-cluster.sh --knoten server1 \
-#                    --eigene-ip 192.168.10.11 --partner-ip 192.168.10.12 --vip 192.168.10.10
-#      -> legt alle Geheimnisse an und schreibt sie nach /root/hajime-cluster-geheimnisse.env
-#   2. Datei auf server2 kopieren:  scp /root/hajime-cluster-geheimnisse.env root@192.168.10.12:/root/
-#   3. server2:  sudo bash deploy/linux/install-cluster.sh --knoten server2 \
-#                    --eigene-ip 192.168.10.12 --partner-ip 192.168.10.11 --vip 192.168.10.10
-#      -> baut PostgreSQL als Standby von server1 auf (server1 muss vorher fertig sein)
+#   server1 (Master):
+#     apt-get update && apt-get install -y git
+#     git clone https://github.com/oensel/Hajime-Pro.git && cd Hajime-Pro
+#     bash deploy/linux/install-cluster.sh --partner-ip 192.168.10.12 --vip 192.168.10.10
+#   -> erkennt die eigene IP selbst, legt alle Geheimnisse an und gibt am Ende die drei Zeilen für server2 samt
+#      Kopplungscode aus (auch in /root/hajime-kopplungscode.txt).
+#
+#   server2 (Standby): die ausgegebenen Zeilen von server1 einfügen, der letzte Befehl lautet
+#     bash deploy/linux/install-cluster.sh --kopplungscode -
+#   -> fragt nach dem Kopplungscode (HJ1:..., einfügen und Enter; die Eingabe bleibt unsichtbar) und baut
+#      PostgreSQL als Standby von server1 auf (server1 muss vorher fertig sein). Der Code enthält server1-Adresse,
+#      VIP, Zeuge und alle Geheimnisse; er steht bewusst nicht in der Kommandozeile (ps, Shell-Verlauf).
+#
+# Die ausführliche Form (alle Angaben von Hand, Geheimnis-Datei per scp) funktioniert weiterhin:
+#     --knoten server1|server2 --eigene-ip IP --partner-ip IP --vip IP [--geheimnisse DATEI]
 #
 # Das Skript installiert Node.js, PostgreSQL (Replikation) und keepalived, richtet Rollen, pg_hba, .pgpass,
 # /opt/hajime-pro/.env, systemd-Dienst, das Rückstufungs-Skript samt sudoers-Regel, keepalived und die Firewall ein
@@ -19,10 +28,14 @@
 # PostgreSQL oder keepalived neu zu starten — ein laufender Cluster fällt dabei nicht um.
 #
 # Optionen:
-#   --knoten server1|server2        (Pflicht) dieser Server
-#   --eigene-ip IP                  (Pflicht) feste IP dieses Servers im Hallennetz
-#   --partner-ip IP                 (Pflicht) feste IP des anderen Servers
-#   --vip IP                        (Pflicht) virtuelle IP, die immer der Master hält (Clients: SYNC_SERVER_URL=http://<vip>:3000)
+#   --knoten server1|server2        dieser Server (Standard: server1, mit --kopplungscode server2)
+#   --eigene-ip IP                  feste IP dieses Servers im Hallennetz (Standard: die Adresse, über die der Partner erreicht wird)
+#   --partner-ip IP                 feste IP des anderen Servers (Pflicht auf server1, kommt auf server2 aus dem Kopplungscode)
+#   --vip IP                        virtuelle IP, die immer der Master hält (Pflicht auf server1; Clients: SYNC_SERVER_URL=http://<vip>:3000)
+#   --kopplungscode -               Code von server1 (HJ1:...) abfragen (verdeckte Eingabe; ohne Terminal aus stdin);
+#                                   liefert server1-IP, VIP, Zeuge, VRRP-ID und Geheimnisse
+#   --kopplungscode-datei DATEI     Code aus einer Datei lesen (z. B. /root/hajime-kopplungscode.txt von server1)
+#   --kopplungscode CODE            Code direkt angeben (nicht empfohlen: sichtbar in ps und im Shell-Verlauf)
 #   --zeuge IP|URL                  Gegenstelle gegen Split-Brain (Hallen-Router); leer = Default-Gateway
 #   --schnittstelle NAME            Netzwerkschnittstelle zum Router (Standard: die mit --eigene-ip)
 #   --vrrp-id N                     virtual_router_id, im Hallennetz eindeutig (Standard 51)
@@ -49,7 +62,10 @@ MARKE_ANFANG="# >>> hajime-cluster (automatisch erzeugt, nicht von Hand ändern)
 MARKE_ENDE="# <<< hajime-cluster"
 
 KNOTEN=""; EIGENE_IP=""; PARTNER_IP=""; VIP=""; ZEUGE=""; SCHNITTSTELLE=""; VRRP_ID="51"
-GEHEIMNIS_DATEI=""; NUR_KONFIG=""
+GEHEIMNIS_DATEI=""; NUR_KONFIG=""; KOPPLUNGSCODE=""; KOPPLUNGSCODE_DATEI=""
+URSPRUENGLICHE_ARGUMENTE=("$@")
+REPO_URL_STANDARD="https://github.com/oensel/Hajime-Pro.git"
+KOPPLUNGS_DATEI="/root/hajime-kopplungscode.txt"
 
 log()    { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 hinweis() { printf '    %s\n' "$*"; }
@@ -71,6 +87,8 @@ while [ $# -gt 0 ]; do
         --vrrp-id) VRRP_ID="${2:-}"; shift 2 ;;
         --geheimnisse) GEHEIMNIS_DATEI="${2:-}"; shift 2 ;;
         --nur-konfig) NUR_KONFIG="${2:-}"; shift 2 ;;
+        --kopplungscode) KOPPLUNGSCODE="${2:-}"; shift 2 ;;
+        --kopplungscode-datei) KOPPLUNGSCODE_DATEI="${2:-}"; shift 2 ;;
         -h|--help) hilfe; exit 0 ;;
         *) fehler "Unbekannte Option: $1 (Hilfe: --help)" ;;
     esac
@@ -82,20 +100,6 @@ ist_ipv4() {
     local IFS=.
     for teil in $ip; do [ "$teil" -le 255 ] || return 1; done
 }
-
-[ "$KNOTEN" = "server1" ] || [ "$KNOTEN" = "server2" ] || fehler "--knoten server1 oder server2 angeben."
-ist_ipv4 "$EIGENE_IP" || fehler "--eigene-ip fehlt oder ist keine IPv4-Adresse."
-ist_ipv4 "$PARTNER_IP" || fehler "--partner-ip fehlt oder ist keine IPv4-Adresse."
-ist_ipv4 "$VIP" || fehler "--vip fehlt oder ist keine IPv4-Adresse."
-[ "$EIGENE_IP" != "$PARTNER_IP" ] || fehler "--eigene-ip und --partner-ip dürfen nicht gleich sein."
-[ "$VIP" != "$EIGENE_IP" ] && [ "$VIP" != "$PARTNER_IP" ] || fehler "Die VIP muss eine weitere, freie Adresse sein (nicht die eines Servers)."
-[[ "$VRRP_ID" =~ ^[0-9]+$ ]] && [ "$VRRP_ID" -ge 1 ] && [ "$VRRP_ID" -le 255 ] || fehler "--vrrp-id muss zwischen 1 und 255 liegen."
-
-if [ "$KNOTEN" = "server1" ]; then
-    ROUTER_ID="HAJIME_SERVER1"; PRIORITAET=150
-else
-    ROUTER_ID="HAJIME_SERVER2"; PRIORITAET=100
-fi
 
 # ---------------------------------------------------------------------------------------------
 # Geheimnisse (eine Datei, die von server1 nach server2 kopiert wird)
@@ -136,6 +140,87 @@ erzeuge_geheimnisse() { # server1: vorhandene Werte (Einzelserver-.env) überneh
     done
     mv "$datei.neu" "$datei"
 }
+
+# Kopplungscode: "HJ1:" + Base64 (URL-sicher: + / = als _ . -) von Zeilen SCHLUESSEL=WERT.
+kopplungscode_erzeugen() {
+    {
+        printf 'SERVER1_IP=%s
+VIP=%s
+ZEUGE=%s
+VRRP_ID=%s
+' "$EIGENE_IP" "$VIP" "$ZEUGE" "$VRRP_ID"
+        local schluessel var
+        for schluessel in $GEHEIMNIS_SCHLUESSEL; do var="G_$schluessel"; printf '%s=%s
+' "$schluessel" "${!var}"; done
+    } | base64 -w0 | tr '+/=' '_.-' | sed 's/^/HJ1:/'
+}
+
+# Schreibt die Angaben des Codes in die Variablen (nur, wo noch nichts angegeben wurde) und die Geheimnis-Datei.
+kopplungscode_lesen() {
+    [[ "$KOPPLUNGSCODE" == HJ1:* ]] || fehler "Der Kopplungscode ist ungültig (er beginnt mit HJ1:). Am besten aus der Ausgabe von server1 kopieren."
+    local daten tmp wert schluessel
+    daten="$(printf '%s' "${KOPPLUNGSCODE#HJ1:}" | tr '_.-' '+/=' | base64 -d 2>/dev/null)"         || fehler "Der Kopplungscode ist unvollständig oder beschädigt – vollständig und in einfachen Anführungszeichen übergeben."
+    tmp="$(mktemp)"; printf '%s
+' "$daten" > "$tmp"
+    [ -n "$PARTNER_IP" ] || PARTNER_IP="$(lies_wert "$tmp" SERVER1_IP)"
+    [ -n "$VIP" ] || VIP="$(lies_wert "$tmp" VIP)"
+    [ -n "$ZEUGE" ] || ZEUGE="$(lies_wert "$tmp" ZEUGE)"
+    [ "$VRRP_ID" != "51" ] || VRRP_ID="$(lies_wert "$tmp" VRRP_ID)"; VRRP_ID="${VRRP_ID:-51}"
+    if [ -z "$GEHEIMNIS_DATEI" ]; then
+        if [ -n "$NUR_KONFIG" ]; then GEHEIMNIS_DATEI="$(mktemp)"; else GEHEIMNIS_DATEI="$GEHEIMNIS_STANDARD"; fi
+    fi
+    ( umask 077; : > "$GEHEIMNIS_DATEI" )
+    for schluessel in $GEHEIMNIS_SCHLUESSEL; do
+        wert="$(lies_wert "$tmp" "$schluessel")"
+        [ -n "$wert" ] || { rm -f "$tmp"; fehler "Im Kopplungscode fehlt $schluessel."; }
+        printf '%s=%s
+' "$schluessel" "$wert" >> "$GEHEIMNIS_DATEI"
+    done
+    rm -f "$tmp"
+}
+
+# Eigene Adresse: die Quelladresse, mit der dieser Server den Partner erreicht.
+eigene_ip_ermitteln() {
+    command -v ip >/dev/null || fehler "Das Programm 'ip' fehlt – --eigene-ip bitte angeben."
+    ip -4 route get "$PARTNER_IP" 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") {print $(i + 1); exit}}'
+}
+
+# Code nicht über die Kommandozeile: aus Datei, per Eingabeaufforderung oder aus stdin ("-").
+if [ -n "$KOPPLUNGSCODE_DATEI" ]; then
+    [ -f "$KOPPLUNGSCODE_DATEI" ] || fehler "Die Datei $KOPPLUNGSCODE_DATEI mit dem Kopplungscode gibt es nicht."
+    KOPPLUNGSCODE="$(head -n 1 "$KOPPLUNGSCODE_DATEI")"
+elif [ "$KOPPLUNGSCODE" = "-" ]; then
+    if [ -t 0 ]; then
+        printf 'Kopplungscode von server1 (HJ1:...) einfügen und Enter drücken: ' >&2
+        IFS= read -rs KOPPLUNGSCODE || true
+        printf '
+' >&2
+    else
+        IFS= read -r KOPPLUNGSCODE || true
+    fi
+fi
+KOPPLUNGSCODE="$(printf '%s' "$KOPPLUNGSCODE" | tr -d '[:space:]')"
+[ -z "$KOPPLUNGSCODE" ] || kopplungscode_lesen
+if [ -z "$KNOTEN" ]; then if [ -n "$KOPPLUNGSCODE" ]; then KNOTEN="server2"; else KNOTEN="server1"; fi; fi
+[ -z "$KOPPLUNGSCODE" ] || [ "$KNOTEN" = "server2" ] || fehler "Der Kopplungscode gehört zu server2 (--knoten server2 oder weglassen)."
+
+[ "$KNOTEN" = "server1" ] || [ "$KNOTEN" = "server2" ] || fehler "--knoten server1 oder server2 angeben."
+ist_ipv4 "$PARTNER_IP" || fehler "--partner-ip fehlt oder ist keine IPv4-Adresse (auf server2 stattdessen --kopplungscode von server1 angeben)."
+if [ -z "$EIGENE_IP" ] && [ -z "$NUR_KONFIG" ]; then
+    EIGENE_IP="$(eigene_ip_ermitteln || true)"
+    [ -z "$EIGENE_IP" ] || echo "Eigene IP automatisch erkannt: $EIGENE_IP"
+fi
+ist_ipv4 "$EIGENE_IP" || fehler "--eigene-ip fehlt oder ist keine IPv4-Adresse (und ließ sich nicht aus der Route zu $PARTNER_IP ermitteln)."
+ist_ipv4 "$VIP" || fehler "--vip fehlt oder ist keine IPv4-Adresse (eine freie Adresse im Hallennetz, nicht die eines Servers)."
+[ "$EIGENE_IP" != "$PARTNER_IP" ] || fehler "--eigene-ip und --partner-ip dürfen nicht gleich sein."
+[ "$VIP" != "$EIGENE_IP" ] && [ "$VIP" != "$PARTNER_IP" ] || fehler "Die VIP muss eine weitere, freie Adresse sein (nicht die eines Servers)."
+[[ "$VRRP_ID" =~ ^[0-9]+$ ]] && [ "$VRRP_ID" -ge 1 ] && [ "$VRRP_ID" -le 255 ] || fehler "--vrrp-id muss zwischen 1 und 255 liegen."
+
+if [ "$KNOTEN" = "server1" ]; then
+    ROUTER_ID="HAJIME_SERVER1"; PRIORITAET=150
+else
+    ROUTER_ID="HAJIME_SERVER2"; PRIORITAET=100
+fi
 
 # ---------------------------------------------------------------------------------------------
 # Konfigurationsdateien (alle rein textuell, damit sie ohne Installation prüfbar sind: --nur-konfig)
@@ -284,7 +369,11 @@ fi
 # ---------------------------------------------------------------------------------------------
 # Voraussetzungen
 # ---------------------------------------------------------------------------------------------
-[ "$(id -u)" -eq 0 ] || fehler "Bitte als root ausführen: sudo bash $0 ..."
+if [ "$(id -u)" -ne 0 ]; then
+    # Als normaler Benutzer gestartet (z. B. Ubuntu): mit denselben Argumenten über sudo neu starten.
+    if command -v sudo >/dev/null; then exec sudo bash "$0" "${URSPRUENGLICHE_ARGUMENTE[@]}"; fi
+    fehler "Bitte als root ausführen (su -  oder  sudo bash $0 ...)."
+fi
 command -v apt-get >/dev/null || fehler "Nur Debian/Ubuntu (apt) wird unterstützt."
 [ -f "$QUELLE/package.json" ] && [ -f "$QUELLE/src/app.js" ] || fehler "Quellcode nicht gefunden (erwartet in $QUELLE)."
 export DEBIAN_FRONTEND=noninteractive
@@ -292,8 +381,8 @@ export DEBIAN_FRONTEND=noninteractive
 NEUE_GEHEIMNISSE=0
 if [ "$KNOTEN" = "server2" ]; then
     GEHEIMNIS_DATEI="${GEHEIMNIS_DATEI:-$GEHEIMNIS_STANDARD}"
-    [ -f "$GEHEIMNIS_DATEI" ] || fehler "Geheimnis-Datei $GEHEIMNIS_DATEI fehlt. Zuerst server1 einrichten und die Datei kopieren:
-    scp $GEHEIMNIS_STANDARD root@$EIGENE_IP:/root/"
+    [ -f "$GEHEIMNIS_DATEI" ] || fehler "Weder Kopplungscode noch Geheimnis-Datei $GEHEIMNIS_DATEI vorhanden. Zuerst server1 einrichten;
+    er gibt am Ende die Befehle für server2 samt Kopplungscode aus (--kopplungscode - oder --kopplungscode-datei)."
 else
     GEHEIMNIS_DATEI="${GEHEIMNIS_DATEI:-$GEHEIMNIS_STANDARD}"
     if [ ! -f "$GEHEIMNIS_DATEI" ]; then NEUE_GEHEIMNISSE=1; fi
@@ -327,6 +416,10 @@ echo "PostgreSQL $PG_VERSION (Daten: $PG_DATA)"
 # Netzwerk: Schnittstelle und Präfix der eigenen IP, VIP im selben Netz
 ADRESSZEILE="$(ip -o -4 addr show | awk -v ip="$EIGENE_IP" '{split($4, a, "/"); if (a[1] == ip) {print $2, a[2]; exit}}')"
 [ -n "$ADRESSZEILE" ] || fehler "Die IP $EIGENE_IP ist auf diesem Server nicht konfiguriert. Feste IP zuerst einrichten (siehe 'ip -4 addr')."
+if ip -o -4 addr show | grep -F " $EIGENE_IP/" | grep -q dynamic; then
+    hinweis "WARNUNG: $EIGENE_IP wird per DHCP vergeben. Für den Cluster feste Adressen verwenden (am Router reservieren"
+    hinweis "         oder am Server statisch eintragen), sonst bricht die Verbindung der Server bei einer neuen Adresse ab."
+fi
 [ -n "$SCHNITTSTELLE" ] || SCHNITTSTELLE="${ADRESSZEILE%% *}"
 PRAEFIX="${ADRESSZEILE##* }"
 ip link show "$SCHNITTSTELLE" >/dev/null 2>&1 || fehler "Netzwerkschnittstelle $SCHNITTSTELLE gibt es nicht."
@@ -359,7 +452,7 @@ runuser -u "$APP_USER" -- bash -c "cd '$INSTALL_DIR' && npm ci --omit=dev --no-a
 # ---------------------------------------------------------------------------------------------
 if [ "$KNOTEN" = "server1" ]; then
     erzeuge_geheimnisse "$GEHEIMNIS_DATEI"
-    [ "$NEUE_GEHEIMNISSE" -eq 1 ] && hinweis "Geheimnisse angelegt: $GEHEIMNIS_DATEI (nur root lesbar) – diese Datei auf server2 kopieren."
+    [ "$NEUE_GEHEIMNISSE" -eq 1 ] && hinweis "Geheimnisse angelegt: $GEHEIMNIS_DATEI (nur root lesbar)."
 fi
 lade_geheimnisse "$GEHEIMNIS_DATEI"
 
@@ -552,17 +645,28 @@ fi
 printf '\n\033[1;32m✔ %s ist eingerichtet.\033[0m\n' "$KNOTEN"
 bash "$QUELLE/deploy/linux/cluster-status.sh" || true
 if [ "$KNOTEN" = "server1" ]; then
+    REPO_URL="$(git -C "$QUELLE" remote get-url origin 2>/dev/null || true)"
+    case "$REPO_URL" in https://*@*|"") REPO_URL="$REPO_URL_STANDARD" ;; esac   # keine Zugangsdaten in die Ausgabe
+    CODE="$(kopplungscode_erzeugen)"
+    ( umask 077; printf '%s\n' "$CODE" > "$KOPPLUNGS_DATEI" )
     cat <<EOF
 
-  Nächster Schritt – server2 einrichten:
-    scp $GEHEIMNIS_DATEI root@$PARTNER_IP:/root/
-    (auf server2, im Repository)  sudo bash deploy/linux/install-cluster.sh --knoten server2 \\
-        --eigene-ip $PARTNER_IP --partner-ip $EIGENE_IP --vip $VIP${ZEUGE:+ --zeuge $ZEUGE}
+  Nächster Schritt – server2 ($PARTNER_IP, Debian, als root) einrichten, diese drei Zeilen dort einfügen:
+
+    apt-get update && apt-get install -y git
+    git clone $REPO_URL && cd $(basename "$REPO_URL" .git)
+    bash deploy/linux/install-cluster.sh --kopplungscode -
+
+  Beim letzten Befehl wird nach dem Kopplungscode gefragt – diese Zeile einfügen und Enter drücken (unsichtbar):
+
+    $CODE
+
+  (Der Kopplungscode enthält alle Geheimnisse – nicht weitergeben. Er steht auch in $KOPPLUNGS_DATEI.)
 
   Clients tragen die VIP ein:  SYNC_SERVER_URL=http://$VIP:$APP_PORT
   Turnierleitung öffnet:       http://$VIP:$APP_PORT   (Cluster-Seite: /cluster.html)
   Passwörter und Geheimnisse:  $GEHEIMNIS_DATEI  und  $ENV_DATEI
-  Turnierleitungs-Passwort:    $G_STEUERUNG_PASSWORD
+  Start-Passwort (Schreibzugriff): $G_STEUERUNG_PASSWORD  (muss bei der ersten Anmeldung geändert werden)
 EOF
 else
     cat <<EOF

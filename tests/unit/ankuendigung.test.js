@@ -1,6 +1,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { beantworteAnfrage, lokaleIpv4Adressen } from '../../src/sync/ankuendigung.js';
+import { beantworteAnfrage, lokaleIpv4Adressen, ordneServerAdressen } from '../../src/sync/ankuendigung.js';
+
+test('ordneServerAdressen: VIP vor angefragter Adresse vor dem Rest, Link-Local entfällt', () => {
+    const alle = ['192.168.10.129', '169.254.3.4', '192.168.10.200', '172.17.0.1'];
+    assert.deepEqual(
+        ordneServerAdressen(alle, { angefragt: '192.168.10.129', vip: '192.168.10.200' }),
+        ['192.168.10.200', '192.168.10.129', '172.17.0.1']
+    );
+    // Ohne VIP (Einzelserver oder Secondary): die Adresse, über die die Seite erreicht wurde.
+    assert.deepEqual(ordneServerAdressen(alle, { angefragt: '::ffff:172.17.0.1' }), ['172.17.0.1', '192.168.10.129', '192.168.10.200']);
+    // Eine VIP, die dieser Knoten nicht hält, taucht nicht auf.
+    assert.deepEqual(ordneServerAdressen(['10.0.0.2'], { vip: '10.0.0.9' }), ['10.0.0.2']);
+});
 
 test('A-Anfrage für den eigenen Namen wird mit allen Adressen beantwortet', () => {
     const a = beantworteAnfrage([{ name: 'turnier.local', type: 'A' }], { hostname: 'turnier.local', adressen: ['192.168.1.5', '10.0.0.2'] });

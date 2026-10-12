@@ -13,6 +13,7 @@ pg.types.setTypeParser(1082, (val) => val);
 
 // Route imports
 import { getAuthRoutes } from './routes/authRoutes.js';
+import { initialisiere as initialisiereSteuerungPasswort } from './utils/steuerungPasswort.js';
 import { getVereinRoutes } from './routes/vereinRoutes.js';
 import { getTurnierRoutes } from './routes/turnierRoutes.js';
 import { getTeilnehmerRoutes } from './routes/teilnehmerRoutes.js';
@@ -251,6 +252,7 @@ if (syncKonfig.istClient) {
             downloadsVerzeichnis,
             version: serverVersion,
             kopplung,
+            vip: clusterKonfig.vip,
             clientDateienStatus: () => clientDateien.status()
         }));
     }
@@ -286,6 +288,8 @@ if (syncKonfig.istClient) {
     if (cluster) app.use('/api', nurMaster(() => app.get('cluster')));
 
     // Mount routes with Knex instance dependency injection
+    // Geändertes Turnierleitungs-Passwort aus der DB laden (lädt bei noch fehlender Migration nach).
+    initialisiereSteuerungPasswort(knex);
     app.use('/api/auth', getAuthRoutes(knex));
     app.use('/api/vereine', getVereinRoutes(knex));
     app.use('/api/turniere', requireWriteAuth, getTurnierRoutes(knex));
