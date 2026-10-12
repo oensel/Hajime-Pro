@@ -991,3 +991,38 @@ async function synchronisiereKampfflaechen(knex, turnierId, anzahl) {
             .del();
     }
 }
+
+// Live-Freigabe (Teilnehmer-App, docs/specs/2026-10-12-teilnehmer-app-design.md): Opt-in des Veranstalters. Ein Turnier
+// ohne urspruengliche_id stammt nicht aus der Cloud und ist ihr unbekannt, die Freigabe ist dafür gesperrt.
+export async function leseLiveFreigabe(knex, req, res) {
+    try {
+        const turnier = await knex('turniere').where({ id: req.params.id }).first('live_freigabe', 'urspruengliche_id');
+        if (!turnier) return res.status(404).json({ success: false, error: 'Turnier nicht gefunden.' });
+        res.json({ freigegeben: !!turnier.live_freigabe, moeglich: turnier.urspruengliche_id != null });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+export async function setzeLiveFreigabe(knex, req, res) {
+    try {
+        const { freigegeben } = req.body || {};
+        if (typeof freigegeben !== 'boolean') {
+            return res.status(400).json({ success: false, error: 'Feld "freigegeben" muss true oder false sein.' });
+        }
+        const turnier = await knex('turniere').where({ id: req.params.id }).first('id', 'status', 'urspruengliche_id');
+        if (!turnier) return res.status(404).json({ success: false, error: 'Turnier nicht gefunden.' });
+        if (freigegeben) {
+            if (turnier.urspruengliche_id == null) {
+                return res.status(409).json({ success: false, error: 'Dieses Turnier stammt nicht aus der Cloud und kann nicht live freigegeben werden.' });
+            }
+            if (turnier.status === 'abgeschlossen') {
+                return res.status(403).json({ success: false, error: 'Ein abgeschlossenes Turnier kann nicht live freigegeben werden.' });
+            }
+        }
+        await knex('turniere').where({ id: turnier.id }).update({ live_freigabe: freigegeben });
+        res.json({ success: true, freigegeben });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+}

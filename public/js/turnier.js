@@ -771,6 +771,34 @@ document.addEventListener('DOMContentLoaded', () => {
             if (loeschenBtn && !['in_durchfuehrung', 'abgeschlossen'].includes(statusEffektiv) && teilnehmerAnzahl === 0) {
                 loeschenBtn.style.display = 'inline-flex';
             }
+
+            // Live-Freigabe für die Teilnehmer-App (nur am Hallen-Server; Turniere ohne Cloud-Herkunft sind gesperrt)
+            const liveGruppe = document.getElementById('liveFreigabeGroup');
+            const liveBox = document.getElementById('liveFreigabeBox');
+            if (liveGruppe && liveBox && istOffline) {
+                const liveResp = await fetch(`/api/turniere/${turnierId}/live-freigabe`);
+                if (liveResp.ok) {
+                    const live = await liveResp.json();
+                    liveBox.checked = !!live.freigegeben;
+                    liveBox.disabled = !live.moeglich;
+                    if (!live.moeglich) liveGruppe.title = 'Nicht möglich: Dieses Turnier stammt nicht aus der Cloud.';
+                    liveGruppe.style.display = 'inline-flex';
+                    liveBox.addEventListener('change', async () => {
+                        const antwort = await fetch(`/api/turniere/${turnierId}/live-freigabe`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ freigegeben: liveBox.checked })
+                        });
+                        const daten = await antwort.json();
+                        if (!antwort.ok) {
+                            liveBox.checked = !liveBox.checked;
+                            if (window.zeigeNotification) window.zeigeNotification(daten.error || 'Speichern fehlgeschlagen.', 'error');
+                        } else if (window.zeigeNotification) {
+                            window.zeigeNotification(daten.freigegeben ? 'Live-Freigabe aktiviert.' : 'Live-Freigabe beendet.', 'success');
+                        }
+                    });
+                }
+            }
         } catch (err) {
             console.error('Fehler bei der Lebenszyklus-Berechtigungsprüfung:', err);
         }
