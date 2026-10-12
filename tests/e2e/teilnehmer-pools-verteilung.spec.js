@@ -317,7 +317,8 @@ test.describe.serial('Pool-Verteilung nach Alters-/Gewichtsklasse und Wettkampfs
 
         await markiereAlle(page.locator('#bulkMarkWeighedBtn'), `${gesamt} Teilnehmer erfolgreich als gewogen markiert.`);
         await markiereAlle(page.locator('#bulkMarkLizenzBtn'), `Lizenz für ${gesamt} Teilnehmer erfolgreich bestätigt.`);
-        await markiereAlle(page.locator('#bulkMarkPaidBtn'), `${gesamt} Teilnehmer erfolgreich aktualisiert.`);
+        // Das Turnier verlangt kein Startgeld: Bezahlt-Knopf entfällt, "bereit" braucht es nicht.
+        await expect(page.locator('#bulkMarkPaidBtn')).toBeHidden();
 
         const statusWerte = await page.locator('[data-status-select]').evaluateAll(nodes => nodes.map(n => n.value));
         expect(statusWerte).toHaveLength(gesamt);
