@@ -1,0 +1,20 @@
+[Unit]
+Description=Hajime Pro Live-Uplink (Teilnehmer-App, nur lesend, nur ausgehend)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hajime
+WorkingDirectory=/opt/hajime-pro
+EnvironmentFile=/opt/hajime-pro/live.env
+ExecStart=/usr/bin/node src/live/main.js
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
