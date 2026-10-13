@@ -23,6 +23,11 @@ const paket = (sequenz, extra = {}) => ({
         t('a2', 'Mia', 'Mustermann', { zustand: 'laeuft', abstand: null }),
         t('b1', 'Ben', 'Beispiel', { vereinKey: 'v2', verein: 'TV Beispiel', poolId: 11, poolBezeichnung: 'U15 m -50', geschlecht: 'm', gewichtsklasse: '-50', zustand: 'abgeschlossen', abstand: null, platz: 3 })
     ],
+    pools: [
+        { id: 10, bezeichnung: 'U15 w -44', modus: 'Jeder-gegen-Jeden', status: 'matte_zugewiesen', matteId: 1, altersklasse: 'U15', geschlecht: 'w', gewichtsklasse: '-44', farbe2: 'blau' },
+        { id: 11, bezeichnung: 'U15 m -50', modus: 'Jeder-gegen-Jeden', status: 'matte_zugewiesen', matteId: 1, altersklasse: 'U15', geschlecht: 'm', gewichtsklasse: '-50', farbe2: 'blau' }
+    ],
+    kaempfe: [],
     warteschlangen: [], ...extra
 });
 
@@ -123,4 +128,17 @@ test('Zurückgezogenes Turnier: die Übersicht zeigt keine alten Namen mehr und 
     await expect(page.getByTestId('statuszeile')).not.toContainText('Keine Verbindung');
     const gemerkt = await page.evaluate((k) => localStorage.getItem(`hajime-live:cache:${k}`), KEY);
     expect(gemerkt).toBeNull();
+});
+
+test('Startbildschirm: Vereine direkt, Klassen darunter, Klick auf Gewichtsklasse öffnet den Pool', async ({ page, request }) => {
+    await sende(request, paket(Date.now()));
+    await page.goto(`/live/#/t/${KEY}`);
+    await expect(page.getByTestId('verein-v1')).toContainText('JC Muster');
+    await expect(page.getByTestId('verein-v2')).toContainText('TV Beispiel');
+    await page.getByTestId('klasse-U15-w').click();
+    await page.getByTestId('gewicht-10').click();
+    await expect(page).toHaveURL(new RegExp(`#/t/${KEY}/pool/10/teilnehmer`));
+    await page.goto(`/live/#/t/${KEY}`);
+    await page.getByTestId('verein-v2').click();
+    await expect(page).toHaveURL(new RegExp(`#/t/${KEY}/verein/v2`));
 });

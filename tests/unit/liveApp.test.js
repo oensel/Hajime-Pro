@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { klasseText, matteText, kachelZeilen, verbindung } from '../../teilnehmer-app/js/anzeige.js';
+import { klasseText, matteText, kachelZeilen, verbindung, klassenTitel, gewichtText } from '../../teilnehmer-app/js/anzeige.js';
 import { erzeugeSpeicher, bereinigeAlte } from '../../teilnehmer-app/js/speicher.js';
 
 const basis = { vorname: 'Anna', nachname: 'Muster', altersklasse: 'U15', geschlecht: 'w', gewichtsklasse: '-44', matteBezeichnung: 'Matte 2', abstand: null, platz: null };
@@ -133,4 +133,13 @@ test('gecachteTurniere: findet Turniere mit zwischengespeicherter Übersicht (Of
     assert.deepEqual(gecachteTurniere(storage).sort(), ['T/2', 'T1']);
     const werfend = { key() { throw new Error('gesperrt'); }, length: 3 };
     assert.deepEqual(gecachteTurniere(werfend), []);
+});
+
+test('klassenTitel und gewichtText', () => {
+    assert.equal(klassenTitel({ altersklasse: 'U15', geschlecht: 'w' }), 'U15 weiblich');
+    assert.equal(klassenTitel({ altersklasse: 'U18', geschlecht: 'm' }), 'U18 männlich');
+    assert.equal(klassenTitel({ altersklasse: 'U11', geschlecht: '' }), 'U11');
+    assert.equal(gewichtText('-44'), '−44 kg');
+    assert.equal(gewichtText('+48'), '+48 kg');
+    assert.equal(gewichtText(''), '');
 });

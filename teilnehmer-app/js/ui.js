@@ -17,6 +17,8 @@ export function h(tag, attribute = {}, ...kinder) {
     return el;
 }
 
+export const inhalt = () => document.getElementById('inhalt');
+
 export function icon(name) {
     const e = document.createElement('span');
     e.className = 'material-icons';

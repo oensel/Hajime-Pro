@@ -1,14 +1,13 @@
 // Startseiten: Turnierwahl (mit Offline-Zugang) und Suche innerhalb eines Turniers.
 import { api } from './api.js';
-import { kachelZeilen, verbindung } from './anzeige.js';
+import { gewichtText, kachelZeilen, klassenTitel, verbindung } from './anzeige.js';
 import { bereinigeAlte, gecachteTurniere } from './speicher.js';
-import { h, setzeStatus, zeigeTabs } from './ui.js';
+import { h, inhalt, setzeStatus, zeigeTabs } from './ui.js';
 
 // Namen der zuletzt gesehenen Turniere, damit der Offline-Start sie benennen kann (bewusst außerhalb des Präfixes
 // hajime-live:, das bereinigeAlte aufräumt).
 const META_TURNIERE = 'hajime-live-meta:turniere';
 
-const inhalt = () => document.getElementById('inhalt');
 let suchTimer = null;
 
 export async function zeigeTurniere() {
@@ -45,29 +44,20 @@ export async function zeigeTurniere() {
     }
 }
 
-// Suche mit Autovervollständigung; die Vereine stehen als Link-Raster darunter (Task 5 baut die Ansicht vollständig um).
 export async function zeigeStart({ key }) {
     zeigeTabs(key, 'suche');
     let turnier;
-    try { turnier = await api.turnier(key); } catch {
-        inhalt().replaceChildren(h('p', { class: 'hinweis' }, 'Das Turnier ist nicht (mehr) verfügbar.'));
-        setzeStatus('');
+    try { turnier = await api.turnier(key); } catch (f) {
+        inhalt().replaceChildren(h('p', { class: 'hinweis' }, f.status === 404 ? 'Das Turnier ist nicht mehr verfügbar.' : 'Keine Verbindung.'));
+        setzeStatus(f.status === 404 ? '' : 'Keine Verbindung', f.status !== 404);
         return;
     }
     const v = verbindung(turnier);
     setzeStatus(v.text, !v.verbunden);
 
-    const trefferListe = h('div', { class: 'treffer-liste', 'data-testid': 'treffer' });
-    function trefferEintrag(t) {
-        const z = kachelZeilen(t);
-        const text = [z.titel, t.verein, z.zeile1, z.zeile2 ?? z.zeile3].filter(Boolean).join(' · ');
-        const ziel = t.poolId != null ? `#/t/${encodeURIComponent(key)}/pool/${t.poolId}` : null;
-        return h('ul', { class: 'knopf-liste' }, h('li', {},
-            ziel ? h('a', { href: ziel, 'data-testid': `treffer-${t.key}` }, text)
-                : h('div', { class: 'hinweis', 'data-testid': `treffer-${t.key}` }, text)));
-    }
+    const trefferListe = h('div', { 'data-testid': 'treffer' });
     const suchfeld = h('input', {
-        type: 'search', placeholder: 'Name oder Vorname', 'aria-label': 'Teilnehmer suchen', 'data-testid': 'suchfeld',
+        type: 'search', placeholder: 'Name oder Vorname suchen', 'aria-label': 'Teilnehmer suchen', 'data-testid': 'suchfeld',
         autocomplete: 'off',
         oninput: () => {
             clearTimeout(suchTimer);
@@ -76,14 +66,54 @@ export async function zeigeStart({ key }) {
             suchTimer = setTimeout(async () => {
                 try {
                     const { treffer } = await api.suche(key, q);
-                    trefferListe.replaceChildren(...(treffer.length ? treffer.map(trefferEintrag) : [h('p', { class: 'hinweis' }, 'Keine Treffer.')]));
+                    trefferListe.replaceChildren(treffer.length
+                        ? h('div', { class: 'treffer' }, treffer.map(t => trefferZeile(key, t)))
+                        : h('p', { class: 'hinweis' }, 'Keine Treffer.'));
                 } catch { trefferListe.replaceChildren(h('p', { class: 'hinweis' }, 'Keine Verbindung.')); }
             }, 250);
         }
     });
+
     const vereine = h('div', { class: 'raster' }, turnier.vereine.map(x => h('a', {
-        class: 'verein-kachel', href: `#/t/${encodeURIComponent(key)}/verein/${encodeURIComponent(x.key)}`, 'data-testid': `verein-${x.key}`
+        class: 'verein-kachel', 'data-testid': `verein-${x.key}`, href: `#/t/${encodeURIComponent(key)}/verein/${encodeURIComponent(x.key)}`
     }, x.name, h('span', {}, String(x.anzahl)))));
 
-    inhalt().replaceChildren(h('h1', {}, turnier.name), suchfeld, trefferListe, h('div', { class: 'abschnitt' }, 'Vereine'), vereine);
+    const klassen = (turnier.klassen || []).map(gruppe => {
+        const id = `${gruppe.altersklasse}-${gruppe.geschlecht}`;
+        const chips = h('div', { class: 'chips', hidden: true }, gruppe.pools.map(p => h('a', {
+            class: 'chip', 'data-testid': `gewicht-${p.poolId}`,
+            href: `#/t/${encodeURIComponent(key)}/pool/${p.poolId}/teilnehmer`
+        }, gewichtText(p.gewichtsklasse) || p.bezeichnung)));
+        const kasten = h('div', { class: 'gruppe' });
+        const knopf = h('button', {
+            type: 'button', 'data-testid': `klasse-${id}`, 'aria-expanded': 'false',
+            onclick: () => {
+                const offen = chips.hidden;
+                chips.hidden = !offen;
+                kasten.classList.toggle('offen', offen);
+                knopf.setAttribute('aria-expanded', String(offen));
+            }
+        }, klassenTitel(gruppe), h('span', {}, `${gruppe.pools.length} Pools`));
+        kasten.append(knopf, chips);
+        return kasten;
+    });
+
+    inhalt().replaceChildren(
+        h('h1', {}, turnier.name),
+        suchfeld, trefferListe,
+        h('div', { class: 'abschnitt' }, 'Vereine'),
+        turnier.vereine.length ? vereine : h('p', { class: 'hinweis' }, 'Noch keine Teilnehmer gemeldet.'),
+        h('div', { class: 'abschnitt' }, 'Alters- und Gewichtsklassen'),
+        ...(klassen.length ? klassen : [h('p', { class: 'hinweis' }, 'Noch keine Pools von der Halle gemeldet.')]));
+}
+
+function trefferZeile(key, t) {
+    const z = kachelZeilen(t);
+    const text = [z.titel, t.verein].filter(Boolean).join(' · ');
+    const unten = [z.zeile1, z.zeile2 ?? z.zeile3].filter(Boolean).join(' · ');
+    const inhaltsknoten = [text, h('small', {}, unten)];
+    const hinweis = t.poolId == null || ['nicht_ausgelost', 'ohne_matte', 'verspaetet'].includes(t.zustand);
+    return t.poolId != null
+        ? h('a', { href: `#/t/${encodeURIComponent(key)}/pool/${t.poolId}/teilnehmer/${encodeURIComponent(t.key)}`, 'data-testid': `treffer-${t.key}`, class: hinweis ? 'hinweis-zeile' : '' }, inhaltsknoten)
+        : h('div', { class: 't hinweis-zeile', 'data-testid': `treffer-${t.key}` }, inhaltsknoten);
 }

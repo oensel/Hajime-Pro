@@ -1,6 +1,15 @@
 // Anzeigetexte der Teilnehmer-App (Spec Abschnitt 4). Rein, ohne DOM: läuft im Browser und in den Unit-Tests.
+export function gewichtText(gewichtsklasse) {
+    return gewichtsklasse ? `${String(gewichtsklasse).replace(/^-/, '−')} kg` : '';
+}
+
+export function klassenTitel({ altersklasse, geschlecht }) {
+    const g = geschlecht === 'w' ? 'weiblich' : geschlecht === 'm' ? 'männlich' : '';
+    return [altersklasse, g].filter(Boolean).join(' ');
+}
+
 export function klasseText({ altersklasse, geschlecht, gewichtsklasse }) {
-    const gewicht = gewichtsklasse ? `${String(gewichtsklasse).replace(/^-/, '−')} kg` : '';
+    const gewicht = gewichtText(gewichtsklasse);
     return [altersklasse, geschlecht, gewicht].filter(Boolean).join(' ');
 }
 
