@@ -79,11 +79,14 @@ test('Verein verfolgen zeigt alle seine Teilnehmer, Abschluss mit Platz, ohne Ne
     await sende(request, paket(Date.now() + 1000));
     await page.goto(`/live/#/t/${KEY}`);
     await page.getByTestId('verein-v2').click();
+    await expect(page.getByTestId('verein-stern')).toContainText('Verein verfolgen');
     await page.getByTestId('verein-stern').click();
+    await expect(page.getByTestId('verein-stern')).toContainText('Verein wird verfolgt');
     await page.getByTestId('tab-uebersicht').click();
     // kachel-b1 gibt es schon auf der Vereinsseite: erst die Statuszeile belegt, dass die Übersicht geladen und gemerkt ist.
     await expect(page.getByRole('heading', { name: 'Übersicht' })).toBeVisible();
     await expect(page.getByTestId('statuszeile')).toContainText('Stand von');
+    await expect(page.getByTestId('gruppe-verein-v2')).toBeVisible();
     await expect(page.getByTestId('kachel-b1')).toContainText('Abgeschlossen · Platz 3');
 
     await context.setOffline(true);
@@ -173,4 +176,16 @@ test('Turnier: Matte mit laufendem Kampf, Klick öffnet die Kampfliste, von dort
     await expect(page.getByTestId('reiter-kaempfe')).toHaveClass(/aktiv/);
     await page.getByTestId('baum-oeffnen').click();
     await expect(page.getByTestId('reiter-baum')).toHaveClass(/aktiv/);
+});
+
+test('Verein verfolgen: Knopf, Glocke für alle, Vereinsblock in der Übersicht', async ({ page, request }) => {
+    await sende(request, paket(Date.now()));
+    await page.goto(`/live/#/t/${KEY}/verein/v1`);
+    await expect(page.getByTestId('verein-stern')).toContainText('Verein verfolgen');
+    await page.getByTestId('verein-stern').click();
+    await expect(page.getByTestId('verein-stern')).toContainText('Verein wird verfolgt');
+    await page.getByTestId('verein-glocke-alle').check();
+    await expect(page.getByTestId('glocke-a1')).toHaveAttribute('aria-pressed', 'true');
+    await page.getByTestId('tab-uebersicht').click();
+    await expect(page.getByTestId('gruppe-verein-v1')).toContainText('Vereinsregel: JC Muster');
 });

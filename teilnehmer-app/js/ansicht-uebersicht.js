@@ -1,9 +1,8 @@
-// Übersicht der verfolgten Teilnehmer (Task 8 gruppiert nach Dringlichkeit). Offline: letzter gemerkter Stand.
+// Übersicht der verfolgten Teilnehmer nach Dringlichkeit. Offline: letzter gemerkter Stand.
 import { api } from './api.js';
 import { verbindung } from './anzeige.js';
-import { h, kachel, setzeStatus, setzeStopp, speicherFuer, zeigeTabs } from './ui.js';
-
-const inhalt = () => document.getElementById('inhalt');
+import { h, icon, inhalt, kachel, setzeStatus, setzeStopp, speicherFuer, zeigeTabs } from './ui.js';
+import { gruppiereUebersicht } from './uebersicht.js';
 
 export async function zeigeUebersicht({ key }) {
     zeigeTabs(key, 'uebersicht');
@@ -18,7 +17,9 @@ export async function zeigeUebersicht({ key }) {
         const anfrage = speicher.anfrage();
         if (!anfrage.teilnehmer.length && !anfrage.vereine.length) {
             inhalt().replaceChildren(h('h1', {}, 'Übersicht'),
-                h('p', { class: 'hinweis' }, 'Noch niemand verfolgt. Suche einen Teilnehmer und setze den Stern ☆.'));
+                h('div', { class: 'leer' }, icon('star_border'), 'Noch niemand verfolgt.', h('br'),
+                    'Suche einen Teilnehmer oder wähle einen Verein und setze den Stern.',
+                    h('div', { style: 'margin-top:16px' }, h('a', { class: 'knopf', href: `#/t/${encodeURIComponent(key)}` }, 'Teilnehmer suchen'))));
             setzeStatus('');
             return;
         }
@@ -39,6 +40,7 @@ export async function zeigeUebersicht({ key }) {
             try { antwort = JSON.parse(localStorage.getItem(cacheName)); } catch { antwort = null; }
             ausCache = true;
         }
+        if (beendet) return;
         if (!antwort) {
             inhalt().replaceChildren(h('h1', {}, 'Übersicht'), h('p', { class: 'hinweis' }, 'Keine Verbindung.'));
             setzeStatus('Keine Verbindung', true);
@@ -46,10 +48,23 @@ export async function zeigeUebersicht({ key }) {
         }
         const v = verbindung(antwort);
         setzeStatus(ausCache ? `Keine Verbindung · ${v.text}` : v.text, ausCache || !v.verbunden);
-        const liste = antwort.teilnehmer;
-        inhalt().replaceChildren(h('h1', {}, 'Übersicht'),
-            ...(liste.length ? liste.map(t => kachel(t, speicher, lade))
-                : [h('p', { class: 'hinweis' }, 'Die verfolgten Teilnehmer sind (noch) nicht gemeldet.')]));
+        const { gruppen } = gruppiereUebersicht(antwort.teilnehmer, anfrage);
+        inhalt().replaceChildren(
+            h('h1', {}, 'Übersicht'),
+            ...gruppen.flatMap(g => [
+                h('div', { class: 'abschnitt', 'data-testid': g.id === 'verein' ? `gruppe-verein-${g.vereinKey}` : `gruppe-${g.id}` },
+                    g.titel,
+                    g.id === 'verein' ? h('label', { style: 'display:flex;gap:6px;align-items:center;text-transform:none;letter-spacing:0;font-size:12px' },
+                        'Glocke für alle',
+                        h('input', {
+                            type: 'checkbox', checked: g.eintraege.every(t => speicher.hatGlocke(t.key, g.vereinKey)),
+                            onchange: (e) => { speicher.vereinGlockeAlle(g.vereinKey, e.target.checked); lade(); }
+                        })) : null),
+                ...g.eintraege.map(t => kachel(t, speicher, lade, {
+                    href: t.poolId != null ? `#/t/${encodeURIComponent(key)}/pool/${t.poolId}/teilnehmer/${encodeURIComponent(t.key)}` : null
+                }))
+            ]),
+            gruppen.length ? null : h('p', { class: 'hinweis' }, 'Die verfolgten Teilnehmer sind (noch) nicht gemeldet.'));
     }
     await lade();
     if (!beendet) timer = setInterval(() => { if (document.visibilityState === 'visible') lade(); }, 15000);
