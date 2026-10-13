@@ -65,7 +65,7 @@ export async function zeigePool({ key, teile }) {
 
     let reiter = startReiter;
     function zeichne() {
-        const sterne = new Set(speicher.anfrage().teilnehmer);
+        const sterne = new Set(daten.teilnehmer.filter(t => speicher.istGesternt(t.key, t.vereinKey)).map(t => t.key));
         const kopf = [
             h('a', { class: 'zurueck', href: `#/t/${encodeURIComponent(key)}/pools` }, icon('chevron_left'), 'Pools'),
             h('h1', {}, daten.pool.bezeichnung, daten.pool.matteBezeichnung ? h('small', {}, daten.pool.matteBezeichnung) : null),

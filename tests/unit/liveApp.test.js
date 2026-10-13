@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { klasseText, matteText, kachelZeilen, verbindung, klassenTitel, gewichtText, kaempferAnzeige, kampfLink } from '../../teilnehmer-app/js/anzeige.js';
+import { klasseText, matteText, kachelZeilen, verbindung, klassenTitel, gewichtText, kaempferAnzeige, kampfLink, matteKurz } from '../../teilnehmer-app/js/anzeige.js';
 import { erzeugeSpeicher, bereinigeAlte } from '../../teilnehmer-app/js/speicher.js';
 
 const basis = { vorname: 'Anna', nachname: 'Muster', altersklasse: 'U15', geschlecht: 'w', gewichtsklasse: '-44', matteBezeichnung: 'Matte 2', abstand: null, platz: null };
@@ -165,4 +165,33 @@ test('kaempferAnzeige und kampfLink', () => {
     assert.deepEqual(kaempferAnzeige({ name: 'Anna Muster', verein: 'JC Senden' }), { name: 'Anna Muster', verein: 'JC Senden' });
     assert.deepEqual(kaempferAnzeige(null), { name: 'offen', verein: '' });
     assert.equal(kampfLink('T 1', { poolId: 10, id: 55 }), '#/t/T%201/pool/10/kaempfe/55');
+});
+
+test('Speicher: ein verfolgter Verein sternt alle Mitglieder, auch später hinzukommende; Abwählen ist eine Ausnahme', () => {
+    const s = erzeugeSpeicher(speicherAttrappe(), 'T1');
+    assert.equal(s.istGesternt('x1', 'v1'), false);
+    s.vereinStern('v1', true);
+    assert.equal(s.istGesternt('x1', 'v1'), true);
+    assert.equal(s.istGesternt('spaeter', 'v1'), true);
+    assert.equal(s.istGesternt('y1', 'v2'), false);
+    assert.deepEqual(s.anfrage().teilnehmer, []);
+    s.stern('x1', false, 'v1');
+    assert.equal(s.istGesternt('x1', 'v1'), false);
+    assert.equal(s.hatGlocke('x1', 'v1'), false);
+    assert.deepEqual(s.abgewaehlt(), ['x1']);
+    assert.equal(s.istGesternt('spaeter', 'v1'), true);
+    s.stern('x1', true, 'v1');
+    assert.equal(s.istGesternt('x1', 'v1'), true);
+    assert.deepEqual(s.abgewaehlt(), []);
+    s.vereinStern('v1', false);
+    assert.equal(s.istGesternt('spaeter', 'v1'), false);
+});
+
+test('matteKurz: Nummer oder eigener Name für den Matten-Block', () => {
+    assert.equal(matteKurz('Matte 2'), '2');
+    assert.equal(matteKurz('2'), '2');
+    assert.equal(matteKurz('matte A'), 'A');
+    assert.equal(matteKurz('Halle Nord'), 'Halle Nord');
+    assert.equal(matteKurz(''), '');
+    assert.equal(matteKurz(null), '');
 });

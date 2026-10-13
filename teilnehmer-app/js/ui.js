@@ -1,5 +1,5 @@
 // Gemeinsame Bausteine der Ansichten: DOM-Helfer, Reiterleiste, Statuszeile, Kachel. Alle Texte laufen über textContent.
-import { kachelZeilen } from './anzeige.js';
+import { kachelZeilen, klasseText, matteKurz, matteText } from './anzeige.js';
 import { erzeugeSpeicher } from './speicher.js';
 
 export function h(tag, attribute = {}, ...kinder) {
@@ -66,10 +66,22 @@ export function zeigeTabs(turnierKey, aktiv) {
     }, icon(symbol), titel)));
 }
 
+// Glocke für alle Teilnehmer eines Vereins: dieselben Symbole wie an der Kachel (notifications / notifications_off).
+export function glockeAlleKnopf(an, beiAenderung) {
+    return h('button', {
+        class: 'icon-knopf klein', type: 'button', 'data-testid': 'verein-glocke-alle', 'aria-pressed': String(an),
+        'aria-label': an ? 'Benachrichtigung für alle aus' : 'Benachrichtigung für alle an',
+        title: an ? 'Benachrichtigung für alle aus' : 'Benachrichtigung für alle an',
+        onclick: (e) => { e.stopPropagation(); beiAenderung(!an); }
+    }, icon(an ? 'notifications' : 'notifications_off'));
+}
+
+const KEINE_MATTE_MEHR = new Set(['keine_weiteren', 'abgeschlossen', 'nicht_erschienen']);
+
 // Teilnehmerkachel mit Stern und Glocke. href: Ziel beim Antippen der Kachel (Pool des Teilnehmers).
 export function kachel(t, speicher, neuZeichnen, { href = null, markiert = false } = {}) {
     const z = kachelZeilen(t);
-    const gesternt = speicher.istGesternt(t.key);
+    const gesternt = speicher.istGesternt(t.key, t.vereinKey);
     const glocke = speicher.hatGlocke(t.key, t.vereinKey);
     const klassen = ['kachel'];
     if (z.art === 'laeuft') klassen.push('laeuft');
@@ -80,15 +92,25 @@ export function kachel(t, speicher, neuZeichnen, { href = null, markiert = false
         'aria-label': an ? beschriftungAn : beschriftungAus,
         onclick: (e) => { e.stopPropagation(); aktion(!an); neuZeichnen(); }
     }, icon(an ? symbolAn : symbolAus));
+    // Matten-Block links: die Matte ist die wichtigste Orientierung; die Farbe folgt dem Zustand (läuft/bald/sonst).
+    // Wer nicht mehr kämpft (keine weiteren Kämpfe, abgeschlossen, nicht erschienen), braucht die Matte nicht mehr
+    const matte = KEINE_MATTE_MEHR.has(t.zustand) ? '' : matteKurz(t.matteBezeichnung);
+    if (matte) klassen.push('mit-matte');
+    const zeile1 = matte || KEINE_MATTE_MEHR.has(t.zustand) ? klasseText(t) : z.zeile1;
     return h('div', {
         class: klassen.join(' '), 'data-testid': `kachel-${t.key}`,
         onclick: () => { if (href) location.hash = href; }
     },
-        h('div', { class: 'name' }, z.titel),
-        h('div', { class: 'aktionen' },
-            knopf('stern', gesternt, 'Nicht mehr verfolgen', 'Verfolgen', 'star', 'star_border', (an) => speicher.stern(t.key, an)),
-            knopf('glocke', glocke, 'Benachrichtigung aus', 'Benachrichtigung an', 'notifications', 'notifications_off', (an) => speicher.glocke(t.key, an))),
-        z.zeile1 && h('div', { class: 'zeile' }, z.zeile1),
-        z.zeile2 && h('div', { class: `zeile status ${z.art}` }, z.zeile2),
-        z.zeile3 && h('div', { class: `zeile status ${z.art}` }, z.zeile3));
+        matte ? h('div', { class: 'matte-block', 'data-testid': `matte-${t.key}`, 'aria-label': matteText(t.matteBezeichnung) },
+            h('small', {}, 'Matte'),
+            h('span', { class: matte.length > 3 ? 'lang' : '' }, matte)) : null,
+        h('div', { class: 'kachel-inhalt' },
+            h('div', { class: 'name' }, z.titel),
+            h('div', { class: 'aktionen' },
+                knopf('stern', gesternt, 'Nicht mehr verfolgen', 'Verfolgen', 'star', 'star_border', (an) => speicher.stern(t.key, an, t.vereinKey)),
+                // Abgeschlossene Teilnehmer haben nichts mehr zu melden: keine Glocke
+                z.art === 'fertig' ? null : knopf('glocke', glocke, 'Benachrichtigung aus', 'Benachrichtigung an', 'notifications', 'notifications_off', (an) => speicher.glocke(t.key, an, t.vereinKey))),
+            zeile1 && h('div', { class: 'zeile' }, zeile1),
+            z.zeile2 && h('div', { class: `zeile status ${z.art}` }, z.zeile2),
+            z.zeile3 && h('div', { class: `zeile status ${z.art}` }, z.zeile3)));
 }

@@ -1,7 +1,7 @@
 // Übersicht der verfolgten Teilnehmer nach Dringlichkeit. Offline: letzter gemerkter Stand.
 import { api } from './api.js';
 import { verbindung } from './anzeige.js';
-import { h, icon, inhalt, kachel, setzeStatus, setzeStopp, speicherFuer, zeigeTabs } from './ui.js';
+import { glockeAlleKnopf, h, icon, inhalt, kachel, setzeStatus, setzeStopp, speicherFuer, zeigeTabs } from './ui.js';
 import { gruppiereUebersicht } from './uebersicht.js';
 
 export async function zeigeUebersicht({ key }) {
@@ -48,23 +48,25 @@ export async function zeigeUebersicht({ key }) {
         }
         const v = verbindung(antwort);
         setzeStatus(ausCache ? `Keine Verbindung · ${v.text}` : v.text, ausCache || !v.verbunden);
-        const { gruppen } = gruppiereUebersicht(antwort.teilnehmer, anfrage);
+        const zeichneKachel = (t) => kachel(t, speicher, lade, {
+            href: t.poolId != null ? `#/t/${encodeURIComponent(key)}/pool/${t.poolId}/teilnehmer/${encodeURIComponent(t.key)}` : null
+        });
+        const { gruppen } = gruppiereUebersicht(antwort.teilnehmer, { ...anfrage, abgewaehlt: speicher.abgewaehlt() });
+        // Ein einziger verfolgter Verein: kein Vereinsname, die Glocke für alle sitzt rechts in der Überschriftenzeile.
+        const vereinsGruppen = gruppen.filter(g => g.id === 'verein');
+        const einzigerVerein = vereinsGruppen.length === 1 ? vereinsGruppen[0] : null;
+        const glocke = (g) => glockeAlleKnopf(
+            g.eintraege.every(t => speicher.hatGlocke(t.key, g.vereinKey)),
+            (an) => { speicher.vereinGlockeAlle(g.vereinKey, an); lade(); });
         inhalt().replaceChildren(
-            h('h1', {}, 'Übersicht'),
-            ...gruppen.flatMap(g => [
-                h('div', { class: 'abschnitt', 'data-testid': g.id === 'verein' ? `gruppe-verein-${g.vereinKey}` : `gruppe-${g.id}` },
-                    g.titel,
-                    g.id === 'verein' ? h('label', { style: 'display:flex;gap:6px;align-items:center;text-transform:none;letter-spacing:0;font-size:12px' },
-                        'Glocke für alle',
-                        h('input', {
-                            type: 'checkbox', checked: g.eintraege.every(t => speicher.hatGlocke(t.key, g.vereinKey)),
-                            onchange: (e) => { speicher.vereinGlockeAlle(g.vereinKey, e.target.checked); lade(); }
-                        })) : null),
-                ...g.eintraege.map(t => kachel(t, speicher, lade, {
-                    href: t.poolId != null ? `#/t/${encodeURIComponent(key)}/pool/${t.poolId}/teilnehmer/${encodeURIComponent(t.key)}` : null
-                }))
-            ]),
-            gruppen.length ? null : h('p', { class: 'hinweis' }, 'Die verfolgten Teilnehmer sind (noch) nicht gemeldet.'));
+            h('h1', { class: 'mit-aktionen' }, h('span', {}, 'Übersicht'), einzigerVerein ? glocke(einzigerVerein) : null),
+            ...gruppen.map(g => h('div', { 'data-testid': g.id === 'verein' ? `gruppe-verein-${g.vereinKey}` : `gruppe-${g.id}` },
+                g.id === 'verein' && g === einzigerVerein ? null
+                    : h('div', { class: 'abschnitt' }, g.titel, g.id === 'verein' ? glocke(g) : null),
+                ...(g.abschnitte && g.abschnitte.length > 1
+                    ? g.abschnitte.flatMap(a => [h('div', { class: 'abschnitt trenner', 'data-testid': `abschnitt-${g.vereinKey}-${a.id}` }, a.titel), ...a.eintraege.map(zeichneKachel)])
+                    : g.eintraege.map(zeichneKachel)))),
+            ...(gruppen.length ? [] : [h('p', { class: 'hinweis' }, 'Die verfolgten Teilnehmer sind (noch) nicht gemeldet.')]));
     }
     await lade();
     if (!beendet) timer = setInterval(() => { if (document.visibilityState === 'visible') lade(); }, 15000);

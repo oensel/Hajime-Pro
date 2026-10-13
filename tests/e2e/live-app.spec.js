@@ -64,7 +64,8 @@ test('Ingest → Suche → Pool → Stern → Übersicht', async ({ page, reques
 
     await expect(page.getByTestId('kachel-a2')).toContainText('Mia Mustermann');
     await expect(page.getByTestId('kachel-a2')).toContainText('läuft jetzt');
-    await expect(page.getByTestId('kachel-a1')).toContainText('U15 w −44 kg · Matte 2');
+    await expect(page.getByTestId('kachel-a1')).toContainText('U15 w −44 kg');
+    await expect(page.getByTestId('matte-a1')).toContainText('2');
     await page.getByTestId('stern-a1').click();
     await expect(page.getByTestId('stern-a1')).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByTestId('glocke-a1')).toHaveAttribute('aria-pressed', 'true');
@@ -79,9 +80,9 @@ test('Verein verfolgen zeigt alle seine Teilnehmer, Abschluss mit Platz, ohne Ne
     await sende(request, paket(Date.now() + 1000));
     await page.goto(`/live/#/t/${KEY}`);
     await page.getByTestId('verein-v2').click();
-    await expect(page.getByTestId('verein-stern')).toContainText('Verein verfolgen');
+    await expect(page.getByTestId('verein-stern')).toHaveAttribute('aria-pressed', 'false');
     await page.getByTestId('verein-stern').click();
-    await expect(page.getByTestId('verein-stern')).toContainText('Verein wird verfolgt');
+    await expect(page.getByTestId('verein-stern')).toHaveAttribute('aria-pressed', 'true');
     await page.getByTestId('tab-uebersicht').click();
     // kachel-b1 gibt es schon auf der Vereinsseite: erst die Statuszeile belegt, dass die Übersicht geladen und gemerkt ist.
     await expect(page.getByRole('heading', { name: 'Übersicht' })).toBeVisible();
@@ -181,11 +182,12 @@ test('Turnier: Matte mit laufendem Kampf, Klick öffnet die Kampfliste, von dort
 test('Verein verfolgen: Knopf, Glocke für alle, Vereinsblock in der Übersicht', async ({ page, request }) => {
     await sende(request, paket(Date.now()));
     await page.goto(`/live/#/t/${KEY}/verein/v1`);
-    await expect(page.getByTestId('verein-stern')).toContainText('Verein verfolgen');
+    await expect(page.getByTestId('verein-stern')).toHaveAttribute('aria-pressed', 'false');
     await page.getByTestId('verein-stern').click();
-    await expect(page.getByTestId('verein-stern')).toContainText('Verein wird verfolgt');
-    await page.getByTestId('verein-glocke-alle').check();
+    await expect(page.getByTestId('verein-stern')).toHaveAttribute('aria-pressed', 'true');
+    await page.getByTestId('verein-glocke-alle').click();
+    await expect(page.getByTestId('verein-glocke-alle')).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByTestId('glocke-a1')).toHaveAttribute('aria-pressed', 'true');
     await page.getByTestId('tab-uebersicht').click();
-    await expect(page.getByTestId('gruppe-verein-v1')).toContainText('Vereinsregel: JC Muster');
+    await expect(page.getByTestId('gruppe-verein-v1')).toContainText('Anna');
 });

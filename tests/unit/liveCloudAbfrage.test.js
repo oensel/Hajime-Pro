@@ -175,3 +175,25 @@ test('Ältere Halle ohne Pools und Kämpfe: leere Antworten statt Fehler', async
     assert.equal(pool.pool.modus, '');
     assert.equal(await ladeDashboard(knex, 'gibtsnicht'), null);
 });
+
+test('Pool-Beginn: begonnen, oder in wie vielen Kämpfen der Pool auf der Matte startet', async () => {
+    const { knex } = db;
+    await uebernimmPaket(knex, paket('E', '2026-10-12', [
+        t('p1', 'Pia', 'Eins', { poolId: 20 }), t('p2', 'Paul', 'Zwei', { poolId: 21 }), t('p3', 'Pit', 'Drei', { poolId: 22 }),
+        t('p4', 'Pam', 'Vier', { poolId: null, poolBezeichnung: '', matteId: null, matteBezeichnung: '', zustand: 'nicht_ausgelost', abstand: null })
+    ], {
+        pools: [poolDef(20, { matteId: 1 }), poolDef(21, { matteId: 1 }), poolDef(22, { matteId: 1 })],
+        kaempfe: [
+            kampfDef(1, 20, { status: 'beendet', k1: 'p1', k2: 'p2' }),
+            kampfDef(2, 20, { status: 'bereit', k1: 'p1', k2: 'p2' }),
+            kampfDef(3, 21, { status: 'bereit', k1: 'p2', k2: 'p3' }),
+            kampfDef(4, 22, { status: 'bereit', k1: 'p3', k2: 'p1' })
+        ]
+    }));
+    const liste = await ladeVerein(knex, 'E', 'v1');
+    const nach = Object.fromEntries(liste.map(x => [x.key, { b: x.poolBegonnen, s: x.poolStartetIn }]));
+    assert.deepEqual(nach.p1, { b: true, s: null });
+    assert.deepEqual(nach.p2, { b: false, s: 1 });
+    assert.deepEqual(nach.p3, { b: false, s: 2 });
+    assert.deepEqual(nach.p4, { b: false, s: null });
+});

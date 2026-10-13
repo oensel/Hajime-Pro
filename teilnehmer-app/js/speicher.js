@@ -12,30 +12,45 @@ export function erzeugeSpeicher(storage, turnierKey) {
             const gelesen = JSON.parse(roh);
             if (gelesen && typeof gelesen === 'object') {
                 zustand = { teilnehmer: gelesen.teilnehmer || {}, vereine: gelesen.vereine || {} };
+                for (const v of Object.values(zustand.vereine)) if (v && !v.abgewaehlt) v.abgewaehlt = {};
             }
         }
     } catch { /* leerer Zustand */ }
 
     const sichere = () => { try { storage.setItem(name, JSON.stringify(zustand)); } catch { /* nur im Speicher */ } };
-    const verein = (v) => zustand.vereine[v] || (zustand.vereine[v] = { glockeAlle: false, ausnahmen: {} });
+    const verein = (v) => zustand.vereine[v] || (zustand.vereine[v] = { glockeAlle: false, ausnahmen: {}, abgewaehlt: {} });
+    // Ein Teilnehmer eines verfolgten Vereins gilt als gesternt, solange er nicht ausdrücklich abgewählt wurde
+    // (zur Laufzeit ausgewertet: auch später gemeldete Vereinsangehörige sind damit automatisch dabei).
+    const abgewaehlt = (key, vereinKey) => {
+        const v = vereinKey ? zustand.vereine[vereinKey] : null;
+        return !!(v && v.abgewaehlt && v.abgewaehlt[key]);
+    };
+    const ueberVerein = (key, vereinKey) => !!vereinKey && Object.hasOwn(zustand.vereine, vereinKey) && !abgewaehlt(key, vereinKey);
 
     return {
-        istGesternt: (key) => Object.hasOwn(zustand.teilnehmer, key),
-        stern(key, an) {
-            if (an) { if (!Object.hasOwn(zustand.teilnehmer, key)) zustand.teilnehmer[key] = { glocke: true }; }
-            else delete zustand.teilnehmer[key];
+        istGesternt: (key, vereinKey) => Object.hasOwn(zustand.teilnehmer, key) || ueberVerein(key, vereinKey),
+        stern(key, an, vereinKey) {
+            if (an) {
+                if (abgewaehlt(key, vereinKey)) delete zustand.vereine[vereinKey].abgewaehlt[key];
+                else if (!Object.hasOwn(zustand.teilnehmer, key) && !ueberVerein(key, vereinKey)) zustand.teilnehmer[key] = { glocke: true };
+            } else {
+                delete zustand.teilnehmer[key];
+                if (Object.hasOwn(zustand.vereine, vereinKey || '')) verein(vereinKey).abgewaehlt[key] = true;
+            }
             sichere();
         },
-        glocke(key, an) {
+        glocke(key, an, vereinKey) {
+            if (abgewaehlt(key, vereinKey)) delete zustand.vereine[vereinKey].abgewaehlt[key];
             zustand.teilnehmer[key] = { glocke: !!an };
             sichere();
         },
         hatGlocke(key, vereinKey) {
             if (Object.hasOwn(zustand.teilnehmer, key)) return !!zustand.teilnehmer[key].glocke;
             const v = vereinKey ? zustand.vereine[vereinKey] : null;
-            if (!v) return false;
+            if (!v || abgewaehlt(key, vereinKey)) return false;
             return Object.hasOwn(v.ausnahmen, key) ? !!v.ausnahmen[key] : !!v.glockeAlle;
         },
+        abgewaehlt: () => Object.values(zustand.vereine).flatMap(v => Object.keys(v.abgewaehlt || {}).filter(k => v.abgewaehlt[k])),
         vereinGesternt: (vereinKey) => Object.hasOwn(zustand.vereine, vereinKey),
         vereinStern(vereinKey, an) {
             if (an) verein(vereinKey); else delete zustand.vereine[vereinKey];
