@@ -61,7 +61,7 @@ test('Ingest → Suche → Pool → Stern → Übersicht', async ({ page, reques
     await expect(page.getByTestId('stern-a1')).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByTestId('glocke-a1')).toHaveAttribute('aria-pressed', 'true');
 
-    await page.getByTestId('menue-uebersicht').click();
+    await page.getByTestId('tab-uebersicht').click();
     await expect(page.getByTestId('kachel-a1')).toContainText('nächster Kampf: in 3 Kämpfen');
     await expect(page.getByTestId('kachel-a2')).toHaveCount(0);
     await expect(page.getByTestId('statuszeile')).toContainText('Stand von');
@@ -70,9 +70,9 @@ test('Ingest → Suche → Pool → Stern → Übersicht', async ({ page, reques
 test('Verein verfolgen zeigt alle seine Teilnehmer, Abschluss mit Platz, ohne Netz der letzte Stand', async ({ page, request, context }) => {
     await sende(request, paket(Date.now() + 1000));
     await page.goto(`/live/#/t/${KEY}`);
-    await page.getByTestId('vereinsauswahl').selectOption('v2');
+    await page.getByTestId('verein-v2').click();
     await page.getByTestId('verein-stern').click();
-    await page.getByTestId('menue-uebersicht').click();
+    await page.getByTestId('tab-uebersicht').click();
     // kachel-b1 gibt es schon auf der Vereinsseite: erst die Statuszeile belegt, dass die Übersicht geladen und gemerkt ist.
     await expect(page.getByRole('heading', { name: 'Übersicht' })).toBeVisible();
     await expect(page.getByTestId('statuszeile')).toContainText('Stand von');
@@ -94,7 +94,7 @@ test('Offline-Start: die Startseite bietet die zuletzt geladene Übersicht an', 
     await sende(request, paket(Date.now() + 2000));
     await page.goto(`/live/#/t/${KEY}/pool/10`);
     await page.getByTestId('stern-a1').click();
-    await page.getByTestId('menue-uebersicht').click();
+    await page.getByTestId('tab-uebersicht').click();
     await expect(page.getByRole('heading', { name: 'Übersicht' })).toBeVisible();
     await expect(page.getByTestId('statuszeile')).toContainText('Stand von');
     // Startseite einmal online besuchen, damit der Service Worker die Hülle hat und die Turnierliste gemerkt ist.
@@ -113,7 +113,7 @@ test('Zurückgezogenes Turnier: die Übersicht zeigt keine alten Namen mehr und 
     await sende(request, paket(Date.now() + 3000));
     await page.goto(`/live/#/t/${KEY}/pool/10`);
     await page.getByTestId('stern-a1').click();
-    await page.getByTestId('menue-uebersicht').click();
+    await page.getByTestId('tab-uebersicht').click();
     await expect(page.getByTestId('statuszeile')).toContainText('Stand von');
 
     await sende(request, { version: 1, turnierKey: KEY, zurueckgezogen: true, stand: new Date().toISOString(), sequenz: Date.now() + 200000 });
