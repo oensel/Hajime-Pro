@@ -143,7 +143,7 @@ export async function ladePool(knex, turnierKey, poolId) {
 
 // Pool-Beginn je Pool: begonnen = es lief oder endete schon ein Kampf; startetIn = Abstand des ersten offenen Kampfes
 // des Pools in der Matten-Warteschlange (nur, solange der Pool noch nicht begonnen hat, sonst null).
-async function poolStarts(knex, turnierKey) {
+export async function poolStarts(knex, turnierKey) {
     const [pools, kaempfe] = await Promise.all([
         knex('live_pools').where({ turnier_key: turnierKey }).select('pool_id', 'matte_id'),
         knex('live_kaempfe').where({ turnier_key: turnierKey }).select('pool_id', 'status', 'reihenfolge', 'kampf_id')
