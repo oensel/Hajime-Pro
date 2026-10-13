@@ -60,3 +60,26 @@ export function verbindung({ empfangenAm, serverzeit, stand } = {}, schwelleSeku
     const verbunden = (jetzt - empfangen) / 1000 <= schwelleSekunden;
     return { verbunden, text: verbunden ? `Stand von ${uhrzeit}` : `Stand von ${uhrzeit} · Halle nicht verbunden` };
 }
+
+export function poolStatus({ status, gesamt, beendet, laeuft }) {
+    if (status === 'abgeschlossen') return { text: 'Abgeschlossen', art: 'fertig' };
+    if (!gesamt) return { text: 'Noch nicht ausgelost', art: 'info' };
+    if (laeuft > 0) return { text: 'Läuft', art: 'laeuft' };
+    const rest = gesamt - beendet;
+    if (rest <= 0) return { text: 'In Prüfung', art: 'info' };
+    return { text: rest === 1 ? 'Noch 1 Kampf' : `Noch ${rest} Kämpfe`, art: 'info' };
+}
+
+export function kampfStatus(k) {
+    switch (k.status) {
+        case 'beendet': return { text: `${k.p1 ?? 0}:${k.p2 ?? 0} · beendet`, art: 'fertig' };
+        case 'freilos': return { text: 'Freilos', art: 'info' };
+        case 'gestartet': return { text: 'läuft', art: 'laeuft' };
+        case 'bereit':
+        case 'vorbereiten':
+            if (k.abstand === 0) return { text: 'als Nächstes', art: 'bald' };
+            if (Number.isInteger(k.abstand)) return { text: k.abstand === 1 ? 'in 1 Kampf' : `in ${k.abstand} Kämpfen`, art: 'bald' };
+            return { text: 'bereit', art: 'info' };
+        default: return { text: 'wartet auf Gegner', art: 'info' };
+    }
+}

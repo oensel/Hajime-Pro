@@ -1,0 +1,42 @@
+// Reiter Pools: alle Einzel-Pools mit Matte, Status und Fortschritt, filterbar nach Matte.
+import { api } from './api.js';
+import { h, inhalt, setzeStatus, zeigeTabs } from './ui.js';
+import { poolStatus, gewichtText, klassenTitel } from './anzeige.js';
+
+export async function zeigePools({ key }) {
+    zeigeTabs(key, 'pools');
+    let antwort;
+    try { antwort = await api.pools(key); } catch (f) {
+        inhalt().replaceChildren(h('p', { class: 'hinweis' }, f.status === 404 ? 'Das Turnier ist nicht mehr verfügbar.' : 'Keine Verbindung.'));
+        setzeStatus(f.status === 404 ? '' : 'Keine Verbindung', f.status !== 404);
+        return;
+    }
+    setzeStatus('');
+    const pools = antwort.pools;
+    if (!pools.length) {
+        inhalt().replaceChildren(h('h1', {}, 'Pools'), h('p', { class: 'hinweis' }, 'Noch keine Pools von der Halle gemeldet.'));
+        return;
+    }
+    const matten = [...new Map(pools.filter(p => p.matteId != null).map(p => [p.matteId, p.matteBezeichnung])).entries()];
+    let filter = 'alle';
+    function zeichne() {
+        const sichtbar = pools.filter(p => (filter === 'alle' ? true : filter === 'laeuft' ? p.laeuft > 0 : String(p.matteId) === filter));
+        inhalt().replaceChildren(
+            h('h1', {}, 'Pools'),
+            h('div', { class: 'chips', style: 'padding:0 0 8px' }, [
+                ['alle', 'Alle'], ...matten.map(([id, name]) => [String(id), name]), ['laeuft', 'Läuft']
+            ].map(([id, titel]) => h('button', {
+                class: `chip${filter === id ? ' an' : ''}`, type: 'button', 'data-testid': `filter-${id}`,
+                onclick: () => { filter = id; zeichne(); }
+            }, titel))),
+            ...(sichtbar.length ? sichtbar.map(p => {
+                const s = poolStatus(p);
+                const anteil = p.gesamt ? Math.round((p.beendet / p.gesamt) * 100) : 0;
+                return h('a', { class: 'pool-karte', 'data-testid': `pool-${p.poolId}`, href: `#/t/${encodeURIComponent(key)}/pool/${p.poolId}/baum` },
+                    h('div', { class: 'kopfzeile' }, h('span', {}, p.bezeichnung || `${klassenTitel(p)} ${gewichtText(p.gewichtsklasse)}`), h('span', { class: `schild ${s.art}` }, s.text)),
+                    h('div', { class: 'fuss' }, [p.matteBezeichnung || 'noch keine Matte', `${p.teilnehmer} Teilnehmer`, p.modus].filter(Boolean).join(' · ')),
+                    h('div', { class: 'balken' }, h('i', { class: s.art === 'fertig' ? 'fertig' : '', style: `width:${anteil}%` })));
+            }) : [h('p', { class: 'hinweis' }, 'Keine Pools in dieser Auswahl.')]));
+    }
+    zeichne();
+}

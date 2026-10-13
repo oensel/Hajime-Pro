@@ -14,6 +14,8 @@ export const api = {
     turniere: () => hole('/turniere'),
     turnier: (key) => hole(t(key)),
     suche: (key, q) => hole(`${t(key)}/suche?q=${encodeURIComponent(q)}`),
+    pools: (key) => hole(`${t(key)}/pools`),
+    dashboard: (key) => hole(`${t(key)}/dashboard`),
     pool: (key, poolId) => hole(`${t(key)}/pools/${encodeURIComponent(poolId)}`),
     verein: (key, vereinKey) => hole(`${t(key)}/vereine/${encodeURIComponent(vereinKey)}`),
     uebersicht: (key, anfrage) => hole(`${t(key)}/uebersicht`, {

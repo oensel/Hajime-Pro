@@ -24,10 +24,13 @@ const paket = (sequenz, extra = {}) => ({
         t('b1', 'Ben', 'Beispiel', { vereinKey: 'v2', verein: 'TV Beispiel', poolId: 11, poolBezeichnung: 'U15 m -50', geschlecht: 'm', gewichtsklasse: '-50', zustand: 'abgeschlossen', abstand: null, platz: 3 })
     ],
     pools: [
-        { id: 10, bezeichnung: 'U15 w -44', modus: 'Jeder-gegen-Jeden', status: 'matte_zugewiesen', matteId: 1, altersklasse: 'U15', geschlecht: 'w', gewichtsklasse: '-44', farbe2: 'blau' },
+        { id: 10, bezeichnung: 'U15 w -44', modus: 'Doppel-KO-8', status: 'matte_zugewiesen', matteId: 1, altersklasse: 'U15', geschlecht: 'w', gewichtsklasse: '-44', farbe2: 'blau' },
         { id: 11, bezeichnung: 'U15 m -50', modus: 'Jeder-gegen-Jeden', status: 'matte_zugewiesen', matteId: 1, altersklasse: 'U15', geschlecht: 'm', gewichtsklasse: '-50', farbe2: 'blau' }
     ],
-    kaempfe: [],
+    kaempfe: [
+        { id: 1, poolId: 10, nr: 'H1', status: 'beendet', reihenfolge: 1, k1: 'a1', k2: 'a2', sieger: 'a1', p1: 7, p2: 0 },
+        { id: 2, poolId: 10, nr: 'H2', status: 'gestartet', reihenfolge: 2, k1: 'a1', k2: 'a2', sieger: null, p1: 0, p2: 0 }
+    ],
     warteschlangen: [], ...extra
 });
 
@@ -97,7 +100,7 @@ test('Zurückgezogenes Turnier ist nicht mehr auswählbar', async ({ page, reque
 
 test('Offline-Start: die Startseite bietet die zuletzt geladene Übersicht an', async ({ page, request, context }) => {
     await sende(request, paket(Date.now() + 2000));
-    await page.goto(`/live/#/t/${KEY}/pool/10`);
+    await page.goto(`/live/#/t/${KEY}/pool/10/teilnehmer`);
     await page.getByTestId('stern-a1').click();
     await page.getByTestId('tab-uebersicht').click();
     await expect(page.getByRole('heading', { name: 'Übersicht' })).toBeVisible();
@@ -116,7 +119,7 @@ test('Offline-Start: die Startseite bietet die zuletzt geladene Übersicht an', 
 
 test('Zurückgezogenes Turnier: die Übersicht zeigt keine alten Namen mehr und räumt den Merkzettel auf', async ({ page, request }) => {
     await sende(request, paket(Date.now() + 3000));
-    await page.goto(`/live/#/t/${KEY}/pool/10`);
+    await page.goto(`/live/#/t/${KEY}/pool/10/teilnehmer`);
     await page.getByTestId('stern-a1').click();
     await page.getByTestId('tab-uebersicht').click();
     await expect(page.getByTestId('statuszeile')).toContainText('Stand von');
@@ -141,4 +144,20 @@ test('Startbildschirm: Vereine direkt, Klassen darunter, Klick auf Gewichtsklass
     await page.goto(`/live/#/t/${KEY}`);
     await page.getByTestId('verein-v2').click();
     await expect(page).toHaveURL(new RegExp(`#/t/${KEY}/verein/v2`));
+});
+
+test('Pools: Liste, Baum, Kampfliste und Teilnehmer eines Pools', async ({ page, request }) => {
+    await sende(request, paket(Date.now()));
+    await page.goto(`/live/#/t/${KEY}`);
+    await page.getByTestId('tab-pools').click();
+    await expect(page.getByTestId('pool-10')).toContainText('U15 w -44');
+    await page.getByTestId('pool-10').click();
+    await expect(page.getByTestId('reiter-baum')).toHaveClass(/aktiv/);
+    await expect(page.getByTestId('kampf-1')).toContainText('Anna Muster');
+    await page.getByTestId('reiter-kaempfe').click();
+    await expect(page.getByTestId('baum-oeffnen')).toBeVisible();
+    await page.getByTestId('reiter-teilnehmer').click();
+    await expect(page.getByTestId('kachel-a1')).toContainText('Anna Muster');
+    await page.goto(`/live/#/t/${KEY}/pool/999/baum`);
+    await expect(page.getByText('Pool nicht gefunden')).toBeVisible();
 });

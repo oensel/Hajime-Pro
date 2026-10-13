@@ -5,12 +5,14 @@ import { zeigeTurniere, zeigeStart } from './ansicht-start.js';
 import { zeigeVerein } from './ansicht-verein.js';
 import { zeigeUebersicht } from './ansicht-uebersicht.js';
 import { zeigePool } from './ansicht-pool.js';
+import { zeigePools } from './ansicht-pools.js';
 
 const ROUTEN = {
     suche: zeigeStart,
     uebersicht: zeigeUebersicht,
     verein: zeigeVerein,
-    pool: zeigePool
+    pool: zeigePool,
+    pools: zeigePools
 };
 
 async function route() {

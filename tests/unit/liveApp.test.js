@@ -143,3 +143,20 @@ test('klassenTitel und gewichtText', () => {
     assert.equal(gewichtText('+48'), '+48 kg');
     assert.equal(gewichtText(''), '');
 });
+
+import { poolStatus, kampfStatus } from '../../teilnehmer-app/js/anzeige.js';
+
+test('poolStatus und kampfStatus', () => {
+    assert.deepEqual(poolStatus({ status: 'abgeschlossen', gesamt: 6, beendet: 6, laeuft: 0 }), { text: 'Abgeschlossen', art: 'fertig' });
+    assert.deepEqual(poolStatus({ status: 'matte_zugewiesen', gesamt: 6, beendet: 2, laeuft: 1 }), { text: 'Läuft', art: 'laeuft' });
+    assert.deepEqual(poolStatus({ status: 'matte_zugewiesen', gesamt: 6, beendet: 5, laeuft: 0 }), { text: 'Noch 1 Kampf', art: 'info' });
+    assert.deepEqual(poolStatus({ status: 'matte_zugewiesen', gesamt: 6, beendet: 0, laeuft: 0 }), { text: 'Noch 6 Kämpfe', art: 'info' });
+    assert.deepEqual(poolStatus({ status: 'angelegt', gesamt: 0, beendet: 0, laeuft: 0 }), { text: 'Noch nicht ausgelost', art: 'info' });
+    assert.equal(kampfStatus({ status: 'beendet', p1: 7, p2: 0 }).text, '7:0 · beendet');
+    assert.equal(kampfStatus({ status: 'gestartet' }).art, 'laeuft');
+    assert.equal(kampfStatus({ status: 'bereit', abstand: 2 }).text, 'in 2 Kämpfen');
+    assert.equal(kampfStatus({ status: 'bereit', abstand: 0 }).text, 'als Nächstes');
+    assert.equal(kampfStatus({ status: 'bereit', abstand: null }).text, 'bereit');
+    assert.equal(kampfStatus({ status: 'angelegt' }).text, 'wartet auf Gegner');
+    assert.equal(kampfStatus({ status: 'freilos' }).text, 'Freilos');
+});
