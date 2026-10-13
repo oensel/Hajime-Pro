@@ -130,7 +130,7 @@ export async function ladePool(knex, turnierKey, poolId) {
             matteBezeichnung: poolZeile && kopf ? mattenName(kopf, poolZeile.matte_id) : (teilnehmerZeilen[0] ? teilnehmerZeilen[0].matte_bezeichnung : ''),
             modus: poolZeile ? poolZeile.modus : '', status: poolZeile ? poolZeile.status : '', farbe2: poolZeile ? poolZeile.farbe2 : 'blau'
         },
-        teilnehmer: teilnehmerZeilen.map(teilnehmerDto),
+        teilnehmer: await mitPoolStart(knex, turnierKey, teilnehmerZeilen.map(teilnehmerDto)),
         kaempfe: kaempfeZeilen.map(k => {
             const index = warteschlange.indexOf(k.kampf_id);
             return {
@@ -141,9 +141,47 @@ export async function ladePool(knex, turnierKey, poolId) {
     };
 }
 
+// Pool-Beginn je Pool: begonnen = es lief oder endete schon ein Kampf; startetIn = Abstand des ersten offenen Kampfes
+// des Pools in der Matten-Warteschlange (nur, solange der Pool noch nicht begonnen hat, sonst null).
+async function poolStarts(knex, turnierKey) {
+    const [pools, kaempfe] = await Promise.all([
+        knex('live_pools').where({ turnier_key: turnierKey }).select('pool_id', 'matte_id'),
+        knex('live_kaempfe').where({ turnier_key: turnierKey }).select('pool_id', 'status', 'reihenfolge', 'kampf_id')
+    ]);
+    const ergebnis = new Map();
+    const mattenDerPools = new Map(pools.map(p => [p.pool_id, p.matte_id]));
+    for (const p of pools) ergebnis.set(p.pool_id, { begonnen: false, startetIn: null });
+    for (const k of kaempfe) {
+        if ((k.status === 'gestartet' || k.status === 'beendet') && ergebnis.has(k.pool_id)) ergebnis.get(k.pool_id).begonnen = true;
+    }
+    const nachMatte = new Map();
+    for (const k of kaempfe) {
+        const matte = mattenDerPools.get(k.pool_id);
+        if (matte == null || !OFFEN.has(k.status)) continue;
+        if (!nachMatte.has(matte)) nachMatte.set(matte, []);
+        nachMatte.get(matte).push(k);
+    }
+    for (const liste of nachMatte.values()) {
+        liste.sort(nachReihenfolge).forEach((k, index) => {
+            const info = ergebnis.get(k.pool_id);
+            if (info && !info.begonnen && info.startetIn == null) info.startetIn = index;
+        });
+    }
+    return ergebnis;
+}
+
+async function mitPoolStart(knex, turnierKey, dtos) {
+    if (!dtos.length) return dtos;
+    const starts = await poolStarts(knex, turnierKey);
+    return dtos.map(d => {
+        const info = d.poolId != null ? starts.get(d.poolId) : null;
+        return { ...d, poolBegonnen: info ? info.begonnen : false, poolStartetIn: info ? info.startetIn : null };
+    });
+}
+
 export async function ladeVerein(knex, turnierKey, vereinKey) {
     const zeilen = await sortiert(knex('live_teilnehmer').where({ turnier_key: turnierKey, verein_key: vereinKey }));
-    return zeilen.map(teilnehmerDto);
+    return mitPoolStart(knex, turnierKey, zeilen.map(teilnehmerDto));
 }
 
 export async function uebersicht(knex, turnierKey, { teilnehmer, vereine } = {}) {
@@ -155,7 +193,7 @@ export async function uebersicht(knex, turnierKey, { teilnehmer, vereine } = {})
         if (vereinKeys.length) this.orWhereIn('verein_key', vereinKeys);
     });
     const zeilen = await sortiert(abfrage).limit(MAX_UEBERSICHT_ZEILEN);
-    return zeilen.map(teilnehmerDto);
+    return mitPoolStart(knex, turnierKey, zeilen.map(teilnehmerDto));
 }
 
 export async function listePools(knex, turnierKey) {

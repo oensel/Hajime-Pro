@@ -34,7 +34,8 @@ const PAARE = [
     ['on-primary', 'primary', 4.5],
     ['star-on', 'card', 3], ['star-on', 'bg', 3],
     ['ok', 'card', 4.5], ['warn', 'card', 4.5], ['live', 'card', 4.5], ['live', 'bg', 4.5],
-    ['border-strong', 'card', 3]
+    ['border-strong', 'card', 3],
+    ['on-primary', 'live', 4.5], ['on-primary', 'warn', 4.5], ['text', 'border', 4.5]
 ];
 
 test('Kontrast: das Dunkelmodus-Token-Set wurde wirklich gelesen', () => {

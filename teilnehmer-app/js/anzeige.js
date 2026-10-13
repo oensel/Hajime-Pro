@@ -19,6 +19,13 @@ export function matteText(bezeichnung) {
     return /^\d+$/.test(b) ? `Matte ${b}` : b;
 }
 
+// Kurzform für den Matten-Block der Kachel: "Matte 2" und "2" werden "2", eigene Namen bleiben erhalten.
+export function matteKurz(bezeichnung) {
+    const b = String(bezeichnung ?? '').trim();
+    const m = /^matte\s+(.+)$/i.exec(b);
+    return m ? m[1] : b;
+}
+
 const HINWEIS = {
     nicht_ausgelost: 'noch nicht ausgelost',
     ohne_matte: 'noch keine Matte zugeteilt',

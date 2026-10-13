@@ -64,6 +64,7 @@ h1 {
     font-size: 18px; margin: 0 0 12px; padding-bottom: 6px; border-bottom: 2px solid var(--primary);
     display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
 }
+h1.mit-aktionen { align-items: center; padding-bottom: 2px; }
 h1 small { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: none; letter-spacing: 0; }
 .abschnitt { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin: 16px 0 6px; display: flex; justify-content: space-between; align-items: center; }
 .zurueck { display: inline-flex; align-items: center; gap: 2px; color: var(--primary); font-weight: 700; font-size: 13px; text-decoration: none; margin-bottom: 8px; }
@@ -107,23 +108,37 @@ input[type="search"] {
 .chip.an { border-color: var(--primary); color: var(--primary); }
 
 .kachel {
-    display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 10px 12px; margin-bottom: 8px;
+    display: flex; margin-bottom: 8px; overflow: hidden;
     background: var(--card); border: 2px solid var(--border); border-radius: 12px; cursor: pointer;
 }
+.kachel-inhalt { flex: 1; min-width: 0; display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 10px 12px; }
+/* Matten-Block links; die Farbe folgt dem Zustand wie früher der Seitenbalken */
+.matte-block {
+    flex: none; width: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+    background: var(--border); color: var(--text); padding: 4px 2px; font-family: Outfit, sans-serif;
+}
+.matte-block small { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.matte-block span { font-size: 26px; font-weight: 800; line-height: 1.05; }
+.matte-block span.lang { font-size: 13px; line-height: 1.15; overflow-wrap: anywhere; }
+.kachel.laeuft .matte-block { background: var(--live); color: var(--on-primary); }
+.kachel.bald .matte-block { background: var(--warn); color: var(--on-primary); }
 .kachel .name { font-weight: 800; font-size: 15px; }
 .kachel .zeile { font-size: 12px; color: var(--muted); font-weight: 600; grid-column: 1; }
 .kachel .zeile.status { font-weight: 800; font-size: 13px; margin-top: 2px; color: var(--muted); }
 .kachel .zeile.status.bald { color: var(--warn); }
 .kachel .zeile.status.laeuft { color: var(--live); }
 .kachel .zeile.status.fertig { color: var(--ok); }
-.kachel.laeuft { border-color: var(--live); }
-.kachel.bald { border-left: 5px solid var(--warn); }
+.kachel.laeuft:not(.mit-matte) { border-left: 5px solid var(--live); }
+.kachel.bald:not(.mit-matte) { border-left: 5px solid var(--warn); }
+h1 + .abschnitt.trenner, h1 + div > .abschnitt.trenner:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.abschnitt.trenner { margin-top: 20px; padding-top: 10px; border-top: 2px solid var(--border-strong); }
 .kachel.markiert { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 8%, var(--card)); }
 .aktionen { grid-column: 2; grid-row: 1 / span 4; display: flex; align-items: center; gap: 0; }
 .icon-knopf {
     min-width: 44px; min-height: 44px; border: 0; background: none; color: var(--muted); cursor: pointer;
     display: inline-flex; align-items: center; justify-content: center;
 }
+.icon-knopf.klein { min-width: 36px; min-height: 36px; }
 .icon-knopf .material-icons { font-size: 26px; }
 .icon-knopf[aria-pressed="true"] { color: var(--star-on); }
 
@@ -133,18 +148,17 @@ input[type="search"] {
     text-transform: uppercase; letter-spacing: .4px; font-size: 13px; cursor: pointer; text-decoration: none; width: 100%;
 }
 .knopf.leise { background: var(--card); color: var(--primary); }
-.verein-kopf { background: var(--card); border: 2px solid var(--primary); border-radius: 12px; padding: 12px; margin-bottom: 12px; }
-.verein-kopf .zeile-1 { display: flex; justify-content: space-between; align-items: center; font-weight: 800; color: var(--primary); margin-bottom: 10px; }
-.verein-kopf .zeile-1 span { color: var(--muted); font-size: 12px; font-weight: 700; }
+.aktionen-zeile { display: flex; align-items: center; }
 .schalter { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); font-weight: 700; font-size: 14px; min-height: 44px; }
 .schalter input { width: 22px; height: 22px; accent-color: var(--primary); }
 
 .hinweis { padding: 12px; border: 2px dashed var(--border-strong); border-radius: 8px; color: var(--muted); font-weight: 600; font-size: 14px; }
 .leer { text-align: center; padding: 40px 12px; color: var(--muted); font-weight: 600; }
 .leer .material-icons { font-size: 44px; display: block; margin-bottom: 8px; color: var(--border-strong); }
-.status { position: fixed; left: 0; right: 0; bottom: 62px; z-index: 5; padding: 6px 16px; background: var(--card); border-top: 2px solid var(--border); font-size: 12px; font-weight: 700; color: var(--muted); }
-.status.getrennt { color: var(--live); }
-.status:empty { display: none; }
+/* Nur die Statusleiste unten (#statuszeile); die Statuszeile in den Kacheln heißt ebenfalls .status */
+#statuszeile { position: fixed; left: 0; right: 0; bottom: 62px; z-index: 5; padding: 6px 16px; background: var(--card); border-top: 2px solid var(--border); font-size: 12px; font-weight: 700; color: var(--muted); }
+#statuszeile.getrennt { color: var(--live); }
+#statuszeile:empty { display: none; }
 .reiter {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; display: flex; background: var(--card); border-top: 2px solid var(--border);
     padding-bottom: env(safe-area-inset-bottom);
