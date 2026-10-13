@@ -1,0 +1,220 @@
+/* Hajime Live: Optik der Turnier-App (Waage, Dashboard). Tokens aus public/css/common.css; Schriften lokal. */
+@import url('/css/schriften.css');
+@font-face {
+    font-family: 'Material Icons';
+    font-style: normal;
+    font-weight: 400;
+    src: url('/icons/material/material-icons.woff2') format('woff2');
+}
+
+:root {
+    --bg: #fcf9f2;
+    --card: #ffffff;
+    --primary: #1e3a8a;
+    --on-primary: #ffffff;
+    --text: #1e293b;
+    --muted: #64748b;
+    --border: #d9d4c7;
+    --border-strong: #8a8372;
+    --star-on: #b45309;
+    --ok: #2e7d32;
+    --warn: #b45309;
+    --live: #c2410c;
+    --kanji: rgba(30, 58, 138, 0.07);
+}
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #0b0f19;
+        --card: #111827;
+        --primary: #3b82f6;
+        --on-primary: #0b0f19;
+        --text: #f3f4f6;
+        --muted: #9ca3af;
+        --border: #1f2937;
+        --border-strong: #6b7280;
+        --star-on: #fbbf24;
+        --ok: #4ade80;
+        --warn: #fbbf24;
+        --live: #fb923c;
+        --kanji: rgba(59, 130, 246, 0.06);
+    }
+}
+
+* { box-sizing: border-box; }
+body {
+    margin: 0; background: var(--bg); color: var(--text); min-height: 100vh;
+    font: 15px/1.4 'Plus Jakarta Sans', Roboto, 'Segoe UI', sans-serif; padding-bottom: 78px;
+}
+.material-icons {
+    font-family: 'Material Icons'; font-weight: normal; font-style: normal; font-size: 22px; line-height: 1;
+    display: inline-block; letter-spacing: normal; text-transform: none; white-space: nowrap; direction: ltr;
+    -webkit-font-smoothing: antialiased; vertical-align: middle;
+}
+.kopf {
+    display: flex; justify-content: space-between; align-items: center; padding: 12px 16px;
+    background: var(--card); border-bottom: 2px solid var(--border);
+}
+.titel { font-family: Outfit, sans-serif; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; color: var(--primary); text-decoration: none; font-size: 16px; }
+.live-schild { font-size: 11px; font-weight: 700; color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); padding: 3px 9px; border-radius: 20px; }
+.live-schild.getrennt { color: var(--live); background: color-mix(in srgb, var(--live) 12%, transparent); }
+.kanji { position: fixed; right: -8px; bottom: 70px; font-size: 140px; line-height: 1; color: var(--kanji); pointer-events: none; z-index: 0; }
+main { position: relative; z-index: 1; padding: 14px 14px 8px; max-width: 40rem; margin: 0 auto; }
+h1 {
+    font-family: Outfit, sans-serif; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; color: var(--primary);
+    font-size: 18px; margin: 0 0 12px; padding-bottom: 6px; border-bottom: 2px solid var(--primary);
+    display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+}
+h1 small { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: none; letter-spacing: 0; }
+.abschnitt { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin: 16px 0 6px; display: flex; justify-content: space-between; align-items: center; }
+.zurueck { display: inline-flex; align-items: center; gap: 2px; color: var(--primary); font-weight: 700; font-size: 13px; text-decoration: none; margin-bottom: 8px; }
+
+input[type="search"] {
+    width: 100%; height: 44px; padding: 0 12px; font: inherit; color: var(--text); background: var(--card);
+    border: 2px solid var(--border-strong); border-radius: 8px; margin-bottom: 4px;
+}
+.treffer { background: var(--card); border: 2px solid var(--border); border-radius: 8px; margin-top: 6px; overflow: hidden; }
+.treffer a, .treffer div.t { display: block; padding: 10px 12px; border-top: 1px solid var(--border); text-decoration: none; color: var(--text); font-weight: 700; font-size: 14px; }
+.treffer a:first-child, .treffer div.t:first-child { border-top: 0; }
+.treffer small { display: block; font-weight: 600; color: var(--muted); font-size: 12px; }
+.treffer .hinweis-zeile small { color: var(--warn); }
+
+.knopf-liste { list-style: none; margin: 0; padding: 0; }
+.knopf-liste li { margin-bottom: 8px; }
+.knopf-liste a {
+    display: block; padding: 12px; min-height: 44px; background: var(--card); border: 2px solid var(--border); border-radius: 8px;
+    color: var(--text); text-decoration: none; font-weight: 700;
+}
+
+.raster { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.verein-kachel {
+    display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 10px 12px; min-height: 44px;
+    background: var(--card); border: 2px solid var(--border); border-radius: 8px; color: var(--text); text-decoration: none; font-weight: 700; font-size: 13px;
+}
+.verein-kachel span { color: var(--muted); font-size: 12px; font-weight: 700; }
+.gruppe { background: var(--card); border: 2px solid var(--border); border-radius: 8px; margin-bottom: 8px; }
+.gruppe > button {
+    width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 11px 12px; min-height: 44px;
+    background: none; border: 0; font: inherit; font-weight: 700; color: var(--text); cursor: pointer;
+}
+.gruppe > button span { color: var(--muted); font-size: 12px; }
+.gruppe.offen { border-color: var(--primary); }
+.gruppe.offen > button { color: var(--primary); }
+.chips { padding: 0 12px 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+    display: inline-flex; align-items: center; min-height: 36px; padding: 0 12px; border: 2px solid var(--border-strong);
+    border-radius: 18px; font-size: 13px; font-weight: 700; color: var(--text); background: var(--card); text-decoration: none; cursor: pointer; font-family: inherit;
+}
+.chip.an { border-color: var(--primary); color: var(--primary); }
+
+.kachel {
+    display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 10px 12px; margin-bottom: 8px;
+    background: var(--card); border: 2px solid var(--border); border-radius: 12px; cursor: pointer;
+}
+.kachel .name { font-weight: 800; font-size: 15px; }
+.kachel .zeile { font-size: 12px; color: var(--muted); font-weight: 600; grid-column: 1; }
+.kachel .zeile.status { font-weight: 800; font-size: 13px; margin-top: 2px; color: var(--muted); }
+.kachel .zeile.status.bald { color: var(--warn); }
+.kachel .zeile.status.laeuft { color: var(--live); }
+.kachel .zeile.status.fertig { color: var(--ok); }
+.kachel.laeuft { border-color: var(--live); }
+.kachel.bald { border-left: 5px solid var(--warn); }
+.kachel.markiert { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 8%, var(--card)); }
+.aktionen { grid-column: 2; grid-row: 1 / span 4; display: flex; align-items: center; gap: 0; }
+.icon-knopf {
+    min-width: 44px; min-height: 44px; border: 0; background: none; color: var(--muted); cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+}
+.icon-knopf .material-icons { font-size: 26px; }
+.icon-knopf[aria-pressed="true"] { color: var(--star-on); }
+
+.knopf {
+    display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 16px; border-radius: 8px;
+    border: 2px solid var(--primary); background: var(--primary); color: var(--on-primary); font: inherit; font-weight: 800;
+    text-transform: uppercase; letter-spacing: .4px; font-size: 13px; cursor: pointer; text-decoration: none; width: 100%;
+}
+.knopf.leise { background: var(--card); color: var(--primary); }
+.verein-kopf { background: var(--card); border: 2px solid var(--primary); border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+.verein-kopf .zeile-1 { display: flex; justify-content: space-between; align-items: center; font-weight: 800; color: var(--primary); margin-bottom: 10px; }
+.verein-kopf .zeile-1 span { color: var(--muted); font-size: 12px; font-weight: 700; }
+.schalter { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); font-weight: 700; font-size: 14px; min-height: 44px; }
+.schalter input { width: 22px; height: 22px; accent-color: var(--primary); }
+
+.hinweis { padding: 12px; border: 2px dashed var(--border-strong); border-radius: 8px; color: var(--muted); font-weight: 600; font-size: 14px; }
+.leer { text-align: center; padding: 40px 12px; color: var(--muted); font-weight: 600; }
+.leer .material-icons { font-size: 44px; display: block; margin-bottom: 8px; color: var(--border-strong); }
+.status { position: fixed; left: 0; right: 0; bottom: 62px; z-index: 5; padding: 6px 16px; background: var(--card); border-top: 2px solid var(--border); font-size: 12px; font-weight: 700; color: var(--muted); }
+.status.getrennt { color: var(--live); }
+.status:empty { display: none; }
+.reiter {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; display: flex; background: var(--card); border-top: 2px solid var(--border);
+    padding-bottom: env(safe-area-inset-bottom);
+}
+.reiter a {
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0 6px; min-height: 56px;
+    font-size: 11px; font-weight: 700; color: var(--muted); text-decoration: none;
+}
+.reiter a.aktiv { color: var(--primary); }
+.reiter[hidden] { display: none; }
+
+.segment { display: flex; border: 2px solid var(--border-strong); border-radius: 8px; overflow: hidden; margin-bottom: 12px; background: var(--card); }
+.segment a { flex: 1; text-align: center; padding: 10px 0; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .3px; color: var(--muted); text-decoration: none; }
+.segment a.aktiv { background: var(--primary); color: var(--on-primary); }
+
+.pool-karte { background: var(--card); border: 2px solid var(--border); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; display: block; color: var(--text); text-decoration: none; }
+.pool-karte .kopfzeile { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-family: Outfit, sans-serif; font-weight: 800; text-transform: uppercase; color: var(--primary); font-size: 14px; }
+.pool-karte .fuss { font-size: 12px; color: var(--muted); font-weight: 600; margin-top: 2px; }
+.schild { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; border-radius: 4px; padding: 2px 7px; color: var(--muted); border: 1px solid var(--border-strong); white-space: nowrap; }
+.schild.laeuft { color: var(--live); border-color: var(--live); }
+.schild.fertig { color: var(--ok); border-color: var(--ok); }
+.balken { height: 6px; background: var(--border); border-radius: 3px; margin-top: 8px; }
+.balken i { display: block; height: 6px; border-radius: 3px; background: var(--primary); }
+.balken i.fertig { background: var(--ok); }
+
+.matte-karte { background: var(--card); border: 2px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+.matte-kopf { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--primary); padding-bottom: 6px; margin-bottom: 10px; font-family: Outfit, sans-serif; font-weight: 900; text-transform: uppercase; color: var(--primary); font-size: 17px; }
+.laufend { border: 2px solid var(--primary); border-radius: 8px; padding: 10px; text-align: center; background: color-mix(in srgb, var(--primary) 6%, var(--card)); cursor: pointer; }
+.laufend .etikett { display: inline-block; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, transparent); padding: 2px 8px; border-radius: 4px; margin-bottom: 6px; }
+.laufend .klasse { font-size: 13px; font-weight: 800; text-transform: uppercase; color: var(--primary); margin-bottom: 8px; }
+.paarung { display: flex; font-size: 13px; font-weight: 700; }
+.paarung > div { flex: 1; padding: 9px 10px; text-align: left; }
+.paarung .farbe { color: #ffffff; border: 2px solid; border-radius: 8px 0 0 8px; }
+.paarung .farbe.blau { background: #007bff; border-color: #0056b3; }
+.paarung .farbe.rot { background: #dc3545; border-color: #bd2130; }
+.paarung .weiss { background: #ffffff; color: #1f2937; border: 2px solid #d9d4c7; border-radius: 0 8px 8px 0; text-align: right; }
+.paarung small { display: block; font-size: 11px; font-weight: 600; opacity: .9; }
+.naechster { display: flex; gap: 8px; align-items: center; padding: 8px 10px; margin-bottom: 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer; }
+.naechster .nr { width: 22px; height: 22px; border-radius: 50%; background: var(--primary); color: var(--on-primary); font-size: 12px; text-align: center; line-height: 22px; flex-shrink: 0; }
+.naechster em { margin-left: auto; font-style: normal; font-size: 11px; color: var(--muted); white-space: nowrap; }
+.fortschritt { font-size: 13px; font-weight: 700; margin-bottom: 8px; }
+.fortschritt .zeile { display: flex; justify-content: space-between; gap: 8px; }
+.fortschritt .zeile span + span { color: var(--muted); font-size: 12px; }
+
+.kampfzeile { display: flex; gap: 8px; align-items: center; padding: 10px 12px; margin-bottom: 6px; background: var(--card); border: 2px solid var(--border); border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; }
+.kampfzeile .nr { font-size: 11px; color: var(--muted); min-width: 28px; }
+.kampfzeile .sieger { color: var(--ok); }
+.kampfzeile .rechts { margin-left: auto; text-align: right; font-size: 11px; color: var(--muted); text-transform: uppercase; white-space: nowrap; }
+.kampfzeile.markiert { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 8%, var(--card)); }
+
+.scroll { overflow-x: auto; padding-bottom: 6px; }
+.runden { display: flex; gap: 12px; align-items: flex-start; min-width: min-content; }
+.runde { min-width: 150px; }
+.runde-titel { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin-bottom: 6px; }
+.runde-liste { display: flex; flex-direction: column; justify-content: space-around; gap: 10px; }
+.karte { background: var(--card); border: 2px solid var(--border); border-radius: 6px; font-size: 12px; font-weight: 700; overflow: hidden; }
+.karte.laeuft { border-color: var(--live); }
+.karte.markiert { border-color: var(--primary); }
+.karte .z { padding: 5px 7px; display: flex; justify-content: space-between; gap: 6px; }
+.karte .z + .z { border-top: 1px solid var(--border); }
+.karte .z.sieger { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
+.karte .z.offen { color: var(--muted); font-weight: 600; }
+.karte .z.stern { border-left: 3px solid var(--star-on); }
+.bogen { border-collapse: collapse; font-size: 12px; min-width: 100%; }
+.bogen th, .bogen td { border: 1px solid var(--border); padding: 6px 5px; text-align: center; }
+.bogen th { background: var(--card); font-weight: 700; }
+.bogen th.name { text-align: left; min-width: 110px; }
+.bogen td.gewonnen { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); font-weight: 800; }
+.bogen td.verloren { color: var(--muted); }
+.bogen td.laeuft { color: var(--live); font-weight: 800; }
+.bogen td.diagonale { background: var(--border); }
+.bogen td.markiert { outline: 3px solid var(--primary); outline-offset: -3px; }
+.bogen .zusatz { display: inline-block; margin-left: 3px; padding: 0 4px; border-radius: 4px; background: color-mix(in srgb, var(--warn) 20%, transparent); font-size: 10px; }

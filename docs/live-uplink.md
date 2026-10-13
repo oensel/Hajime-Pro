@@ -38,3 +38,47 @@ Entwurf: `docs/specs/2026-10-12-teilnehmer-app-design.md`.
 - Status: `systemctl status hajime-live`, Log: `journalctl -u hajime-live -f`.
 - Fällt der Slave aus, läuft das Turnier weiter; die Live-Anzeige friert ein und zeigt den Stand von zuletzt.
 - Wird der Slave zum Master, liest der Prozess den Primary mit derselben Rolle weiter.
+
+## Cloud-Seite (Phase 2)
+
+Die Cloud (`BETRIEBSMODUS=cloud`) nimmt die Snapshots unter `POST /api/live/ingest` an und liefert die App-API unter
+`/api/live/*` sowie die PWA „Hajime Live“ unter `/live/`. Voraussetzung: die Migration
+`20261012110000_live_cloud_lesemodell` ist gelaufen (`DB_AUTO_MIGRATE=true` oder manuell, siehe CLAUDE.md).
+
+**Token für den Slave erzeugen** (wird nur einmal angezeigt, in der Datenbank liegt nur der Hash):
+
+    node scripts/live-token.mjs erzeugen --name "Halle Senden"
+    # optional an ein Turnier binden: --turnier <urspruengliche_id>
+    node scripts/live-token.mjs liste
+    node scripts/live-token.mjs sperren <id>
+
+Das Token gehört als `LIVE_UPLINK_TOKEN` in die `live.env` des Slaves, die URL ist `https://<cloud>/api/live/ingest`.
+
+| Variable (Cloud) | Wirkung |
+|---|---|
+| `LIVE_AUFBEWAHRUNG_TAGE` | Löschfrist nach dem Turnierdatum, Standard 7 |
+| `LIVE_PROXY_VERTRAUEN=true` | Absenderadresse für die Ratenbegrenzung aus `X-Forwarded-For` (nur hinter einem eigenen Proxy setzen) |
+| `LIVE_PROXY_HOPS` | Anzahl vertrauenswürdiger Proxys in der Kette, vom Ende gezählt (Standard 1) |
+| `LIVE_RATE_MAX` | Anfragen je Absender und Minute für die App-API, Standard 1200 (Mobilfunk und Hallen-WLAN bündeln viele Geräte hinter einer Adresse) |
+| `LIVE_API_AKTIV=true` | schaltet die Routen außerhalb der Cloud ein (nur für Tests) |
+
+Die App-API ist je Absender auf `LIVE_RATE_MAX` Anfragen/Minute begrenzt (Standard 1200), falsche Token am Ingest auf 30/Minute. Kommt ein veraltetes Paket an (die Cloud hat schon einen neueren Stand, z. B. wegen einer zurückgesprungenen Uhr des Slaves), antwortet der Ingest mit 409; der Uplink loggt das und sendet mit Backoff erneut. Fällt die Halle aus,
+zeigt die App „Halle nicht verbunden“, sobald seit 3 Minuten kein Paket ankam. Die Geräte sind zustandslos: Sterne und
+Glocken liegen im Browser, die Übersicht schickt die Schlüsselliste bei jeder Anfrage mit.
+
+### Phase 2b: Pools, Kämpfe, Turnierbaum, Dashboard
+
+Der Snapshot enthält zusätzlich die optionalen Felder `pools` (Einzel-Pools ohne Sammelpool „Verspätet“, mit Modus, Status,
+Matte und Farbe von Kämpfer 2) und `kaempfe` (alle Einzelkämpfe dieser Pools mit Kampfnummer, Status, Paarung, Sieger und
+Punkten); Voraussetzung am Hallen-Server ist die Migration `20261013100000_live_views_farbe`, in der Cloud
+`20261013110000_live_cloud_pools_kaempfe`. Zusätzliche Endpunkte der App-API:
+
+| Endpunkt | Inhalt |
+|---|---|
+| `GET /api/live/turniere/:key` | zusätzlich `klassen` (Altersklasse/Geschlecht mit ihren Pools) |
+| `GET /api/live/turniere/:key/pools` | alle Pools mit Matte, Teilnehmerzahl und Fortschritt |
+| `GET /api/live/turniere/:key/pools/:poolId` | zusätzlich `pool.modus`, `kaempfe` mit aufgelösten Kämpfern und Abstand |
+| `GET /api/live/turniere/:key/dashboard` | Matten mit laufendem Kampf, nächsten drei Kämpfen, Pools; Warteschlange ohne Matte |
+
+Ein älterer Live-Prozess ohne diese Felder funktioniert weiter: Suche und Übersicht laufen wie bisher, Pools, Turnier und
+Baum zeigen „Noch keine Kampfdaten von der Halle“. Der Live-Prozess in der Halle muss für Pools und Kämpfe aktualisiert werden.

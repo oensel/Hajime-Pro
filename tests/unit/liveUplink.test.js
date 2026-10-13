@@ -118,3 +118,14 @@ test('Zustandsdatei nicht beschreibbar: Uplink läuft weiter', async () => {
     const u = erzeugeUplink({ url: 'u', token: 't', fetchFn: w.fetchFn, jetzt: w.jetzt, zustandDatei: path.join(os.tmpdir(), 'gibt-es-nicht', 'x', 'y.json'), log: still });
     assert.deepEqual(await u.sende([snap('1')]), { gesendet: 1, zurueckgezogen: 0, fehler: 0 });
 });
+
+test('Sequenz ist streng monoton, auch wenn die Uhr stehen bleibt oder zurückspringt', async () => {
+    const w = werkzeug();
+    const u = erzeugeUplink({ url: 'u', token: 't', fetchFn: w.fetchFn, jetzt: w.jetzt, log: still });
+    await u.sende([snap('1'), snap('2')]);
+    w.vor(-5000);
+    await u.sende([snap('1', { name: 'neu' }), snap('2')]);
+    const folge = w.aufrufe.map(a => a.body.sequenz);
+    assert.equal(folge.length, 3);
+    assert.ok(folge[1] > folge[0] && folge[2] > folge[1], `Sequenzen ${folge}`);
+});

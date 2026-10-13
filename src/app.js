@@ -22,6 +22,8 @@ import { getKampfflaecheRoutes } from './routes/kampfflaecheRoutes.js';
 import { getKampfRoutes } from './routes/kampfRoutes.js';
 import { getMannschaftRoutes, getMannschaftskampfRoutes } from './routes/mannschaftRoutes.js';
 import { getUrkundenRoutes } from './routes/urkundenRoutes.js';
+import { getLiveRoutes } from './routes/liveRoutes.js';
+import { starteAufbewahrung } from './liveCloud/aufbewahrung.js';
 import { ensureSuperAdmin } from './utils/superAdmin.js';
 import { waehleKnexUmgebung } from './utils/dbUmgebung.js';
 import betriebsmodus from './config/betriebsmodus.cjs';
@@ -301,6 +303,14 @@ if (syncKonfig.istClient) {
     app.use('/api/mannschaftskaempfe', requireWriteAuth, getMannschaftskampfRoutes(knex));
     app.use('/api/urkunden', requireWriteAuth, getUrkundenRoutes(knex));
     app.use('/api/sync', getSyncRoutes(() => app.get('sync')));
+
+    // Teilnehmer-App (Phase 2): Ingest des Live-Prozesses und öffentliche App-API. Nur in der Cloud — ein Hallen-Server
+    // darf keinen offenen Ingest anbieten. LIVE_API_AKTIV=true schaltet es für die Test-Suite im Modus server ein.
+    if (bm.istCloud || process.env.LIVE_API_AKTIV === 'true') {
+        app.use('/api/live', getLiveRoutes(knex));
+        app.use('/live', express.static(path.join(__dirname, '../teilnehmer-app')));
+        starteAufbewahrung(knex, { tage: Number(process.env.LIVE_AUFBEWAHRUNG_TAGE) || 7 });
+    }
 }
 
 app.use('/js/qr', express.static(path.join(__dirname, '../node_modules/jsqr/dist')));

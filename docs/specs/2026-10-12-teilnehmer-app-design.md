@@ -143,6 +143,8 @@ Wird die Reihenfolge später geändert (Drag & Drop, Matte neu verteilt), gibt e
 ### 6.1 Cloud
 - Eigene Tabellen (Lesemodell), nicht die operativen: `live_turniere`, `live_teilnehmer`, `live_kampf_positionen`,
   `live_verfolgungen` (Geräte-Token, Teilnehmer- oder Vereins-Schlüssel, Glocke), `push_geraete`, `push_log`.
+  Phase 2 legt `live_turniere`, `live_teilnehmer`, `live_kampf_positionen` und `live_ingest_tokens` an; `live_verfolgungen`,
+  `push_geraete` und `push_log` folgen mit Phase 3, bis dahin sind die Geräte zustandslos (Schlüsselliste je Anfrage).
 - Ingest ersetzt den Stand des Turniers atomar (Sequenznummer, ältere Pakete werden verworfen).
 - App-API (nur Lesen, Rate-Limit, keine Aufzählung ohne Suchbegriff): Turnierliste, Vereinsliste, Suche (ab 2 Zeichen, Treffer
   „Name · Verein · Klasse"), Pool mit allen Teilnehmern, Übersicht zu den verfolgten Schlüsseln, `stand` des Turniers.
