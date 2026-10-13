@@ -191,3 +191,38 @@ test('Verein verfolgen: Knopf, Glocke für alle, Vereinsblock in der Übersicht'
     await page.getByTestId('tab-uebersicht').click();
     await expect(page.getByTestId('gruppe-verein-v1')).toContainText('Anna');
 });
+
+test('Glocke meldet das Gerät für Push an und wieder ab', async ({ page, request }) => {
+    await page.addInitScript(() => {
+        const endpoint = 'https://fcm.googleapis.com/fcm/send/e2e-geraet';
+        let abo = null;
+        // Berechtigung und Push-Dienst werden ersetzt: der echte Versand braucht HTTPS und ein echtes Gerät.
+        Object.defineProperty(Notification, 'permission', { get: () => 'granted' });
+        const neu = () => ({ endpoint, toJSON() { return { endpoint, keys: { p256dh: 'pk', auth: 'ak' } }; } });
+        PushManager.prototype.getSubscription = async () => abo;
+        PushManager.prototype.subscribe = async () => { abo = neu(); return abo; };
+    });
+    const anmeldungen = [];
+    const abmeldungen = [];
+    await page.route('**/api/live/push/schluessel', route => route.fulfill({ json: { schluessel: 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9' } }));
+    await page.route('**/api/live/turniere/*/push', async (route) => {
+        const methode = route.request().method();
+        const body = route.request().postDataJSON();
+        if (methode === 'PUT') anmeldungen.push(body); else abmeldungen.push(body);
+        await route.fulfill({ status: 204 });
+    });
+
+    await sende(request, paket(Date.now()));
+    await page.goto(`/live/#/t/${KEY}/pool/10/teilnehmer`);
+    await expect(page.getByTestId('kachel-a1')).toBeVisible();
+    await page.getByTestId('stern-a1').click();
+
+    await expect.poll(() => anmeldungen.length, { timeout: 8000 }).toBeGreaterThan(0);
+    const letzte = anmeldungen[anmeldungen.length - 1];
+    expect(letzte.abo.endpoint).toBe('https://fcm.googleapis.com/fcm/send/e2e-geraet');
+    expect(letzte.glocken.teilnehmer).toEqual(['a1']);
+
+    await page.getByTestId('glocke-a1').click();
+    await expect.poll(() => abmeldungen.length, { timeout: 8000 }).toBeGreaterThan(0);
+    expect(abmeldungen[0].endpoint).toBe('https://fcm.googleapis.com/fcm/send/e2e-geraet');
+});

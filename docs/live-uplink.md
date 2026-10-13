@@ -82,3 +82,34 @@ Punkten); Voraussetzung am Hallen-Server ist die Migration `20261013100000_live_
 
 Ein älterer Live-Prozess ohne diese Felder funktioniert weiter: Suche und Übersicht laufen wie bisher, Pools, Turnier und
 Baum zeigen „Noch keine Kampfdaten von der Halle“. Der Live-Prozess in der Halle muss für Pools und Kämpfe aktualisiert werden.
+
+### Phase 3: Push-Nachrichten
+
+Geräte, die in der App die Glocke gesetzt haben, bekommen eine Push-Nachricht 3 Kämpfe vor dem Pool-Start und 3 Kämpfe vor dem
+Kampf des Gefolgten (auch „Glocke für alle“ eines Vereins, inklusive später gemeldeter Mitglieder). Es ist Standard-Web-Push
+(VAPID): Android, Desktop und das iPhone (iOS ab 16.4, die App muss zum Home-Bildschirm hinzugefügt sein).
+
+**Einrichtung in der Cloud** (ohne diese Variablen ist Push aus, die App arbeitet wie bisher):
+
+```bash
+node scripts/live-push-schluessel.mjs   # erzeugt das VAPID-Schlüsselpaar
+```
+
+| Variable | Bedeutung |
+|---|---|
+| `LIVE_PUSH_VAPID_PUBLIC` / `LIVE_PUSH_VAPID_PRIVATE` | Schlüsselpaar (der private Schlüssel nur in der Cloud-Umgebung) |
+| `LIVE_PUSH_BETREFF` | Kontakt für die Push-Dienste, `mailto:…` oder `https://…` |
+| `LIVE_PUSH_AUFBEWAHRUNG_TAGE` | Löschung der Anmeldungen nach dem Turnier-Datum, Standard 3 |
+| `LIVE_PUSH_MAX_ABOS` | höchstens so viele Anmeldungen je Turnier, Standard 5000 |
+
+Voraussetzung ist HTTPS. Die Migration `20261013120000_live_push` legt `live_push_abos`, `live_push_glocken` und
+`live_push_gesendet` an. Gespeichert werden nur Push-Endpunkt und -Schlüssel des Geräts, die Turnier-Kennung und die
+Glockenliste (keine Namen, keine IP). Die Anmeldungen werden 3 Tage nach dem Turnier-Datum, bei Abmeldung, bei Abmeldung
+durch den Push-Dienst (404/410) und mit der Rücknahme des Turniers gelöscht; im Datenschutztext der App ergänzen.
+
+Endpunkte: `GET /api/live/push/schluessel`, `PUT /api/live/turniere/:key/push`, `DELETE /api/live/turniere/:key/push`.
+Die Cloud sendet nur an bekannte Push-Dienste (Google, Mozilla, Microsoft, Apple).
+
+**Prüfliste am echten Gerät** (der Versand lässt sich nur so prüfen): Android Chrome, iPhone mit Home-Bildschirm-App,
+Desktop-Browser: Glocke setzen, Berechtigung erteilen, in der Halle einen Kampf bis auf 3 Positionen vorrücken lassen,
+Nachricht und Antippen (öffnet die Übersicht) prüfen, danach Glocke aus und prüfen, dass nichts mehr kommt.
