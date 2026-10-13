@@ -85,6 +85,25 @@ export function baueSnapshot({ turnier, kampfflaechen, pools, teilnehmer, kaempf
         })
         .sort((a, b) => a.matteId - b.matteId);
 
+    const einzelPools = pools.filter(p => p.typ !== 'mannschaft' && !p.verspaetet).sort((a, b) => a.id - b.id);
+    const poolIdsAusgabe = new Set(einzelPools.map(p => p.id));
+    const poolsAusgabe = einzelPools.map(p => ({
+        id: p.id, bezeichnung: p.bezeichnung, modus: p.modus, status: p.status,
+        matteId: p.kampfflaeche_id != null ? p.kampfflaeche_id : null,
+        altersklasse: p.altersklasse, geschlecht: p.geschlecht, gewichtsklasse: p.gewichtsklasse,
+        farbe2: p.farbe_kaempfer2 || turnier.farbe_kaempfer2 || 'blau'
+    }));
+    const kaempfeAusgabe = kaempfe
+        .filter(k => !k.mannschaftskampf_id && poolIdsAusgabe.has(k.pool_id))
+        .sort((a, b) => a.id - b.id)
+        .map(k => ({
+            id: k.id, poolId: k.pool_id, nr: k.reihenfolge_nummer == null ? '' : String(k.reihenfolge_nummer), status: k.status,
+            reihenfolge: k.matten_reihenfolge == null ? null : Number(k.matten_reihenfolge),
+            k1: keyVonId.get(k.kaempfer1_id) ?? null, k2: keyVonId.get(k.kaempfer2_id) ?? null,
+            sieger: keyVonId.get(k.sieger_id) ?? null,
+            p1: Number(k.unterbewertung_kaempfer1) || 0, p2: Number(k.unterbewertung_kaempfer2) || 0
+        }));
+
     return {
         version: 1,
         turnierKey: String(turnier.urspruengliche_id),
@@ -93,7 +112,9 @@ export function baueSnapshot({ turnier, kampfflaechen, pools, teilnehmer, kaempf
         vereine,
         matten: kampfflaechen.map(m => ({ id: m.id, bezeichnung: m.bezeichnung })).sort((a, b) => a.id - b.id),
         teilnehmer: eintraege,
-        warteschlangen
+        warteschlangen,
+        pools: poolsAusgabe,
+        kaempfe: kaempfeAusgabe
     };
 }
 

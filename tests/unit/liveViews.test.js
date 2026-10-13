@@ -32,6 +32,10 @@ test('Migration: live_freigabe-Spalte und Views im Schema live', async () => {
             const r = await knex.raw(`select * from live.${view} limit 0`);
             assert.ok(Array.isArray(r.fields), view);
         }
+        for (const view of ['turniere', 'pools']) {
+            const r = await knex.raw(`select farbe_kaempfer2 from live.${view} limit 0`);
+            assert.equal(r.fields[0].name, 'farbe_kaempfer2', view);
+        }
     } finally {
         await db.stoppe();
     }

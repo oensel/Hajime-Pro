@@ -128,3 +128,36 @@ test('baueSnapshot: Judoka, die nur in der Mannschaft starten, erscheinen nicht 
     const s = baueSnapshot(roh, { geheimnis: 'g' });
     assert.deepEqual(s.teilnehmer.map(t => t.vorname), ['V1']);
 });
+
+test('baueSnapshot: pools und kaempfe für die App (Baum, Kampfliste, Dashboard)', () => {
+    const roh = {
+        turnier: { ...turnier, farbe_kaempfer2: 'rot' },
+        kampfflaechen: matten,
+        pools: [pool(), pool({ id: 11, typ: 'mannschaft', bezeichnung: 'Team' }), pool({ id: 12, verspaetet: true, bezeichnung: 'Verspätet' }),
+            pool({ id: 13, bezeichnung: 'U15 m -50', farbe_kaempfer2: 'blau', modus: 'Doppel-KO-8' })],
+        teilnehmer: [teil(1), teil(2)],
+        kaempfe: [
+            kampf(1, 1, 2, { reihenfolge_nummer: 'R1' }),
+            kampf(2, 1, 2, { mannschaftskampf_id: 5 }),
+            kampf(3, 1, 2, { pool_id: 11 }),
+            kampf(4, 1, null, { status: 'freilos', pool_id: 13, reihenfolge_nummer: 'H1', sieger_id: 1, unterbewertung_kaempfer1: 7 })
+        ]
+    };
+    const s = baueSnapshot(roh, { geheimnis: 'g' });
+    assert.deepEqual(s.pools.map(p => p.id), [10, 13]);
+    assert.deepEqual(s.pools[0], {
+        id: 10, bezeichnung: 'U15 w -44', modus: 'Jeder-gegen-Jeden', status: 'matte_zugewiesen', matteId: 1,
+        altersklasse: 'U15', geschlecht: 'w', gewichtsklasse: '-44', farbe2: 'rot'
+    });
+    assert.equal(s.pools[1].farbe2, 'blau');
+    assert.deepEqual(s.kaempfe.map(k => k.id), [1, 4]);
+    const t1 = s.teilnehmer.find(t => t.vorname === 'V1').key;
+    const t2 = s.teilnehmer.find(t => t.vorname === 'V2').key;
+    assert.deepEqual(s.kaempfe[0], { id: 1, poolId: 10, nr: 'R1', status: 'bereit', reihenfolge: 1, k1: t1, k2: t2, sieger: null, p1: 0, p2: 0 });
+    assert.deepEqual(s.kaempfe[1], { id: 4, poolId: 13, nr: 'H1', status: 'freilos', reihenfolge: 4, k1: t1, k2: null, sieger: t1, p1: 7, p2: 0 });
+});
+
+test('baueSnapshot: ohne Turnierfarbe gilt blau', () => {
+    const s = baueSnapshot({ turnier, kampfflaechen: matten, pools: [pool()], teilnehmer: [teil(1)], kaempfe: [] }, { geheimnis: 'g' });
+    assert.equal(s.pools[0].farbe2, 'blau');
+});
