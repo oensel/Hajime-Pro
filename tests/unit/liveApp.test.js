@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { klasseText, matteText, kachelZeilen, verbindung, klassenTitel, gewichtText } from '../../teilnehmer-app/js/anzeige.js';
+import { klasseText, matteText, kachelZeilen, verbindung, klassenTitel, gewichtText, kaempferAnzeige, kampfLink } from '../../teilnehmer-app/js/anzeige.js';
 import { erzeugeSpeicher, bereinigeAlte } from '../../teilnehmer-app/js/speicher.js';
 
 const basis = { vorname: 'Anna', nachname: 'Muster', altersklasse: 'U15', geschlecht: 'w', gewichtsklasse: '-44', matteBezeichnung: 'Matte 2', abstand: null, platz: null };
@@ -159,4 +159,10 @@ test('poolStatus und kampfStatus', () => {
     assert.equal(kampfStatus({ status: 'bereit', abstand: null }).text, 'bereit');
     assert.equal(kampfStatus({ status: 'angelegt' }).text, 'wartet auf Gegner');
     assert.equal(kampfStatus({ status: 'freilos' }).text, 'Freilos');
+});
+
+test('kaempferAnzeige und kampfLink', () => {
+    assert.deepEqual(kaempferAnzeige({ name: 'Anna Muster', verein: 'JC Senden' }), { name: 'Anna Muster', verein: 'JC Senden' });
+    assert.deepEqual(kaempferAnzeige(null), { name: 'offen', verein: '' });
+    assert.equal(kampfLink('T 1', { poolId: 10, id: 55 }), '#/t/T%201/pool/10/kaempfe/55');
 });

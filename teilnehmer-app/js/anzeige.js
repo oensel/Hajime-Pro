@@ -83,3 +83,11 @@ export function kampfStatus(k) {
         default: return { text: 'wartet auf Gegner', art: 'info' };
     }
 }
+
+export function kaempferAnzeige(k) {
+    return k ? { name: k.name, verein: k.verein || '' } : { name: 'offen', verein: '' };
+}
+
+export function kampfLink(turnierKey, kampf) {
+    return `#/t/${encodeURIComponent(turnierKey)}/pool/${kampf.poolId}/kaempfe/${kampf.id}`;
+}

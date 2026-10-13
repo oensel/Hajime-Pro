@@ -161,3 +161,16 @@ test('Pools: Liste, Baum, Kampfliste und Teilnehmer eines Pools', async ({ page,
     await page.goto(`/live/#/t/${KEY}/pool/999/baum`);
     await expect(page.getByText('Pool nicht gefunden')).toBeVisible();
 });
+
+test('Turnier: Matte mit laufendem Kampf, Klick öffnet die Kampfliste, von dort der Baum', async ({ page, request }) => {
+    await sende(request, paket(Date.now()));
+    await page.goto(`/live/#/t/${KEY}`);
+    await page.getByTestId('tab-turnier').click();
+    await expect(page.getByTestId('matte-1')).toHaveClass(/an/);
+    await expect(page.getByTestId('laufend-1')).toContainText('Laufender Kampf');
+    await page.getByTestId('laufend-1').click();
+    await expect(page).toHaveURL(new RegExp('/pool/10/kaempfe/'));
+    await expect(page.getByTestId('reiter-kaempfe')).toHaveClass(/aktiv/);
+    await page.getByTestId('baum-oeffnen').click();
+    await expect(page.getByTestId('reiter-baum')).toHaveClass(/aktiv/);
+});

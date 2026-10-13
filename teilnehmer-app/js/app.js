@@ -6,13 +6,15 @@ import { zeigeVerein } from './ansicht-verein.js';
 import { zeigeUebersicht } from './ansicht-uebersicht.js';
 import { zeigePool } from './ansicht-pool.js';
 import { zeigePools } from './ansicht-pools.js';
+import { zeigeTurnier } from './ansicht-turnier.js';
 
 const ROUTEN = {
     suche: zeigeStart,
     uebersicht: zeigeUebersicht,
     verein: zeigeVerein,
     pool: zeigePool,
-    pools: zeigePools
+    pools: zeigePools,
+    turnier: zeigeTurnier
 };
 
 async function route() {
