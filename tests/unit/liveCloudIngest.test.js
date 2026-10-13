@@ -102,3 +102,43 @@ test('ungültiges Paket wirft UNGUELTIG und ändert nichts', async () => {
     await assert.rejects(() => uebernimmPaket(knex, paket({ turnierKey: 'T5', datum: 'kaputt' })), { code: 'UNGUELTIG' });
     assert.equal(await knex('live_turniere').where({ turnier_key: 'T5' }).first(), undefined);
 });
+
+test('Pools und Kämpfe werden übernommen, ersetzt, zurückgezogen und sind optional', async () => {
+    const { knex } = db;
+    const mit = paket({
+        turnierKey: 'P1',
+        pools: [{ id: 10, bezeichnung: 'U15 w -44', modus: 'Doppel-KO-8', status: 'matte_zugewiesen', matteId: 1, altersklasse: 'U15', geschlecht: 'w', gewichtsklasse: '-44', farbe2: 'rot' }],
+        kaempfe: [
+            { id: 1, poolId: 10, nr: 'H1', status: 'beendet', reihenfolge: 1, k1: 'a1', k2: 'a2', sieger: 'a1', p1: 7, p2: 0 },
+            { id: 1, poolId: 10, nr: 'H1', status: 'beendet', reihenfolge: 1, k1: 'a1', k2: 'a2', sieger: 'a1', p1: 7, p2: 0 },
+            { id: 2, poolId: 10, nr: 'H2', status: 'freilos', reihenfolge: null, k1: 'a1', k2: null, sieger: 'a1', p1: 0, p2: 0 }
+        ]
+    });
+    assert.equal(await uebernimmPaket(knex, mit), 'uebernommen');
+    const pools = await knex('live_pools').where({ turnier_key: 'P1' });
+    assert.equal(pools.length, 1);
+    assert.equal(pools[0].farbe2, 'rot');
+    assert.equal(pools[0].matte_id, 1);
+    const kaempfe = await knex('live_kaempfe').where({ turnier_key: 'P1' }).orderBy('kampf_id');
+    assert.equal(kaempfe.length, 2);
+    assert.equal(kaempfe[0].k1_key, 'a1');
+    assert.equal(kaempfe[0].p1, 7);
+    assert.equal(kaempfe[1].reihenfolge, null);
+
+    assert.equal(await uebernimmPaket(knex, paket({ turnierKey: 'P1', sequenz: 2000, pools: [], kaempfe: [] })), 'uebernommen');
+    assert.equal((await knex('live_kaempfe').where({ turnier_key: 'P1' })).length, 0);
+
+    assert.equal(await uebernimmPaket(knex, paket({ turnierKey: 'P2' })), 'uebernommen');
+    assert.equal((await knex('live_pools').where({ turnier_key: 'P2' })).length, 0);
+
+    await uebernimmPaket(knex, paket({ turnierKey: 'P3', sequenz: 10, pools: mit.pools, kaempfe: mit.kaempfe }));
+    assert.equal(await uebernimmPaket(knex, rueck('P3', 20)), 'zurueckgezogen');
+    assert.equal((await knex('live_kaempfe').where({ turnier_key: 'P3' })).length, 0);
+    assert.equal((await knex('live_pools').where({ turnier_key: 'P3' })).length, 0);
+});
+
+test('pruefePaket: pools und kaempfe müssen Listen sein, wenn vorhanden', () => {
+    assert.match(pruefePaket(paket({ pools: 'x' })), /pools/);
+    assert.match(pruefePaket(paket({ kaempfe: {} })), /kaempfe/);
+    assert.equal(pruefePaket(paket({ pools: [], kaempfe: [] })), null);
+});

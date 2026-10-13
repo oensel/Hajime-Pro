@@ -21,6 +21,10 @@ export function pruefePaket(paket) {
     for (const feld of ['vereine', 'matten', 'teilnehmer', 'warteschlangen']) {
         if (!Array.isArray(paket[feld])) return `${feld} fehlt`;
     }
+    for (const feld of ['pools', 'kaempfe']) {
+        if (paket[feld] !== undefined && !Array.isArray(paket[feld])) return `${feld} muss eine Liste sein`;
+    }
+    if ((paket.pools || []).length > 2000 || (paket.kaempfe || []).length > 20000) return 'zu viele Pools oder Kämpfe';
     if (paket.teilnehmer.length > MAX_TEILNEHMER) return 'zu viele Teilnehmer';
     for (const t of paket.teilnehmer) {
         if (!t || typeof t.key !== 'string' || !t.key || typeof t.zustand !== 'string') return 'Teilnehmer ungültig';
@@ -67,6 +71,37 @@ function positionsZeilen(turnierKey, warteschlangen) {
     return zeilen;
 }
 
+function poolZeilen(turnierKey, pools) {
+    const gesehen = new Set();
+    const zeilen = [];
+    for (const p of pools || []) {
+        if (!Number.isInteger(p?.id) || gesehen.has(p.id)) continue;
+        gesehen.add(p.id);
+        zeilen.push({
+            turnier_key: turnierKey, pool_id: p.id, bezeichnung: text(p.bezeichnung, 200), modus: text(p.modus, 60),
+            status: text(p.status, 40), matte_id: ganzzahl(p.matteId), altersklasse: text(p.altersklasse, 20),
+            geschlecht: text(p.geschlecht, 5), gewichtsklasse: text(p.gewichtsklasse, 20), farbe2: p.farbe2 === 'rot' ? 'rot' : 'blau'
+        });
+    }
+    return zeilen;
+}
+
+function kampfZeilen(turnierKey, kaempfe) {
+    const gesehen = new Set();
+    const zeilen = [];
+    for (const k of kaempfe || []) {
+        if (!Number.isInteger(k?.id) || !Number.isInteger(k?.poolId) || gesehen.has(k.id)) continue;
+        gesehen.add(k.id);
+        const key = (wert) => (wert ? text(wert, 64) : null);
+        zeilen.push({
+            turnier_key: turnierKey, kampf_id: k.id, pool_id: k.poolId, nr: text(k.nr, 30), status: text(k.status, 30),
+            reihenfolge: ganzzahl(k.reihenfolge), k1_key: key(k.k1), k2_key: key(k.k2), sieger_key: key(k.sieger),
+            p1: ganzzahl(k.p1) ?? 0, p2: ganzzahl(k.p2) ?? 0
+        });
+    }
+    return zeilen;
+}
+
 async function fuegeEin(trx, tabelle, zeilen) {
     for (let i = 0; i < zeilen.length; i += BLOCK) await trx(tabelle).insert(zeilen.slice(i, i + BLOCK));
 }
@@ -86,6 +121,8 @@ export async function uebernimmPaket(knex, paket, { jetzt = () => new Date() } =
             if (bestehend) {
                 await trx('live_teilnehmer').where({ turnier_key: key }).del();
                 await trx('live_kampf_positionen').where({ turnier_key: key }).del();
+                await trx('live_pools').where({ turnier_key: key }).del();
+                await trx('live_kaempfe').where({ turnier_key: key }).del();
                 await trx('live_turniere').where({ turnier_key: key })
                     .update({ zurueckgezogen: true, sequenz: paket.sequenz, empfangen_am: jetzt() });
             } else {
@@ -107,11 +144,15 @@ export async function uebernimmPaket(knex, paket, { jetzt = () => new Date() } =
             await trx('live_turniere').where({ turnier_key: key }).update(kopf);
             await trx('live_teilnehmer').where({ turnier_key: key }).del();
             await trx('live_kampf_positionen').where({ turnier_key: key }).del();
+                await trx('live_pools').where({ turnier_key: key }).del();
+                await trx('live_kaempfe').where({ turnier_key: key }).del();
         } else {
             await trx('live_turniere').insert({ turnier_key: key, ...kopf });
         }
         await fuegeEin(trx, 'live_teilnehmer', teilnehmerZeilen(key, paket.teilnehmer));
         await fuegeEin(trx, 'live_kampf_positionen', positionsZeilen(key, paket.warteschlangen));
+        await fuegeEin(trx, 'live_pools', poolZeilen(key, paket.pools));
+        await fuegeEin(trx, 'live_kaempfe', kampfZeilen(key, paket.kaempfe));
         return 'uebernommen';
     });
 }
