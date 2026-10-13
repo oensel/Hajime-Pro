@@ -3,7 +3,7 @@
 import express from 'express';
 import { uebernimmPaket } from '../liveCloud/ingest.js';
 import { pruefeToken } from '../liveCloud/token.js';
-import { listeTurniere, ladeTurnier, suche, ladePool, ladeVerein, uebersicht } from '../liveCloud/abfrage.js';
+import { listeTurniere, ladeTurnier, suche, ladePool, ladeVerein, uebersicht, listePools, ladeDashboard } from '../liveCloud/abfrage.js';
 import { erzeugeRatenbegrenzung, clientIp, ratenGrenzeAusEnv } from '../liveCloud/ratenbegrenzung.js';
 
 const SCHLUESSEL = /^[A-Za-z0-9_-]{1,64}$/;
@@ -71,6 +71,21 @@ export function getLiveRoutes(knex, {
     router.get('/turniere/:key/suche', schluesselPruefen, async (req, res) => {
         try {
             res.json({ treffer: await suche(knex, req.params.key, String(req.query.q ?? '').slice(0, 100)) });
+        } catch (f) { fehler500(res, f); }
+    });
+
+    router.get('/turniere/:key/pools', schluesselPruefen, async (req, res) => {
+        try {
+            if (!(await ladeTurnier(knex, req.params.key))) return res.status(404).json({ error: 'Turnier nicht gefunden' });
+            res.json({ pools: await listePools(knex, req.params.key) });
+        } catch (f) { fehler500(res, f); }
+    });
+
+    router.get('/turniere/:key/dashboard', schluesselPruefen, async (req, res) => {
+        try {
+            const dashboard = await ladeDashboard(knex, req.params.key);
+            if (!dashboard) return res.status(404).json({ error: 'Turnier nicht gefunden' });
+            res.json({ serverzeit: jetzt().toISOString(), ...dashboard });
         } catch (f) { fehler500(res, f); }
     });
 

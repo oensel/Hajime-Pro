@@ -124,6 +124,23 @@ test('App-API: Übersicht mit Schlüsseln, unbekannt/leer/zurückgezogen', async
     assert.equal((await sende('/turniere/R1/uebersicht', { methode: 'POST', body: 'kaputt' })).status, 400);
 });
 
+test('App-API: Pools und Dashboard', async () => {
+    await sende('/ingest', { methode: 'POST', body: paket('R8', {
+        pools: [{ id: 10, bezeichnung: 'U15 w -44', modus: 'Jeder-gegen-Jeden', status: 'matte_zugewiesen', matteId: 1, altersklasse: 'U15', geschlecht: 'w', gewichtsklasse: '-44', farbe2: 'blau' }],
+        kaempfe: [{ id: 1, poolId: 10, nr: 'R1', status: 'gestartet', reihenfolge: 1, k1: 'a1', k2: 'a2', sieger: null, p1: 0, p2: 0 }]
+    }), ...mitToken() });
+    const pools = await (await sende('/turniere/R8/pools')).json();
+    assert.equal(pools.pools.length, 1);
+    assert.equal(pools.pools[0].laeuft, 1);
+    const dash = await (await sende('/turniere/R8/dashboard')).json();
+    assert.equal(dash.matten[0].laufend.k1.name, 'Anna Muster');
+    assert.ok(dash.serverzeit);
+    assert.equal((await sende('/turniere/gibtsnicht/dashboard')).status, 404);
+    assert.equal((await sende('/turniere/gibtsnicht/pools')).status, 404);
+    const pool = await (await sende('/turniere/R8/pools/10')).json();
+    assert.equal(pool.kaempfe.length, 1);
+});
+
 test('App-API ist ratenbegrenzt (429), der Ingest nicht', async () => {
     const stati = [];
     for (let i = 0; i < 60; i++) stati.push((await sende('/turniere')).status);
