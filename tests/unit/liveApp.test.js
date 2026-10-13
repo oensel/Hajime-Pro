@@ -195,3 +195,28 @@ test('matteKurz: Nummer oder eigener Name für den Matten-Block', () => {
     assert.equal(matteKurz(''), '');
     assert.equal(matteKurz(null), '');
 });
+
+test('Glockenliste: einzelne Glocken, Vereine mit Glocke für alle, Ausnahmen und Abgewählte', () => {
+    const s = erzeugeSpeicher(speicherAttrappe(), 'T1');
+    s.stern('a1', true);
+    s.glocke('a2', false);
+    s.vereinStern('v1', true);
+    s.vereinGlockeAlle('v1', true);
+    s.vereinAusnahme('v1', 'x1', false);
+    s.stern('x2', false, 'v1');
+    s.vereinStern('v2', true);
+    s.vereinAusnahme('v2', 'y1', true);
+    const g = s.glockenliste();
+    assert.deepEqual(g.teilnehmer.sort(), ['a1', 'y1']);
+    assert.deepEqual(g.vereine, ['v1']);
+    assert.deepEqual(g.ausnahmen.sort(), ['x1', 'x2']);
+});
+
+test('Speicher: beiAenderung meldet jede Änderung', () => {
+    let anzahl = 0;
+    const s = erzeugeSpeicher(speicherAttrappe(), 'T1', { beiAenderung: () => { anzahl += 1; } });
+    s.stern('a1', true);
+    s.glocke('a1', false);
+    s.vereinStern('v1', true);
+    assert.equal(anzahl, 3);
+});

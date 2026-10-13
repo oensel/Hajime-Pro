@@ -123,6 +123,8 @@ export async function uebernimmPaket(knex, paket, { jetzt = () => new Date() } =
                 await trx('live_kampf_positionen').where({ turnier_key: key }).del();
                 await trx('live_pools').where({ turnier_key: key }).del();
                 await trx('live_kaempfe').where({ turnier_key: key }).del();
+                // Push-Anmeldungen enden mit der Rücknahme (Spec Phase 3, Entscheidung 8); die Kindzeilen folgen per CASCADE.
+                await trx('live_push_abos').where({ turnier_key: key }).del();
                 await trx('live_turniere').where({ turnier_key: key })
                     .update({ zurueckgezogen: true, sequenz: paket.sequenz, empfangen_am: jetzt() });
             } else {
