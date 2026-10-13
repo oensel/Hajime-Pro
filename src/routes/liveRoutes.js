@@ -5,6 +5,8 @@ import { uebernimmPaket } from '../liveCloud/ingest.js';
 import { pruefeToken } from '../liveCloud/token.js';
 import { listeTurniere, ladeTurnier, suche, ladePool, ladeVerein, uebersicht, listePools, ladeDashboard } from '../liveCloud/abfrage.js';
 import { erzeugeRatenbegrenzung, clientIp, ratenGrenzeAusEnv } from '../liveCloud/ratenbegrenzung.js';
+import { liesPushKonfig } from '../liveCloud/pushKonfig.js';
+import { meldeAn, meldeAb, pruefeUndSende } from '../liveCloud/push.js';
 
 const SCHLUESSEL = /^[A-Za-z0-9_-]{1,64}$/;
 const POOL_ID = /^\d{1,9}$/;
@@ -13,7 +15,9 @@ export function getLiveRoutes(knex, {
     jetzt = () => new Date(),
     env = process.env,
     begrenzung = erzeugeRatenbegrenzung({ max: ratenGrenzeAusEnv(env) }),
-    fehlerBegrenzung = erzeugeRatenbegrenzung({ max: 30, beiVollstand: 'sperren' })
+    fehlerBegrenzung = erzeugeRatenbegrenzung({ max: 30, beiVollstand: 'sperren' }),
+    // Push-Nachrichten (Phase 3): konfig aus LIVE_PUSH_*, sender sendet über web-push (im Test injiziert)
+    push = { konfig: liesPushKonfig(env), sender: null }
 } = {}) {
     const router = express.Router();
     router.use((req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
@@ -31,6 +35,11 @@ export function getLiveRoutes(knex, {
             // 409: das Paket wurde verworfen, weil die Cloud einen neueren Stand hat. Der Uplink soll das nicht für
             // zugestellt halten (sonst ginge eine Rücknahme still verloren), sondern loggen und mit Backoff erneut senden.
             if (ergebnis === 'veraltet') return res.status(409).end();
+            // Push nach dem Übernehmen, ohne den Ingest warten zu lassen oder scheitern zu lassen.
+            if (ergebnis === 'uebernommen' && push.konfig.aktiv && push.sender) {
+                pruefeUndSende(knex, paket.turnierKey, { sender: push.sender, konfig: push.konfig, jetzt })
+                    .catch(f => console.error('[LivePush] Auswertung fehlgeschlagen:', f.message));
+            }
             return res.status(204).end();
         } catch (fehler) {
             if (fehler.code === 'UNGUELTIG') return res.status(400).json({ error: fehler.message });
@@ -95,6 +104,33 @@ export function getLiveRoutes(knex, {
             const pool = await ladePool(knex, req.params.key, Number(req.params.poolId));
             if (!pool) return res.status(404).json({ error: 'Pool nicht gefunden' });
             res.json(pool);
+        } catch (f) { fehler500(res, f); }
+    });
+
+    // Push-Anmeldung (Phase 3): ohne VAPID-Konfiguration 503, die App arbeitet dann ohne Benachrichtigungen weiter.
+    const pushAus = (res) => res.status(503).json({ error: 'Push ist nicht eingerichtet' });
+    router.get('/push/schluessel', (req, res) => {
+        if (!push.konfig.aktiv) return pushAus(res);
+        res.json({ schluessel: push.konfig.publicKey });
+    });
+    router.put('/turniere/:key/push', schluesselPruefen, async (req, res) => {
+        if (!push.konfig.aktiv) return pushAus(res);
+        try {
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const ergebnis = await meldeAn(knex, req.params.key, body, { konfig: push.konfig, jetzt });
+            if (ergebnis.status === 'unbekannt') return res.status(404).json({ error: 'Turnier nicht gefunden' });
+            res.status(204).end();
+        } catch (f) {
+            if (f.code === 'UNGUELTIG') return res.status(400).json({ error: f.message });
+            if (f.code === 'ZU_VIELE') return res.status(429).json({ error: f.message });
+            fehler500(res, f);
+        }
+    });
+    router.delete('/turniere/:key/push', schluesselPruefen, async (req, res) => {
+        if (!push.konfig.aktiv) return pushAus(res);
+        try {
+            await meldeAb(knex, req.params.key, req.body && req.body.endpoint);
+            res.status(204).end();
         } catch (f) { fehler500(res, f); }
     });
 
