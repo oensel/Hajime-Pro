@@ -1,6 +1,7 @@
 // Vereinsansicht: Stern und Glocke neben dem Vereinsnamen, Teilnehmer nach Dringlichkeit sortiert.
 import { api } from './api.js';
 import { teileInAbschnitte } from './uebersicht.js';
+import { aktuellerPushHinweis } from './push.js';
 import { glockeAlleKnopf, h, icon, inhalt, kachel, setzeStatus, speicherFuer, zeigeTabs } from './ui.js';
 
 export async function zeigeVerein({ key, teile }) {
@@ -24,6 +25,7 @@ export async function zeigeVerein({ key, teile }) {
     function zeichne() {
         const gesternt = speicher.vereinGesternt(vereinKey);
         const mitglieder = liste.teilnehmer;
+        const pushHinweis = aktuellerPushHinweis(speicher);
         // Stern und Glocke wie an den Kämpfern, rechtsbündig neben dem Vereinsnamen
         const sternKnopf = h('button', {
             class: 'icon-knopf klein', type: 'button', 'data-testid': 'verein-stern', 'aria-pressed': String(gesternt),
@@ -40,6 +42,7 @@ export async function zeigeVerein({ key, teile }) {
         inhalt().replaceChildren(
             h('a', { class: 'zurueck', href: `#/t/${encodeURIComponent(key)}` }, icon('chevron_left'), 'Zurück'),
             h('h1', { class: 'mit-aktionen' }, h('span', {}, name), aktionen),
+            ...(pushHinweis ? [h('p', { class: 'hinweis push-hinweis', 'data-testid': 'push-hinweis' }, pushHinweis)] : []),
             ...teileInAbschnitte(mitglieder).flatMap(a => [
                 h('div', { class: 'abschnitt trenner', 'data-testid': `abschnitt-${a.id}` }, a.titel, h('span', {}, String(a.eintraege.length))),
                 ...a.eintraege.map(t => kachel(t, speicher, zeichne, { href: poolLink(t) }))

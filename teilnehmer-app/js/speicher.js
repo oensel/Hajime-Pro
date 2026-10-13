@@ -3,7 +3,7 @@
 // Glocke aus, "Glocke für alle" und Ausnahmen je Teilnehmer.
 const PRAEFIX = 'hajime-live:';
 
-export function erzeugeSpeicher(storage, turnierKey) {
+export function erzeugeSpeicher(storage, turnierKey, { beiAenderung = null } = {}) {
     const name = `${PRAEFIX}${turnierKey}`;
     let zustand = { teilnehmer: {}, vereine: {} };
     try {
@@ -17,7 +17,10 @@ export function erzeugeSpeicher(storage, turnierKey) {
         }
     } catch { /* leerer Zustand */ }
 
-    const sichere = () => { try { storage.setItem(name, JSON.stringify(zustand)); } catch { /* nur im Speicher */ } };
+    const sichere = () => {
+        try { storage.setItem(name, JSON.stringify(zustand)); } catch { /* nur im Speicher */ }
+        if (beiAenderung) beiAenderung();
+    };
     const verein = (v) => zustand.vereine[v] || (zustand.vereine[v] = { glockeAlle: false, ausnahmen: {}, abgewaehlt: {} });
     // Ein Teilnehmer eines verfolgten Vereins gilt als gesternt, solange er nicht ausdrücklich abgewählt wurde
     // (zur Laufzeit ausgewertet: auch später gemeldete Vereinsangehörige sind damit automatisch dabei).
@@ -65,6 +68,22 @@ export function erzeugeSpeicher(storage, turnierKey) {
         vereinAusnahme(vereinKey, key, an) {
             verein(vereinKey).ausnahmen[key] = !!an;
             sichere();
+        },
+        // Glockenliste für die Push-Anmeldung: einzelne Glocken, Vereine mit "Glocke für alle", Ausnahmen/Abgewählte.
+        glockenliste() {
+            const teilnehmer = new Set();
+            const vereine = [];
+            const ausnahmen = new Set();
+            for (const [key, w] of Object.entries(zustand.teilnehmer)) if (w && w.glocke) teilnehmer.add(key);
+            for (const [vereinKey, v] of Object.entries(zustand.vereine)) {
+                if (v.glockeAlle) vereine.push(vereinKey);
+                for (const [key, an] of Object.entries(v.ausnahmen || {})) {
+                    if (an) teilnehmer.add(key); else ausnahmen.add(key);
+                }
+                for (const [key, weg] of Object.entries(v.abgewaehlt || {})) if (weg) ausnahmen.add(key);
+            }
+            for (const key of teilnehmer) ausnahmen.delete(key);
+            return { teilnehmer: [...teilnehmer], vereine, ausnahmen: [...ausnahmen] };
         },
         anfrage: () => ({ teilnehmer: Object.keys(zustand.teilnehmer), vereine: Object.keys(zustand.vereine) }),
         exportiere: () => JSON.parse(JSON.stringify(zustand))

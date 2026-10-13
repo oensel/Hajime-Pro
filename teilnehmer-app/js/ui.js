@@ -1,6 +1,7 @@
 // Gemeinsame Bausteine der Ansichten: DOM-Helfer, Reiterleiste, Statuszeile, Kachel. Alle Texte laufen über textContent.
 import { kachelZeilen, klasseText, matteKurz, matteText } from './anzeige.js';
 import { erzeugeSpeicher } from './speicher.js';
+import { planeAbgleich } from './push.js';
 
 export function h(tag, attribute = {}, ...kinder) {
     const el = document.createElement(tag);
@@ -30,7 +31,10 @@ export function icon(name) {
 export function speicherFuer(turnierKey) {
     let storage = null;
     try { storage = window.localStorage; } catch { /* privater Modus */ }
-    return erzeugeSpeicher(storage || { getItem: () => null, setItem() {} }, turnierKey);
+    const speicher = erzeugeSpeicher(storage || { getItem: () => null, setItem() {} }, turnierKey, {
+        beiAenderung: () => planeAbgleich(turnierKey, speicher)
+    });
+    return speicher;
 }
 
 export function setzeStatus(text, getrennt = false) {

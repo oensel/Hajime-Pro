@@ -5,7 +5,7 @@ const BASIS = '/api/live';
 async function hole(pfad, optionen = {}) {
     const antwort = await fetch(BASIS + pfad, { cache: 'no-store', ...optionen });
     if (!antwort.ok) throw Object.assign(new Error(`HTTP ${antwort.status}`), { status: antwort.status });
-    return antwort.json();
+    return antwort.status === 204 ? null : antwort.json();
 }
 
 const t = (key) => `/turniere/${encodeURIComponent(key)}`;
@@ -20,5 +20,12 @@ export const api = {
     verein: (key, vereinKey) => hole(`${t(key)}/vereine/${encodeURIComponent(vereinKey)}`),
     uebersicht: (key, anfrage) => hole(`${t(key)}/uebersicht`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(anfrage)
+    }),
+    pushSchluessel: () => hole('/push/schluessel'),
+    pushAnmelden: (key, daten) => hole(`${t(key)}/push`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(daten)
+    }),
+    pushAbmelden: (key, endpoint) => hole(`${t(key)}/push`, {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ endpoint })
     })
 };

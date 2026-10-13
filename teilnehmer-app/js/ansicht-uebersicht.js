@@ -3,6 +3,7 @@ import { api } from './api.js';
 import { verbindung } from './anzeige.js';
 import { glockeAlleKnopf, h, icon, inhalt, kachel, setzeStatus, setzeStopp, speicherFuer, zeigeTabs } from './ui.js';
 import { gruppiereUebersicht } from './uebersicht.js';
+import { aktuellerPushHinweis } from './push.js';
 
 export async function zeigeUebersicht({ key }) {
     zeigeTabs(key, 'uebersicht');
@@ -48,6 +49,7 @@ export async function zeigeUebersicht({ key }) {
         }
         const v = verbindung(antwort);
         setzeStatus(ausCache ? `Keine Verbindung · ${v.text}` : v.text, ausCache || !v.verbunden);
+        const pushHinweis = aktuellerPushHinweis(speicher);
         const zeichneKachel = (t) => kachel(t, speicher, lade, {
             href: t.poolId != null ? `#/t/${encodeURIComponent(key)}/pool/${t.poolId}/teilnehmer/${encodeURIComponent(t.key)}` : null
         });
@@ -60,6 +62,7 @@ export async function zeigeUebersicht({ key }) {
             (an) => { speicher.vereinGlockeAlle(g.vereinKey, an); lade(); });
         inhalt().replaceChildren(
             h('h1', { class: 'mit-aktionen' }, h('span', {}, 'Übersicht'), einzigerVerein ? glocke(einzigerVerein) : null),
+            ...(pushHinweis ? [h('p', { class: 'hinweis push-hinweis', 'data-testid': 'push-hinweis' }, pushHinweis)] : []),
             ...gruppen.map(g => h('div', { 'data-testid': g.id === 'verein' ? `gruppe-verein-${g.vereinKey}` : `gruppe-${g.id}` },
                 g.id === 'verein' && g === einzigerVerein ? null
                     : h('div', { class: 'abschnitt' }, g.titel, g.id === 'verein' ? glocke(g) : null),
