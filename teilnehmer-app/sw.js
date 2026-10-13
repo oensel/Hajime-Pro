@@ -1,6 +1,6 @@
 // Service Worker der Teilnehmer-App: hält nur die App-Hülle vor. Die API wird nie zwischengespeichert (veraltete
 // Kampfstände wären schlimmer als keine); die App merkt sich den letzten Stand selbst.
-const CACHE = 'hajime-live-v2';
+const CACHE = 'hajime-live-v3';
 const HUELLE = ['./', './index.html', './css/app.css', './js/app.js', './js/api.js', './js/anzeige.js', './js/speicher.js', './js/ui.js',
     './js/ansicht-start.js', './js/ansicht-pool.js', './js/ansicht-pools.js', './js/ansicht-turnier.js', './js/uebersicht.js', './js/baum.js', '/js/shared/poolRunden.js', './js/ansicht-verein.js', './js/ansicht-uebersicht.js',
     './manifest.webmanifest', './icons/icon-192.png'];

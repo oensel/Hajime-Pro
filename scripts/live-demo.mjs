@@ -40,6 +40,19 @@ const paket = {
         t('d7', 'Tim', 'Thomas', { vereinKey: 'tv-munster', verein: 'TV Münster', geschlecht: 'm', gewichtsklasse: '-50', poolId: 2, poolBezeichnung: 'U15 m -50', matteId: 1, matteBezeichnung: 'Matte 1', zustand: 'abgeschlossen', abstand: null, platz: 2 }),
         t('d8', 'Jonas', 'Jung', { vereinKey: 'tv-munster', verein: 'TV Münster', geschlecht: 'm', gewichtsklasse: '-50', poolId: 2, poolBezeichnung: 'U15 m -50', matteId: 1, matteBezeichnung: 'Matte 1', zustand: 'nicht_erschienen', abstand: null })
     ],
+    pools: [
+        { id: 1, bezeichnung: 'U15 w -44', modus: 'Doppel-KO-8', status: 'matte_zugewiesen', matteId: 2, altersklasse: 'U15', geschlecht: 'w', gewichtsklasse: '-44', farbe2: 'blau' },
+        { id: 2, bezeichnung: 'U15 m -50', modus: 'Jeder-gegen-Jeden', status: 'abgeschlossen', matteId: 1, altersklasse: 'U15', geschlecht: 'm', gewichtsklasse: '-50', farbe2: 'rot' },
+        { id: 3, bezeichnung: 'U11 w -30', modus: 'Jeder-gegen-Jeden', status: 'angelegt', matteId: null, altersklasse: 'U11', geschlecht: 'w', gewichtsklasse: '-30', farbe2: 'blau' }
+    ],
+    kaempfe: [
+        { id: 1, poolId: 1, nr: 'H1', status: 'beendet', reihenfolge: 1, k1: 'd3', k2: 'd4', sieger: 'd3', p1: 7, p2: 0 },
+        { id: 2, poolId: 1, nr: 'H2', status: 'gestartet', reihenfolge: 2, k1: 'd1', k2: 'd2', sieger: null, p1: 0, p2: 0 },
+        { id: 3, poolId: 1, nr: 'H3', status: 'bereit', reihenfolge: 3, k1: null, k2: null, sieger: null, p1: 0, p2: 0 },
+        { id: 4, poolId: 1, nr: 'H4', status: 'bereit', reihenfolge: 4, k1: null, k2: null, sieger: null, p1: 0, p2: 0 },
+        { id: 5, poolId: 2, nr: 'R1', status: 'beendet', reihenfolge: null, k1: 'd6', k2: 'd7', sieger: 'd6', p1: 7, p2: 0 },
+        { id: 6, poolId: 2, nr: 'R2', status: 'beendet', reihenfolge: null, k1: 'd7', k2: 'd8', sieger: 'd7', p1: 1, p2: 0 }
+    ],
     warteschlangen: []
 };
 

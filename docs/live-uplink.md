@@ -65,3 +65,20 @@ Das Token gehört als `LIVE_UPLINK_TOKEN` in die `live.env` des Slaves, die URL 
 Die App-API ist je Absender auf `LIVE_RATE_MAX` Anfragen/Minute begrenzt (Standard 1200), falsche Token am Ingest auf 30/Minute. Kommt ein veraltetes Paket an (die Cloud hat schon einen neueren Stand, z. B. wegen einer zurückgesprungenen Uhr des Slaves), antwortet der Ingest mit 409; der Uplink loggt das und sendet mit Backoff erneut. Fällt die Halle aus,
 zeigt die App „Halle nicht verbunden“, sobald seit 3 Minuten kein Paket ankam. Die Geräte sind zustandslos: Sterne und
 Glocken liegen im Browser, die Übersicht schickt die Schlüsselliste bei jeder Anfrage mit.
+
+### Phase 2b: Pools, Kämpfe, Turnierbaum, Dashboard
+
+Der Snapshot enthält zusätzlich die optionalen Felder `pools` (Einzel-Pools ohne Sammelpool „Verspätet“, mit Modus, Status,
+Matte und Farbe von Kämpfer 2) und `kaempfe` (alle Einzelkämpfe dieser Pools mit Kampfnummer, Status, Paarung, Sieger und
+Punkten); Voraussetzung am Hallen-Server ist die Migration `20261013100000_live_views_farbe`, in der Cloud
+`20261013110000_live_cloud_pools_kaempfe`. Zusätzliche Endpunkte der App-API:
+
+| Endpunkt | Inhalt |
+|---|---|
+| `GET /api/live/turniere/:key` | zusätzlich `klassen` (Altersklasse/Geschlecht mit ihren Pools) |
+| `GET /api/live/turniere/:key/pools` | alle Pools mit Matte, Teilnehmerzahl und Fortschritt |
+| `GET /api/live/turniere/:key/pools/:poolId` | zusätzlich `pool.modus`, `kaempfe` mit aufgelösten Kämpfern und Abstand |
+| `GET /api/live/turniere/:key/dashboard` | Matten mit laufendem Kampf, nächsten drei Kämpfen, Pools; Warteschlange ohne Matte |
+
+Ein älterer Live-Prozess ohne diese Felder funktioniert weiter: Suche und Übersicht laufen wie bisher, Pools, Turnier und
+Baum zeigen „Noch keine Kampfdaten von der Halle“. Der Live-Prozess in der Halle muss für Pools und Kämpfe aktualisiert werden.
