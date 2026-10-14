@@ -385,6 +385,83 @@ export async function verschiebeMitglied(knex, req, res) {
     }
 }
 
+// Prüft Pool-Zugriff für Änderungen an den Gewichtsklassen-Positionen (nur Mannschafts-Pools,
+// Zugriff wie bei den Mannschaften des Turniers, gesperrt sobald echte Kämpfe stattfanden).
+async function ladePoolFuerPositionsAenderung(knex, req, res) {
+    const pool = await knex('pools').where({ id: parseInt(req.params.poolId), typ: 'mannschaft' }).first();
+    if (!pool) {
+        res.status(404).json({ success: false, error: 'Mannschafts-Pool nicht gefunden.' });
+        return null;
+    }
+    if (!istEinzelbenutzerBetrieb()) {
+        const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
+        const turnier = await knex('turniere').where({ id: pool.turnier_id }).first();
+        if (!hatVereinsZugriffAufTurnier(user, turnier)) {
+            res.status(403).json({ success: false, error: 'Kein Zugriff auf diesen Pool.' });
+            return null;
+        }
+    }
+    if (await poolHatBereitsEchteKaempfe(knex, pool.id)) {
+        res.status(409).json({ success: false, error: TEILNEHMERLISTE_GESPERRT_FEHLER });
+        return null;
+    }
+    return pool;
+}
+
+// Ersetzt die Gewichtsklassen-Positionen eines Mannschafts-Pools (Hinzufügen/Ändern/Löschen im
+// UI). Die Zuordnung der Mitglieder bleibt unverändert; Positionen, die es nicht mehr gibt,
+// erscheinen als "Sonstige" bis "neu verteilen" ausgeführt wird.
+export async function aktualisierePoolGewichtsklassen(knex, req, res) {
+    try {
+        const pool = await ladePoolFuerPositionsAenderung(knex, req, res);
+        if (!pool) return;
+
+        const roh = req.body.gewichtsklassen;
+        if (!Array.isArray(roh)) {
+            return res.status(400).json({ success: false, error: 'Fehlendes Pflichtfeld (gewichtsklassen).' });
+        }
+        const liste = [];
+        for (const eintrag of roh) {
+            const text = String(eintrag ?? '').trim().replace(/\s*kg$/i, '').replace(',', '.');
+            if (!/^[+-]\d+(\.\d+)?$/.test(text)) {
+                return res.status(400).json({ success: false, error: `Ungültige Gewichtsklasse "${eintrag}" (erwartet z.B. -60 oder +90).` });
+            }
+            if (!liste.includes(text)) liste.push(text);
+        }
+        const minus = liste.filter(g => g.startsWith('-')).sort((a, b) => parseFloat(a.slice(1)) - parseFloat(b.slice(1)));
+        const plus = liste.filter(g => g.startsWith('+')).sort((a, b) => parseFloat(a.slice(1)) - parseFloat(b.slice(1)));
+        const sortiert = [...minus, ...plus];
+
+        await knex('pools').where({ id: pool.id }).update({
+            mannschafts_gewichtsklassen: JSON.stringify(sortiert)
+        });
+        await regeneriereMannschaftsPool(knex, pool.id);
+        return res.json({ success: true, gewichtsklassen: sortiert });
+    } catch (error) {
+        return res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+// Ordnet alle Mitglieder aller Mannschaften des Pools anhand ihres Gewichts neu den aktuellen
+// Gewichtsklassen-Positionen zu ("neu verteilen").
+export async function verteileMitgliederNeu(knex, req, res) {
+    try {
+        const pool = await ladePoolFuerPositionsAenderung(knex, req, res);
+        if (!pool) return;
+
+        const liste = parsePoolGewichtsklassen(pool);
+        if (liste.length === 0) {
+            return res.status(400).json({ success: false, error: 'Der Pool hat keine Gewichtsklassen-Positionen.' });
+        }
+        const teams = await knex('mannschaften').where({ pool_id: pool.id }).select('id');
+        for (const t of teams) await aktualisierePositionenFuerMannschaft(knex, t.id, liste);
+        await regeneriereMannschaftsPool(knex, pool.id);
+        return res.json({ success: true });
+    } catch (error) {
+        return res.status(500).json({ success: false, error: error.message });
+    }
+}
+
 // Mannschafts-Pools eines Turniers (typ='mannschaft') — das Gegenstück zu
 // poolController.js::getPoolsMitDetails, das diese Pools bewusst ausblendet (siehe dortiger
 // Kommentar). Eigene, schlanke Liste statt die Einzelwettkampf-Ansicht zu verkomplizieren.

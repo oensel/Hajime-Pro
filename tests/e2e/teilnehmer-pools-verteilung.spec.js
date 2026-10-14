@@ -619,7 +619,7 @@ test.describe.serial('Pool-Verteilung nach Alters-/Gewichtsklasse und Wettkampfs
             response.url().includes(`/api/mannschaften/${team.id}/mitglieder/${mitgliedBei60.id}`) && response.request().method() === 'PUT'
         );
         await page.locator(`.roster-chip[data-mitglied-id="${mitgliedBei60.id}"]`)
-            .dragTo(page.locator(`.roster-dnd-body[data-drop-zone="true"][data-team-id="${team.id}"][data-gk="+60"]`));
+            .dragTo(page.locator(`.roster-dnd-group[data-drop-zone="true"][data-team-id="${team.id}"][data-gk="+60"]`));
         const antwort = await antwortPromise;
         expect(antwort.ok()).toBeTruthy();
 
@@ -643,7 +643,7 @@ test.describe.serial('Pool-Verteilung nach Alters-/Gewichtsklasse und Wettkampfs
 
         await page.reload();
         await page.locator(`.roster-chip[data-mitglied-id="${mitgliedBei50.id}"]`)
-            .dragTo(page.locator(`.roster-dnd-body[data-drop-zone="true"][data-team-id="${team.id}"][data-gk="-43"]`));
+            .dragTo(page.locator(`.roster-dnd-group[data-drop-zone="true"][data-team-id="${team.id}"][data-gk="-43"]`));
 
         // Der "dragover"-Handler in mannschaften.js setzt dataTransfer.dropEffect bereits VOR dem
         // Drop auf "none", sobald das Zielgewicht die Klassengrenze überschreitet (siehe

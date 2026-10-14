@@ -258,8 +258,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         <button type="button" class="icon-btn-small delete-pool-btn" data-pool-id="${pool.id}" title="Pool löschen"><span class="material-icons">delete</span></button>
                     </div>
                 </div>
-                <div class="gewichtsklassen-chips">
-                    ${gewichtsklassen.map(gk => `<span class="gk-chip">${escapeHtml(formatiereGewichtsklasse(gk))}</span>`).join('') || '<span class="mannschaften-hint">Keine Gewichtsklassen-Positionen hinterlegt.</span>'}
+                <div class="gewichtsklassen-chips" data-pool-id="${pool.id}">
+                    ${gewichtsklassen.map(gk => `
+                        <span class="gk-chip gk-chip-edit" data-gk="${escapeHtml(gk)}">
+                            <span class="gk-chip-text gk-edit-btn" data-pool-id="${pool.id}" data-gk="${escapeHtml(gk)}" title="Gewichtsklasse ändern">${escapeHtml(formatiereGewichtsklasse(gk))}</span>
+                            <button type="button" class="gk-chip-btn gk-delete-btn" data-pool-id="${pool.id}" data-gk="${escapeHtml(gk)}" title="Gewichtsklasse löschen"><span class="material-icons">close</span></button>
+                        </span>`).join('') || '<span class="mannschaften-hint">Keine Gewichtsklassen-Positionen hinterlegt.</span>'}
+                    <button type="button" class="gk-chip gk-add-btn" data-pool-id="${pool.id}" title="Gewichtsklasse hinzufügen"><span class="material-icons">add</span></button>
+                    <button type="button" class="toolbar-btn gk-redistribute-btn" data-pool-id="${pool.id}" title="Alle Mitglieder anhand ihres Gewichts neu auf die Gewichtsklassen verteilen"><span class="material-icons">shuffle</span><span>Neu verteilen</span></button>
                 </div>
                 <div class="mannschaften-body">
                     ${teams.length === 0
@@ -354,18 +360,18 @@ document.addEventListener('DOMContentLoaded', () => {
             const hier = mitglieder.filter(m => m.gewichtsklasse === gk);
             const leerKlasse = hier.length === 0 ? ' roster-dnd-group-empty' : '';
             return `
-                <div class="roster-dnd-group${leerKlasse}" data-gk="${escapeHtml(gk)}">
+                <div class="roster-dnd-group${leerKlasse}" data-drop-zone="true" data-gk="${escapeHtml(gk)}" data-team-id="${team.id}">
                     <div class="roster-dnd-header">${escapeHtml(formatiereGewichtsklasse(gk))}</div>
-                    <div class="roster-dnd-body" data-drop-zone="true" data-gk="${escapeHtml(gk)}" data-team-id="${team.id}">
+                    <div class="roster-dnd-body">
                         ${hier.map(m => renderRosterChip(m, team.id)).join('') || '<span class="roster-dnd-empty">—</span>'}
                     </div>
                 </div>`;
         }).join('');
 
         const sonstigeHtml = sonstige.length === 0 ? '' : `
-                <div class="roster-dnd-group roster-dnd-group-sonstige">
+                <div class="roster-dnd-group roster-dnd-group-sonstige" data-drop-zone="false">
                     <div class="roster-dnd-header">Sonstige</div>
-                    <div class="roster-dnd-body" data-drop-zone="false">
+                    <div class="roster-dnd-body">
                         ${sonstige.map(m => renderRosterChip(m, team.id)).join('')}
                     </div>
                 </div>`;
@@ -493,7 +499,87 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
+        bindeGewichtsklassenEditor();
         bindeDragAndDrop();
+    }
+
+    // --- GEWICHTSKLASSEN DES POOLS ÄNDERN / LÖSCHEN / HINZUFÜGEN / NEU VERTEILEN ---
+    function aktuelleGewichtsklassen(poolId) {
+        return Array.from(container.querySelectorAll(`.gk-edit-btn[data-pool-id="${poolId}"]`)).map(el => el.dataset.gk);
+    }
+
+    async function speichereGewichtsklassen(poolId, liste, erfolg) {
+        try {
+            const res = await fetch(`/api/mannschaften/pools/${poolId}/gewichtsklassen`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ gewichtsklassen: liste })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.error || 'Fehler beim Speichern.');
+            if (erfolg) notify(erfolg);
+            ladeUndRendere();
+        } catch (e) { notify(e.message, 'error'); }
+    }
+
+    // Dialog zum Hinzufügen (alt = null) bzw. Ändern einer Gewichtsklasse eines Pools.
+    function oeffneGkDialog(poolId, alt) {
+        document.getElementById('gkPoolId').value = poolId;
+        document.getElementById('gkAlt').value = alt || '';
+        document.getElementById('gkModalTitel').textContent = alt ? 'Gewichtsklasse ändern' : 'Gewichtsklasse hinzufügen';
+        document.getElementById('gkModalSpeichern').textContent = alt ? 'Speichern' : 'Hinzufügen';
+        const feld = document.getElementById('gkWert');
+        feld.value = alt || '';
+        openModal('gkModal');
+        feld.focus();
+        feld.select();
+    }
+
+    document.getElementById('gkModalClose').addEventListener('click', () => closeModal('gkModal'));
+    document.getElementById('gkModalCancel').addEventListener('click', () => closeModal('gkModal'));
+    document.getElementById('gkForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const poolId = document.getElementById('gkPoolId').value;
+        const alt = document.getElementById('gkAlt').value;
+        const neu = document.getElementById('gkWert').value.trim();
+        if (!neu) return;
+        const bisher = aktuelleGewichtsklassen(poolId);
+        const liste = alt ? bisher.map(gk => gk === alt ? neu : gk) : [...bisher, neu];
+        closeModal('gkModal');
+        await speichereGewichtsklassen(poolId, liste, alt ? 'Gewichtsklasse geändert.' : 'Gewichtsklasse hinzugefügt.');
+    });
+
+    function bindeGewichtsklassenEditor() {
+        container.querySelectorAll('.gk-add-btn').forEach(btn => {
+            btn.addEventListener('click', () => oeffneGkDialog(btn.dataset.poolId, null));
+        });
+
+        container.querySelectorAll('.gk-edit-btn').forEach(el => {
+            el.addEventListener('click', () => oeffneGkDialog(el.dataset.poolId, el.dataset.gk));
+        });
+
+        container.querySelectorAll('.gk-delete-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const ok = await confirmDialog(`Gewichtsklasse ${formatiereGewichtsklasse(btn.dataset.gk)} aus diesem Pool löschen?`, 'Gewichtsklasse löschen', 'delete');
+                if (!ok) return;
+                const poolId = btn.dataset.poolId;
+                speichereGewichtsklassen(poolId, aktuelleGewichtsklassen(poolId).filter(gk => gk !== btn.dataset.gk), 'Gewichtsklasse gelöscht.');
+            });
+        });
+
+        container.querySelectorAll('.gk-redistribute-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const ok = await confirmDialog('Alle Mitglieder der Mannschaften dieses Pools werden anhand ihres Gewichts neu auf die Gewichtsklassen verteilt. Manuelle Zuordnungen gehen dabei verloren. Fortfahren?', 'Neu verteilen', 'shuffle');
+                if (!ok) return;
+                try {
+                    const res = await fetch(`/api/mannschaften/pools/${btn.dataset.poolId}/neu-verteilen`, { method: 'POST' });
+                    const data = await res.json();
+                    if (!res.ok || !data.success) throw new Error(data.error || 'Fehler beim Verteilen.');
+                    notify('Mitglieder neu verteilt.');
+                    ladeUndRendere();
+                } catch (e) { notify(e.message, 'error'); }
+            });
+        });
     }
 
     // Merkt sich während eines Zieh-Vorgangs die Daten des gezogenen Judoka (Gewicht/Herkunfts-
@@ -525,11 +611,11 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             chip.addEventListener('dragend', () => {
                 gezogenesMitglied = null;
-                container.querySelectorAll('.roster-dnd-body').forEach(z => z.classList.remove('drag-over-valid', 'drag-over-invalid'));
+                container.querySelectorAll('.roster-dnd-group').forEach(z => z.classList.remove('drag-over-valid', 'drag-over-invalid'));
             });
         });
 
-        container.querySelectorAll('.roster-dnd-body[data-drop-zone="true"]').forEach(zone => {
+        container.querySelectorAll('.roster-dnd-group[data-drop-zone="true"]').forEach(zone => {
             zone.addEventListener('dragover', (e) => {
                 e.preventDefault();
                 if (!gezogenesMitglied) return;
