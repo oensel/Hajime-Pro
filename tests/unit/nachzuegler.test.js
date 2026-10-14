@@ -75,7 +75,7 @@ test('listeOffenePools: Vorschlag zuerst, dann gleiche Altersklasse, Spanne wird
     const andere = pool(22, { altersklasse: 'U13', teilnehmer: [{ gewicht: 29 }] });
     const liste = listeOffenePools(nz, [nah, andere, passend], optionen);
     assert.deepEqual(liste.map(p => p.poolId), [21, 20, 22]);
-    assert.deepEqual(liste[0], { poolId: 21, bezeichnung: 'Pool 21', teilnehmerNachher: 4, systemNachher: 'Jeder-gegen-Jeden', matteId: 2, gewichtsspanneUeberschritten: false, gleicheAltersklasse: true });
+    assert.deepEqual(liste[0], { poolId: 21, bezeichnung: 'Pool 21', teilnehmerNachher: 4, systemNachher: 'Jeder-gegen-Jeden', matteId: 2, laeuft: false, moeglich: true, art: 'neuaufbau', grund: null, neueKaempfe: null, hinweis: null, gewichtsspanneUeberschritten: false, gleicheAltersklasse: true });
     assert.equal(liste[1].gewichtsspanneUeberschritten, true);
     assert.equal(liste[2].gleicheAltersklasse, false);
 });

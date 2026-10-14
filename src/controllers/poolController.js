@@ -16,6 +16,8 @@ import { ermittlePausensekunden } from '../shared/pausenRegel.js';
 import { verteilePoolsAufMatten } from '../services/mattenVerteilung.js';
 import { FachFehler } from '../utils/fachFehler.js';
 import { berechneVorschlag, listeOffenePools } from '../services/nachzuegler.js';
+import { bewerteEinfuegen, ordneNachzueglerKaempfe } from '../shared/nachzueglerEinfuegen.js';
+import { fuegeInFreilosPlatzEin } from '../services/doppelKoEinfuegen.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1235,14 +1237,23 @@ export async function verschiebeTeilnehmer(knex, req, res) {
 
 const NACHZUEGLER_FEHLER_KEIN_NACHZUEGLER = 'Der Teilnehmer ist kein Nachzügler (bereits einem Pool zugeordnet oder nicht kampfbereit).';
 
-// Offene Einzel-Pools des Turniers (ohne gestartete/beendete Kämpfe, ohne Sammelpool) samt Teilnehmern.
+// Alle Einzel-Pools des Turniers (ohne Sammelpool) samt Teilnehmern und Kampfstatus. Ob ein Nachzügler hinein
+// darf, entscheidet bewerteEinfuegen: vor dem ersten Kampf immer, danach nur ohne Systemwechsel (siehe
+// services/nachzuegler.js).
 async function ladeOffeneEinzelPools(knex, turnierId) {
-    const { gesperrtePoolIds } = await ermittleAltersklassenPoolZustand(knex, turnierId);
-    const gesperrt = new Set(gesperrtePoolIds);
-    const pools = (await knex('pools').where({ turnier_id: turnierId, verspaetet: false }).andWhereNot({ typ: 'mannschaft' }))
-        .filter(p => !gesperrt.has(p.id));
-    const teilnehmer = pools.length === 0 ? [] : await knex('turnier_teilnehmer').whereIn('pool_id', pools.map(p => p.id));
-    return pools.map(p => ({ ...p, teilnehmer: teilnehmer.filter(t => t.pool_id === p.id) }));
+    const pools = await knex('pools').where({ turnier_id: turnierId, verspaetet: false }).andWhereNot({ typ: 'mannschaft' });
+    if (pools.length === 0) return [];
+    const poolIds = pools.map(p => p.id);
+    const teilnehmer = await knex('turnier_teilnehmer').whereIn('pool_id', poolIds);
+    const kaempfe = await knex('kaempfe').whereIn('pool_id', poolIds).select(
+        'id', 'pool_id', 'status', 'reihenfolge_nummer', 'kaempfer1_id', 'kaempfer2_id',
+        'kaempfer1_quelle_kampf_id', 'kaempfer2_quelle_kampf_id'
+    );
+    return pools.map(p => ({
+        ...p,
+        teilnehmer: teilnehmer.filter(t => t.pool_id === p.id),
+        kaempfe: kaempfe.filter(k => k.pool_id === p.id)
+    }));
 }
 
 // Nachzügler: kampfbereit, ohne Pool, Altersklasse bereits ausgelost, kein reines Mannschaftsmitglied.
@@ -1331,16 +1342,39 @@ export async function sortiereNachzuegler(knex, req, res) {
             if (!aktuell || aktuell.pool_id != null || aktuell.status !== 'kampfbereit') {
                 throw new FachFehler(409, NACHZUEGLER_FEHLER_KEIN_NACHZUEGLER);
             }
-            const kaempfe = await trx('kaempfe').where({ pool_id: poolId }).forUpdate().select('status');
-            if (kaempfe.some(k => k.status === 'gestartet' || k.status === 'beendet')) {
-                throw new FachFehler(409, 'In diesem Pool haben die Kämpfe bereits begonnen.');
+            const kaempfe = await trx('kaempfe').where({ pool_id: poolId }).forUpdate();
+            const poolZeile = await trx('pools').where({ id: poolId }).first();
+            const mitglieder = await trx('turnier_teilnehmer').where({ pool_id: poolId });
+            let systemNachher = null;
+            try {
+                systemNachher = waehleWettkampfsystem(mitglieder.length + 1);
+            } catch {
+                systemNachher = null;
             }
+            const bewertung = bewerteEinfuegen({
+                modus: poolZeile.modus, poolStatus: poolZeile.status, teilnehmerAnzahl: mitglieder.length, kaempfe, systemNachher
+            });
+            if (!bewertung.moeglich) throw new FachFehler(409, bewertung.grund);
+
             await trx('turnier_teilnehmer').where({ id: teilnehmerId }).update({ pool_id: poolId });
-            ergebnis = await regeneriereKampfplanFuerPool(trx, poolId);
+            if (bewertung.art === 'einfuegen') {
+                // Pool läuft, das System bleibt: Jeder-gegen-Jeden bekommt nur die zusätzlichen Kämpfe, im Doppel-KO
+                // nimmt der Teilnehmer den freien Freilos-Platz ein. Bestehende, begonnene Kämpfe bleiben unberührt.
+                let neueKaempfe;
+                if (poolZeile.modus === 'Jeder-gegen-Jeden') {
+                    neueKaempfe = await jederGegenJeden.ergaenzeTeilnehmer(trx, poolId, teilnehmerId);
+                } else {
+                    const managerJeModus = { 'Doppel-KO-8': doppelKo8, 'Doppel-KO-16': doppelKo16, 'Doppel-KO-32': doppelKo32 };
+                    neueKaempfe = await fuegeInFreilosPlatzEin(trx, managerJeModus[poolZeile.modus], poolId, teilnehmerId, poolZeile.modus);
+                }
+                ergebnis = { modus: poolZeile.modus, eingefuegt: true, neueKaempfe };
+            } else {
+                ergebnis = await regeneriereKampfplanFuerPool(trx, poolId);
+            }
         });
 
         await aktualisiereMatteNachPoolAenderung(knex, poolId);
-        return res.json({ success: true, poolId, modus: ergebnis.modus });
+        return res.json({ success: true, poolId, modus: ergebnis.modus, eingefuegt: ergebnis.eingefuegt === true, neueKaempfe: ergebnis.neueKaempfe ?? 0 });
     } catch (error) {
         return res.status(error.statusCode || 500).json({ success: false, error: error.message });
     }
@@ -2073,7 +2107,9 @@ export async function planeKaempfeFuerKampfflaeche(knex, kampfflaecheId) {
     // 4. Verbleibende Kämpfe pro (Einzelwettkampf-)Pool gruppieren (frei durchsuchbar, keine
     // strikte FIFO-Queue)
     const poolQueues = {};
-    einzelPoolIds.forEach(id => { poolQueues[id] = planbareKaempfe.filter(k => k.pool_id === id); });
+    // Kämpfe nachgemeldeter Teilnehmer eines laufenden Pools werden gleichmäßig zwischen die übrigen
+    // Kämpfe des Pools verteilt (statt als letzte der Warteschlange hinten zu landen).
+    einzelPoolIds.forEach(id => { poolQueues[id] = ordneNachzueglerKaempfe(planbareKaempfe.filter(k => k.pool_id === id)); });
 
     // "Wenn möglich nicht mehr als zwei Pools gleichzeitig": aktives Fenster startet mit
     // höchstens 2 Pools, die tatsächlich noch offene Kämpfe haben; alle weiteren bleiben

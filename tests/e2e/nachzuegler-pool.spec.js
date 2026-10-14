@@ -66,9 +66,14 @@ test.describe.serial('Nachzügler', () => {
         ids.zuSpaet = await legeAn(request, 'ZuSpaet', 29.4);
         const resp = await request.post(`/api/pools/nachzuegler/${ids.zuSpaet}/einsortieren`, { data: { turnierId, poolId } });
         expect(resp.status()).toBe(409);
+        // 5 Teilnehmer + 1 wäre ein anderes System: das wird dem Nachzügler begründet gezeigt
+        expect((await resp.json()).error).toMatch(/Wechsel des Systems ist nach Beginn nicht möglich/);
 
         const eintrag = (await holeNachzuegler(request)).nachzuegler.find(n => n.teilnehmerId === ids.zuSpaet);
         expect(eintrag.vorschlag).toBeNull();
+        const gesperrt = eintrag.offenePools.find(p => p.poolId === poolId);
+        expect(gesperrt).toMatchObject({ moeglich: false, laeuft: true });
+        expect(gesperrt.grund).toMatch(/Gruppen-Überkreuz statt Jeder-gegen-Jeden/);
 
         const gesammelt = await sammeln(request);
         expect((await gesammelt.json()).anzahl).toBe(1);

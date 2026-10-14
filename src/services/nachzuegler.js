@@ -1,5 +1,23 @@
 // Nachzügler-Vorschlag (Spec docs/specs/2026-10-10-nachzuegler-pool-design.md): reine Funktion ohne DB.
 // pruefeSpanne und waehleSystem übergibt der Aufrufer (poolController), damit hier kein Controller-Import nötig ist.
+// Pools mit bereits begonnenen Kämpfen kommen nur in Frage, wenn bewerteEinfuegen sie zulässt (laufender
+// Jeder-gegen-Jeden-Pool ohne Systemwechsel, Spec docs/specs/2026-10-14-nachzuegler-laufender-pool.md).
+import { bewerteEinfuegen } from '../shared/nachzueglerEinfuegen.js';
+
+function bewertePool(pool, waehleSystem) {
+    const nachher = pool.teilnehmer.length + 1;
+    let systemNachher = null;
+    try {
+        systemNachher = waehleSystem(nachher);
+    } catch {
+        return { systemNachher: null, nachher, bewertung: null }; // größer als das größte Wettkampfsystem
+    }
+    const bewertung = bewerteEinfuegen({
+        modus: pool.modus, poolStatus: pool.status, teilnehmerAnzahl: pool.teilnehmer.length,
+        kaempfe: pool.kaempfe || [], systemNachher
+    });
+    return { systemNachher, nachher, bewertung };
+}
 
 function gewichtsAbstand(gewicht, teilnehmer) {
     const gewichte = teilnehmer.map(t => Number.parseFloat(t.gewicht)).filter(Number.isFinite);
@@ -18,13 +36,8 @@ export function berechneVorschlag(nachzuegler, offenePools, { pruefeSpanne, waeh
     for (const pool of offenePools) {
         if (pool.altersklasse !== nachzuegler.altersklasse) continue;
         if (pool.geschlecht !== 'mixed' && pool.geschlecht !== nachzuegler.geschlecht) continue;
-        const nachher = pool.teilnehmer.length + 1;
-        let systemNachher;
-        try {
-            systemNachher = waehleSystem(nachher);
-        } catch {
-            continue; // größer als das größte Wettkampfsystem
-        }
+        const { systemNachher, nachher, bewertung } = bewertePool(pool, waehleSystem);
+        if (!bewertung || !bewertung.moeglich) continue;
         if (!pruefeSpanne([...pool.teilnehmer, { gewicht }], pool.altersklasse).zulaessig) continue;
         kandidaten.push({
             poolId: pool.id,
@@ -52,13 +65,8 @@ export function listeOffenePools(nachzuegler, offenePools, { pruefeSpanne, waehl
     const gewicht = Number.parseFloat(nachzuegler.gewicht);
     const eintraege = [];
     for (const pool of offenePools) {
-        const nachher = pool.teilnehmer.length + 1;
-        let systemNachher;
-        try {
-            systemNachher = waehleSystem(nachher);
-        } catch {
-            continue;
-        }
+        const { systemNachher, nachher, bewertung } = bewertePool(pool, waehleSystem);
+        if (!bewertung) continue;
         const ueberschritten = !(Number.isFinite(gewicht) && gewicht > 0)
             || !pruefeSpanne([...pool.teilnehmer, { gewicht }], pool.altersklasse).zulaessig;
         eintraege.push({
@@ -67,6 +75,14 @@ export function listeOffenePools(nachzuegler, offenePools, { pruefeSpanne, waehl
             teilnehmerNachher: nachher,
             systemNachher,
             matteId: pool.kampfflaeche_id ?? null,
+            // laeuft: im Pool wurde schon gekämpft. moeglich/grund erklären, warum der Nachzügler dort
+            // (nicht) mehr hineinkommt; art 'einfuegen' = er bekommt neueKaempfe zusätzliche Kämpfe.
+            laeuft: bewertung.art !== 'neuaufbau',
+            moeglich: bewertung.moeglich,
+            art: bewertung.art,
+            grund: bewertung.grund,
+            neueKaempfe: bewertung.neueKaempfe ?? null,
+            hinweis: bewertung.hinweis ?? null,
             gewichtsspanneUeberschritten: ueberschritten,
             gleicheAltersklasse: pool.altersklasse === nachzuegler.altersklasse,
             istVorschlag: vorschlag != null && vorschlag.poolId === pool.id,
@@ -76,6 +92,7 @@ export function listeOffenePools(nachzuegler, offenePools, { pruefeSpanne, waehl
     }
     eintraege.sort((a, b) =>
         Number(b.istVorschlag) - Number(a.istVorschlag)
+        || Number(b.moeglich) - Number(a.moeglich)
         || Number(b.gleicheAltersklasse) - Number(a.gleicheAltersklasse)
         || Number(a.gewichtsspanneUeberschritten) - Number(b.gewichtsspanneUeberschritten)
         || a.abstand - b.abstand || a.groesse - b.groesse || a.poolId - b.poolId);
