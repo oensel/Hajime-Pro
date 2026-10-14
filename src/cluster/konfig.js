@@ -14,7 +14,10 @@ export function liesClusterKonfig(env = process.env) {
         // Zeuge gegen Split-Brain: IP (Ping) oder http(s)-URL (GET). Leer = Default-Gateway.
         zeuge: env.CLUSTER_ZEUGE || '',
         // Baut die eigene PostgreSQL als Standby des Partners neu auf (deploy/linux/hajime-rueckstufen.sh).
-        rueckstufenBefehl: env.CLUSTER_RUECKSTUFEN_BEFEHL || 'sudo -n /usr/local/bin/hajime-rueckstufen.sh'
+        rueckstufenBefehl: env.CLUSTER_RUECKSTUFEN_BEFEHL || 'sudo -n /usr/local/bin/hajime-rueckstufen.sh',
+        // Volles Update dieses Servers (deploy/linux/hajime-update.sh, per sudoers freigegeben); Status schreibt das Skript.
+        updateBefehl: env.CLUSTER_UPDATE_BEFEHL || 'sudo -n /usr/local/bin/hajime-update.sh',
+        updateStatusDatei: env.CLUSTER_UPDATE_STATUS_DATEI || '/var/lib/hajime/update-status.json'
     };
 }
 

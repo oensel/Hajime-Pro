@@ -17,6 +17,7 @@ test('Cluster-Konfiguration: ohne CLUSTER_KNOTEN inaktiv, sonst Partner abgeleit
     assert.equal(k.partnerUrl, 'http://192.168.10.11:3000');
     assert.equal(k.zeuge, '192.168.10.1');
     assert.match(k.rueckstufenBefehl, /hajime-rueckstufen\.sh/);
+    assert.match(k.updateBefehl, /hajime-update\.sh/);
 });
 
 test('Erststart server1 mit Primary: Master mit Epoche 1', () => {
