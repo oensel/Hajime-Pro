@@ -59,3 +59,15 @@ test('Start: nur gültige Version, Befehl mit Version, zweiter Start abgelehnt, 
     assert.equal(dienst.status().zustand, 'fertig');
     assert.equal(erzeugeUpdateDienst({ repo: 'a/b', statusDatei: path.join(ordner, 'nix.json'), updateBefehl: 'x', fuehreBefehlAus: leer, env: {} }).status(), null);
 });
+
+test('laeuft(): auch während das Root-Skript im Hintergrund arbeitet (Status "laeuft"), veralteter Status zählt nicht', async () => {
+    const ordner = mkdtempSync(path.join(os.tmpdir(), 'hajime-upd-'));
+    const statusDatei = path.join(ordner, 'update-status.json');
+    let zeit = Date.parse('2026-10-14T10:00:00Z');
+    const dienst = erzeugeUpdateDienst({ repo: 'a/b', statusDatei, updateBefehl: 'x', fuehreBefehlAus: leer, jetzt: () => zeit, env: {} });
+    assert.equal(dienst.laeuft(), false);
+    writeFileSync(statusDatei, JSON.stringify({ zustand: 'laeuft', ziel: '1.0.18', zeit: '2026-10-14T09:50:00Z' }));
+    assert.equal(dienst.laeuft(), true);
+    zeit = Date.parse('2026-10-14T11:30:00Z'); // über 60 Minuten alt: abgebrochen/abgestürzt
+    assert.equal(dienst.laeuft(), false);
+});

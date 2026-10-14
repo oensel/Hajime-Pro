@@ -6,6 +6,7 @@ import { istVersion } from './updateLogik.js';
 
 const ZWISCHENSPEICHER_MS = 10 * 60_000;
 const ABFRAGE_TIMEOUT_MS = 5000;
+const LAUF_MAX_MS = 60 * 60_000;
 
 export function erzeugeUpdateDienst({ repo, token = '', statusDatei, updateBefehl, fuehreBefehlAus, fetchFn = fetch, jetzt = () => Date.now(), env = process.env }) {
     let zwischen = null; // { version, zeit }
@@ -50,5 +51,15 @@ export function erzeugeUpdateDienst({ repo, token = '', statusDatei, updateBefeh
         }
     }
 
-    return { neuesteVersion, status, laeuft: () => laeuftGerade, starte };
+    // Das Root-Skript kehrt sofort zurück, das Update läuft als eigene Einheit weiter: dessen Status zählt mit
+    // (ein Status "laeuft" älter als eine Stunde gilt als abgebrochen).
+    function laeuft() {
+        if (laeuftGerade) return true;
+        const st = status();
+        if (!st || st.zustand !== 'laeuft') return false;
+        const seit = Date.parse(st.zeit);
+        return Number.isFinite(seit) && jetzt() - seit < LAUF_MAX_MS;
+    }
+
+    return { neuesteVersion, status, laeuft, starte };
 }
