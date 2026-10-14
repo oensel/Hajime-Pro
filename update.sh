@@ -23,7 +23,14 @@ set -euo pipefail
 INSTALL_DIR="${INSTALL_DIR:-/opt/hajime-pro}"
 ENV_DATEI="$INSTALL_DIR/.env"
 DB_NAME="${DB_NAME:-hajime}"
-KLON="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Das Skript wechselt während des Laufs die Version des Klons und würde sich dabei selbst ändern (oder verschwinden,
+# wenn ein älterer Tag es nicht enthält): daher einmal als Kopie neu starten.
+if [ -z "${HAJIME_UPDATE_KOPIE:-}" ]; then
+    KOPIE="$(mktemp /tmp/hajime-update.XXXXXX)"
+    cp "${BASH_SOURCE[0]}" "$KOPIE"
+    HAJIME_UPDATE_KOPIE=1 HAJIME_UPDATE_KLON="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" exec bash "$KOPIE" "$@"
+fi
+KLON="$HAJIME_UPDATE_KLON"
 GIT_REF="${GIT_REF:-main}"
 
 log()     { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }

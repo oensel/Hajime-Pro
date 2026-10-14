@@ -257,6 +257,7 @@ CLUSTER_KNOTEN=$KNOTEN
 PARTNER_PG_HOST=$PARTNER_IP
 PG_VERSION=$PG_VERSION
 REPL_USER=$REPL_USER
+KLON=$QUELLE
 EOF
 }
 
@@ -585,6 +586,7 @@ fi
 log "Dienst, Rückstufungs-Skript und sudoers-Regel einrichten"
 install -m 644 "$QUELLE/deploy/linux/systemd/hajime-pro.service" /etc/systemd/system/hajime-pro.service
 install -m 755 "$QUELLE/deploy/linux/hajime-rueckstufen.sh" /usr/local/bin/hajime-rueckstufen.sh
+install -m 755 "$QUELLE/deploy/linux/hajime-update.sh" /usr/local/bin/hajime-update.sh
 install -m 755 "$QUELLE/deploy/linux/keepalived/hajime-befoerdern.sh" /usr/local/bin/hajime-befoerdern.sh
 install -m 755 "$QUELLE/deploy/linux/keepalived/hajime-zurueckstufen.sh" /usr/local/bin/hajime-zurueckstufen.sh
 install -m 755 "$QUELLE/deploy/linux/cluster-status.sh" /usr/local/bin/hajime-cluster-status

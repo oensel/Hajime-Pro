@@ -37,6 +37,7 @@ test('server1 wird Master-Kandidat mit höherer VRRP-Priorität', { skip: !hatBa
     assert.match(lies('keepalived.conf'), /10\.0\.0\.10\/24/);
     assert.match(lies('keepalived.conf'), /auth_pass abcd1234/);
     assert.match(lies('cluster.env'), /^PARTNER_PG_HOST=10\.0\.0\.12$/m);
+    assert.match(lies('cluster.env'), /^KLON=.+$/m);
 });
 
 test('server2 bekommt die niedrigere Priorität und zeigt auf server1', { skip: !hatBash }, () => {
