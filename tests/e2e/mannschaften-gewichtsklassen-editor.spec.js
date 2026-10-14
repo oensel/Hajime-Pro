@@ -50,4 +50,23 @@ test.describe('Mannschaften: Gewichtsklassen bearbeiten', () => {
         const r = await request.put(`/api/mannschaften/pools/${poolId}/gewichtsklassen`, { data: { gewichtsklassen: ['abc'] } });
         expect(r.status()).toBe(400);
     });
+
+    test('Übersicht listet Mannschaften mit Kämpfern und Gewichtsklassen', async ({ request, page }) => {
+        const tm = await request.post('/api/mannschaften', { data: { turnier_id: turnierId, pool_id: poolId, verein: 'JC Ü', bezeichnung: 'Team Ü' } });
+        const { mannschaftId } = await tm.json();
+        const tn = await request.post('/api/teilnehmer', {
+            data: { turnier_id: turnierId, vorname: 'Uwe', nachname: 'Übersicht', geschlecht: 'männlich', verein: 'JC Ü', geburtsjahr: 2011, gewicht: 41, altersklasse: 'U15' }
+        });
+        const { teilnehmerId } = await tn.json();
+        await request.post(`/api/mannschaften/${mannschaftId}/mitglieder`, { data: { turnier_teilnehmer_id: teilnehmerId } });
+
+        const daten = await (await request.get(`/api/pools/uebersicht?turnierId=${turnierId}`)).json();
+        const pool = [...daten.unzugeordnetePools, ...daten.mats.flatMap(m => m.pools)].find(p => p.id === poolId);
+        expect(pool.typ).toBe('mannschaft');
+        expect(pool.mannschaften[0].mitglieder[0].nachname).toBe('Übersicht');
+        expect(pool.mannschaften[0].mitglieder[0].gewichtsklasse).toBeTruthy();
+
+        await page.goto(`/uebersicht.html?turnierId=${turnierId}`);
+        await expect(page.locator('.pool-block', { hasText: 'Team Ü' })).toContainText('Übersicht, Uwe');
+    });
 });

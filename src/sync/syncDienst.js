@@ -54,7 +54,14 @@ export async function starteSyncDienst({ knex, konfig, partnerUrl = null, startM
         // Browser für Anfragen seiner eigenen Seite setzt) sind ausgenommen — die Hallen-REST-API
         // ist ohnehin offen (Offline-Mock-User). Schutz gegen versehentliche fremde Replikation,
         // nicht gegen Angreifer im Hallennetz.
-        const browserDerEigenenSeite = req.headers['sec-fetch-site'] === 'same-origin';
+        // Über http (LAN-IP, VIP, turnier.local) sendet der Browser keine Sec-Fetch-Header (nur für
+        // vertrauenswürdige Herkunft) — dann entscheidet Origin bzw. Referer gegen den Host.
+        const hostGleich = (wert) => {
+            if (!wert) return false;
+            try { return new URL(wert).host === req.headers.host; } catch (e) { return false; }
+        };
+        const browserDerEigenenSeite = req.headers['sec-fetch-site'] === 'same-origin'
+            || (!req.headers['sec-fetch-site'] && (hostGleich(req.headers.origin) || hostGleich(req.headers.referer)));
         if (konfig.secret && !browserDerEigenenSeite && req.headers['x-hajime-sync-secret'] !== konfig.secret) {
             return res.status(401).json({ error: 'unauthorized', reason: 'SYNC_SECRET fehlt oder ist falsch' });
         }

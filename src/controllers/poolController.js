@@ -2533,8 +2533,40 @@ export async function getPoolUebersicht(knex, req, res) {
             teilnehmerNachPool.get(t.pool_id).push({ id: t.id, vorname: t.vorname, nachname: t.nachname, verein: t.verein });
         });
 
+        // Mannschafts-Pools: Mannschaften samt Mitgliedern (Gewichtsklassen-Position, Name) statt
+        // Einzel-Teilnehmern.
+        const mannschaftsPoolIds = pools.filter(p => p.typ === 'mannschaft').map(p => p.id);
+        const mannschaftenNachPool = new Map();
+        if (mannschaftsPoolIds.length > 0) {
+            const mannschaften = await knex('mannschaften')
+                .whereIn('pool_id', mannschaftsPoolIds)
+                .select('id', 'pool_id', 'bezeichnung', 'verein')
+                .orderBy('id', 'asc');
+            const mitglieder = mannschaften.length === 0 ? [] : await knex('mannschaft_mitglieder')
+                .join('turnier_teilnehmer', 'mannschaft_mitglieder.turnier_teilnehmer_id', 'turnier_teilnehmer.id')
+                .whereIn('mannschaft_mitglieder.mannschaft_id', mannschaften.map(m => m.id))
+                .select('mannschaft_mitglieder.mannschaft_id', 'mannschaft_mitglieder.gewichtsklasse',
+                    'turnier_teilnehmer.vorname', 'turnier_teilnehmer.nachname', 'turnier_teilnehmer.gewicht');
+            const gkWert = (gk) => {
+                const t = String(gk || '').trim();
+                const w = parseFloat(t.replace(',', '.').replace(/[^0-9.]/g, '')) || 0;
+                return t.startsWith('+') ? 100000 + w : w;
+            };
+            for (const m of mannschaften) {
+                const eigene = mitglieder
+                    .filter(x => x.mannschaft_id === m.id)
+                    .sort((a, b) => gkWert(a.gewichtsklasse) - gkWert(b.gewichtsklasse)
+                        || String(a.nachname).localeCompare(String(b.nachname), 'de'))
+                    .map(x => ({ vorname: x.vorname, nachname: x.nachname, gewichtsklasse: x.gewichtsklasse, gewicht: x.gewicht }));
+                if (!mannschaftenNachPool.has(m.pool_id)) mannschaftenNachPool.set(m.pool_id, []);
+                mannschaftenNachPool.get(m.pool_id).push({ id: m.id, bezeichnung: m.bezeichnung, verein: m.verein, mitglieder: eigene });
+            }
+        }
+
         const poolsMitTeilnehmern = pools.map(p => ({
             id: p.id,
+            typ: p.typ,
+            mannschaften: mannschaftenNachPool.get(p.id) || [],
             bezeichnung: p.bezeichnung,
             altersklasse: p.altersklasse,
             geschlecht: p.geschlecht,

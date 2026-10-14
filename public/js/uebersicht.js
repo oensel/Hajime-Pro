@@ -35,7 +35,33 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
+    function mannschaftsPoolBlockHtml(pool) {
+        const teams = (pool.mannschaften || []).length === 0
+            ? `<li class="pool-leer">Keine Mannschaften</li>`
+            : pool.mannschaften.map(team => `
+                <li class="mannschaft-uebersicht">
+                    <div class="teilnehmer-row">
+                        <span class="teilnehmer-name"><strong>${escapeHtml(team.bezeichnung)}</strong></span>
+                        <span class="teilnehmer-verein">${escapeHtml(team.verein || '')}</span>
+                    </div>
+                    ${team.mitglieder.length === 0
+                        ? '<div class="pool-leer">Keine Kämpfer zugeordnet</div>'
+                        : team.mitglieder.map(m => `
+                    <div class="teilnehmer-row">
+                        <span class="teilnehmer-name">${escapeHtml(m.nachname)}, ${escapeHtml(m.vorname)}</span>
+                        <span class="teilnehmer-verein">${escapeHtml(m.gewichtsklasse ? `${m.gewichtsklasse}kg` : '')}</span>
+                    </div>`).join('')}
+                </li>`).join('');
+        return `
+            <div class="pool-block">
+                <div class="pool-block-header">${escapeHtml(pool.bezeichnung)}</div>
+                <ul class="teilnehmer-liste">${teams}</ul>
+            </div>
+        `;
+    }
+
     function poolBlockHtml(pool) {
+        if (pool.typ === 'mannschaft') return mannschaftsPoolBlockHtml(pool);
         const teilnehmerHtml = pool.teilnehmer.length === 0
             ? `<li class="pool-leer">Keine Teilnehmer</li>`
             : pool.teilnehmer.map(t => `
