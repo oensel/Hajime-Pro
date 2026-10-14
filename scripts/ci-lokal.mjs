@@ -1,6 +1,6 @@
 // Lokaler Vorab-Lauf der CI: wählt wie der `plan`-Job in .github/workflows/ci.yml anhand der
 // geänderten Dateien aus, welche Test-Gruppen laufen, und führt die passenden npm-Befehle aus.
-// Die Pfadfilter unten müssen mit denen in ci.yml übereinstimmen.
+// Die Pfadfilter kommen aus .github/ci-filter.yml, derselben Datei wie im plan-Job.
 //
 //   npm run ci:lokal                 geänderte Dateien gegen origin/main (+ uncommittete Änderungen)
 //   npm run ci:lokal -- --alles      alle Gruppen (wie Release/manueller Lauf), ohne Paket und Docker
@@ -17,20 +17,22 @@
 import { spawnSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
 
-const FILTER = {
-    kern: ['src/**', 'public/**', 'migrations/**', 'tests/**', 'scripts/**', 'knexfile.cjs', 'setup_db.js',
-        'package.json', 'package-lock.json', 'playwright*.js', '.github/workflows/ci.yml'],
-    cluster: ['src/cluster/**', 'src/sync/**', 'src/shared/**', 'deploy/linux/**', 'tests/e2e-cluster/**',
-        'scripts/test-cluster-install-docker.sh', 'playwright.cluster.config.js', 'package.json',
-        'package-lock.json', '.github/workflows/ci.yml'],
-    plattform: ['src/utils/eingebettetesPostgres.js', 'src/config/betriebsmodus.cjs',
-        'scripts/smoke-server-eingebettet.mjs', 'migrations/**', 'package.json', 'package-lock.json',
-        '.github/workflows/ci.yml'],
-    shell: ['deploy/linux/**', 'scripts/*.sh'],
-    paket: ['desktop/server/**', 'desktop/build/**', 'desktop/electron-builder.server.yml',
-        'tests/electron-server/**', 'src/utils/eingebettetesPostgres.js', 'src/sync/clientDateien.js',
-        'package.json', '.github/workflows/server-paket.yml'],
-};
+// Dieselben Pfadfilter wie der plan-Job (dorny/paths-filter liest dieselbe Datei). Nur das dort beschriebene
+// einfache Format: "gruppe:" und darunter Zeilen "  - 'muster'".
+function liesFilter(text) {
+    const filter = {};
+    let gruppe = null;
+    for (const zeile of text.split(/\r?\n/)) {
+        if (/^\s*(#|$)/.test(zeile)) continue;
+        const kopf = zeile.match(/^([\w-]+):\s*$/);
+        const muster = zeile.match(/^\s+-\s+'([^']+)'\s*$/);
+        if (kopf) filter[(gruppe = kopf[1])] = [];
+        else if (muster && gruppe) filter[gruppe].push(muster[1]);
+        else throw new Error(`.github/ci-filter.yml: unerwartete Zeile "${zeile}"`);
+    }
+    return filter;
+}
+const FILTER = liesFilter(readFileSync(new URL('../.github/ci-filter.yml', import.meta.url), 'utf8'));
 
 const args = process.argv.slice(2);
 const hat = (f) => args.includes(f);
@@ -112,15 +114,13 @@ if (schlank) {
         const specs = waehleE2eSpecs(dateien);
         console.log(`Schlank: ${specs.length} passende E2E-Specs (${specs.map((p) => p.split('/').pop()).join(', ')})`);
         schritte.push({ name: `e2e (${specs.length} Specs)`, befehl: [npm, 'run', 'test:e2e', '--', ...specs] });
-        const syncRelevant = dateien.some((d) => /^src\/(sync|shared)\//.test(d) || d === 'public/js/datenzugriff.js'
-            || d.startsWith('tests/e2e-sync/'));
-        if (syncRelevant) schritte.push({ name: 'e2e:sync', befehl: [npm, 'run', 'test:e2e:sync'] });
     }
+    const syncRelevant = dateien.some((d) => /^src\/(sync|shared)\//.test(d) || d === 'public/js/datenzugriff.js'
+        || d.startsWith('tests/e2e-sync/'));
+    if (syncRelevant) schritte.push({ name: 'e2e:sync', befehl: [npm, 'run', 'test:e2e:sync'] });
 } else {
-    if (trifft('kern')) {
-        schritte.push({ name: 'e2e', befehl: [npm, 'run', 'test:e2e'] });
-        schritte.push({ name: 'e2e:sync', befehl: [npm, 'run', 'test:e2e:sync'] });
-    }
+    if (trifft('kern')) schritte.push({ name: 'e2e', befehl: [npm, 'run', 'test:e2e'] });
+    if (trifft('sync')) schritte.push({ name: 'e2e:sync', befehl: [npm, 'run', 'test:e2e:sync'] });
     if (trifft('cluster')) schritte.push({ name: 'e2e:cluster', befehl: [npm, 'run', 'test:e2e:cluster'] });
 }
 if (trifft('plattform')) {
