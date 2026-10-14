@@ -262,3 +262,24 @@ test.describe.serial('Mannschaften: freie Teams dürfen der Runde vorauseilen', 
         void vorausgeeilt;
     });
 });
+
+test('Menü: "Matte" ist aktiv, sobald nur ein Mannschafts-Pool existiert', async ({ request, page }) => {
+    const t = await request.post('/api/turniere', {
+        data: { bezeichnung: `E2E Menue Matte ${Date.now()}`, ort: 'Halle', datum: '2027-06-01', ausrichter: 'JC M', anzahl_kampfflaechen: 1 }
+    });
+    const turnierId = (await t.json()).turnierId;
+
+    await page.goto(`/mannschaften.html?turnierId=${turnierId}`);
+    await expect(page.locator('#nav-matten')).toHaveClass(/disabled/);
+
+    const p = await request.post('/api/pools', {
+        data: {
+            turnier_id: turnierId, bezeichnung: 'Nur-Team', modus: 'Jeder-gegen-Jeden', altersklasse: 'U18',
+            geschlecht: 'männlich', typ: 'mannschaft', mannschafts_gewichtsklassen: ['-73'], kampfzeit_sekunden: 180
+        }
+    });
+    expect(p.ok()).toBeTruthy();
+
+    await page.goto(`/mannschaften.html?turnierId=${turnierId}`);
+    await expect(page.locator('#nav-matten')).not.toHaveClass(/disabled/);
+});

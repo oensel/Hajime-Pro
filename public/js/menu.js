@@ -462,12 +462,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     };
 
-    // Matten: erst auswählbar, sobald mindestens ein Pool existiert. Wird initial geprüft und
-    // danach erneut von pools.js nach jedem Anlegen/Löschen von Pools.
+    // Matten: erst auswählbar, sobald mindestens ein Pool existiert — Einzel- ODER Mannschafts-Pool
+    // (letztere liefert /api/pools/details bewusst nicht). Wird initial geprüft und danach erneut
+    // von pools.js/mannschaften.js nach jedem Anlegen/Löschen von Pools.
     const pruefeMattenMenuSperre = async (tId) => {
         try {
             const poolsResponse = await fetch(`/api/pools/details?turnierId=${tId}`);
-            const pools = await poolsResponse.json();
+            let pools = await poolsResponse.json();
+            if (!Array.isArray(pools) || pools.length === 0) {
+                pools = await fetch(`/api/mannschaften/pools?turnierId=${tId}`).then(r => r.json()).catch(() => []);
+            }
 
             if (!Array.isArray(pools) || pools.length === 0) {
                 sperreMenuePunkte(['nav-matten']);

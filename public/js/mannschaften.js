@@ -174,6 +174,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             container.innerHTML = html;
             bindeEvents();
+            // Matte/Kampf im Menü hängen daran, ob ein (auch Mannschafts-)Pool bzw. eine Matten-Zuordnung existiert.
+            if (window.hajimeAktualisiereMenueSperren) window.hajimeAktualisiereMenueSperren(['matten', 'kampf']);
         } catch (e) {
             console.error(e);
             container.innerHTML = `<p class="no-data">Fehler beim Laden: ${escapeHtml(e.message)}</p>`;
