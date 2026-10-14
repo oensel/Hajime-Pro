@@ -11,7 +11,7 @@
 //   --docker       zusätzlich cluster-installation (Docker mit systemd nötig)
 //   --schlank      Variante für den Pre-Push-Hook: Unit-Tests + nur die zu den Änderungen passenden E2E-Specs
 //                  (Dateiname/Inhalt nennt eine geänderte Datei, immer smoke.spec.js) statt der ganzen Suite;
-//                  die Sync-Suite nur bei Änderungen an src/sync, src/shared, datenzugriff.js; Cluster-Suite nie.
+//                  Sync- und Cluster-Suite nie (laufen im PR in der CI).
 //                  Basis ist der Upstream-Zweig (nur nicht gepushte Änderungen), sonst origin/main.
 //                  Die vollständige Suite läuft in der CI auf GitHub (oder lokal mit `npm run ci:lokal`).
 import { spawnSync } from 'node:child_process';
@@ -115,9 +115,8 @@ if (schlank) {
         console.log(`Schlank: ${specs.length} passende E2E-Specs (${specs.map((p) => p.split('/').pop()).join(', ')})`);
         schritte.push({ name: `e2e (${specs.length} Specs)`, befehl: [npm, 'run', 'test:e2e', '--', ...specs] });
     }
-    const syncRelevant = dateien.some((d) => /^src\/(sync|shared)\//.test(d) || d === 'public/js/datenzugriff.js'
-        || d.startsWith('tests/e2e-sync/'));
-    if (syncRelevant) schritte.push({ name: 'e2e:sync', befehl: [npm, 'run', 'test:e2e:sync'] });
+    // Die Sync-Suite (drei Knotenpaare, ~2 min) läuft im PR ohnehin; vor dem Push nur ein Hinweis.
+    if (trifft('sync')) console.log('Hinweis: Sync-Dateien geändert, test:e2e:sync läuft in der CI (lokal: npm run test:e2e:sync).');
 } else {
     if (trifft('kern')) schritte.push({ name: 'e2e', befehl: [npm, 'run', 'test:e2e'] });
     if (trifft('sync')) schritte.push({ name: 'e2e:sync', befehl: [npm, 'run', 'test:e2e:sync'] });
