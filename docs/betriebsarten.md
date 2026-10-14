@@ -1,5 +1,7 @@
 # Betriebsarten im Überblick
 
+Bilder der typischen Aufbauten: [`betriebsmodi.md`](betriebsmodi.md).
+
 **Grundregel: Ohne Server läuft nichts.** Jede Installation braucht genau einen Server, der die Turnierdaten
 führt (Auslosung, Kämpfe, Ergebnisse). Ein **Client** (Desktop-Client, Android-App) ist nur ein Gerät an
 Matte oder Waage: Er holt seine Daten vom Server, arbeitet bei Funkloch lokal weiter und überträgt danach
