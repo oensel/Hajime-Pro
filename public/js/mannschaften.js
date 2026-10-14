@@ -22,18 +22,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Registrierungs-Einschränkung in teilnehmer.js: null = keine Einschränkung hinterlegt.
     let turnierMannschaftAltersklassenKeys = null;
 
-    // Matten des Turniers (für die Verteilung der Begegnungen).
-    let matten = [];
-    async function ladeMatten() {
-        try {
-            const resp = await fetch(`/api/kampfflaechen?turnierId=${turnierId}`);
-            const liste = resp.ok ? await resp.json() : [];
-            matten = Array.isArray(liste) ? liste : [];
-        } catch (e) {
-            matten = [];
-        }
-    }
-
     async function ladeTurnierMannschaftAltersklassen() {
         try {
             const resp = await fetch(`/api/turniere/${turnierId}`);
@@ -143,7 +131,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- POOLS/MANNSCHAFTEN LADEN & RENDERN ---
     async function ladeUndRendere() {
         try {
-            await ladeMatten();
             const [poolsRes, teamsRes] = await Promise.all([
                 fetch(`/api/mannschaften/pools?turnierId=${turnierId}`),
                 fetch(`/api/mannschaften?turnierId=${turnierId}`)
@@ -270,7 +257,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="mannschafts-pool-actions">
                         ${pool.status === 'kaempfe_beendet' ? `<button type="button" class="toolbar-btn toolbar-btn-primary confirm-pool-btn" data-pool-id="${pool.id}" data-pool-name="${escapeHtml(pool.bezeichnung).replace(/"/g, '&quot;')}"><span class="material-icons">fact_check</span><span>Ergebnisse bestätigen</span></button>` : ''}
                         <button type="button" class="toolbar-btn add-team-btn" data-pool-id="${pool.id}"><span class="material-icons">add</span><span>Mannschaft</span></button>
-                        ${matten.length > 1 ? `<button type="button" class="toolbar-btn pool-matten-btn" data-pool-id="${pool.id}" data-matten="${escapeHtml(pool.mannschafts_matten || (pool.kampfflaeche_id ? JSON.stringify([pool.kampfflaeche_id]) : '[]'))}" title="Begegnungen auf mehrere Matten verteilen"><span class="material-icons">grid_view</span><span>Matten</span></button>` : ''}
                         <button type="button" class="icon-btn-small delete-pool-btn" data-pool-id="${pool.id}" title="Pool löschen"><span class="material-icons">delete</span></button>
                     </div>
                 </div>
@@ -399,12 +385,6 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>`;
     }
 
-    function mattenOptionen(gewaehlt) {
-        return `<option value="">Matte des Pools</option>` + matten
-            .map(m => `<option value="${m.id}"${Number(gewaehlt) === Number(m.id) ? ' selected' : ''}>${escapeHtml(m.bezeichnung)}</option>`)
-            .join('');
-    }
-
     function renderBegegnungRow(b) {
         const statusKlasse = b.status === 'beendet' ? 'beendet' : (b.status === 'gestartet' ? 'gestartet' : '');
         const m1Name = b.mannschaft1_bezeichnung ? `${b.mannschaft1_bezeichnung} (${b.mannschaft1_verein})` : '—';
@@ -420,7 +400,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 ${siegerLabel ? `<span class="begegnung-sieger">Sieger: ${escapeHtml(siegerLabel)}</span>` : ''}
                 ${b.stichkampf_gewichtsklasse ? `<span class="begegnung-stichkampf">Stichkampf: ${escapeHtml(b.stichkampf_gewichtsklasse)}</span>` : ''}
                 ${b.runde ? `<span class="begegnung-runde">Runde ${b.runde}</span>` : ''}
-                ${matten.length > 1 && b.status !== 'beendet' && b.status !== 'freilos' ? `<select class="begegnung-matte-select" data-begegnung-id="${b.id}" title="Matte dieser Begegnung">${mattenOptionen(b.kampfflaeche_id)}</select>` : ''}
             </div>`;
     }
 
@@ -524,59 +503,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         bindeGewichtsklassenEditor();
-        bindeMattenVerteilung();
         bindeDragAndDrop();
     }
-
-    // --- MATTEN: Pool auf mehrere Matten verteilen, einzelne Begegnung verschieben ---
-    function bindeMattenVerteilung() {
-        container.querySelectorAll('.pool-matten-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                let gewaehlt = [];
-                try { gewaehlt = JSON.parse(btn.dataset.matten || '[]').map(Number); } catch (e) { gewaehlt = []; }
-                document.getElementById('mattenPoolId').value = btn.dataset.poolId;
-                document.getElementById('mattenAuswahl').innerHTML = matten.map(m => `
-                    <label><input type="checkbox" value="${m.id}"${gewaehlt.includes(Number(m.id)) ? ' checked' : ''}>${escapeHtml(m.bezeichnung)}</label>`).join('');
-                openModal('mattenModal');
-            });
-        });
-
-        container.querySelectorAll('.begegnung-matte-select').forEach(sel => {
-            sel.addEventListener('change', async () => {
-                try {
-                    const res = await fetch(`/api/mannschaftskaempfe/${sel.dataset.begegnungId}/matte`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ kampfflaecheId: sel.value === '' ? null : parseInt(sel.value, 10) })
-                    });
-                    const data = await res.json();
-                    if (!res.ok || !data.success) throw new Error(data.error || 'Verschieben fehlgeschlagen.');
-                    notify('Begegnung der Matte zugeordnet.');
-                } catch (e) { notify(e.message, 'error'); }
-                ladeUndRendere();
-            });
-        });
-    }
-
-    document.getElementById('mattenModalClose').addEventListener('click', () => closeModal('mattenModal'));
-    document.getElementById('mattenModalCancel').addEventListener('click', () => closeModal('mattenModal'));
-    document.getElementById('mattenForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const poolId = document.getElementById('mattenPoolId').value;
-        const gewaehlt = Array.from(document.querySelectorAll('#mattenAuswahl input:checked')).map(i => parseInt(i.value, 10));
-        closeModal('mattenModal');
-        try {
-            const res = await fetch(`/api/mannschaften/pools/${poolId}/matten`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ kampfflaechen: gewaehlt })
-            });
-            const data = await res.json();
-            if (!res.ok || !data.success) throw new Error(data.error || 'Verteilen fehlgeschlagen.');
-            notify(gewaehlt.length > 1 ? 'Begegnungen auf die Matten verteilt.' : 'Matte des Pools gesetzt.');
-        } catch (err) { notify(err.message, 'error'); }
-        ladeUndRendere();
-    });
 
     // --- GEWICHTSKLASSEN DES POOLS ÄNDERN / LÖSCHEN / HINZUFÜGEN / NEU VERTEILEN ---
     function aktuelleGewichtsklassen(poolId) {

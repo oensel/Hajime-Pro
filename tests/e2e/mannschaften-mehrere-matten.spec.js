@@ -112,14 +112,11 @@ test.describe.serial('Mannschaften: Pool auf mehrere Matten', () => {
         expect(abgelehnt.status()).toBe(409);
     });
 
-    test('Oberfläche: Matten-Knopf und Matten-Auswahl je Begegnung', async ({ page }) => {
+    test('Oberfläche: Runde je Begegnung, aber keine Mattenzuordnung auf mannschaften.html', async ({ page }) => {
         await page.goto(`/mannschaften.html?turnierId=${turnierId}`);
-        await expect(page.locator('.pool-matten-btn')).toHaveCount(1);
-        await expect(page.locator('.begegnung-matte-select').first()).toBeVisible();
         await expect(page.locator('.begegnung-runde').first()).toContainText('Runde');
-        await page.locator('.pool-matten-btn').click();
-        await expect(page.locator('#mattenModal')).toBeVisible();
-        await expect(page.locator('#mattenAuswahl input:checked')).toHaveCount(2);
+        await expect(page.locator('.pool-matten-btn')).toHaveCount(0);
+        await expect(page.locator('.begegnung-matte-select')).toHaveCount(0);
     });
 });
 
@@ -335,5 +332,75 @@ test.describe.serial('Mannschaften: Begegnungen auf der Matten-Seite', () => {
 
         const begegnungen = await (await request.get(`/api/mannschaftskaempfe?poolId=${poolId}`)).json();
         expect(begegnungen.find(b => b.id === Number(id)).kampfflaeche_id).toBe(matten[1]);
+    });
+});
+
+test.describe.serial('Mannschaften: kein Team auf zwei Matten, Dashboard', () => {
+    let turnierId;
+    let poolId;
+    let matten = [];
+
+    test('Aufbau: 4 Teams, Pool auf Matte 1 (keine Verteilung), dann einzelne Begegnungen verschoben', async ({ request }) => {
+        const t = await request.post('/api/turniere', {
+            data: { bezeichnung: `E2E Dashboard ${Date.now()}`, ort: 'Halle', datum: '2027-06-01', ausrichter: 'JC D', anzahl_kampfflaechen: 2 }
+        });
+        turnierId = (await t.json()).turnierId;
+        matten = (await (await request.get(`/api/kampfflaechen?turnierId=${turnierId}`)).json()).map(m => m.id);
+        const p = await request.post('/api/pools', {
+            data: {
+                turnier_id: turnierId, bezeichnung: 'D-Pool', modus: 'Jeder-gegen-Jeden', altersklasse: 'U18',
+                geschlecht: 'männlich', typ: 'mannschaft', mannschafts_gewichtsklassen: ['-73'], kampfzeit_sekunden: 180
+            }
+        });
+        poolId = (await p.json()).poolId;
+        for (let i = 1; i <= 4; i++) {
+            const tm = await request.post('/api/mannschaften', { data: { turnier_id: turnierId, pool_id: poolId, verein: `JC ${i}`, bezeichnung: `Team ${i}` } });
+            const { mannschaftId } = await tm.json();
+            const tn = await request.post('/api/teilnehmer', {
+                data: { turnier_id: turnierId, vorname: `D${i}`, nachname: 'Judoka', geschlecht: 'männlich', verein: `JC ${i}`, geburtsjahr: 2007, gewicht: 70, altersklasse: 'U18' }
+            });
+            const { teilnehmerId } = await tn.json();
+            await request.post(`/api/mannschaften/${mannschaftId}/mitglieder`, { data: { turnier_teilnehmer_id: teilnehmerId } });
+        }
+        // Pool als Ganzes auf Matte 1.
+        const z = await request.put('/api/pools/kampfflaeche-zuordnen', { data: { poolId, kampflaecheId: matten[0], position: 0 } });
+        expect(z.ok(), await z.text()).toBeTruthy();
+
+        // Per Hand mehrere Begegnungen auf Matte 2 legen (ohne vorherige rundenweise Verteilung).
+        const begegnungen = await (await request.get(`/api/mannschaftskaempfe?poolId=${poolId}`)).json();
+        for (const b of begegnungen.slice(0, 3)) {
+            const r = await request.put(`/api/mannschaftskaempfe/${b.id}/matte`, { data: { kampfflaecheId: matten[1] } });
+            expect(r.ok(), await r.text()).toBeTruthy();
+        }
+    });
+
+    test('Eingeplante Begegnungen über beide Matten haben keine gemeinsame Mannschaft', async ({ request }) => {
+        const begegnungen = await (await request.get(`/api/mannschaftskaempfe?poolId=${poolId}`)).json();
+        const eingeplant = new Set();
+        for (const matte of matten) {
+            const liste = await (await request.get(`/api/kaempfe?kampfflaecheId=${matte}`)).json();
+            liste.filter(k => k.matten_reihenfolge != null && k.status === 'bereit').forEach(k => eingeplant.add(k.mannschaftskampf_id));
+        }
+        expect(eingeplant.size).toBeGreaterThan(0);
+        const teams = [];
+        for (const id of eingeplant) {
+            const b = begegnungen.find(x => x.id === id);
+            teams.push(b.mannschaft1_id, b.mannschaft2_id);
+        }
+        expect(new Set(teams).size).toBe(teams.length);
+    });
+
+    test('Dashboard zeigt die Duelle auf der richtigen Matte mit Team-Namen', async ({ request }) => {
+        const daten = await (await request.get(`/api/pools/dashboard?turnierId=${turnierId}`)).json();
+        const mat2 = daten.mats.find(m => m.id === matten[1]);
+        const sichtbar = [mat2.currentFight, ...mat2.nextFights].filter(Boolean);
+        expect(sichtbar.length).toBeGreaterThan(0);
+        for (const f of sichtbar) {
+            expect(f.kampfflaeche_id).toBe(matten[1]);
+            expect(f.mannschaft1_bezeichnung).toMatch(/^Team \d$/);
+            expect(f.mannschaft2_bezeichnung).toMatch(/^Team \d$/);
+        }
+        // Der Pool erscheint auf beiden Matten (Hauptmatte und Matte mit verschobenen Begegnungen).
+        expect(mat2.pools.map(p => p.bezeichnung)).toContain('D-Pool');
     });
 });

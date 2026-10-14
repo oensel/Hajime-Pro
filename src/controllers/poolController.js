@@ -2447,15 +2447,30 @@ async function planeEineMatte(knex, kampfflaecheId) {
     const begegnungInfo = new Map();
     const offeneNachPool = new Map();
     if (mannschaftsPoolIdsDerMatte.length) {
-        const begegnungen = await knex('mannschaftskaempfe')
+        const alleBegegnungen = await knex('mannschaftskaempfe')
             .whereIn('pool_id', mannschaftsPoolIdsDerMatte)
-            .whereNotNull('runde')
-            .select('id', 'pool_id', 'runde', 'status', 'mannschaft1_id', 'mannschaft2_id');
-        for (const b of begegnungen) {
-            begegnungInfo.set(b.id, b);
-            if (b.status !== 'beendet' && b.status !== 'freilos') {
-                if (!offeneNachPool.has(b.pool_id)) offeneNachPool.set(b.pool_id, []);
-                offeneNachPool.get(b.pool_id).push(b);
+            .select('id', 'pool_id', 'runde', 'status', 'kampfflaeche_id', 'mannschaft1_id', 'mannschaft2_id',
+                'mannschaft1_quelle_kampf_id', 'mannschaft2_quelle_kampf_id');
+        const nachPool = new Map();
+        for (const b of alleBegegnungen) {
+            if (!nachPool.has(b.pool_id)) nachPool.set(b.pool_id, []);
+            nachPool.get(b.pool_id).push(b);
+        }
+        for (const [poolId, liste] of nachPool) {
+            // Nur Pools, deren Begegnungen auf mehreren Matten liegen (auch per Hand verschoben, ohne
+            // vorherige Verteilung): die Runde wird dann aus der Paarung berechnet, nicht aus der
+            // gespeicherten Spalte — ein Team darf nie auf zwei Matten gleichzeitig stehen.
+            const hauptMatte = poolById.get(poolId)?.kampfflaeche_id ?? null;
+            const matten = new Set(liste.filter(b => b.status !== 'freilos').map(b => b.kampfflaeche_id ?? hauptMatte));
+            if (matten.size <= 1) continue;
+            const runden = berechneRunden(liste);
+            for (const b of liste) {
+                const info = { ...b, runde: runden.get(b.id) ?? b.runde ?? 1 };
+                begegnungInfo.set(b.id, info);
+                if (b.status !== 'beendet' && b.status !== 'freilos') {
+                    if (!offeneNachPool.has(poolId)) offeneNachPool.set(poolId, []);
+                    offeneNachPool.get(poolId).push(info);
+                }
             }
         }
     }
@@ -2645,6 +2660,14 @@ export async function getDashboardData(knex, req, res) {
 
         const resultMats = [];
 
+        // Einzelkämpfe der Mannschafts-Pools mit ihrer wirksamen Matte (Begegnung > Pool).
+        const mannschaftsPoolIdsAlle = pools.filter(p => p.typ === 'mannschaft').map(p => p.id);
+        const mannschaftsKaempfeAlle = mannschaftsPoolIdsAlle.length
+            ? await knex('kaempfe').whereIn('pool_id', mannschaftsPoolIdsAlle).select('id', 'pool_id', 'status', 'kampfflaeche_id')
+            : [];
+        const poolHauptmatte = new Map(pools.map(p => [p.id, p.kampfflaeche_id]));
+        const wirksameMatte = (k) => (k.kampfflaeche_id != null ? k.kampfflaeche_id : poolHauptmatte.get(k.pool_id));
+
         // 3. Für jede Kampffläche die Fights laden
         for (const kf of kampfflaechen) {
             // Alle Kämpfe dieser Kampffläche, die noch nicht beendet sind (bereit oder laufend), sortiert nach matten_reihenfolge
@@ -2652,11 +2675,21 @@ export async function getDashboardData(knex, req, res) {
                 .join('pools', 'kaempfe.pool_id', '=', 'pools.id')
                 .leftJoin('turnier_teilnehmer as t1', 'kaempfe.kaempfer1_id', '=', 't1.id')
                 .leftJoin('turnier_teilnehmer as t2', 'kaempfe.kaempfer2_id', '=', 't2.id')
-                .where('pools.kampfflaeche_id', kf.id)
+                .leftJoin('mannschaftskaempfe as mk', 'kaempfe.mannschaftskampf_id', '=', 'mk.id')
+                .leftJoin('mannschaften as mt1', 'mk.mannschaft1_id', '=', 'mt1.id')
+                .leftJoin('mannschaften as mt2', 'mk.mannschaft2_id', '=', 'mt2.id')
+                // Wirksame Matte: eigene Zuordnung der Begegnung, sonst die des Pools.
+                .where(function () {
+                    this.where('kaempfe.kampfflaeche_id', kf.id)
+                        .orWhere(function () { this.whereNull('kaempfe.kampfflaeche_id').where('pools.kampfflaeche_id', kf.id); });
+                })
                 .whereNotIn('kaempfe.status', ['beendet', 'freilos'])
                 .select(
                     'kaempfe.*',
                     'pools.bezeichnung as pool_bezeichnung',
+                    'mt1.bezeichnung as mannschaft1_bezeichnung',
+                    'mt2.bezeichnung as mannschaft2_bezeichnung',
+                    'mk.runde as begegnung_runde',
                     't1.vorname as kaempfer1_vorname',
                     't1.nachname as kaempfer1_nachname',
                     't1.verein as kaempfer1_verein',
@@ -2675,6 +2708,8 @@ export async function getDashboardData(knex, req, res) {
             if (!alleEinzelPoolsAbgeschlossen) {
                 fights = fights.filter(f => !f.mannschaftskampf_id);
             }
+            // Noch nicht eingeplante Mannschaftskämpfe (z.B. Runde wartet auf andere Matte) gelten nicht als anstehend.
+            fights = fights.filter(f => !(f.mannschaftskampf_id && f.status === 'bereit' && f.matten_reihenfolge == null));
 
             // Mannschaftskampf-Einzelkämpfe zeigen statt des reinen Pool-Namens "<Poolname>
             // <Gewichtsklasse>" (siehe gleiche Logik in kampfController.getKaempfe).
@@ -2700,9 +2735,22 @@ export async function getDashboardData(knex, req, res) {
             // Nächste Kämpfe (die ersten 3, die nicht 'gestartet' sind)
             const nextFights = fights.filter(f => f.status !== 'gestartet').slice(0, 3);
 
-            // Pools, die dieser Kampffläche zugeordnet sind
+            // Pools, die dieser Kampffläche zugeordnet sind, plus Mannschafts-Pools anderer Hauptmatte,
+            // deren Begegnungen hier laufen (Fortschritt je Matte aus deren eigenen Kämpfen).
+            const poolMitKaempfenHier = new Set(
+                mannschaftsKaempfeAlle.filter(k => wirksameMatte(k) === kf.id).map(k => k.pool_id)
+            );
             const matPools = pools
-                .filter(p => p.kampfflaeche_id === kf.id)
+                .filter(p => p.kampfflaeche_id === kf.id || poolMitKaempfenHier.has(p.id))
+                .map(p => {
+                    if (p.typ !== 'mannschaft') return p;
+                    const hier = mannschaftsKaempfeAlle.filter(k => k.pool_id === p.id && wirksameMatte(k) === kf.id);
+                    return {
+                        ...p,
+                        gesamt_kaempfe: hier.length,
+                        beendete_kaempfe: hier.filter(k => k.status === 'beendet' || k.status === 'freilos').length
+                    };
+                })
                 .sort((a, b) => (a.matte_reihenfolge ?? 0) - (b.matte_reihenfolge ?? 0));
 
             // Aktive Pools auf dieser Matte (mit mindestens einem nicht beendeten Kampf)
