@@ -17,6 +17,7 @@ import { erzeugePgReplikation } from './pgReplikation.js';
 import { erzeugeZeuge } from './zeuge.js';
 import { entscheideUpdate } from './updateLogik.js';
 import { erzeugeUpdateDienst } from './updateDienst.js';
+import { erfasseSystemInfo } from './systemInfo.js';
 
 export const PRUEF_MS = 1000;
 const PARTNER_TIMEOUT_MS = 1500;
@@ -324,6 +325,23 @@ export function starteClusterDienst({ knex, clusterKonfig, syncKonfig, sync, ver
         return { ok: true, aktion: e.aktion };
     }
 
+    // Systemangaben (RAM, Platten, CPU, Last, Netz, Datenbankgröße): alle 5 s neu erfasst, nicht bei jeder Statusabfrage.
+    let systemZwischen = null; // { zeit, info }
+    async function systemInfo() {
+        if (systemZwischen && Date.now() - systemZwischen.zeit < 5000) return systemZwischen.info;
+        const pgPfad = await knex.raw('SHOW data_directory').then(r => r.rows[0].data_directory).catch(() => null);
+        const info = await erfasseSystemInfo({
+            pfade: [
+                { bezeichnung: 'Daten', pfad: path.resolve(syncKonfig.datenverzeichnis) },
+                ...(pgPfad ? [{ bezeichnung: 'PostgreSQL', pfad: pgPfad }] : []),
+                { bezeichnung: 'Programm', pfad: process.cwd() }
+            ],
+            dbGroesse: async () => Number((await knex.raw('SELECT pg_database_size(current_database()) AS g')).rows[0].g)
+        }).catch(() => null);
+        systemZwischen = { zeit: Date.now(), info };
+        return info;
+    }
+
     async function eigenerStatus() {
         const g = await gesundheit();
         return {
@@ -346,6 +364,7 @@ export function starteClusterDienst({ knex, clusterKonfig, syncKonfig, sync, ver
             letzter_rueckstufungsfehler: letzterRueckstufungsFehler,
             uebergabe_laeuft: !!uebergabe,
             pg: { rolle: g.pg_rolle, ...(letzterPgStatus || {}) },
+            system: await systemInfo(),
             dokumente: await sync.dokumentStatus(),
             verlauf: verlauf.slice(0, 20),
             zeit: new Date().toISOString()

@@ -48,6 +48,9 @@ test('Update: nur der Secondary bekommt den Knopf, der Master wird abgelehnt, Ve
     expect(master.eigen.version).toBe('1.0.17');
     expect(master.partner.version).toBe('1.0.17');
     expect(master.update.knopf).toBe(false);
+    expect(master.eigen.system.ram.gesamt).toBeGreaterThan(0);
+    expect(master.eigen.system.platten.length).toBeGreaterThan(0);
+    expect(master.partner.system.cpu.kerne).toBeGreaterThan(0);
     expect(secondary.update).toMatchObject({ knopf: true, aktion: 'direkt', ziel: '1.0.18' });
 
     const abgelehnt = await request.post(`${KNOTEN.server1.url}/api/cluster/update`);
@@ -133,9 +136,9 @@ test('Secondary fällt aus: Master arbeitet asynchron weiter ("ohne Absicherung"
 
 test('Cluster-Seite: beide Server mit Rolle und Absicherung, Secondary mit Hinweis "nur lesend"', async ({ page }) => {
     await page.goto(`/cluster.html?turnierId=${turnierId}`);
-    await expect(page.locator('.knoten-karte[data-knoten="server1"] [data-feld="rolle"]')).toHaveText('Master');
-    await expect(page.locator('.knoten-karte[data-knoten="server2"] [data-feld="rolle"]')).toHaveText('Secondary');
-    await expect(page.locator('.knoten-karte[data-knoten="server1"] [data-feld="absicherung"]')).toHaveText('synchron');
+    await expect(page.locator('.vergleich [data-knoten="server1"][data-feld="rolle"]')).toHaveText('Master');
+    await expect(page.locator('.vergleich [data-knoten="server2"][data-feld="rolle"]')).toHaveText('Secondary');
+    await expect(page.locator('.vergleich [data-knoten="server1"][data-feld="absicherung"]')).toHaveText('synchron');
     // Der Client schreibt seinen Heartbeat alle 30 s (HEARTBEAT_INTERVALL_MS) — nach Neustarts und
     // Übergaben kann der aktuelle Master ihn erst mit dem nächsten Heartbeat haben.
     await expect(page.locator('#clusterClients')).toContainText('Matte', { timeout: 40_000 });
