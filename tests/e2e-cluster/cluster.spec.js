@@ -48,6 +48,9 @@ test('Update: nur der Secondary bekommt den Knopf, der Master wird abgelehnt, Ve
     expect(master.eigen.version).toBe('1.0.17');
     expect(master.partner.version).toBe('1.0.17');
     expect(master.update.knopf).toBe(false);
+    expect(master.eigen.system.ram.gesamt).toBeGreaterThan(0);
+    expect(master.eigen.system.platten.length).toBeGreaterThan(0);
+    expect(master.partner.system.cpu.kerne).toBeGreaterThan(0);
     expect(secondary.update).toMatchObject({ knopf: true, aktion: 'direkt', ziel: '1.0.18' });
 
     const abgelehnt = await request.post(`${KNOTEN.server1.url}/api/cluster/update`);

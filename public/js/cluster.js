@@ -72,10 +72,47 @@
         const pull = dok.partner_pull || {};
         zeile('Dokumente', dok.doc_count != null ? `${dok.doc_count} (Seq ${dok.update_seq})` : 'kein Turnier');
         zeile('Dokument-Replikation', pull.laeuft ? (pull.fehler ? `Fehler: ${pull.fehler}` : pull.aktiv ? 'überträgt …' : 'aktuell') : '–', pull.fehler ? 'zustand-warn' : '');
+        zeigeSystem(zeile, s.system);
         if (s.rueckstufung_laeuft) zeile('Rückstufung', 'läuft …', 'zustand-warn');
         if (s.letzter_rueckstufungsfehler) zeile('Letzter Fehler', s.letzter_rueckstufungsfehler, 'zustand-schlecht');
         karte.appendChild(dl);
         return karte;
+    }
+
+    const GIB = 1024 ** 3;
+    const gib = (n) => `${(n / GIB).toFixed(n >= 100 * GIB ? 0 : 1).replace('.', ',')} GiB`;
+
+    function dauer(sekunden) {
+        const t = Math.floor(sekunden / 86400);
+        const h = Math.floor((sekunden % 86400) / 3600);
+        const m = Math.floor((sekunden % 3600) / 60);
+        return t ? `${t} d ${h} h` : h ? `${h} h ${m} min` : `${m} min`;
+    }
+
+    // Anteil frei: unter 10 % gelb, unter 5 % rot (Platten zusätzlich: unter 5 GiB gelb).
+    function knappheit(frei, gesamt, minFrei) {
+        if (!gesamt) return '';
+        const anteil = frei / gesamt;
+        if (anteil < 0.05) return 'zustand-schlecht';
+        if (anteil < 0.10 || (minFrei && frei < minFrei)) return 'zustand-warn';
+        return '';
+    }
+
+    function zeigeSystem(zeile, sys) {
+        if (!sys) return;
+        const frei = (f, g) => `${gib(f)} frei von ${gib(g)} (${Math.round(((g - f) / g) * 100)} % belegt)`;
+        zeile('Arbeitsspeicher', frei(sys.ram.verfuegbar, sys.ram.gesamt), knappheit(sys.ram.verfuegbar, sys.ram.gesamt)).dataset.feld = 'ram';
+        if (sys.swap && sys.swap.gesamt > 0) zeile('Auslagerung', frei(sys.swap.frei, sys.swap.gesamt));
+        for (const p of sys.platten || []) {
+            zeile(`Speicherplatz (${p.bezeichnung})`, `${frei(p.frei, p.gesamt)} · ${p.pfad}`, knappheit(p.frei, p.gesamt, 5 * GIB)).dataset.feld = 'platte';
+        }
+        if (sys.db_groesse != null) zeile('Datenbankgröße', sys.db_groesse < GIB ? `${(sys.db_groesse / 1024 ** 2).toFixed(1).replace('.', ',')} MiB` : gib(sys.db_groesse));
+        zeile('CPU', `${sys.cpu.kerne} Kerne${sys.cpu.modell ? ` · ${sys.cpu.modell}` : ''}`);
+        zeile('Last (1/5/15 min)', (sys.last || []).map(l => l.toFixed(2).replace('.', ',')).join(' / '),
+            sys.cpu.kerne && sys.last && sys.last[0] > sys.cpu.kerne ? 'zustand-warn' : '');
+        zeile('Laufzeit des Systems', dauer(sys.laufzeit_s));
+        zeile('System', `${sys.host} · ${sys.os} ${sys.arch} · Node ${sys.node}`);
+        if ((sys.netz || []).length) zeile('Netzwerk', sys.netz.map(n => `${n.adresse} (${n.schnittstelle})`).join(', '));
     }
 
     function tabelle(kopf, zeilen) {
