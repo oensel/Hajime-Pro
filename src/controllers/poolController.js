@@ -2366,29 +2366,34 @@ async function planeEineMatte(knex, kampfflaecheId) {
     // in dieser Reihenfolge ans Ende angehängt, statt wie Einzelwettkampf-Kämpfe frei nach
     // Pausenlage zwischen Pools verschoben zu werden.
     const einzelPoolIds = poolIds.filter(id => poolById.get(id)?.typ !== 'mannschaft');
-    // Runde n+1 eines auf mehrere Matten verteilten Pools beginnt erst, wenn Runde n beendet ist
-    // (kein Team steht auf zwei Matten gleichzeitig) — gilt über alle Matten des Pools.
+    // Auf mehrere Matten verteilte Begegnungen: eine Begegnung wird erst eingeplant, wenn keines ihrer
+    // beiden Teams noch in einer unbeendeten Begegnung einer früheren Runde steckt (auch auf einer
+    // anderen Matte) — so steht kein Team auf zwei Matten gleichzeitig. Teams, die gerade nirgends
+    // kämpfen, dürfen der Runde vorauseilen.
     const mannschaftsPoolIdsDerMatte = poolIds.filter(id => poolById.get(id)?.typ === 'mannschaft');
-    const rundeJeBegegnung = new Map();
-    const offeneMinRunde = new Map();
+    const begegnungInfo = new Map();
+    const offeneNachPool = new Map();
     if (mannschaftsPoolIdsDerMatte.length) {
         const begegnungen = await knex('mannschaftskaempfe')
             .whereIn('pool_id', mannschaftsPoolIdsDerMatte)
             .whereNotNull('runde')
-            .select('id', 'pool_id', 'runde', 'status');
+            .select('id', 'pool_id', 'runde', 'status', 'mannschaft1_id', 'mannschaft2_id');
         for (const b of begegnungen) {
-            rundeJeBegegnung.set(b.id, { pool_id: b.pool_id, runde: b.runde });
+            begegnungInfo.set(b.id, b);
             if (b.status !== 'beendet' && b.status !== 'freilos') {
-                const bisher = offeneMinRunde.get(b.pool_id);
-                if (bisher === undefined || b.runde < bisher) offeneMinRunde.set(b.pool_id, b.runde);
+                if (!offeneNachPool.has(b.pool_id)) offeneNachPool.set(b.pool_id, []);
+                offeneNachPool.get(b.pool_id).push(b);
             }
         }
     }
     const durchRundeGesperrt = (k) => {
-        const info = k.mannschaftskampf_id ? rundeJeBegegnung.get(k.mannschaftskampf_id) : null;
+        const info = k.mannschaftskampf_id ? begegnungInfo.get(k.mannschaftskampf_id) : null;
         if (!info) return false;
-        const min = offeneMinRunde.get(info.pool_id);
-        return min !== undefined && info.runde > min;
+        const teams = [info.mannschaft1_id, info.mannschaft2_id].filter(id => id != null);
+        return (offeneNachPool.get(info.pool_id) || []).some(c =>
+            c.id !== info.id && c.runde < info.runde
+            && (teams.includes(c.mannschaft1_id) || teams.includes(c.mannschaft2_id))
+        );
     };
     const planbareMannschaftsKaempfe = planbareKaempfe
         .filter(k => poolById.get(k.pool_id)?.typ === 'mannschaft' && !durchRundeGesperrt(k))

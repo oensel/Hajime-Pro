@@ -189,3 +189,76 @@ test.describe.serial('Mannschaften: Doppel-KO-8 auf zwei Matten', () => {
         expect(pools.find(p => p.id === poolId).status).toBe('kaempfe_beendet');
     });
 });
+
+test.describe.serial('Mannschaften: freie Teams dürfen der Runde vorauseilen', () => {
+    let turnierId;
+    let poolId;
+    let matten = [];
+
+    test('Aufbau: 6 Teams, Jeder gegen Jeden, zwei Matten', async ({ request }) => {
+        const t = await request.post('/api/turniere', {
+            data: { bezeichnung: `E2E Vorauseilen ${Date.now()}`, ort: 'Halle', datum: '2027-06-01', ausrichter: 'JC V', anzahl_kampfflaechen: 2 }
+        });
+        turnierId = (await t.json()).turnierId;
+        matten = (await (await request.get(`/api/kampfflaechen?turnierId=${turnierId}`)).json()).map(m => m.id);
+        const p = await request.post('/api/pools', {
+            data: {
+                turnier_id: turnierId, bezeichnung: 'V-Pool', modus: 'Jeder-gegen-Jeden', altersklasse: 'U18',
+                geschlecht: 'männlich', typ: 'mannschaft', mannschafts_gewichtsklassen: ['-73'], kampfzeit_sekunden: 180
+            }
+        });
+        poolId = (await p.json()).poolId;
+        for (let i = 1; i <= 6; i++) {
+            const tm = await request.post('/api/mannschaften', { data: { turnier_id: turnierId, pool_id: poolId, verein: `JC ${i}`, bezeichnung: `Team ${i}` } });
+            const { mannschaftId } = await tm.json();
+            const tn = await request.post('/api/teilnehmer', {
+                data: { turnier_id: turnierId, vorname: `V${i}`, nachname: 'Judoka', geschlecht: 'männlich', verein: `JC ${i}`, geburtsjahr: 2007, gewicht: 70, altersklasse: 'U18' }
+            });
+            const { teilnehmerId } = await tn.json();
+            await request.post(`/api/mannschaften/${mannschaftId}/mitglieder`, { data: { turnier_teilnehmer_id: teilnehmerId } });
+        }
+        const r = await request.put(`/api/mannschaften/pools/${poolId}/matten`, { data: { kampfflaechen: matten } });
+        expect(r.ok(), await r.text()).toBeTruthy();
+    });
+
+    test('Eine Begegnung ist genau dann eingeplant, wenn ihre Teams in früheren Runden frei sind', async ({ request }) => {
+        const holeZustand = async () => {
+            const begegnungen = await (await request.get(`/api/mannschaftskaempfe?poolId=${poolId}`)).json();
+            const eingeplant = new Set();
+            for (const matte of matten) {
+                const liste = await (await request.get(`/api/kaempfe?kampfflaecheId=${matte}`)).json();
+                liste.filter(k => k.status === 'bereit' && k.matten_reihenfolge != null).forEach(k => eingeplant.add(k.mannschaftskampf_id));
+            }
+            return { begegnungen, eingeplant };
+        };
+        const erwartet = (begegnungen) => new Set(begegnungen
+            .filter(b => b.status === 'bereit' && !begegnungen.some(c =>
+                c.id !== b.id && c.runde < b.runde && c.status !== 'beendet' && c.status !== 'freilos'
+                && [c.mannschaft1_id, c.mannschaft2_id].some(t => t === b.mannschaft1_id || t === b.mannschaft2_id)))
+            .map(b => b.id));
+
+        let vorausgeeilt = false;
+        for (let schritt = 0; schritt < 3; schritt++) {
+            const { begegnungen, eingeplant } = await holeZustand();
+            expect([...eingeplant].sort()).toEqual([...erwartet(begegnungen)].sort());
+            if ([...eingeplant].some(id => begegnungen.find(b => b.id === id).runde > 1)) vorausgeeilt = true;
+
+            // Genau eine weitere Begegnung der frühesten offenen Runde beenden.
+            const offene = begegnungen.filter(b => b.status === 'bereit' && b.runde === 1);
+            if (offene.length === 0) break;
+            const kaempfe = await (await request.get(`/api/kaempfe?poolId=${poolId}`)).json();
+            for (const k of kaempfe.filter(k => k.mannschaftskampf_id === offene[0].id && k.status === 'bereit')) {
+                const r = await request.put(`/api/kaempfe/${k.id}`, {
+                    data: { status: 'beendet', sieger_id: k.kaempfer1_id, unterbewertung_kaempfer1: 10, unterbewertung_kaempfer2: 0, kampfzeit_in_sekunden: 60 }
+                });
+                expect(r.ok(), await r.text()).toBeTruthy();
+            }
+        }
+        // Nach den ersten Begegnungen der Runde 1 gibt es nichts Vorauseilendes, nach allen dreien Runde 2.
+        const { begegnungen, eingeplant } = await holeZustand();
+        expect([...eingeplant].sort()).toEqual([...erwartet(begegnungen)].sort());
+        expect([...eingeplant].every(id => begegnungen.find(b => b.id === id).runde === 2)).toBeTruthy();
+        expect(eingeplant.size).toBe(3);
+        void vorausgeeilt;
+    });
+});
