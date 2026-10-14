@@ -29,58 +29,9 @@
         return iso ? new Date(iso).toLocaleTimeString('de-DE') : '–';
     }
 
-    function bytes(n) {
-        if (n == null) return '–';
-        if (n < 1024) return `${n} B`;
-        return `${(n / 1024).toFixed(1)} KiB`;
-    }
-
-    function knotenKarte(name, s) {
-        const karte = el('div', null, 'knoten-karte');
-        karte.dataset.knoten = name;
-        const titel = el('h2');
-        titel.appendChild(el('span', 'dns', 'material-icons'));
-        titel.appendChild(el('span', name));
-        karte.appendChild(titel);
-        const dl = el('dl');
-        const zeile = (dt, dd, klasse) => {
-            dl.appendChild(el('dt', dt));
-            const d = el('dd', dd, klasse);
-            dl.appendChild(d);
-            return d;
-        };
-        if (!s) {
-            zeile('Erreichbar', 'nein', 'zustand-schlecht');
-            karte.appendChild(dl);
-            return karte;
-        }
-        zeile('Erreichbar', 'ja', 'zustand-gut');
-        zeile('Rolle', s.rolle === 'master' ? 'Master' : 'Secondary', s.rolle === 'master' ? 'rolle-master' : 'rolle-secondary').dataset.feld = 'rolle';
-        zeile('Gesund', s.gesund ? 'ja' : `nein – ${(s.gruende || []).join(', ')}`, s.gesund ? 'zustand-gut' : 'zustand-schlecht');
-        zeile('Epoche', String(s.epoche ?? '–'));
-        zeile('Version', s.version || 'unbekannt').dataset.feld = 'version';
-        const pg = s.pg || {};
-        zeile('PostgreSQL', pg.rolle === 'primary' ? 'Primary' : pg.rolle === 'standby' ? 'Standby' : 'nicht erreichbar', pg.rolle ? '' : 'zustand-schlecht');
-        if (s.rolle === 'master') {
-            const abgesichert = pg.absicherung === 'synchron';
-            zeile('Replikation', abgesichert ? 'synchron' : 'asynchron – ohne Absicherung', abgesichert ? 'zustand-gut' : 'zustand-warn').dataset.feld = 'absicherung';
-            zeile('Rückstand (relational)', bytes(pg.rueckstand_bytes));
-        } else if (pg.rolle === 'standby') {
-            zeile('Empfängt vom Master', pg.empfaengt ? 'ja' : 'nein', pg.empfaengt ? 'zustand-gut' : 'zustand-warn');
-        }
-        const dok = s.dokumente || {};
-        const pull = dok.partner_pull || {};
-        zeile('Dokumente', dok.doc_count != null ? `${dok.doc_count} (Seq ${dok.update_seq})` : 'kein Turnier');
-        zeile('Dokument-Replikation', pull.laeuft ? (pull.fehler ? `Fehler: ${pull.fehler}` : pull.aktiv ? 'überträgt …' : 'aktuell') : '–', pull.fehler ? 'zustand-warn' : '');
-        zeigeSystem(zeile, s.system, dl);
-        if (s.rueckstufung_laeuft) zeile('Rückstufung', 'läuft …', 'zustand-warn');
-        if (s.letzter_rueckstufungsfehler) zeile('Letzter Fehler', s.letzter_rueckstufungsfehler, 'zustand-schlecht');
-        karte.appendChild(dl);
-        return karte;
-    }
-
     const GIB = 1024 ** 3;
     const gib = (n) => `${(n / GIB).toFixed(n >= 100 * GIB ? 0 : 1).replace('.', ',')} GiB`;
+    const KNOTEN_NAMEN = ['server1', 'server2'];
 
     function dauer(sekunden) {
         const t = Math.floor(sekunden / 86400);
@@ -90,54 +41,168 @@
     }
 
     // Füllstand: ab 75 % gelb, ab 90 % rot; Platten zusätzlich gelb, wenn weniger als 5 GiB frei sind.
-    function stufe(belegt, gesamt, minFrei) {
-        if (!gesamt) return 'ok';
-        const anteil = belegt / gesamt;
+    function stufe(anteil, minFreiVerletzt) {
         if (anteil >= 0.90) return 'bad';
-        if (anteil >= 0.75 || (minFrei && gesamt - belegt < minFrei)) return 'warn';
+        if (anteil >= 0.75 || minFreiVerletzt) return 'warn';
         return 'ok';
     }
 
-    // Eine Zeile mit Balken: links der Name, rechts "belegt von gesamt · Prozent", darunter optional eine Notiz.
-    function balken(dl, name, belegt, gesamt, optionen = {}) {
-        dl.appendChild(el('dt', name));
-        const dd = el('dd', null, 'balken-zeile');
-        const prozent = gesamt > 0 ? Math.round((belegt / gesamt) * 100) : 0;
-        const kopf = el('div', null, 'balken-kopf');
-        kopf.appendChild(el('span', optionen.text || `${gib(belegt)} von ${gib(gesamt)}`));
-        kopf.appendChild(el('span', `${prozent} %`));
-        dd.appendChild(kopf);
-        const bahn = el('div', null, 'balken-bahn');
-        const fuell = el('i', null, `balken-fuell balken-${stufe(belegt, gesamt, optionen.minFrei)}`);
-        fuell.style.width = `${Math.min(100, prozent)}%`;
-        bahn.appendChild(fuell);
-        dd.appendChild(bahn);
-        if (optionen.notiz) dd.appendChild(el('div', optionen.notiz, 'balken-notiz'));
-        dd.dataset.feld = optionen.feld || '';
-        dd.dataset.prozent = String(prozent);
-        dl.appendChild(dd);
+    // Zellinhalt als Text (optional mit Klasse) oder Balken; "–" für fehlende Werte.
+    const text = (t, klasse) => ({ art: 'text', t, klasse });
+    const fehlt = () => text('–');
+    const balken = (belegt, gesamt, optionen = {}) => {
+        if (!gesamt) return fehlt();
+        const anteil = belegt / gesamt;
+        return {
+            art: 'balken', anteil,
+            links: `${gib(belegt)} von ${gib(gesamt)}`, rechts: `${Math.round(anteil * 100)} %`,
+            stufe: stufe(anteil, optionen.minFrei && gesamt - belegt < optionen.minFrei)
+        };
+    };
+
+    // Die Zeilen der Vergleichstabelle: je Kennwert eine Funktion, die aus dem Status eines Servers die Zelle liefert.
+    // Fehlt der Server (nicht erreichbar) oder der Wert, zeigt die Zelle "–", die Zeilen bleiben auf gleicher Höhe.
+    function tabellenZeilen(knoten) {
+        const sys = (n) => (knoten[n] && knoten[n].system) || null;
+        const zeilen = [];
+        const gruppe = (name) => zeilen.push({ gruppe: name });
+        const zeile = (name, fn, feld) => zeilen.push({ name, fn, feld });
+        const ausStatus = (fn) => (s, n) => (s ? fn(s, n) : fehlt());
+
+        gruppe('Zustand');
+        zeile('Erreichbar', (s) => (s ? text('ja', 'zustand-gut') : text('nein', 'zustand-schlecht')));
+        zeile('Rolle', ausStatus(s => text(s.rolle === 'master' ? 'Master' : 'Secondary', s.rolle === 'master' ? 'rolle-master' : 'rolle-secondary')), 'rolle');
+        zeile('Gesund', ausStatus(s => (s.gesund ? text('ja', 'zustand-gut') : text(`nein – ${(s.gruende || []).join(', ')}`, 'zustand-schlecht'))));
+        zeile('Epoche', ausStatus(s => text(String(s.epoche ?? '–'))));
+        zeile('Version', ausStatus(s => text(s.version || 'unbekannt')), 'version');
+
+        gruppe('Datenbank');
+        zeile('PostgreSQL', ausStatus(s => {
+            const r = (s.pg || {}).rolle;
+            return r === 'primary' ? text('Primary') : r === 'standby' ? text('Standby') : text('nicht erreichbar', 'zustand-schlecht');
+        }));
+        zeile('Replikation', ausStatus(s => {
+            const p = s.pg || {};
+            if (s.rolle === 'master') return p.absicherung === 'synchron' ? text('synchron', 'zustand-gut') : text('asynchron – ohne Absicherung', 'zustand-warn');
+            if (p.rolle === 'standby') return p.empfaengt ? text('empfängt vom Master', 'zustand-gut') : text('empfängt nicht', 'zustand-warn');
+            return fehlt();
+        }), 'absicherung');
+        zeile('Dokumente', ausStatus(s => {
+            const d = s.dokumente || {};
+            return d.doc_count != null ? text(`${d.doc_count} (Seq ${d.update_seq})`) : text('kein Turnier');
+        }));
+        zeile('Dokument-Replikation', ausStatus(s => {
+            const p = (s.dokumente || {}).partner_pull || {};
+            if (!p.laeuft) return fehlt();
+            return p.fehler ? text(`Fehler: ${p.fehler}`, 'zustand-warn') : text(p.aktiv ? 'überträgt …' : 'aktuell');
+        }));
+        zeile('Datenbankgröße', (s, n) => {
+            const g = sys(n) && sys(n).db_groesse;
+            if (g == null) return fehlt();
+            return text(g < GIB ? `${(g / 1024 ** 2).toFixed(1).replace('.', ',')} MiB` : gib(g));
+        });
+        if (KNOTEN_NAMEN.some(n => knoten[n] && (knoten[n].rueckstufung_laeuft || knoten[n].letzter_rueckstufungsfehler))) {
+            zeile('Rückstufung', ausStatus(s => (s.letzter_rueckstufungsfehler ? text(s.letzter_rueckstufungsfehler, 'zustand-schlecht') : s.rueckstufung_laeuft ? text('läuft …', 'zustand-warn') : fehlt())));
+        }
+
+        gruppe('Ressourcen');
+        zeile('Arbeitsspeicher', (s, n) => (sys(n) ? balken(sys(n).ram.gesamt - sys(n).ram.verfuegbar, sys(n).ram.gesamt) : fehlt()), 'ram');
+        if (KNOTEN_NAMEN.some(n => sys(n) && sys(n).swap && sys(n).swap.gesamt > 0)) {
+            zeile('Auslagerung', (s, n) => (sys(n) && sys(n).swap && sys(n).swap.gesamt > 0 ? balken(sys(n).swap.gesamt - sys(n).swap.frei, sys(n).swap.gesamt) : fehlt()), 'swap');
+        }
+        // Speicherplatz: je Dateisystem eine Zeile (benannt nach dem Einhängepunkt), über beide Server vereinigt.
+        const platten = [];
+        for (const n of KNOTEN_NAMEN) {
+            for (const p of (sys(n) && sys(n).platten) || []) {
+                const schluessel = p.einhaengepunkt || p.pfad;
+                if (!platten.includes(schluessel)) platten.push(schluessel);
+            }
+        }
+        for (const schluessel of platten) {
+            zeile(`Speicherplatz ${schluessel}`, (s, n) => {
+                const p = ((sys(n) && sys(n).platten) || []).find(x => (x.einhaengepunkt || x.pfad) === schluessel);
+                return p ? balken(p.gesamt - p.frei, p.gesamt, { minFrei: 5 * GIB }) : fehlt();
+            }, 'platte');
+        }
+        zeile('Last', (s, n) => {
+            const sy = sys(n);
+            if (!sy || !sy.cpu.kerne || !sy.last) return fehlt();
+            const k = sy.cpu.kerne;
+            return { art: 'last', anteil: sy.last[0] / k, min5: sy.last[1] / k, min15: sy.last[2] / k, stufe: stufe(sy.last[0] / k) };
+        }, 'last');
+
+        gruppe('System');
+        zeile('CPU', (s, n) => (sys(n) ? text(`${sys(n).cpu.kerne} Kerne${sys(n).cpu.modell ? ` · ${sys(n).cpu.modell.replace(/\(R\)|\(TM\)/g, '').replace(/\s+/g, ' ').trim()}` : ''}`) : fehlt()));
+        zeile('Laufzeit', (s, n) => (sys(n) ? text(dauer(sys(n).laufzeit_s)) : fehlt()));
+        zeile('System', (s, n) => (sys(n) ? { art: 'text', t: sys(n).host, notiz: `${sys(n).os} ${sys(n).arch} · Node ${sys(n).node}` } : fehlt()));
+        zeile('Netzwerk', (s, n) => {
+            const netz = (sys(n) && sys(n).netz) || [];
+            return netz.length ? { art: 'text', t: netz.map(x => `${x.adresse} (${x.schnittstelle})`).join(', ') } : fehlt();
+        });
+        return zeilen;
     }
 
-    function zeigeSystem(zeile, sys, dl) {
-        if (!sys) return;
-        balken(dl, 'Arbeitsspeicher', sys.ram.gesamt - sys.ram.verfuegbar, sys.ram.gesamt, { feld: 'ram' });
-        if (sys.swap && sys.swap.gesamt > 0) balken(dl, 'Auslagerung', sys.swap.gesamt - sys.swap.frei, sys.swap.gesamt, { feld: 'swap' });
-        for (const p of sys.platten || []) {
-            const geteilt = (p.enthaelt || []).length > 1 ? `${p.enthaelt.join(', ')} auf demselben Gerät` : '';
-            balken(dl, `Speicherplatz (${(p.enthaelt || [p.bezeichnung]).join(' + ')})`, p.gesamt - p.frei, p.gesamt, {
-                feld: 'platte', minFrei: 5 * GIB, notiz: [p.pfad, geteilt].filter(Boolean).join(' · ')
-            });
+    function zelle(inhalt, n, feld) {
+        const z = el('div', null, 'v-zelle');
+        z.dataset.knoten = n;
+        if (feld) z.dataset.feld = feld;
+        if (inhalt.art === 'balken') {
+            const kopf = el('div', null, 'balken-kopf');
+            kopf.appendChild(el('span', inhalt.links));
+            kopf.appendChild(el('span', inhalt.rechts));
+            z.appendChild(kopf);
+            const bahn = el('div', null, 'balken-bahn');
+            const fuell = el('i', null, `balken-fuell balken-${inhalt.stufe}`);
+            fuell.style.width = `${Math.min(100, Math.round(inhalt.anteil * 100))}%`;
+            bahn.appendChild(fuell);
+            z.appendChild(bahn);
+            z.dataset.prozent = String(Math.round(inhalt.anteil * 100));
+        } else if (inhalt.art === 'last') {
+            // 100 % = alle Kerne; Füllung = letzte Minute, Striche = Mittel 5 und 15 Minuten.
+            const bahn = el('div', null, 'balken-bahn balken-last');
+            const fuell = el('i', null, `balken-fuell balken-${inhalt.stufe}`);
+            fuell.style.width = `${Math.min(100, Math.round(inhalt.anteil * 100))}%`;
+            bahn.appendChild(fuell);
+            const strich = (anteil, klasse, titel) => {
+                const s = el('b', null, klasse);
+                s.style.left = `${Math.min(99, Math.round(anteil * 100))}%`;
+                s.title = titel;
+                bahn.appendChild(s);
+            };
+            strich(inhalt.min5, 'strich', `Mittel 5 Minuten: ${Math.round(inhalt.min5 * 100)} %`);
+            strich(inhalt.min15, 'strich strich-hell', `Mittel 15 Minuten: ${Math.round(inhalt.min15 * 100)} %`);
+            bahn.title = `Letzte Minute: ${Math.round(inhalt.anteil * 100)} %`;
+            z.appendChild(bahn);
+            z.dataset.prozent = String(Math.round(inhalt.anteil * 100));
+        } else {
+            z.appendChild(el('span', inhalt.t, inhalt.klasse || ''));
+            if (inhalt.notiz) z.appendChild(el('div', inhalt.notiz, 'balken-notiz'));
         }
-        const last = sys.last && sys.last[0] != null ? sys.last[0] : null;
-        if (last != null && sys.cpu.kerne) {
-            balken(dl, 'Last (1 min)', last, sys.cpu.kerne, { feld: 'last', text: `${last.toFixed(2).replace('.', ',')} bei ${sys.cpu.kerne} Kernen` });
+        return z;
+    }
+
+    // Eine gemeinsame Tabelle: links der Kennwert, rechts je Server eine Spalte — gleiche Kennwerte stehen auf einer Höhe.
+    function vergleichTabelle(knoten) {
+        const raster = el('div', null, 'vergleich');
+        raster.appendChild(el('div', null, 'v-kopf'));
+        for (const n of KNOTEN_NAMEN) {
+            const kopf = el('div', null, 'v-kopf');
+            kopf.dataset.knoten = n;
+            kopf.appendChild(el('span', 'dns', 'material-icons'));
+            kopf.appendChild(el('span', n));
+            const s = knoten[n];
+            if (s) kopf.appendChild(el('span', s.rolle === 'master' ? 'Master' : 'Secondary', `v-tag ${s.rolle === 'master' ? 'rolle-master' : 'rolle-secondary'}`));
+            raster.appendChild(kopf);
         }
-        if (sys.db_groesse != null) zeile('Datenbankgröße', sys.db_groesse < GIB ? `${(sys.db_groesse / 1024 ** 2).toFixed(1).replace('.', ',')} MiB` : gib(sys.db_groesse));
-        zeile('CPU', `${sys.cpu.kerne} Kerne${sys.cpu.modell ? ` · ${sys.cpu.modell}` : ''}`);
-        if (sys.last) zeile('Last (5/15 min)', sys.last.slice(1).map(l => l.toFixed(2).replace('.', ',')).join(' / '));
-        zeile('Laufzeit des Systems', dauer(sys.laufzeit_s));
-        zeile('System', `${sys.host} · ${sys.os} ${sys.arch} · Node ${sys.node}`);
-        if ((sys.netz || []).length) zeile('Netzwerk', sys.netz.map(n => `${n.adresse} (${n.schnittstelle})`).join(', '));
+        for (const z of tabellenZeilen(knoten)) {
+            if (z.gruppe) {
+                raster.appendChild(el('div', z.gruppe, 'v-gruppe'));
+                continue;
+            }
+            raster.appendChild(el('div', z.name, 'v-name'));
+            for (const n of KNOTEN_NAMEN) raster.appendChild(zelle(z.fn(knoten[n] || null, n), n, z.feld));
+        }
+        return raster;
     }
 
     function tabelle(kopf, zeilen) {
@@ -178,7 +243,7 @@
         document.getElementById('clusterHinweis').textContent =
             `Diese Seite läuft auf ${eigen.knoten}. VIP: ${eigen.vip || '–'} · aktualisiert ${zeit(eigen.zeit)}`;
         const container = document.getElementById('clusterKnoten');
-        container.replaceChildren(...['server1', 'server2'].map(n => knotenKarte(n, knoten[n])));
+        container.replaceChildren(vergleichTabelle(knoten));
 
         const clients = (daten.clients || []).map(c => [
             c.geraet || c.client_id, c.matte_id ? `Matte ${c.matte_id}` : '–', zeit(c.letzter_kontakt), String(c.ausstehend ?? 0)

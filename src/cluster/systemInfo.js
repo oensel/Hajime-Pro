@@ -15,6 +15,27 @@ export function parseMeminfo(text) {
     return { gesamt: wert('MemTotal'), verfuegbar: wert('MemAvailable'), swapGesamt: wert('SwapTotal'), swapFrei: wert('SwapFree') };
 }
 
+// Einhängepunkte aus /proc/self/mountinfo (Feld 5; Leerzeichen sind als \040 maskiert).
+export function parseMountinfo(text) {
+    const punkte = [];
+    for (const zeile of String(text || '').split('\n')) {
+        const felder = zeile.split(' ');
+        if (felder.length < 5 || !felder[4].startsWith('/')) continue;
+        punkte.push(felder[4].replace(/\\([0-7]{3})/g, (_, o) => String.fromCharCode(parseInt(o, 8))));
+    }
+    return punkte;
+}
+
+// Längster Einhängepunkt, der Vorfahre des Pfades ist.
+export function einhaengepunktFuer(punkte, pfad) {
+    let beste = null;
+    for (const p of punkte) {
+        const passt = p === '/' || pfad === p || pfad.startsWith(`${p}/`);
+        if (passt && (beste === null || p.length > beste.length)) beste = p;
+    }
+    return beste;
+}
+
 async function oderNull(fn) {
     try {
         return await fn();
@@ -55,19 +76,18 @@ export async function erfasseSystemInfo({
     };
     const swap = mem.swapGesamt != null ? { gesamt: mem.swapGesamt, frei: mem.swapFrei } : null;
 
-    // Je Gerät eine Platte; liegen Daten, PostgreSQL und Programm zusammen, steht das in `enthaelt`.
+    // Je Gerät eine Platte, benannt nach dem Einhängepunkt; was darauf liegt, wird nicht aufgeführt.
+    const mountpunkte = plattform === 'linux' ? parseMountinfo(await oderNull(() => leseDatei('/proc/self/mountinfo'))) : [];
     const platten = [];
     const nachGeraet = new Map();
     for (const { bezeichnung, pfad } of pfade) {
         const w = await plattenwerte(pfad, { statfs, geraet });
         if (!w) continue;
         const schluessel = w.geraet != null ? `dev:${w.geraet}` : `pfad:${w.pfad}`;
-        const vorhanden = nachGeraet.get(schluessel);
-        if (vorhanden) {
-            vorhanden.enthaelt.push(bezeichnung);
-            continue;
-        }
-        const eintrag = { bezeichnung, pfad: w.pfad, gesamt: w.gesamt, frei: w.frei, enthaelt: [bezeichnung] };
+        if (nachGeraet.has(schluessel)) continue;
+        const eintrag = {
+            bezeichnung, pfad: w.pfad, einhaengepunkt: einhaengepunktFuer(mountpunkte, w.pfad), gesamt: w.gesamt, frei: w.frei
+        };
         nachGeraet.set(schluessel, eintrag);
         platten.push(eintrag);
     }

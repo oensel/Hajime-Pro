@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseMeminfo, erfasseSystemInfo } from '../../src/cluster/systemInfo.js';
+import { parseMeminfo, parseMountinfo, einhaengepunktFuer, erfasseSystemInfo } from '../../src/cluster/systemInfo.js';
 
 const MEMINFO = `MemTotal:       16384000 kB
 MemFree:          500000 kB
@@ -45,7 +45,6 @@ test('Systeminfo: RAM aus meminfo, Platten je Gerät nur einmal, Netz ohne Loopb
     assert.equal(info.ram.verfuegbar, 8192000 * 1024);
     assert.equal(info.swap.gesamt, 2048000 * 1024);
     assert.equal(info.platten.length, 1);
-    assert.deepEqual(info.platten[0].enthaelt, ['Daten', 'PostgreSQL']);
     assert.deepEqual({ gesamt: info.platten[0].gesamt, frei: info.platten[0].frei }, { gesamt: 1000 * 1024, frei: 250 * 1024 });
     assert.deepEqual(info.netz, [{ schnittstelle: 'eth0', adresse: '192.168.10.131' }]);
     assert.equal(info.db_groesse, 123456);
@@ -66,4 +65,30 @@ test('Systeminfo: fehlende Quellen ergeben null statt eines Fehlers (Windows, ke
     assert.equal(info.swap, null);
     assert.deepEqual(info.platten, []);
     assert.equal(info.db_groesse, null);
+});
+
+const MOUNTINFO = `22 1 8:1 / / rw,relatime shared:1 - ext4 /dev/sda1 rw
+30 22 8:2 / /var/lib/postgresql rw,relatime shared:2 - ext4 /dev/sdb1 rw
+31 22 8:3 / /mnt/mit\\040leerzeichen rw,relatime shared:3 - ext4 /dev/sdc1 rw
+40 22 0:5 / /proc rw,nosuid shared:4 - proc proc rw
+`;
+
+test('mountinfo: Einhängepunkte, längster passender Punkt, Leerzeichen-Escape', () => {
+    const punkte = parseMountinfo(MOUNTINFO);
+    assert.ok(punkte.includes('/') && punkte.includes('/var/lib/postgresql') && punkte.includes('/mnt/mit leerzeichen'));
+    assert.equal(einhaengepunktFuer(punkte, '/opt/hajime-pro/data'), '/');
+    assert.equal(einhaengepunktFuer(punkte, '/var/lib/postgresql/17/main'), '/var/lib/postgresql');
+    assert.equal(einhaengepunktFuer(punkte, '/var/lib/postgresqlfoo'), '/');
+    assert.equal(einhaengepunktFuer([], '/x'), null);
+});
+
+test('Systeminfo: Platten tragen den Einhängepunkt, PostgreSQL auf eigenem Gerät ist eine eigene Platte', async () => {
+    const info = await erfasseSystemInfo({
+        os: osFake, plattform: 'linux', nodeVersion: 'v22.1.0',
+        leseDatei: async (p) => (p === '/proc/self/mountinfo' ? MOUNTINFO : MEMINFO),
+        statfs: async () => ({ bsize: 1024, blocks: 1000, bavail: 500 }),
+        geraet: async (p) => (p.startsWith('/var/lib/postgresql') ? 2 : 1),
+        pfade: [{ bezeichnung: 'Daten', pfad: '/opt/hajime-pro/data' }, { bezeichnung: 'PostgreSQL', pfad: '/var/lib/postgresql/17/main' }, { bezeichnung: 'Programm', pfad: '/opt/hajime-pro' }]
+    });
+    assert.deepEqual(info.platten.map(p => p.einhaengepunkt), ['/', '/var/lib/postgresql']);
 });
