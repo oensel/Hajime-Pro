@@ -14,7 +14,8 @@
         epoche_uebernommen: 'Epoche übernommen',
         uebergabe_gestartet: 'Übergabe gestartet',
         uebergabe_abgebrochen: 'Übergabe abgebrochen',
-        update_gestartet: 'Update gestartet'
+        update_gestartet: 'Update gestartet',
+        partner_update_angestossen: 'Update des Partners angestoßen'
     };
     const GRUENDE = { automatisch: 'automatisch', uebergabe: 'geplante Übergabe', erststart: 'Erststart' };
 
@@ -277,12 +278,30 @@
         const verschieden = !!(anderer && eigen.version && anderer !== eigen.version);
         hinweis.style.display = verschieden ? 'block' : 'none';
         hinweis.textContent = verschieden
-            ? `Dieser Server ist auf Version ${eigen.version}, ${eigen.partner_knoten} auf ${anderer}. Der andere Server braucht ebenfalls ein manuell angestoßenes Update (dort cluster.html öffnen und „Update“ klicken).`
+            ? `Dieser Server ist auf Version ${eigen.version}, ${eigen.partner_knoten} auf ${anderer}. Der andere Server wird nicht automatisch aktualisiert: Sein Update stoßen Sie dort auf cluster.html an, oder vom Master aus mit „Secondary aktualisieren“.`
             : '';
         btn.style.display = update.knopf ? 'inline-flex' : 'none';
         document.getElementById('btnUpdateText').textContent = update.aktion === 'nach_uebergabe'
             ? `Übergeben und auf ${update.ziel} aktualisieren`
             : `Auf ${update.ziel} aktualisieren`;
+
+        // Aktualisieren des Secondary vom Master aus (Aufruf über die VIP).
+        const teil = update.partner;
+        const partnerBtn = document.getElementById('btnPartnerUpdate');
+        partnerBtn.style.display = teil && teil.knopf ? 'inline-flex' : 'none';
+        if (teil && teil.knopf) {
+            document.getElementById('btnPartnerUpdateText').textContent = `${eigen.partner_knoten} (Secondary) auf ${teil.ziel} aktualisieren`;
+        }
+
+        // Ist ein neueres Release da, aber dieser Server bekommt keinen Knopf: den Grund zeigen statt zu schweigen.
+        const neuer = update.neuesteVersion && eigen.version && update.neuesteVersion !== eigen.version;
+        const grund = document.getElementById('updateGrund');
+        const keinKnopf = !update.knopf && !(teil && teil.knopf);
+        grund.style.display = neuer && keinKnopf && update.grund ? 'block' : 'none';
+        grund.textContent = grund.style.display === 'block' ? `Update hier nicht möglich: ${update.grund}` : '';
+        if (update.partner && update.partner.grund === 'Auf dem Secondary läuft bereits ein Update.') {
+            zeile.textContent += ` · Update auf ${eigen.partner_knoten} läuft …`;
+        }
     }
 
     document.getElementById('btnUpdate').addEventListener('click', async () => {
@@ -298,11 +317,29 @@ Die Umschaltung dauert einige Sekunden.`
 Der Dienst startet dabei neu.`;
         if (!confirm(`${text}
 
-Danach muss der andere Server (${andere}) ebenfalls aktualisiert werden: dort cluster.html öffnen und „Update“ klicken.`)) return;
+Danach muss der andere Server (${andere}) ebenfalls aktualisiert werden: dort auf cluster.html „Update“ klicken.`)) return;
         const antwort = await fetch('/api/cluster/update', { method: 'POST' });
         const antwortDaten = await antwort.json().catch(() => ({}));
         if (!antwort.ok) {
             alert(`Update nicht möglich: ${antwortDaten.error || antwort.status}`);
+            return;
+        }
+        lade();
+    });
+
+    document.getElementById('btnPartnerUpdate').addEventListener('click', async () => {
+        if (!aktuell || !aktuell.update || !aktuell.update.partner || !aktuell.update.partner.knopf) return;
+        const ziel = aktuell.update.partner.ziel;
+        const andere = aktuell.eigen.partner_knoten;
+        if (!confirm(`${andere} (Secondary) auf ${ziel} aktualisieren?
+
+Der Dienst auf ${andere} startet dabei neu. Dieser Server bleibt Master und arbeitet unverändert weiter; die Replikation ist kurz unterbrochen.
+
+Danach kann dieser Server mit „Übergeben und aktualisieren“ folgen.`)) return;
+        const antwort = await fetch('/api/cluster/partner-update', { method: 'POST' });
+        const daten = await antwort.json().catch(() => ({}));
+        if (!antwort.ok) {
+            alert(`Update nicht möglich: ${daten.error || antwort.status}`);
             return;
         }
         lade();

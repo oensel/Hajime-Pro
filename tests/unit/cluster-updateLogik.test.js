@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { istVersion, vergleicheVersionen, entscheideUpdate } from '../../src/cluster/updateLogik.js';
+import { istVersion, vergleicheVersionen, entscheideUpdate, entscheidePartnerUpdate } from '../../src/cluster/updateLogik.js';
 
 test('Versionen: Format und Vergleich (numerisch, nicht textuell)', () => {
     assert.equal(istVersion('1.0.18'), true);
@@ -40,4 +40,38 @@ test('Kein Knopf: aktuell, Release/Partner unbekannt, laufendes Update, ungülti
     assert.equal(e({ eigeneVersion: 'abc' }).knopf, false);
     assert.equal(e({ neuesteVersion: '1.0.17' }).knopf, false); // kein Downgrade, nichts Neueres
     assert.equal(e({ partnerVersion: '1.0.19' }).knopf, false); // Partner schon über dem bekannten Release hinaus
+});
+
+// ---------- Master stößt das Update des Secondary an (über die VIP) ----------
+const teil = (extra = {}) => entscheidePartnerUpdate({
+    eigeneVersion: '1.0.19', rolle: 'master', neuesteVersion: '1.0.21',
+    partner: { rolle: 'secondary', version: '1.0.19', updateLaeuft: false }, ...extra
+});
+
+test('Partner-Update: der Master darf den gleich alten Secondary anstoßen', () => {
+    assert.deepEqual(teil(), { knopf: true, aktion: 'partner', ziel: '1.0.21', grund: null });
+});
+
+test('Partner-Update: nur vom Master, nur bei erreichbarem Secondary', () => {
+    assert.equal(teil({ rolle: 'secondary' }).knopf, false);
+    assert.match(teil({ partner: null }).grund, /nicht erreichbar/);
+    assert.match(teil({ partner: { rolle: 'master', version: '1.0.19' } }).grund, /nicht Secondary/);
+    assert.match(teil({ partner: { rolle: 'secondary', version: null } }).grund, /nicht bekannt/);
+});
+
+test('Partner-Update: kein Knopf bei neuestem Stand, laufendem Update oder neuerem Secondary', () => {
+    assert.match(teil({ partner: { rolle: 'secondary', version: '1.0.21' } }).grund, /neuesten Stand/);
+    assert.match(teil({ partner: { rolle: 'secondary', version: '1.0.19', updateLaeuft: true } }).grund, /läuft bereits/);
+    const neuer = teil({ partner: { rolle: 'secondary', version: '1.0.20' }, eigeneVersion: '1.0.19' });
+    assert.equal(neuer.knopf, false);
+    assert.match(neuer.grund, /Secondary ist neuer als der Master/);
+    assert.match(teil({ neuesteVersion: null }).grund, /nicht prüfbar/);
+});
+
+test('Partner-Update: ein Secondary hinter dem Master wird aktualisiert, der Master selbst nie ohne Übergabe', () => {
+    const r = teil({ eigeneVersion: '1.0.21', partner: { rolle: 'secondary', version: '1.0.19', updateLaeuft: false } });
+    assert.equal(r.knopf, true);
+    assert.equal(r.ziel, '1.0.21');
+    // Master schon über dem bekannten Release: kein Downgrade des Secondary
+    assert.match(teil({ eigeneVersion: '1.0.22' }).grund, /neuere Version als das bekannte Release/);
 });

@@ -15,7 +15,7 @@ import path from 'path';
 import { entscheideStart, entscheideBefoerderung, pruefePartner, uebernimmPartner } from './rollenLogik.js';
 import { erzeugePgReplikation } from './pgReplikation.js';
 import { erzeugeZeuge } from './zeuge.js';
-import { entscheideUpdate } from './updateLogik.js';
+import { entscheideUpdate, entscheidePartnerUpdate } from './updateLogik.js';
 import { erzeugeUpdateDienst } from './updateDienst.js';
 import { erfasseSystemInfo } from './systemInfo.js';
 
@@ -295,6 +295,19 @@ export function starteClusterDienst({ knex, clusterKonfig, syncKonfig, sync, ver
         });
     }
 
+    // Sicht des Masters auf das Update des Secondary (Knopf „Secondary aktualisieren“ auf cluster.html).
+    async function partnerUpdateEntscheidung(partner) {
+        return entscheidePartnerUpdate({
+            eigeneVersion,
+            rolle,
+            partner: partner ? {
+                rolle: partner.rolle, version: partner.version || null,
+                updateLaeuft: !!(partner.update && partner.update.laeuft)
+            } : null,
+            neuesteVersion: await update.neuesteVersion()
+        });
+    }
+
     // Update nach einer Master-Übergabe: erst starten, wenn dieser Server wieder Standby ist.
     async function arbeiteVorgemerktesUpdateAb() {
         const v = vorgemerkt();
@@ -323,6 +336,36 @@ export function starteClusterDienst({ knex, clusterKonfig, syncKonfig, sync, ver
         protokolliere('update_gestartet', { ziel: e.ziel });
         update.starte(e.ziel).catch(err => console.error('[Cluster] Update fehlgeschlagen:', err.message));
         return { ok: true, aktion: e.aktion };
+    }
+
+    // Der Master stößt das Update des Secondary an (Aufruf über die VIP). Der Secondary prüft die Regeln selbst noch
+    // einmal (updateAufAnfrage); der Master entscheidet hier nur, ob er es überhaupt versucht.
+    async function partnerUpdateStarten() {
+        const partner = await holePartner();
+        const e = await partnerUpdateEntscheidung(partner);
+        if (!e.knopf) throw Object.assign(new Error(e.grund), { status: 409 });
+        let antwort;
+        try {
+            antwort = await fetch(`${partnerUrl}/api/cluster/update-vom-partner`, {
+                method: 'POST',
+                signal: AbortSignal.timeout(PARTNER_TIMEOUT_MS),
+                headers: syncKonfig.secret ? { 'x-hajime-sync-secret': syncKonfig.secret } : {}
+            });
+        } catch {
+            throw Object.assign(new Error('Der Secondary ist nicht erreichbar.'), { status: 502 });
+        }
+        if (!antwort.ok) {
+            const daten = await antwort.json().catch(() => ({}));
+            throw Object.assign(new Error(daten.error || `Der Secondary lehnt das Update ab (${antwort.status}).`), { status: antwort.status === 409 ? 409 : 502 });
+        }
+        protokolliere('partner_update_angestossen', { ziel: e.ziel, an: partnerKnoten });
+        return { ok: true, aktion: 'partner', ziel: e.ziel };
+    }
+
+    // Auf dem Secondary: der Partner (Master) stößt das Update an. Nur 'direkt' (Secondary); die Regeln prüft updateStarten.
+    async function updateAufAnfrage() {
+        if (rolle !== 'secondary') throw Object.assign(new Error('Nur ein Secondary lässt sich vom Partner aktualisieren.'), { status: 409 });
+        return updateStarten();
     }
 
     // Systemangaben (RAM, Platten, CPU, Last, Netz, Datenbankgröße): alle 5 s neu erfasst, nicht bei jeder Statusabfrage.
@@ -363,6 +406,7 @@ export function starteClusterDienst({ knex, clusterKonfig, syncKonfig, sync, ver
             rueckstufung_laeuft: rueckstufungLaeuft,
             letzter_rueckstufungsfehler: letzterRueckstufungsFehler,
             uebergabe_laeuft: !!uebergabe,
+            update: { laeuft: update.laeuft() || !!vorgemerkt() },
             pg: { rolle: g.pg_rolle, ...(letzterPgStatus || {}) },
             system: await systemInfo(),
             dokumente: await sync.dokumentStatus(),
@@ -399,6 +443,8 @@ export function starteClusterDienst({ knex, clusterKonfig, syncKonfig, sync, ver
         uebergeben,
         kuendigeUebergabeAn,
         updateStarten,
+        partnerUpdateStarten,
+        updateAufAnfrage,
         eigenerStatus,
         async status() {
             const eigen = await eigenerStatus();
@@ -410,6 +456,7 @@ export function starteClusterDienst({ knex, clusterKonfig, syncKonfig, sync, ver
                 aktiv: true, eigen, partner, clients,
                 update: {
                     ...entscheidung, neuesteVersion: await update.neuesteVersion(),
+                    partner: await partnerUpdateEntscheidung(partner),
                     zustand: st ? st.zustand : null, meldung: st ? st.meldung : null,
                     laeuft: update.laeuft(), vorgemerkt: !!vorgemerkt()
                 }

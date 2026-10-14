@@ -6,7 +6,8 @@ import { requireWriteAuth } from '../middleware/auth.js';
 //
 // /gesund, /befoerdern und /zurueckstufen ruft keepalived auf dem eigenen Server auf (nur von
 // localhost). /uebergabe-ankuendigen ruft der Partner-Server auf (SYNC_SECRET). /uebergeben ist
-// die geplante Übergabe aus der Cluster-Seite (Turnierleitung, Steuerungs-Passwort).
+// die geplante Übergabe aus der Cluster-Seite (Turnierleitung, Steuerungs-Passwort). /partner-update stößt
+// vom Master aus das Update des Secondary an, /update-vom-partner ist dessen Gegenstück (SYNC_SECRET).
 const LOCALHOST = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 
 export function getClusterRoutes(holeCluster, { secret }) {
@@ -53,6 +54,9 @@ export function getClusterRoutes(holeCluster, { secret }) {
     }));
     router.post('/uebergeben', requireWriteAuth, mitCluster, antworte(req => req.cluster.uebergeben()));
     router.post('/update', requireWriteAuth, mitCluster, antworte(req => req.cluster.updateStarten()));
+    // Update des Secondary über die VIP: der Master (Knopf auf cluster.html) ruft den Secondary mit SYNC_SECRET auf.
+    router.post('/partner-update', requireWriteAuth, mitCluster, antworte(req => req.cluster.partnerUpdateStarten()));
+    router.post('/update-vom-partner', nurPartner, mitCluster, antworte(req => req.cluster.updateAufAnfrage()));
 
     return router;
 }
