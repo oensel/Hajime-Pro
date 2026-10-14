@@ -1,6 +1,6 @@
 # Stage prod: Release bei Tag v* (npm version <patch|minor|major> && git push --follow-tags) ODER per Hand im Browser
 # (Actions -> Release -> Run workflow, Branch main, Version z.B. 1.0.11): dann legt die Pipeline den Tag am Ende selbst an.
-# Tests (entfallen, wenn der Release-PR genau diesen Stand schon voll getestet hat) -> Versionsprüfung -> Build je
+# Versionsprüfung -> Tests (entfallen, wenn der Release-PR genau diesen Stand schon voll getestet hat) -> Build je
 # Plattform (+ Rauchtest) + Android-APK -> signieren -> Server-Paket (mit den signierten Client-Dateien) -> GitHub-Release.
 name: Release
 on:
@@ -28,7 +28,10 @@ jobs:
   # liegt die Marke ci-gruen-<Tree-Hash> vor (Job "ergebnis" in ci.yml) und die Tests entfallen hier. Sonst (z.B. wurde
   # nach dem Release-PR noch ein anderer PR gemergt) laufen sie wie bisher. Nur Marken aus Läufen dieses Repos zählen,
   # nicht aus Fork-PRs (die können ci.yml selbst verändern).
+  # Erst nach "pruefen": passen Tag und package.json-Version nicht (z.B. Release gestartet, ohne dass der Release-PR die
+  # Version hochgesetzt hat), endet der Lauf nach Sekunden, statt die Tests umsonst laufen zu lassen.
   vorgeprueft:
+    needs: pruefen
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
