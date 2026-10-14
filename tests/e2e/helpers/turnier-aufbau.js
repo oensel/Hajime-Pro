@@ -16,13 +16,13 @@ export async function legeTurnierAn(request, { name, anzahlKampfflaechen = 1, da
 }
 
 // Legt `anzahl` Teilnehmer einer Klasse an; `gewogen: false` lässt sie "angemeldet" (Einwiegen später).
-export async function legeKlasseAn(request, turnierId, { altersklasse, geschlecht, gewichtsklasse, anzahl, gewogen = true, gewichtStart = 30 }) {
+export async function legeKlasseAn(request, turnierId, { altersklasse, geschlecht, gewichtsklasse, anzahl, gewogen = true, gewichtStart = 30, gewichtSchritt = 1, namenszusatz = '' }) {
     const ids = [];
     for (let i = 0; i < anzahl; i++) {
         const resp = await request.post('/api/teilnehmer', {
             data: {
-                turnier_id: turnierId, vorname: `${altersklasse}${geschlecht}${i}`, nachname: `Test${turnierId}`,
-                verein: `Verein ${i % 2}`, geburtsjahr: 2010, geschlecht, gewicht: gewichtStart + i,
+                turnier_id: turnierId, vorname: `${namenszusatz}${altersklasse}${geschlecht}${i}`, nachname: `Test${turnierId}`,
+                verein: `Verein ${i % 2}`, geburtsjahr: 2010, geschlecht, gewicht: gewichtStart + i * gewichtSchritt,
                 altersklasse, gewichtsklasse, lizenz_ablauf: '2099-12-31', gewogen
             }
         });

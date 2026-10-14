@@ -105,6 +105,42 @@ export class JederGegenJedenManager {
 
 
     /**
+     * Nimmt einen Nachzügler in einen bereits laufenden Pool auf: er bekommt nur Kämpfe gegen alle bisherigen
+     * Teilnehmer, kein bestehender Kampf wird angefasst (der Aufrufer prüft vorher mit bewerteEinfuegen,
+     * dass das Wettkampfsystem gleich bleibt). Die Kämpfe sind als `nachzuegler` gekennzeichnet, die
+     * Mattenplanung verteilt sie zwischen die übrigen offenen Kämpfe des Pools.
+     * @returns {Promise<number>} Anzahl der neuen Kämpfe
+     */
+    async ergaenzeTeilnehmer(knex, poolId, teilnehmerId) {
+        const mitglieder = await knex('turnier_teilnehmer')
+            .where({ pool_id: poolId })
+            .whereNot({ id: teilnehmerId })
+            .orderBy('gewicht', 'asc')
+            .orderBy('id', 'asc');
+        if (mitglieder.length === 0) return 0;
+
+        const letzte = await knex('kaempfe').where({ pool_id: poolId }).max('reihenfolge_nummer as m').first();
+        const start = (Number(letzte?.m) || 0) + 1;
+
+        const neue = mitglieder.map((gegner, i) => ({
+            pool_id: poolId,
+            status: 'bereit',
+            reihenfolge_nummer: start + i,
+            // abwechselnd, damit der Nachzügler nicht immer dieselbe Seite bekommt
+            kaempfer1_id: i % 2 === 0 ? teilnehmerId : gegner.id,
+            kaempfer2_id: i % 2 === 0 ? gegner.id : teilnehmerId,
+            sieger_id: null,
+            kampfzeit_in_sekunden: 0,
+            unterbewertung_kaempfer1: 0,
+            unterbewertung_kaempfer2: 0,
+            nachzuegler: true
+        }));
+        await knex('kaempfe').insert(neue);
+        console.log(`[DB] ${neue.length} Kämpfe für Nachzügler ${teilnehmerId} in Pool-ID ${poolId} ergänzt.`);
+        return neue.length;
+    }
+
+    /**
      * Wird nach jedem Kampf am Tisch aufgerufen.
      * Da keine Kämpfe nachrücken, wird nur geprüft, ob das Turnier vollendet ist.
      * @param {Object} knex - Die Knex-Instanz

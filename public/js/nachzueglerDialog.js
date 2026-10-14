@@ -27,7 +27,11 @@
     }
 
     function optionsText(pool, istVorschlag) {
+        if (pool.moeglich === false) {
+            return `${pool.bezeichnung} → nicht möglich (Pool läuft bereits)`;
+        }
         const teile = [`${pool.bezeichnung} → ${pool.teilnehmerNachher} Teilnehmer, ${pool.systemNachher}`];
+        if (pool.laeuft) teile.push('Pool läuft bereits, Einfügen ohne Systemwechsel');
         if (pool.gewichtsspanneUeberschritten) teile.push('Gewichtsspanne überschritten');
         return (istVorschlag ? 'Vorschlag: ' : '') + teile.join(' – ');
     }
@@ -35,33 +39,79 @@
     // Zeigt die Auswahl; löst mit { poolId } (Pool), { verspaetet: true } oder null ("Später") auf.
     function zeigeAuswahl(nachzuegler) {
         return new Promise((resolve) => {
+            const pools = nachzuegler.offenePools || [];
             const vorschlagId = nachzuegler.vorschlag ? nachzuegler.vorschlag.poolId : null;
             const select = element('select', { id: 'nachzueglerPoolSelect' });
-            select.style.cssText = 'width:100%;height:auto;padding:10px 12px;margin:0 0 20px;font-size:14px;cursor:pointer;';
-            for (const pool of nachzuegler.offenePools || []) {
-                select.append(element('option', { value: String(pool.poolId), textContent: optionsText(pool, pool.poolId === vorschlagId) }));
+            select.style.cssText = 'width:100%;height:auto;padding:10px 12px;margin:0 0 12px;font-size:14px;cursor:pointer;';
+            for (const pool of pools) {
+                select.append(element('option', {
+                    value: String(pool.poolId), textContent: optionsText(pool, pool.poolId === vorschlagId),
+                    disabled: pool.moeglich === false
+                }));
             }
             select.append(element('option', { value: 'verspaetet', textContent: 'Verspätet (Sammelpool)' }));
             select.value = vorschlagId != null ? String(vorschlagId) : 'verspaetet';
+
+            // Begründung zur gewählten Zeile: warum ein laufender Pool nicht (mehr) in Frage kommt
+            const begruendung = element('p', { id: 'nachzueglerBegruendung' });
+            begruendung.style.cssText = 'margin:0 0 16px;font-size:13px;color:var(--text-muted);';
+            const gesperrt = pools.filter(p => p.moeglich === false);
+            const zeigeBegruendung = () => {
+                const pool = pools.find(p => String(p.poolId) === select.value);
+                begruendung.textContent = pool && pool.laeuft && pool.moeglich !== false
+                    ? (pool.hinweis || 'Der Pool läuft bereits. Das Wettkampfsystem bleibt unverändert.')
+                    : '';
+            };
+            select.addEventListener('change', zeigeBegruendung);
+            zeigeBegruendung();
+
+            const sperrHinweis = gesperrt.length === 0 ? null : element('ul', { id: 'nachzueglerSperrgruende' },
+                gesperrt.map(p => element('li', { textContent: `${p.bezeichnung}: ${p.grund}` })));
+            if (sperrHinweis) sperrHinweis.style.cssText = 'margin:0 0 16px;padding-left:18px;font-size:13px;color:var(--text-muted);';
+            const nurSammelpool = !pools.some(p => p.moeglich !== false);
+            const warnung = nurSammelpool
+                ? element('p', { id: 'nachzueglerKeinPool', textContent: 'Kein Pool kann diesen Teilnehmer noch aufnehmen. Ein Wechsel des Wettkampfsystems ist nach Beginn eines Pools nicht möglich; er kommt in den Sammelpool "Verspätet".' })
+                : null;
+            if (warnung) warnung.style.cssText = 'margin:0 0 12px;padding:10px 12px;border:2px solid var(--border);font-size:13px;font-weight:700;';
+
+            // Hinweise, die nicht überlesen werden dürfen (laufender Pool, gesperrte Pools, kein Platz): erst nach
+            // ausdrücklicher Bestätigung lässt sich der Dialog schließen oder eine Auswahl treffen.
+            const braucheBestaetigung = gesperrt.length > 0 || pools.some(p => p.laeuft) || vorschlagId == null;
+            const bestaetigung = braucheBestaetigung
+                ? element('input', { type: 'checkbox', id: 'nachzueglerBestaetigung' })
+                : null;
+            const bestaetigungZeile = bestaetigung
+                ? element('label', {}, [bestaetigung, document.createTextNode(' Ich habe den Hinweis gelesen und verstanden.')])
+                : null;
+            if (bestaetigungZeile) bestaetigungZeile.style.cssText = 'display:block;margin:0 0 16px;font-size:14px;font-weight:700;cursor:pointer;';
 
             const btnEinsortieren = element('button', { type: 'button', id: 'nachzueglerEinsortierenBtn', className: 'btn btn-raised', textContent: 'Einsortieren' });
             const btnSpaeter = element('button', { type: 'button', id: 'nachzueglerSpaeterBtn', className: 'btn btn-outlined', textContent: 'Später' });
             const knoepfe = element('div', {}, [btnSpaeter, btnEinsortieren]);
             knoepfe.style.cssText = 'display:flex;justify-content:flex-end;gap:12px;';
             for (const b of [btnSpaeter, btnEinsortieren]) b.style.padding = '2px 16px';
+            if (bestaetigung) {
+                btnSpaeter.disabled = true;
+                btnEinsortieren.disabled = true;
+                bestaetigung.addEventListener('change', () => {
+                    btnSpaeter.disabled = !bestaetigung.checked;
+                    btnEinsortieren.disabled = !bestaetigung.checked;
+                });
+            }
 
             const titel = element('h2', { textContent: `In welchen Pool soll ${nachzuegler.name} ?` });
             titel.style.cssText = 'margin:0 0 8px;font-size:18px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-main);';
             const hinweis = element('p', { textContent: `Die Altersklasse ${nachzuegler.altersklasse} ist bereits ausgelost.` });
             hinweis.style.cssText = 'margin:0 0 16px;font-size:13px;color:var(--text-muted);';
 
-            const karte = element('div', { role: 'dialog' }, [titel, hinweis, select, knoepfe]);
+            const karte = element('div', { role: 'dialog' }, [titel, hinweis, ...(warnung ? [warnung] : []), select, begruendung, ...(sperrHinweis ? [sperrHinweis] : []), ...(bestaetigungZeile ? [bestaetigungZeile] : []), knoepfe]);
             karte.style.cssText = 'background:var(--bg-card);color:var(--text-main);border:2px solid var(--border);border-radius:4px;padding:24px;max-width:560px;width:90%;box-shadow:var(--shadow);';
 
             const overlay = element('div', { id: 'nachzueglerDialog' }, [karte]);
             overlay.style.cssText = 'position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.4);backdrop-filter:blur(2px);';
 
-            const beiTaste = (e) => { if (e.key === 'Escape') beenden(null); };
+            // Mit Pflicht-Hinweis schließt Escape nicht: erst die Bestätigung, dann "Später" oder "Einsortieren".
+            const beiTaste = (e) => { if (e.key === 'Escape' && !(bestaetigung && !bestaetigung.checked)) beenden(null); };
             const beenden = (ergebnis) => {
                 document.removeEventListener('keydown', beiTaste, true);
                 overlay.remove();
@@ -73,7 +123,7 @@
                 beenden(select.value === 'verspaetet' ? { verspaetet: true } : { poolId: Number(select.value) });
             });
             document.body.append(overlay);
-            btnEinsortieren.focus();
+            (bestaetigung || btnEinsortieren).focus();
         });
     }
 
