@@ -3,7 +3,8 @@ import { DoppelKo8Manager } from '../services/DoppelKo8Manager.js';
 import { DoppelKo16Manager } from '../services/DoppelKo16Manager.js';
 import { DoppelKo32Manager } from '../services/DoppelKo32Manager.js';
 import { GruppenUeberKreuzManager } from '../services/GruppenUeberKreuzManager.js';
-import { planeKaempfeFuerKampfflaeche, synchronisiereMattenStatus } from './poolController.js';
+import { planeKaempfeFuerKampfflaeche, synchronisiereMattenStatus, ladeKaempfeDerMatte } from './poolController.js';
+import { kampfMatteId } from '../shared/kampfMatte.js';
 import { baueMattenAnsicht } from '../shared/mattenAnsicht.js';
 import { FachFehler } from '../utils/fachFehler.js';
 import { pruefeKorrekturErlaubt } from '../shared/korrekturRegel.js';
@@ -116,11 +117,11 @@ export async function getKaempfe(knex, req, res) {
             // die das Frontend im Sync-Modus auf die Dokumente der Dokument-DB anwendet. Dort stehen
             // auch die Regeln zu wartet_auf_einzelpools, Gewichtsklassen-Suffix und Pausenwarnung.
             const mattenId = parseInt(kampfflaecheId);
-            const pools = await knex('pools').where({ kampfflaeche_id: mattenId });
-            const poolIds = pools.map(p => p.id);
+            // Pools der Matte plus Pools, deren Begegnungen einzeln dieser Matte zugeordnet sind.
+            const { pools, kaempfe: kaempfeRoh } = await ladeKaempfeDerMatte(knex, mattenId);
             // Die Farbe von Kämpfer 2 (blau/rot) stellt das Scoreboard live ein (updateKampfColor); die Kampf-Seite zeigt sie an.
             const liveFarben = global.liveColors || {};
-            const kaempfeDerMatte = (poolIds.length ? await knex('kaempfe').whereIn('pool_id', poolIds) : [])
+            const kaempfeDerMatte = kaempfeRoh
                 .map(k => (liveFarben[k.id] ? { ...k, live_farbe: liveFarben[k.id] } : k));
             const turnier = pools.length ? await knex('turniere').where({ id: pools[0].turnier_id }).first('farbe_kaempfer2') : null;
             const teilnehmerIds = [...new Set(kaempfeDerMatte.flatMap(k => [k.kaempfer1_id, k.kaempfer2_id]).filter(Boolean))];
@@ -267,14 +268,10 @@ export async function updateKampf(knex, req, res) {
 
 // Lädt die noch nicht gestarteten Kämpfe ("bereit" mit Position) einer Matte in Mattenreihenfolge.
 async function ladeBereiteKaempfeDerMatte(knex, kampfflaecheId) {
-    const poolIds = (await knex('pools').where({ kampfflaeche_id: kampfflaecheId }).select('id')).map(p => p.id);
-    if (!poolIds.length) return [];
-    return knex('kaempfe')
-        .whereIn('pool_id', poolIds)
-        .where({ status: 'bereit' })
-        .whereNotNull('matten_reihenfolge')
-        .orderBy('matten_reihenfolge', 'asc')
-        .orderBy('id', 'asc');
+    const { kaempfe } = await ladeKaempfeDerMatte(knex, kampfflaecheId);
+    return kaempfe
+        .filter(k => k.status === 'bereit' && k.matten_reihenfolge != null)
+        .sort((a, b) => a.matten_reihenfolge - b.matten_reihenfolge || a.id - b.id);
 }
 
 async function schreibePositionen(knex, zuweisungen) {
@@ -335,8 +332,8 @@ async function reiheKampfAnZweiterStelleEin(knex, pool, kampf) {
         await planeKaempfeFuerKampfflaeche(knex, pool.kampfflaeche_id);
         const bereite = await ladeBereiteKaempfeDerMatte(knex, pool.kampfflaeche_id);
         const uebrige = bereite.map(k => k.id).filter(id => id !== kampf.id);
-        const poolIds = (await knex('pools').where({ kampfflaeche_id: pool.kampfflaeche_id }).select('id')).map(p => p.id);
-        const laeuftGerade = await knex('kaempfe').whereIn('pool_id', poolIds).where({ status: 'gestartet' }).first('id');
+        const { kaempfe: kaempfeDerMatte } = await ladeKaempfeDerMatte(knex, pool.kampfflaeche_id);
+        const laeuftGerade = kaempfeDerMatte.some(k => k.status === 'gestartet');
         const folge = fuegeEin(uebrige, kampf.id, laeuftGerade ? 0 : 1);
         const nachId = new Map([...bereite, kampf].map(k => [k.id, k]));
         await schreibePositionen(knex, verteilePositionen(folge, nachId));
@@ -413,11 +410,12 @@ export async function setzeMattenReihenfolgeNeu(knex, kampfflaecheId, kampfIds) 
     if (!ids.length || ids.some(Number.isNaN) || new Set(ids).size !== ids.length) {
         throw new FachFehler(400, 'kampfIds muss eine Liste verschiedener Kampf-IDs sein.');
     }
-    const poolIds = (await knex('pools').where({ kampfflaeche_id: kampfflaecheId }).select('id')).map(p => p.id);
+    const { kaempfe: kaempfeDerMatte } = await ladeKaempfeDerMatte(knex, kampfflaecheId);
+    const idsDerMatte = new Set(kaempfeDerMatte.map(k => k.id));
     const kaempfe = await knex('kaempfe').whereIn('id', ids);
     if (kaempfe.length !== ids.length) throw new FachFehler(404, 'Kampf nicht gefunden.');
     for (const k of kaempfe) {
-        if (!poolIds.includes(k.pool_id)) throw new FachFehler(400, 'Alle Kämpfe müssen zur selben Kampffläche gehören.');
+        if (!idsDerMatte.has(k.id)) throw new FachFehler(400, 'Alle Kämpfe müssen zur selben Kampffläche gehören.');
         if (k.status !== 'bereit') throw new FachFehler(409, 'Es können nur noch nicht gestartete Kämpfe (Status "bereit") umsortiert werden.');
     }
     await schreibePositionen(knex, verteilePositionen(ids, new Map(kaempfe.map(k => [k.id, k]))));
@@ -476,7 +474,9 @@ export async function tauscheKaempfeReihenfolge(knex, req, res) {
 
         const pool1 = await knex('pools').where({ id: kampf1.pool_id }).first();
         const pool2 = await knex('pools').where({ id: kampf2.pool_id }).first();
-        if (!pool1 || !pool2 || pool1.kampfflaeche_id == null || pool1.kampfflaeche_id !== pool2.kampfflaeche_id) {
+        const matte1 = kampfMatteId(kampf1, pool1);
+        const matte2 = kampfMatteId(kampf2, pool2);
+        if (!pool1 || !pool2 || matte1 == null || matte1 !== matte2) {
             return res.status(400).json({ success: false, error: 'Beide Kämpfe müssen derselben Kampffläche zugeordnet sein.' });
         }
 

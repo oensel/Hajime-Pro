@@ -302,6 +302,8 @@ async function initialisiereBegegnungenFuerMannschaftsPool(knex, poolId, modus) 
 // bewusste Wahl der Turnierleitung beim Pool-Anlegen, keine reine Funktion der Teamanzahl.
 // poolHatBereitsEchteKaempfe() funktioniert unverändert auch für Mannschafts-Pools, da die
 // Einzelkämpfe einer Begegnung ganz normale kaempfe-Zeilen mit demselben pool_id sind.
+import { berechneRunden, verteileRundenAufMatten } from '../shared/mannschaftsRunden.js';
+
 export async function regeneriereMannschaftsPool(knex, poolId) {
     if (!poolId) return;
     if (await poolHatBereitsEchteKaempfe(knex, poolId)) return;
@@ -318,6 +320,93 @@ export async function regeneriereMannschaftsPool(knex, poolId) {
     // Status nachziehen (siehe aktualisierePoolStatusNachAuslosung), statt das an jeder einzelnen
     // Aufrufstelle in mannschaftController.js zu wiederholen.
     await aktualisierePoolStatusNachAuslosung(knex, poolId);
+
+    // Hatte der Pool mehrere Matten gewählt, die neu erzeugten Begegnungen wieder darauf verteilen.
+    const gewaehlteMatten = parseMannschaftsMatten(pool);
+    if (gewaehlteMatten.length > 1) {
+        await verteileMannschaftsPoolAufMatten(knex, poolId, gewaehlteMatten);
+    }
+}
+
+function parseMannschaftsMatten(pool) {
+    try {
+        const liste = JSON.parse(pool?.mannschafts_matten || '[]');
+        return Array.isArray(liste) ? liste.map(Number).filter(n => Number.isInteger(n)) : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+// Mannschafts-Pool auf mehrere Matten verteilen (Begegnungen ganz, nie einzelne Einzelkämpfe).
+// mattenIds: leer = Zuordnung der Begegnungen zurücknehmen (Matte des Pools bleibt); eine Matte =
+// Pool auf diese Matte; mehrere = Begegnungen rundenweise reihum auf die Matten (die erste Matte
+// ist zugleich die Hauptmatte des Pools). Nur Jeder gegen Jeden.
+export async function verteileMannschaftsPoolAufMatten(knex, poolId, mattenIds) {
+    const pool = await knex('pools').where({ id: poolId, typ: 'mannschaft' }).first();
+    if (!pool) throw new FachFehler(404, 'Mannschafts-Pool nicht gefunden.');
+    if (await poolHatBereitsEchteKaempfe(knex, poolId)) {
+        throw new FachFehler(409, 'Der Pool kann nicht mehr auf andere Matten verteilt werden, da bereits Kämpfe gestartet oder beendet wurden.');
+    }
+    const ids = [...new Set((mattenIds || []).map(Number))];
+    if (ids.length > 0) {
+        const gueltig = await knex('kampfflaechen').where({ turnier_id: pool.turnier_id }).whereIn('id', ids).pluck('id');
+        if (gueltig.length !== ids.length) throw new FachFehler(400, 'Mindestens eine gewählte Matte gehört nicht zu diesem Turnier.');
+    }
+    if (ids.length > 1 && pool.modus !== 'Jeder-gegen-Jeden') {
+        throw new FachFehler(400, 'Die Verteilung auf mehrere Matten ist bisher nur für Jeder gegen Jeden möglich.');
+    }
+
+    const alteMatten = new Set([pool.kampfflaeche_id, ...parseMannschaftsMatten(pool)].filter(Boolean).map(Number));
+    const begegnungen = await knex('mannschaftskaempfe').where({ pool_id: poolId }).orderBy('id', 'asc');
+
+    await knex.transaction(async (trx) => {
+        if (ids.length <= 1) {
+            await trx('mannschaftskaempfe').where({ pool_id: poolId }).update({ kampfflaeche_id: null, runde: null });
+            await trx('kaempfe').where({ pool_id: poolId }).update({ kampfflaeche_id: null });
+        } else {
+            const runden = berechneRunden(begegnungen);
+            const matteJeBegegnung = verteileRundenAufMatten(begegnungen, runden, ids);
+            for (const b of begegnungen) {
+                const matte = matteJeBegegnung.get(b.id) ?? null;
+                await trx('mannschaftskaempfe').where({ id: b.id }).update({ kampfflaeche_id: matte, runde: runden.get(b.id) ?? null });
+                await trx('kaempfe').where({ mannschaftskampf_id: b.id }).update({ kampfflaeche_id: matte });
+            }
+        }
+        const update = { mannschafts_matten: ids.length > 1 ? JSON.stringify(ids) : null };
+        if (ids.length > 0) update.kampfflaeche_id = ids[0];
+        await trx('pools').where({ id: poolId }).update(update);
+    });
+
+    await aktualisierePoolStatusNachAuslosung(knex, poolId);
+    const betroffen = new Set([...alteMatten, ...ids]);
+    for (const matteId of betroffen) {
+        await planeKaempfeFuerKampfflaeche(knex, matteId);
+        await synchronisiereMattenStatus(knex, matteId);
+    }
+}
+
+// Einzelne Begegnung (samt ihren Einzelkämpfen) einer anderen Matte zuordnen.
+export async function setzeBegegnungMatte(knex, begegnungId, kampfflaecheId) {
+    const begegnung = await knex('mannschaftskaempfe').where({ id: begegnungId }).first();
+    if (!begegnung) throw new FachFehler(404, 'Begegnung nicht gefunden.');
+    const pool = await knex('pools').where({ id: begegnung.pool_id }).first();
+    const matteId = kampfflaecheId == null || kampfflaecheId === '' ? null : parseInt(kampfflaecheId, 10);
+    if (matteId != null) {
+        const matte = await knex('kampfflaechen').where({ id: matteId, turnier_id: pool.turnier_id }).first();
+        if (!matte) throw new FachFehler(400, 'Die Matte gehört nicht zu diesem Turnier.');
+    }
+    const begonnen = await knex('kaempfe').where({ mannschaftskampf_id: begegnungId }).whereIn('status', ['gestartet', 'beendet']).first('id');
+    if (begonnen) throw new FachFehler(409, 'Die Begegnung hat bereits begonnen und kann nicht mehr verschoben werden.');
+
+    const alteMatte = begegnung.kampfflaeche_id ?? pool.kampfflaeche_id ?? null;
+    await knex('mannschaftskaempfe').where({ id: begegnungId }).update({ kampfflaeche_id: matteId });
+    await knex('kaempfe').where({ mannschaftskampf_id: begegnungId }).update({ kampfflaeche_id: matteId });
+    // Einzelkämpfe müssen auf der neuen Matte neu eingeplant werden.
+    await knex('kaempfe').where({ mannschaftskampf_id: begegnungId, status: 'bereit' }).update({ matten_reihenfolge: null, reihenfolge_manuell: false });
+    for (const m of new Set([alteMatte, matteId ?? pool.kampfflaeche_id].filter(Boolean))) {
+        await planeKaempfeFuerKampfflaeche(knex, m);
+        await synchronisiereMattenStatus(knex, m);
+    }
 }
 
 // Setzt den Pool-Status nach einer (Neu-)Auslosung passend zum aktuellen Zustand: Pools ohne
@@ -358,6 +447,12 @@ export async function synchronisiereMattenStatus(knex, kampflaecheId) {
     if (!matte || matte.status === 'pausiert' || matte.status === 'gesperrt') return;
 
     const zugeordnetePools = await knex('pools').where({ kampfflaeche_id: kampflaecheId }).select('status');
+    // Mannschafts-Pools anderer Hauptmatte mit Begegnungen auf dieser Matte belegen sie ebenfalls.
+    const fremde = await knex('pools')
+        .whereIn('id', knex('kaempfe').where({ kampfflaeche_id: kampflaecheId }).distinct('pool_id'))
+        .whereNot({ kampfflaeche_id: kampflaecheId })
+        .select('status');
+    zugeordnetePools.push(...fremde);
     let status = 'frei';
     if (zugeordnetePools.length > 0) {
         status = zugeordnetePools.some(p => p.status === 'gestartet') ? 'in_austragung' : 'pools_vorhanden';
@@ -1753,6 +1848,14 @@ export async function getKampfflaechenMitPools(knex, req, res) {
     }
 }
 
+// Nimmt die Einzelzuordnung von Begegnungen/Kämpfen zu Matten zurück (Pool wird als Ganzes bewegt).
+async function loescheMattenUeberschreibungen(knex, poolIds) {
+    if (!poolIds.length) return;
+    await knex('kaempfe').whereIn('pool_id', poolIds).whereNotNull('kampfflaeche_id').update({ kampfflaeche_id: null });
+    await knex('mannschaftskaempfe').whereIn('pool_id', poolIds).update({ kampfflaeche_id: null, runde: null });
+    await knex('pools').whereIn('id', poolIds).whereNotNull('mannschafts_matten').update({ mannschafts_matten: null });
+}
+
 // Einzelnen Pool einer Kampffläche zuordnen oder entfernen
 export async function ordnePoolZuKampfflaeche(knex, req, res) {
     try {
@@ -1771,6 +1874,11 @@ export async function ordnePoolZuKampfflaeche(knex, req, res) {
 
         const oldPool = await knex('pools').where({ id: poolId }).first();
         const oldMatId = oldPool ? oldPool.kampfflaeche_id : null;
+        // Zieht der Pool auf eine andere Matte (oder von der Matte weg), gilt die Einzelzuordnung
+        // seiner Begegnungen nicht mehr.
+        if (kampflaecheId == null || oldMatId !== parseInt(kampflaecheId, 10)) {
+            await loescheMattenUeberschreibungen(knex, [poolId]);
+        }
 
         if (kampflaecheId == null) {
             await knex('pools').where({ id: poolId }).update({
@@ -1844,6 +1952,7 @@ export async function entferneAlleMattenzuordnungen(knex, req, res) {
 
         const poolIds = pools.map(p => p.id);
         const betroffeneMatten = [...new Set(pools.map(p => p.kampfflaeche_id).filter(Boolean))];
+        await loescheMattenUeberschreibungen(knex, poolIds);
 
         await knex('pools').where({ turnier_id: turnierId }).update({
             kampfflaeche_id: null,
@@ -2019,10 +2128,16 @@ export async function verteilePools(knex, req, res) {
                 if (gesperrtePoolIds.size > 0) {
                     wipeQuery = wipeQuery.whereNotIn('id', Array.from(gesperrtePoolIds));
                 }
+                const zuLoesen = await wipeQuery.clone().pluck('id');
                 await wipeQuery.update({
                     kampfflaeche_id: null,
-                    matte_reihenfolge: null
+                    matte_reihenfolge: null,
+                    mannschafts_matten: null
                 });
+                if (zuLoesen.length) {
+                    await trx('kaempfe').whereIn('pool_id', zuLoesen).whereNotNull('kampfflaeche_id').update({ kampfflaeche_id: null });
+                    await trx('mannschaftskaempfe').whereIn('pool_id', zuLoesen).update({ kampfflaeche_id: null, runde: null });
+                }
             }
 
             for (const mat of zuordnung) {
@@ -2111,24 +2226,65 @@ function sucheKandidat(poolIdsZuPruefen, poolQueues, rotationsStart, praedikat, 
 // eines kleinen Pools unvermeidbar), wird der Kampf mit dem geringsten Pausen-Defizit gewählt —
 // die Steuerung zeigt in diesem Fall zur Kampfzeit anhand ECHTER Zeitstempel eine Warnung an
 // (siehe berechnePausenwarnung in pausenRegel.js) und erlaubt einen manuellen Tausch.
-export async function planeKaempfeFuerKampfflaeche(knex, kampfflaecheId) {
+export async function planeKaempfeFuerKampfflaeche(knex, kampfflaecheId, optionen = {}) {
     if (!kampfflaecheId) return;
+    await planeEineMatte(knex, kampfflaecheId);
+    if (optionen.ohneNachbarn) return;
+    // Mannschafts-Pools mit Begegnungen auf mehreren Matten: die Rundenfreigabe einer Matte hängt
+    // vom Fortschritt der anderen ab, daher die verbundenen Matten mit planen.
+    for (const nachbar of await ermittleVerbundeneMatten(knex, kampfflaecheId)) {
+        await planeEineMatte(knex, nachbar);
+        await synchronisiereMattenStatus(knex, nachbar);
+    }
+}
 
-    // 1. Lade alle Pools, die dieser Kampffläche zugeordnet sind
-    const pools = await knex('pools')
-        .where({ kampfflaeche_id: kampfflaecheId })
+// Pools und Kämpfe einer Matte: Pools der Matte (Kämpfe ohne eigene Matte oder mit dieser) plus
+// Kämpfe anderer Pools, die einzeln (Mannschaftsbegegnungen) dieser Matte zugeordnet wurden.
+export async function ladeKaempfeDerMatte(knex, matteId) {
+    const hauptPools = await knex('pools')
+        .where({ kampfflaeche_id: matteId })
         .orderBy('matte_reihenfolge', 'asc')
         .orderBy('id', 'asc');
+    const hauptIds = hauptPools.map(p => p.id);
+    const kaempfe = await knex('kaempfe')
+        .where(function () {
+            this.where('kampfflaeche_id', matteId);
+            if (hauptIds.length) {
+                this.orWhere(function () { this.whereIn('pool_id', hauptIds).whereNull('kampfflaeche_id'); });
+            }
+        })
+        .orderBy('id', 'asc');
+    const fremdIds = [...new Set(kaempfe.map(k => k.pool_id))].filter(id => !hauptIds.includes(id));
+    const fremdPools = fremdIds.length ? await knex('pools').whereIn('id', fremdIds).orderBy('id', 'asc') : [];
+    return { pools: [...hauptPools, ...fremdPools], kaempfe };
+}
+
+async function ermittleVerbundeneMatten(knex, matteId) {
+    const ergebnis = new Set();
+    const mannschaftsPoolIds = await knex('pools').where({ kampfflaeche_id: matteId, typ: 'mannschaft' }).pluck('id');
+    if (mannschaftsPoolIds.length) {
+        const matten = await knex('kaempfe').whereIn('pool_id', mannschaftsPoolIds).whereNotNull('kampfflaeche_id').distinct('kampfflaeche_id').pluck('kampfflaeche_id');
+        matten.forEach(m => ergebnis.add(Number(m)));
+    }
+    const fremdePoolIds = await knex('kaempfe').where({ kampfflaeche_id: matteId }).distinct('pool_id').pluck('pool_id');
+    if (fremdePoolIds.length) {
+        const haupt = await knex('pools').whereIn('id', fremdePoolIds).whereNotNull('kampfflaeche_id').pluck('kampfflaeche_id');
+        haupt.forEach(m => ergebnis.add(Number(m)));
+        const weitere = await knex('kaempfe').whereIn('pool_id', fremdePoolIds).whereNotNull('kampfflaeche_id').distinct('kampfflaeche_id').pluck('kampfflaeche_id');
+        weitere.forEach(m => ergebnis.add(Number(m)));
+    }
+    ergebnis.delete(Number(matteId));
+    return [...ergebnis];
+}
+
+async function planeEineMatte(knex, kampfflaecheId) {
+    // 1.+2. Pools dieser Kampffläche und ihre Kämpfe (inkl. einzeln zugeordneter Begegnungen)
+    const { pools, kaempfe: alleKaempfe } = await ladeKaempfeDerMatte(knex, kampfflaecheId);
 
     if (pools.length === 0) return;
 
     const poolIds = pools.map(p => p.id);
     const poolById = new Map(pools.map(p => [p.id, p]));
-
-    // 2. Lade alle Kämpfe dieser Pools
-    const alleKaempfe = await knex('kaempfe')
-        .whereIn('pool_id', poolIds)
-        .orderBy('id', 'asc');
 
     // 'freilos' verbraucht keine Mattenzeit und ist keine echte Belastung -> ignorieren.
     // 'angelegt' hat noch keine feststehenden Kämpfer und ist noch nicht einplanbar.
@@ -2203,8 +2359,32 @@ export async function planeKaempfeFuerKampfflaeche(knex, kampfflaecheId) {
     // in dieser Reihenfolge ans Ende angehängt, statt wie Einzelwettkampf-Kämpfe frei nach
     // Pausenlage zwischen Pools verschoben zu werden.
     const einzelPoolIds = poolIds.filter(id => poolById.get(id)?.typ !== 'mannschaft');
+    // Runde n+1 eines auf mehrere Matten verteilten Pools beginnt erst, wenn Runde n beendet ist
+    // (kein Team steht auf zwei Matten gleichzeitig) — gilt über alle Matten des Pools.
+    const mannschaftsPoolIdsDerMatte = poolIds.filter(id => poolById.get(id)?.typ === 'mannschaft');
+    const rundeJeBegegnung = new Map();
+    const offeneMinRunde = new Map();
+    if (mannschaftsPoolIdsDerMatte.length) {
+        const begegnungen = await knex('mannschaftskaempfe')
+            .whereIn('pool_id', mannschaftsPoolIdsDerMatte)
+            .whereNotNull('runde')
+            .select('id', 'pool_id', 'runde', 'status');
+        for (const b of begegnungen) {
+            rundeJeBegegnung.set(b.id, { pool_id: b.pool_id, runde: b.runde });
+            if (b.status !== 'beendet') {
+                const bisher = offeneMinRunde.get(b.pool_id);
+                if (bisher === undefined || b.runde < bisher) offeneMinRunde.set(b.pool_id, b.runde);
+            }
+        }
+    }
+    const durchRundeGesperrt = (k) => {
+        const info = k.mannschaftskampf_id ? rundeJeBegegnung.get(k.mannschaftskampf_id) : null;
+        if (!info) return false;
+        const min = offeneMinRunde.get(info.pool_id);
+        return min !== undefined && info.runde > min;
+    };
     const planbareMannschaftsKaempfe = planbareKaempfe
-        .filter(k => poolById.get(k.pool_id)?.typ === 'mannschaft')
+        .filter(k => poolById.get(k.pool_id)?.typ === 'mannschaft' && !durchRundeGesperrt(k))
         .sort((a, b) => (poolById.get(a.pool_id)?.matte_reihenfolge ?? 0) - (poolById.get(b.pool_id)?.matte_reihenfolge ?? 0) || a.id - b.id);
 
     // 4. Verbleibende Kämpfe pro (Einzelwettkampf-)Pool gruppieren (frei durchsuchbar, keine
@@ -2304,10 +2484,19 @@ export async function planeKaempfeFuerKampfflaeche(knex, kampfflaecheId) {
         // Noch nicht dran: eine bereits vorher vergebene matten_reihenfolge zurücksetzen, damit
         // sie sicher nicht als "nächster Kampf" vor einem noch offenen Einzelwettkampf-Pool
         // erscheinen.
-        const zurueckzusetzen = planbareMannschaftsKaempfe.filter(k => k.matten_reihenfolge != null).map(k => k.id);
+        const zurueckzusetzen = planbareKaempfe
+            .filter(k => poolById.get(k.pool_id)?.typ === 'mannschaft' && k.matten_reihenfolge != null)
+            .map(k => k.id);
         if (zurueckzusetzen.length > 0) {
             await knex('kaempfe').whereIn('id', zurueckzusetzen).update({ matten_reihenfolge: null });
         }
+    }
+    // Durch die Runde noch gesperrte Begegnungen tragen keine Position (nicht "als Nächstes" sichtbar).
+    const rundenGesperrteMitPosition = planbareKaempfe
+        .filter(k => poolById.get(k.pool_id)?.typ === 'mannschaft' && durchRundeGesperrt(k) && k.matten_reihenfolge != null)
+        .map(k => k.id);
+    if (rundenGesperrteMitPosition.length > 0) {
+        await knex('kaempfe').whereIn('id', rundenGesperrteMitPosition).update({ matten_reihenfolge: null });
     }
 
     // 5. In der Datenbank die matten_reihenfolge für die neu geplanten Kämpfe fortlaufend NACH
@@ -2563,9 +2752,23 @@ export async function getPoolUebersicht(knex, req, res) {
             }
         }
 
+        // Matten, auf denen ein Mannschafts-Pool Begegnungen hat (zusätzlich zur Hauptmatte).
+        const mattenJePool = new Map();
+        if (mannschaftsPoolIds.length > 0) {
+            const zeilen = await knex('mannschaftskaempfe')
+                .whereIn('pool_id', mannschaftsPoolIds)
+                .whereNotNull('kampfflaeche_id')
+                .distinct('pool_id', 'kampfflaeche_id');
+            for (const z of zeilen) {
+                if (!mattenJePool.has(z.pool_id)) mattenJePool.set(z.pool_id, new Set());
+                mattenJePool.get(z.pool_id).add(z.kampfflaeche_id);
+            }
+        }
+
         const poolsMitTeilnehmern = pools.map(p => ({
             id: p.id,
             typ: p.typ,
+            matten_ids: [...(mattenJePool.get(p.id) || [])],
             mannschaften: mannschaftenNachPool.get(p.id) || [],
             bezeichnung: p.bezeichnung,
             altersklasse: p.altersklasse,
@@ -2581,7 +2784,7 @@ export async function getPoolUebersicht(knex, req, res) {
             id: kf.id,
             bezeichnung: kf.bezeichnung,
             pools: poolsMitTeilnehmern
-                .filter(p => p.kampfflaeche_id === kf.id)
+                .filter(p => p.kampfflaeche_id === kf.id || p.matten_ids.includes(kf.id))
                 .sort((a, b) => (a.reihenfolge ?? 0) - (b.reihenfolge ?? 0))
         }));
 

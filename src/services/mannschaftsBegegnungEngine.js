@@ -63,6 +63,7 @@ export async function erzeugeEinzelkaempfeFuerBegegnung(knex, begegnung, pool) {
         neueKaempfe.push({
             pool_id: pool.id,
             mannschaftskampf_id: begegnung.id,
+            kampfflaeche_id: begegnung.kampfflaeche_id ?? null,
             mannschaft_gewichtsklasse: klasse,
             status: 'bereit',
             kaempfer1_id: starter1.turnier_teilnehmer_id,
@@ -150,6 +151,7 @@ export async function werteBegegnungAus(knex, begegnungId) {
     await knex('kaempfe').insert({
         pool_id: begegnung.pool_id,
         mannschaftskampf_id: begegnungId,
+        kampfflaeche_id: begegnung.kampfflaeche_id ?? null,
         mannschaft_gewichtsklasse: gewaehlteKlasse,
         status: 'bereit',
         kaempfer1_id: starter1 ? starter1.turnier_teilnehmer_id : null,

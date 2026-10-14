@@ -2,7 +2,7 @@ import { readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { resolveUserVereinName, hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
-import { mannschaftsPoolsHabenEchteKaempfe, poolHatBereitsEchteKaempfe, regeneriereMannschaftsPool, ermittleGoldenScoreEinstellungen } from './poolController.js';
+import { mannschaftsPoolsHabenEchteKaempfe, poolHatBereitsEchteKaempfe, regeneriereMannschaftsPool, ermittleGoldenScoreEinstellungen, verteileMannschaftsPoolAufMatten, setzeBegegnungMatte } from './poolController.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 const { istEinzelbenutzerBetrieb } = betriebsmodus;
 
@@ -387,7 +387,7 @@ export async function verschiebeMitglied(knex, req, res) {
 
 // Prüft Pool-Zugriff für Änderungen an den Gewichtsklassen-Positionen (nur Mannschafts-Pools,
 // Zugriff wie bei den Mannschaften des Turniers, gesperrt sobald echte Kämpfe stattfanden).
-async function ladePoolFuerPositionsAenderung(knex, req, res) {
+async function ladePoolFuerPositionsAenderung(knex, req, res, { sperreBeiKaempfen = true } = {}) {
     const pool = await knex('pools').where({ id: parseInt(req.params.poolId), typ: 'mannschaft' }).first();
     if (!pool) {
         res.status(404).json({ success: false, error: 'Mannschafts-Pool nicht gefunden.' });
@@ -401,7 +401,7 @@ async function ladePoolFuerPositionsAenderung(knex, req, res) {
             return null;
         }
     }
-    if (await poolHatBereitsEchteKaempfe(knex, pool.id)) {
+    if (sperreBeiKaempfen && await poolHatBereitsEchteKaempfe(knex, pool.id)) {
         res.status(409).json({ success: false, error: TEILNEHMERLISTE_GESPERRT_FEHLER });
         return null;
     }
@@ -439,6 +439,35 @@ export async function aktualisierePoolGewichtsklassen(knex, req, res) {
         return res.json({ success: true, gewichtsklassen: sortiert });
     } catch (error) {
         return res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+// Mannschafts-Pool auf eine oder mehrere Matten verteilen (Begegnungen rundenweise reihum).
+export async function setzePoolMatten(knex, req, res) {
+    try {
+        const pool = await ladePoolFuerPositionsAenderung(knex, req, res);
+        if (!pool) return;
+        const matten = Array.isArray(req.body.kampfflaechen) ? req.body.kampfflaechen : [];
+        await verteileMannschaftsPoolAufMatten(knex, pool.id, matten);
+        return res.json({ success: true });
+    } catch (error) {
+        return res.status(error.statusCode || 500).json({ success: false, error: error.message });
+    }
+}
+
+// Eine Begegnung (samt Einzelkämpfen) einer anderen Matte zuordnen.
+export async function setzeBegegnungMatteHandler(knex, req, res) {
+    try {
+        const begegnung = await knex('mannschaftskaempfe').where({ id: parseInt(req.params.id, 10) }).first();
+        if (!begegnung) return res.status(404).json({ success: false, error: 'Begegnung nicht gefunden.' });
+        req.params.poolId = begegnung.pool_id;
+        // Noch nicht begonnene Begegnungen bleiben auch nach Start des Pools verschiebbar.
+        const pool = await ladePoolFuerPositionsAenderung(knex, req, res, { sperreBeiKaempfen: false });
+        if (!pool) return;
+        await setzeBegegnungMatte(knex, begegnung.id, req.body.kampfflaecheId);
+        return res.json({ success: true });
+    } catch (error) {
+        return res.status(error.statusCode || 500).json({ success: false, error: error.message });
     }
 }
 

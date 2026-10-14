@@ -122,6 +122,26 @@
     </div>
 </div>
 
+<!-- Modal: Matten eines Mannschafts-Pools wählen -->
+<div id="mattenModal" class="modal-wrapper" style="display: none;">
+    <div class="mdc-card mannschaften-modal-card">
+        <div class="mannschaften-modal-header">
+            <span class="material-icons" style="font-size: 28px; color: var(--primary);">grid_view</span>
+            <h2>Matten des Pools</h2>
+            <span class="material-icons mannschaften-modal-close" id="mattenModalClose">close</span>
+        </div>
+        <form id="mattenForm">
+            <input type="hidden" id="mattenPoolId">
+            <p class="mannschaften-hint">Die Begegnungen werden rundenweise auf die gewählten Matten verteilt. Eine Begegnung läuft immer ganz auf einer Matte; die nächste Runde beginnt erst, wenn die vorherige beendet ist.</p>
+            <div id="mattenAuswahl" class="matten-auswahl"></div>
+            <div class="mannschaften-modal-actions">
+                <button type="button" class="btn btn-outlined" id="mattenModalCancel">Abbrechen</button>
+                <button type="submit" class="btn btn-raised">Verteilen</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- Modal: Gewichtsklasse hinzufügen/ändern -->
 <div id="gkModal" class="modal-wrapper" style="display: none;">
     <div class="mdc-card mannschaften-modal-card">

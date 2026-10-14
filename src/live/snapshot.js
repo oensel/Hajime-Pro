@@ -67,9 +67,10 @@ export function baueSnapshot({ turnier, kampfflaechen, pools, teilnehmer, kaempf
 
     const warteschlangen = kampfflaechen
         .map(m => {
-            const poolIds = new Set(pools.filter(p => p.kampfflaeche_id === m.id).map(p => p.id));
+            const poolById = new Map(pools.map(p => [p.id, p]));
+            const wirksameMatte = (k) => (k.kampfflaeche_id != null ? k.kampfflaeche_id : (poolById.get(k.pool_id) || {}).kampfflaeche_id);
             const offen = kaempfe
-                .filter(k => poolIds.has(k.pool_id) && OFFEN.has(k.status))
+                .filter(k => wirksameMatte(k) === m.id && OFFEN.has(k.status))
                 .sort((a, b) => {
                     const ra = a.matten_reihenfolge == null ? Infinity : Number(a.matten_reihenfolge);
                     const rb = b.matten_reihenfolge == null ? Infinity : Number(b.matten_reihenfolge);

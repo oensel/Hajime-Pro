@@ -6,6 +6,7 @@
  */
 import { bestimmeFarbeKaempfer2 } from './kampfFarbe.js';
 import { letztesKampfEndeProTeilnehmer, pruefeKampfPause } from './pausenRegel.js';
+import { kampfMatteId } from './kampfMatte.js';
 
 function nachId(liste) {
     const map = new Map();
@@ -15,14 +16,16 @@ function nachId(liste) {
 
 export function baueMattenAnsicht({ kaempfe, pools, teilnehmer, mannschaftskaempfe, mannschaften, turnier }, kampfflaecheId, jetzt) {
     const mattenId = Number(kampfflaecheId);
+    // Alle übergebenen Pools: Mannschafts-Begegnungen können einzeln dieser Matte zugeordnet sein,
+    // ihr Pool hängt dann an einer anderen Hauptmatte (kampfMatteId).
     const poolsDerMatte = (pools || []).filter(p => Number(p.kampfflaeche_id) === mattenId);
-    const poolById = nachId(poolsDerMatte);
+    const poolById = nachId(pools);
     const teilnehmerById = nachId(teilnehmer);
     const begegnungById = nachId(mannschaftskaempfe);
     const mannschaftById = nachId(mannschaften);
 
     const kaempfeDerMatte = (kaempfe || [])
-        .filter(k => poolById.has(Number(k.pool_id)))
+        .filter(k => poolById.has(Number(k.pool_id)) && kampfMatteId(k, poolById.get(Number(k.pool_id))) === mattenId)
         .sort((a, b) => {
             // NULL-Reihenfolgen (noch nicht eingeplante Kämpfe) ans Ende, dann nach ID.
             const ra = a.matten_reihenfolge == null ? Infinity : Number(a.matten_reihenfolge);

@@ -25,9 +25,11 @@ export function berechneKacheln({ pools = [], teilnehmer = [], kaempfe = [], pla
     for (const kampf of kaempfe) {
         if (!OFFEN.has(kampf.status)) continue;
         const pool = poolById.get(kampf.pool_id);
-        if (!pool || pool.kampfflaeche_id == null) continue;
-        if (!queueJeMatte.has(pool.kampfflaeche_id)) queueJeMatte.set(pool.kampfflaeche_id, []);
-        queueJeMatte.get(pool.kampfflaeche_id).push(kampf);
+        // Mannschafts-Begegnungen können einzeln einer anderen Matte zugeordnet sein.
+        const matteId = pool ? (kampf.kampfflaeche_id != null ? kampf.kampfflaeche_id : pool.kampfflaeche_id) : null;
+        if (!pool || matteId == null) continue;
+        if (!queueJeMatte.has(matteId)) queueJeMatte.set(matteId, []);
+        queueJeMatte.get(matteId).push(kampf);
     }
     for (const [matte, liste] of queueJeMatte) queueJeMatte.set(matte, sortiereWarteschlange(liste));
 
