@@ -400,6 +400,11 @@ export async function setzeBegegnungMatte(knex, begegnungId, kampfflaecheId) {
     if (begonnen) throw new FachFehler(409, 'Die Begegnung hat bereits begonnen und kann nicht mehr verschoben werden.');
 
     const alteMatte = begegnung.kampfflaeche_id ?? pool.kampfflaeche_id ?? null;
+    // Ein Pool ohne Hauptmatte übernimmt die gewählte Matte (sonst bliebe seine Planung ohne Matte).
+    if (pool.kampfflaeche_id == null && matteId != null) {
+        await knex('pools').where({ id: pool.id }).update({ kampfflaeche_id: matteId });
+        await aktualisierePoolStatusNachAuslosung(knex, pool.id);
+    }
     await knex('mannschaftskaempfe').where({ id: begegnungId }).update({ kampfflaeche_id: matteId });
     await knex('kaempfe').where({ mannschaftskampf_id: begegnungId }).update({ kampfflaeche_id: matteId });
     // Einzelkämpfe müssen auf der neuen Matte neu eingeplant werden.
@@ -1839,10 +1844,62 @@ export async function getKampfflaechenMitPools(knex, req, res) {
 
         const unzugeordnet = poolsMitDauer.filter((p) => p.kampfflaeche_id == null);
 
-        return res.json({ 
-            kampfflaechen: kampflaechenMitPools, 
+        // Begegnungen der Mannschafts-Pools: jede wird auf der Matten-Seite wie ein Pool geführt und
+        // ist einzeln einer Matte zuordenbar (matte_id = eigene Matte, sonst die des Pools).
+        const mannschaftsPools = poolsMitDauer.filter(p => p.typ === 'mannschaft');
+        const begegnungen = [];
+        if (mannschaftsPools.length > 0) {
+            const poolById = new Map(mannschaftsPools.map(p => [p.id, p]));
+            const zeilen = await knex('mannschaftskaempfe as mk')
+                .leftJoin('mannschaften as m1', 'mk.mannschaft1_id', 'm1.id')
+                .leftJoin('mannschaften as m2', 'mk.mannschaft2_id', 'm2.id')
+                .whereIn('mk.pool_id', mannschaftsPools.map(p => p.id))
+                .select('mk.id', 'mk.pool_id', 'mk.kampfflaeche_id', 'mk.runde', 'mk.status', 'mk.reihenfolge_nummer',
+                    'm1.bezeichnung as team1', 'm2.bezeichnung as team2')
+                .orderBy('mk.id', 'asc');
+            const einzel = await knex('kaempfe')
+                .whereIn('pool_id', mannschaftsPools.map(p => p.id))
+                .whereNotNull('mannschaftskampf_id')
+                .select('mannschaftskampf_id', 'status');
+            const anzahl = new Map();
+            for (const k of einzel) {
+                const e = anzahl.get(k.mannschaftskampf_id) || { gesamt: 0, offen: 0 };
+                e.gesamt++;
+                if (k.status !== 'beendet' && k.status !== 'freilos') e.offen++;
+                anzahl.set(k.mannschaftskampf_id, e);
+            }
+            for (const z of zeilen) {
+                if (z.status === 'freilos') continue;
+                const pool = poolById.get(z.pool_id);
+                let positionen = 0;
+                try { positionen = JSON.parse(pool.mannschafts_gewichtsklassen || '[]').length; } catch (e) { positionen = 0; }
+                const e = anzahl.get(z.id);
+                const gesamt = e ? e.gesamt : positionen;
+                const offen = e ? e.offen : positionen;
+                begegnungen.push({
+                    id: z.id,
+                    pool_id: z.pool_id,
+                    pool_bezeichnung: pool.bezeichnung,
+                    altersklasse: pool.altersklasse,
+                    geschlecht: pool.geschlecht,
+                    team1: z.team1 || null,
+                    team2: z.team2 || null,
+                    nummer: z.reihenfolge_nummer,
+                    runde: z.runde,
+                    status: z.status,
+                    matte_id: z.kampfflaeche_id ?? pool.kampfflaeche_id ?? null,
+                    gesamt_kaempfe: gesamt,
+                    dauer_minuten: Math.ceil((gesamt * pool.kampfzeit_sekunden) / 60),
+                    restdauer_minuten: Math.ceil((offen * pool.kampfzeit_sekunden) / 60)
+                });
+            }
+        }
+
+        return res.json({
+            kampfflaechen: kampflaechenMitPools,
             unzugeordnet,
-            pools: poolsMitDauer
+            pools: poolsMitDauer,
+            begegnungen
         });
     } catch (error) {
         return res.status(500).json({ success: false, error: error.message });
@@ -2159,6 +2216,22 @@ export async function verteilePools(knex, req, res) {
                 await aktualisierePoolStatusNachAuslosung(knex, p.id);
             }
             await synchronisiereMattenStatus(knex, mat.id);
+        }
+
+        // Mannschafts-Pools: die Begegnungen werden rundenweise auf alle Matten verteilt (mit der
+        // zugeteilten Matte als erster), statt den ganzen Pool auf einer Matte zu belassen.
+        if (mats.length > 1) {
+            const unterstuetzt = ['Jeder-gegen-Jeden', 'Doppel-KO-8', 'Doppel-KO-16'];
+            for (const pool of aktivePools.filter(p => p.typ === 'mannschaft' && unterstuetzt.includes(p.modus))) {
+                const aktuell = await knex('pools').where({ id: pool.id }).first();
+                if (!aktuell || aktuell.kampfflaeche_id == null) continue;
+                const reihenfolge = [aktuell.kampfflaeche_id, ...mats.map(m => m.id).filter(id => id !== aktuell.kampfflaeche_id)];
+                try {
+                    await verteileMannschaftsPoolAufMatten(knex, pool.id, reihenfolge);
+                } catch (e) {
+                    console.warn(`[Pool-Aufteilung] Mannschafts-Pool ${pool.id} nicht auf mehrere Matten verteilt: ${e.message}`);
+                }
+            }
         }
 
         const anzahl = aktivePools.length;

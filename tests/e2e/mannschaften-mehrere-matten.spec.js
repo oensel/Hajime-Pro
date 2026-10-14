@@ -283,3 +283,57 @@ test('Menü: "Matte" ist aktiv, sobald nur ein Mannschafts-Pool existiert', asyn
     await page.goto(`/mannschaften.html?turnierId=${turnierId}`);
     await expect(page.locator('#nav-matten')).not.toHaveClass(/disabled/);
 });
+
+test.describe.serial('Mannschaften: Begegnungen auf der Matten-Seite', () => {
+    let turnierId;
+    let poolId;
+    let matten = [];
+
+    test('Automatisches Aufteilen verteilt die Begegnungen auf beide Matten', async ({ request }) => {
+        const t = await request.post('/api/turniere', {
+            data: { bezeichnung: `E2E Matten-Seite ${Date.now()}`, ort: 'Halle', datum: '2027-06-01', ausrichter: 'JC S', anzahl_kampfflaechen: 2 }
+        });
+        turnierId = (await t.json()).turnierId;
+        matten = (await (await request.get(`/api/kampfflaechen?turnierId=${turnierId}`)).json()).map(m => m.id);
+        const p = await request.post('/api/pools', {
+            data: {
+                turnier_id: turnierId, bezeichnung: 'S-Pool', modus: 'Jeder-gegen-Jeden', altersklasse: 'U18',
+                geschlecht: 'männlich', typ: 'mannschaft', mannschafts_gewichtsklassen: ['-73'], kampfzeit_sekunden: 180
+            }
+        });
+        poolId = (await p.json()).poolId;
+        for (let i = 1; i <= 4; i++) {
+            const tm = await request.post('/api/mannschaften', { data: { turnier_id: turnierId, pool_id: poolId, verein: `JC ${i}`, bezeichnung: `Team ${i}` } });
+            const { mannschaftId } = await tm.json();
+            const tn = await request.post('/api/teilnehmer', {
+                data: { turnier_id: turnierId, vorname: `S${i}`, nachname: 'Judoka', geschlecht: 'männlich', verein: `JC ${i}`, geburtsjahr: 2007, gewicht: 70, altersklasse: 'U18' }
+            });
+            const { teilnehmerId } = await tn.json();
+            await request.post(`/api/mannschaften/${mannschaftId}/mitglieder`, { data: { turnier_teilnehmer_id: teilnehmerId } });
+        }
+        const a = await request.post('/api/pools/aufteilen', { data: { turnierId } });
+        expect(a.ok(), await a.text()).toBeTruthy();
+
+        const begegnungen = await (await request.get(`/api/mannschaftskaempfe?poolId=${poolId}`)).json();
+        expect(new Set(begegnungen.map(b => b.kampfflaeche_id))).toEqual(new Set(matten));
+        const daten = await (await request.get(`/api/pools/kampfflaechen?turnierId=${turnierId}`)).json();
+        expect(daten.begegnungen).toHaveLength(6);
+        expect(new Set(daten.begegnungen.map(b => b.matte_id))).toEqual(new Set(matten));
+    });
+
+    test('Matten-Seite zeigt die Begegnungen als Karten, per Drag&Drop auf andere Matte', async ({ page, request }) => {
+        await page.goto(`/matten.html?turnierId=${turnierId}`);
+        const zone = (id) => page.locator(`.matte-drop-zone[data-kampflaeche-id="${id}"]`);
+        await expect(page.locator('.begegnung-card')).toHaveCount(6);
+        await expect(zone(matten[0]).locator('.begegnung-card').first()).toContainText('vs.');
+
+        const vorher = await zone(matten[1]).locator('.begegnung-card').count();
+        const karte = zone(matten[0]).locator('.begegnung-card').first();
+        const id = await karte.getAttribute('data-begegnung-id');
+        await karte.dragTo(zone(matten[1]));
+        await expect(zone(matten[1]).locator('.begegnung-card')).toHaveCount(vorher + 1);
+
+        const begegnungen = await (await request.get(`/api/mannschaftskaempfe?poolId=${poolId}`)).json();
+        expect(begegnungen.find(b => b.id === Number(id)).kampfflaeche_id).toBe(matten[1]);
+    });
+});

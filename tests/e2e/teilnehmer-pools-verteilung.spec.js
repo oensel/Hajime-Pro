@@ -673,9 +673,10 @@ test.describe.serial('Pool-Verteilung nach Alters-/Gewichtsklasse und Wettkampfs
         await expect(page).toHaveURL(/\/matten\.html/);
         await expect(page.locator('#aufteilenBtn')).toBeVisible();
 
-        // Vor der Verteilung: 8 Einzelwettkampf-Pools + 1 Mannschafts-Pool stehen noch komplett
-        // unter "Nicht zugeordnet".
-        await expect(page.locator('.unzugeordnet-area .pool-count-badge')).toHaveText('9');
+        // Vor der Verteilung: 8 Einzelwettkampf-Pools + die Begegnungen des Mannschafts-Pools (jede
+        // Begegnung wird wie ein Pool geführt) stehen noch komplett unter "Nicht zugeordnet".
+        const vorher = await holeKampfflaechenMitPools();
+        await expect(page.locator('.unzugeordnet-area .pool-count-badge')).toHaveText(String(8 + vorher.begegnungen.length));
 
         await page.locator('#aufteilenBtn').click();
         await expect(page.locator('#customConfirmModal')).toBeVisible();
@@ -763,8 +764,10 @@ test.describe.serial('Pool-Verteilung nach Alters-/Gewichtsklasse und Wettkampfs
         expect(daten.kampfflaechen.length).toBeGreaterThan(0);
 
         for (const kf of daten.kampfflaechen) {
-            const erwartetePoolIds = new Set(kf.pools.map(p => p.id));
-            const erwarteteBezeichnungen = new Set(kf.pools.map(p => p.bezeichnung));
+            // Begegnungen eines Mannschafts-Pools können einzeln dieser Matte zugeordnet sein.
+            const begegnungenDieserMatte = (daten.begegnungen || []).filter(b => b.matte_id === kf.id);
+            const erwartetePoolIds = new Set([...kf.pools.map(p => p.id), ...begegnungenDieserMatte.map(b => b.pool_id)]);
+            const erwarteteBezeichnungen = new Set([...kf.pools.map(p => p.bezeichnung), ...begegnungenDieserMatte.map(b => b.pool_bezeichnung)]);
 
             const kaempfe = await holeKaempfeFuerMatte(kf.id);
 
@@ -779,7 +782,8 @@ test.describe.serial('Pool-Verteilung nach Alters-/Gewichtsklasse und Wettkampfs
             // Kämpfe-Liste dieser Matte auftauchen (kein "verschwundener" Pool).
             const poolIdsMitKaempfen = new Set(kaempfe.map(k => k.pool_id));
             for (const pool of kf.pools) {
-                if (pool.gesamt_kaempfe > 0) {
+                // Mannschafts-Pools: ihre Begegnungen dürfen komplett auf anderen Matten liegen.
+                if (pool.gesamt_kaempfe > 0 && pool.typ !== 'mannschaft') {
                     expect(poolIdsMitKaempfen.has(pool.id), `Pool ${pool.id} (${pool.bezeichnung}) mit ${pool.gesamt_kaempfe} Kämpfen taucht nicht in der Kämpfeliste der Matte ${kf.id} auf`).toBe(true);
                 }
             }

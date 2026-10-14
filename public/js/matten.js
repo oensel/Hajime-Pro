@@ -117,7 +117,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- KOMPLETT-RENDERING ---
     function renderAlles(data) {
         const { kampfflaechen = [] } = data;
-        const pools = (data.pools || []).filter(p => !istPoolErledigt(p));
+        // Mannschafts-Pools mit Begegnungen werden als einzelne Begegnungs-Karten geführt.
+        const begegnungen = (data.begegnungen || []).filter(b => b.status !== 'beendet');
+        const poolIdsMitBegegnungen = new Set((data.begegnungen || []).map(b => b.pool_id));
+        const pools = (data.pools || [])
+            .filter(p => !istPoolErledigt(p))
+            .filter(p => !(p.typ === 'mannschaft' && poolIdsMitBegegnungen.has(p.id)));
         const unzugeordnetEingeklappt = !!mattenContainer.querySelector('.unzugeordnet-body.collapsed');
 
         // Pools aufteilen: zugeordnet vs. nicht zugeordnet
@@ -134,6 +139,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
 
+        const begegnungenJeMatte = new Map();
+        const begegnungenOhneMatte = [];
+        begegnungen.forEach(b => {
+            if (b.matte_id != null && zugeordnet.has(b.matte_id)) {
+                if (!begegnungenJeMatte.has(b.matte_id)) begegnungenJeMatte.set(b.matte_id, []);
+                begegnungenJeMatte.get(b.matte_id).push(b);
+            } else {
+                begegnungenOhneMatte.push(b);
+            }
+        });
+
         // Innerhalb jeder Matte nach Reihenfolge sortieren
         zugeordnet.forEach((matPools) => {
             matPools.sort((a, b) => (a.reihenfolge || 0) - (b.reihenfolge || 0));
@@ -146,12 +162,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         html += '<div class="matten-grid">';
         kampfflaechen.forEach(kf => {
             const matPools = zugeordnet.get(kf.id) || [];
-            html += renderMatte(kf, matPools);
+            html += renderMatte(kf, matPools, begegnungenJeMatte.get(kf.id) || []);
         });
         html += '</div>';
 
         // 2. Nicht zugeordnete Pools
-        html += renderUnzugeordnet(nichtZugeordnet);
+        html += renderUnzugeordnet(nichtZugeordnet, begegnungenOhneMatte);
 
         mattenContainer.innerHTML = html;
 
@@ -292,8 +308,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // --- UNZUGEORDNET-BEREICH ---
-    function renderUnzugeordnet(pools) {
-        const count = pools.length;
+    function renderUnzugeordnet(pools, begegnungen = []) {
+        const count = pools.length + begegnungen.length;
 
         return `
             <div class="unzugeordnet-area" style="margin-top: 30px;">
@@ -306,7 +322,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <div class="unzugeordnet-body" data-drop-zone="unzugeordnet">
                     ${count === 0
                         ? '<span class="unzugeordnet-empty">Alle Pools sind einer Kampffläche zugeordnet.</span>'
-                        : pools.map(p => renderPoolCard(p)).join('')
+                        : pools.map(p => renderPoolCard(p)).join('') + begegnungen.map(b => renderBegegnungKarte(b)).join('')
                     }
                 </div>
             </div>
@@ -327,8 +343,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const restDauer = (pool) => pool.restdauer_minuten ?? pool.dauer_minuten ?? 0;
 
     // --- EINZELNE MATTE ---
-    function renderMatte(kf, pools) {
-        const gesamtMinuten = pools.reduce((sum, p) => sum + restDauer(p), 0);
+    function renderMatte(kf, pools, begegnungen = []) {
+        const gesamtMinuten = pools.reduce((sum, p) => sum + restDauer(p), 0)
+            + begegnungen.reduce((sum, b) => sum + (b.restdauer_minuten || 0), 0);
         const { text: mattenStatusText, klasse: mattenStatusKlasse } = MATTE_STATUS_LABELS[kf.status] || { text: kf.status || '', klasse: 'bereit' };
         const istPausiert = kf.status === 'pausiert';
         const istGesperrt = kf.status === 'gesperrt';
@@ -344,9 +361,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <span class="material-icons matte-action-icon" data-action="${istGesperrt ? 'entsperren' : 'sperren'}" data-kampflaeche-id="${kf.id}" title="${istGesperrt ? 'Matte entsperren' : 'Matte sperren'}" style="cursor: pointer; font-size: 18px; margin-left: 4px;">${istGesperrt ? 'lock_open' : 'lock'}</span>
                 </div>
                 <div class="matte-drop-zone" data-drop-zone="matte" data-kampflaeche-id="${kf.id}">
-                    ${pools.length === 0
+                    ${pools.length + begegnungen.length === 0
                         ? '<span class="matte-empty-hint">Pools hierher ziehen</span>'
-                        : pools.map(p => renderPoolCard(p)).join('')
+                        : pools.map(p => renderPoolCard(p)).join('') + begegnungen.map(b => renderBegegnungKarte(b)).join('')
                     }
                 </div>
             </div>
@@ -365,6 +382,34 @@ document.addEventListener('DOMContentLoaded', async () => {
         kaempfe_beendet: { text: 'Ergebnisse prüfen', klasse: 'beendet' },
         abgeschlossen: { text: 'Abgeschlossen', klasse: 'beendet' }
     };
+
+    // Karte einer Mannschafts-Begegnung (Duell zweier Teams): wie ein Pool auf der Matte geführt und
+    // einzeln auf eine andere Matte ziehbar.
+    const BEGEGNUNG_STATUS = {
+        angelegt: { text: 'Wartet', klasse: 'vorbereitung' },
+        bereit: { text: 'Bereit', klasse: 'bereit' },
+        gestartet: { text: 'Laufend', klasse: 'laufend' }
+    };
+
+    function renderBegegnungKarte(b) {
+        const { text, klasse } = BEGEGNUNG_STATUS[b.status] || { text: b.status, klasse: 'bereit' };
+        const name = `${b.team1 || 'offen'} vs. ${b.team2 || 'offen'}`;
+        const sperre = b.status === 'gestartet';
+        return `
+            <div class="pool-card begegnung-card" draggable="${sperre ? 'false' : 'true'}" data-begegnung-id="${b.id}" data-dauer-minuten="${b.restdauer_minuten || 0}" data-altersklasse="${escapeHtml(b.altersklasse || '')}" data-geschlecht="${escapeHtml(b.geschlecht || '')}">
+                <span class="material-icons drag-handle">drag_indicator</span>
+                <span class="pool-card-name">${escapeHtml(name)}</span>
+                <span class="pool-card-sep">|</span>
+                <span class="pool-status-badge ${klasse}">${text}</span>
+                <span class="pool-card-sep">|</span>
+                <span class="pool-card-system">${escapeHtml(b.pool_bezeichnung)}${b.runde ? ` · Runde ${b.runde}` : ''}</span>
+                <span class="pool-card-sep">|</span>
+                <span class="pool-card-fights">${b.gesamt_kaempfe} Kämpfe</span>
+                <span class="pool-card-sep">|</span>
+                <span class="pool-card-duration">${b.restdauer_minuten}min</span>
+            </div>
+        `;
+    }
 
     function renderPoolCard(pool) {
         const abk = mapWettkampfsystem(pool.modus, pool.anzahl_teilnehmer);
@@ -423,7 +468,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Drag start / end auf Pool-Karten
         poolCards.forEach(card => {
             card.addEventListener('dragstart', (e) => {
-                draggedPoolId = card.getAttribute('data-pool-id');
+                const begegnungId = card.getAttribute('data-begegnung-id');
+                // Begegnungen tragen das Präfix "b:" — sonst wären sie von Pool-IDs nicht zu unterscheiden.
+                draggedPoolId = begegnungId ? `b:${begegnungId}` : card.getAttribute('data-pool-id');
                 e.dataTransfer.setData('text/plain', draggedPoolId);
                 e.dataTransfer.effectAllowed = 'move';
                 requestAnimationFrame(() => card.classList.add('dragging'));
@@ -460,6 +507,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 const zoneType = zone.getAttribute('data-drop-zone');
 
+                if (poolId.startsWith('b:')) {
+                    const matteId = zoneType === 'matte' ? parseInt(zone.getAttribute('data-kampflaeche-id'), 10) : null;
+                    await begegnungVerschieben(parseInt(poolId.slice(2), 10), matteId);
+                    return;
+                }
+
                 if (zoneType === 'unzugeordnet') {
                     // Pool von Matte entfernen
                     await zuordnungAufheben(parseInt(poolId, 10));
@@ -471,6 +524,27 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             });
         });
+    }
+
+    // Begegnung einer Matte zuordnen (null = zurück auf die Matte des Pools).
+    async function begegnungVerschieben(begegnungId, matteId) {
+        aenderungenLaufen++;
+        try {
+            const response = await fetch(`/api/mannschaftskaempfe/${begegnungId}/matte`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ kampfflaecheId: matteId })
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || result.success === false) throw new Error(result.error || 'Verschieben fehlgeschlagen.');
+        } catch (error) {
+            zeigeNotification(error.message, 'error');
+        } finally {
+            aenderungenLaufen--;
+        }
+        draggedPoolId = null; // dragend folgt erst nach dem Drop, die Aktualisierung wartet sonst auf ihn
+        await ladeDaten(true);
+        if (window.hajimeAktualisiereMenueSperren) window.hajimeAktualisiereMenueSperren(['matten', 'kampf']);
     }
 
     // --- DROP-POSITION BERECHNEN ---
