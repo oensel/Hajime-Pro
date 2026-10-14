@@ -1,7 +1,7 @@
 # Stage prod: Release bei Tag v* (npm version <patch|minor|major> && git push --follow-tags) ODER per Hand im Browser
 # (Actions -> Release -> Run workflow, Branch main, Version z.B. 1.0.11): dann legt die Pipeline den Tag am Ende selbst an.
-# Tests -> Versionsprüfung -> Build je Plattform (+ Rauchtest) + Android-APK -> signieren -> Server-Paket (mit den
-# signierten Client-Dateien) -> GitHub-Release.
+# Tests (entfallen, wenn der Release-PR genau diesen Stand schon voll getestet hat) -> Versionsprüfung -> Build je
+# Plattform (+ Rauchtest) + Android-APK -> signieren -> Server-Paket (mit den signierten Client-Dateien) -> GitHub-Release.
 name: Release
 on:
   push:
@@ -24,7 +24,38 @@ permissions:
   pull-requests: read
 
 jobs:
-  tests:  # dev + test + qa im vollen Umfang (ci.yml, Tag => keine Pfadfilter)
+  # Hat die CI genau diesen Stand (gleicher Tree-Hash) schon im vollen Umfang grün getestet, typischerweise im Release-PR,
+  # liegt die Marke ci-gruen-<Tree-Hash> vor (Job "ergebnis" in ci.yml) und die Tests entfallen hier. Sonst (z.B. wurde
+  # nach dem Release-PR noch ein anderer PR gemergt) laufen sie wie bisher. Nur Marken aus Läufen dieses Repos zählen,
+  # nicht aus Fork-PRs (die können ci.yml selbst verändern).
+  vorgeprueft:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      gruen: ${{ steps.marke.outputs.gruen }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: marke
+        env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }
+        run: |
+          tree=$(git rev-parse 'HEAD^{tree}')
+          lauf=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=ci-gruen-$tree&per_page=100" \
+            --jq "[.artifacts[] | select(.expired == false and .workflow_run.head_repository_id == $GITHUB_REPOSITORY_ID)][0].workflow_run.id // empty")
+          if [ -n "$lauf" ]; then
+            echo "Tree $tree wurde im CI-Lauf $lauf voll getestet: Tests entfallen."
+            echo "### Tests übernommen aus CI-Lauf [$lauf]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$lauf)" >> "$GITHUB_STEP_SUMMARY"
+            echo "gruen=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Keine Marke für Tree $tree: Tests laufen."
+            echo "gruen=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  tests:  # dev + test + qa im vollen Umfang (ci.yml, Tag => keine Pfadfilter), falls nicht schon vorgeprüft
+    needs: vorgeprueft
+    if: needs.vorgeprueft.outputs.gruen != 'true'
     uses: ./.github/workflows/ci.yml
     with: { release: true }
 
@@ -43,7 +74,8 @@ jobs:
           fi
 
   build:
-    needs: [tests, pruefen]
+    needs: [vorgeprueft, tests, pruefen]
+    if: ${{ !cancelled() && !failure() && (needs.tests.result == 'success' || needs.vorgeprueft.outputs.gruen == 'true') }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -95,7 +127,8 @@ jobs:
   # `npm run android:schluessel`) — ohne ihn gäbe es nur eine Debug-APK, über die sich später keine neue Version
   # installieren ließe, daher bricht der Job dann ab.
   android:
-    needs: [tests, pruefen]
+    needs: [vorgeprueft, tests, pruefen]
+    if: ${{ !cancelled() && !failure() && (needs.tests.result == 'success' || needs.vorgeprueft.outputs.gruen == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -137,6 +170,8 @@ jobs:
   # Ergebnis geht ins Server-Paket (wird dort mitgeliefert) und ins GitHub-Release.
   signieren:
     needs: [build, android]
+    # Übersprungene Tests (vorgeprüft) würden die Kette sonst überspringen (skipped wirkt über alle Vorgänger).
+    if: ${{ !cancelled() && !failure() }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -166,7 +201,8 @@ jobs:
   # Server-Paket "Hajime Pro Server" (Notebook als Hallen-Server): Build + Rauchtest je Plattform, gleiche Version wie der
   # Client. Enthält die signierten Client-Dateien — ein frisch installierter Server stellt sie ohne Internet bereit.
   server-paket:
-    needs: [tests, pruefen, signieren]
+    needs: [vorgeprueft, tests, pruefen, signieren]
+    if: ${{ !cancelled() && !failure() && (needs.tests.result == 'success' || needs.vorgeprueft.outputs.gruen == 'true') }}
     uses: ./.github/workflows/server-paket.yml
     with: { client-dateien: true, macos: false }
 
@@ -192,6 +228,7 @@ jobs:
 
   veroeffentlichen:
     needs: [signieren, server-paket, dienst-paket]
+    if: ${{ !cancelled() && !failure() }}
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -1,0 +1,66 @@
+# Pfadfilter der CI: welche Änderungen welche Test-Gruppe auslösen. Gelesen von dorny/paths-filter im plan-Job
+# (.github/workflows/ci.yml) und von scripts/ci-lokal.mjs (Pre-Push-Hook, npm run ci:lokal), daher nur dieses
+# einfache Format: Gruppenname, darunter je Zeile ein Muster in einfachen Anführungszeichen.
+#
+# Abhängigkeiten ändern sich in package-lock.json; package.json allein (z.B. ein neues npm-Script) löst nur den
+# E2E-Kern aus. Ein reiner Versionssprung (Release-PR) wird im plan-Job erkannt und gilt als voller Testlauf
+# ohne Server-Paket und Android-APK (die baut das Release selbst).
+kern:
+  - 'src/**'
+  - 'public/**'
+  - 'teilnehmer-app/**'
+  - 'migrations/**'
+  - 'tests/e2e/**'
+  - 'tests/helpers/**'
+  - 'knexfile.cjs'
+  - 'setup_db.js'
+  - 'package.json'
+  - 'package-lock.json'
+  - 'playwright.config.js'
+  - '.github/workflows/ci.yml'
+sync:
+  - 'src/sync/**'
+  - 'src/shared/**'
+  - 'public/js/datenzugriff.js'
+  - 'tests/e2e-sync/**'
+  - 'tests/helpers/**'
+  - 'migrations/**'
+  - 'scripts/test-e2e-sync.mjs'
+  - 'playwright.sync.config.js'
+  - 'package-lock.json'
+  - '.github/workflows/ci.yml'
+cluster:
+  - 'src/cluster/**'
+  - 'src/sync/**'
+  - 'src/shared/**'
+  - 'deploy/linux/**'
+  - 'tests/e2e-cluster/**'
+  - 'scripts/test-cluster-install-docker.sh'
+  - 'playwright.cluster.config.js'
+  - 'package-lock.json'
+  - '.github/workflows/ci.yml'
+plattform:
+  - 'src/utils/eingebettetesPostgres.js'
+  - 'src/config/betriebsmodus.cjs'
+  - 'scripts/smoke-server-eingebettet.mjs'
+  - 'migrations/**'
+  - 'package-lock.json'
+  - '.github/workflows/ci.yml'
+shell:
+  - 'deploy/linux/**'
+  - 'scripts/*.sh'
+android:
+  - 'mobil/**'
+  - 'scripts/baue-android-*.mjs'
+  - 'src/shared/appUpdate.js'
+  - 'package-lock.json'
+  - '.github/workflows/ci.yml'
+paket:
+  - 'desktop/server/**'
+  - 'desktop/build/**'
+  - 'desktop/electron-builder.server.yml'
+  - 'tests/electron-server/**'
+  - 'src/utils/eingebettetesPostgres.js'
+  - 'src/sync/clientDateien.js'
+  - 'package-lock.json'
+  - '.github/workflows/server-paket.yml'
