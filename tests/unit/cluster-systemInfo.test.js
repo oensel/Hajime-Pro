@@ -45,6 +45,7 @@ test('Systeminfo: RAM aus meminfo, Platten je Gerät nur einmal, Netz ohne Loopb
     assert.equal(info.ram.verfuegbar, 8192000 * 1024);
     assert.equal(info.swap.gesamt, 2048000 * 1024);
     assert.equal(info.platten.length, 1);
+    assert.deepEqual(info.platten[0].enthaelt, ['Daten', 'PostgreSQL']);
     assert.deepEqual({ gesamt: info.platten[0].gesamt, frei: info.platten[0].frei }, { gesamt: 1000 * 1024, frei: 250 * 1024 });
     assert.deepEqual(info.netz, [{ schnittstelle: 'eth0', adresse: '192.168.10.131' }]);
     assert.equal(info.db_groesse, 123456);

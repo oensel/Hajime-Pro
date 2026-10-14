@@ -55,15 +55,21 @@ export async function erfasseSystemInfo({
     };
     const swap = mem.swapGesamt != null ? { gesamt: mem.swapGesamt, frei: mem.swapFrei } : null;
 
+    // Je Gerät eine Platte; liegen Daten, PostgreSQL und Programm zusammen, steht das in `enthaelt`.
     const platten = [];
-    const gesehen = new Set();
+    const nachGeraet = new Map();
     for (const { bezeichnung, pfad } of pfade) {
         const w = await plattenwerte(pfad, { statfs, geraet });
         if (!w) continue;
         const schluessel = w.geraet != null ? `dev:${w.geraet}` : `pfad:${w.pfad}`;
-        if (gesehen.has(schluessel)) continue;
-        gesehen.add(schluessel);
-        platten.push({ bezeichnung, pfad: w.pfad, gesamt: w.gesamt, frei: w.frei });
+        const vorhanden = nachGeraet.get(schluessel);
+        if (vorhanden) {
+            vorhanden.enthaelt.push(bezeichnung);
+            continue;
+        }
+        const eintrag = { bezeichnung, pfad: w.pfad, gesamt: w.gesamt, frei: w.frei, enthaelt: [bezeichnung] };
+        nachGeraet.set(schluessel, eintrag);
+        platten.push(eintrag);
     }
 
     const cpus = os.cpus() || [];

@@ -72,7 +72,7 @@
         const pull = dok.partner_pull || {};
         zeile('Dokumente', dok.doc_count != null ? `${dok.doc_count} (Seq ${dok.update_seq})` : 'kein Turnier');
         zeile('Dokument-Replikation', pull.laeuft ? (pull.fehler ? `Fehler: ${pull.fehler}` : pull.aktiv ? 'überträgt …' : 'aktuell') : '–', pull.fehler ? 'zustand-warn' : '');
-        zeigeSystem(zeile, s.system);
+        zeigeSystem(zeile, s.system, dl);
         if (s.rueckstufung_laeuft) zeile('Rückstufung', 'läuft …', 'zustand-warn');
         if (s.letzter_rueckstufungsfehler) zeile('Letzter Fehler', s.letzter_rueckstufungsfehler, 'zustand-schlecht');
         karte.appendChild(dl);
@@ -89,27 +89,52 @@
         return t ? `${t} d ${h} h` : h ? `${h} h ${m} min` : `${m} min`;
     }
 
-    // Anteil frei: unter 10 % gelb, unter 5 % rot (Platten zusätzlich: unter 5 GiB gelb).
-    function knappheit(frei, gesamt, minFrei) {
-        if (!gesamt) return '';
-        const anteil = frei / gesamt;
-        if (anteil < 0.05) return 'zustand-schlecht';
-        if (anteil < 0.10 || (minFrei && frei < minFrei)) return 'zustand-warn';
-        return '';
+    // Füllstand: ab 75 % gelb, ab 90 % rot; Platten zusätzlich gelb, wenn weniger als 5 GiB frei sind.
+    function stufe(belegt, gesamt, minFrei) {
+        if (!gesamt) return 'ok';
+        const anteil = belegt / gesamt;
+        if (anteil >= 0.90) return 'bad';
+        if (anteil >= 0.75 || (minFrei && gesamt - belegt < minFrei)) return 'warn';
+        return 'ok';
     }
 
-    function zeigeSystem(zeile, sys) {
+    // Eine Zeile mit Balken: links der Name, rechts "belegt von gesamt · Prozent", darunter optional eine Notiz.
+    function balken(dl, name, belegt, gesamt, optionen = {}) {
+        dl.appendChild(el('dt', name));
+        const dd = el('dd', null, 'balken-zeile');
+        const prozent = gesamt > 0 ? Math.round((belegt / gesamt) * 100) : 0;
+        const kopf = el('div', null, 'balken-kopf');
+        kopf.appendChild(el('span', optionen.text || `${gib(belegt)} von ${gib(gesamt)}`));
+        kopf.appendChild(el('span', `${prozent} %`));
+        dd.appendChild(kopf);
+        const bahn = el('div', null, 'balken-bahn');
+        const fuell = el('i', null, `balken-fuell balken-${stufe(belegt, gesamt, optionen.minFrei)}`);
+        fuell.style.width = `${Math.min(100, prozent)}%`;
+        bahn.appendChild(fuell);
+        dd.appendChild(bahn);
+        if (optionen.notiz) dd.appendChild(el('div', optionen.notiz, 'balken-notiz'));
+        dd.dataset.feld = optionen.feld || '';
+        dd.dataset.prozent = String(prozent);
+        dl.appendChild(dd);
+    }
+
+    function zeigeSystem(zeile, sys, dl) {
         if (!sys) return;
-        const frei = (f, g) => `${gib(f)} frei von ${gib(g)} (${Math.round(((g - f) / g) * 100)} % belegt)`;
-        zeile('Arbeitsspeicher', frei(sys.ram.verfuegbar, sys.ram.gesamt), knappheit(sys.ram.verfuegbar, sys.ram.gesamt)).dataset.feld = 'ram';
-        if (sys.swap && sys.swap.gesamt > 0) zeile('Auslagerung', frei(sys.swap.frei, sys.swap.gesamt));
+        balken(dl, 'Arbeitsspeicher', sys.ram.gesamt - sys.ram.verfuegbar, sys.ram.gesamt, { feld: 'ram' });
+        if (sys.swap && sys.swap.gesamt > 0) balken(dl, 'Auslagerung', sys.swap.gesamt - sys.swap.frei, sys.swap.gesamt, { feld: 'swap' });
         for (const p of sys.platten || []) {
-            zeile(`Speicherplatz (${p.bezeichnung})`, `${frei(p.frei, p.gesamt)} · ${p.pfad}`, knappheit(p.frei, p.gesamt, 5 * GIB)).dataset.feld = 'platte';
+            const geteilt = (p.enthaelt || []).length > 1 ? `${p.enthaelt.join(', ')} auf demselben Gerät` : '';
+            balken(dl, `Speicherplatz (${(p.enthaelt || [p.bezeichnung]).join(' + ')})`, p.gesamt - p.frei, p.gesamt, {
+                feld: 'platte', minFrei: 5 * GIB, notiz: [p.pfad, geteilt].filter(Boolean).join(' · ')
+            });
+        }
+        const last = sys.last && sys.last[0] != null ? sys.last[0] : null;
+        if (last != null && sys.cpu.kerne) {
+            balken(dl, 'Last (1 min)', last, sys.cpu.kerne, { feld: 'last', text: `${last.toFixed(2).replace('.', ',')} bei ${sys.cpu.kerne} Kernen` });
         }
         if (sys.db_groesse != null) zeile('Datenbankgröße', sys.db_groesse < GIB ? `${(sys.db_groesse / 1024 ** 2).toFixed(1).replace('.', ',')} MiB` : gib(sys.db_groesse));
         zeile('CPU', `${sys.cpu.kerne} Kerne${sys.cpu.modell ? ` · ${sys.cpu.modell}` : ''}`);
-        zeile('Last (1/5/15 min)', (sys.last || []).map(l => l.toFixed(2).replace('.', ',')).join(' / '),
-            sys.cpu.kerne && sys.last && sys.last[0] > sys.cpu.kerne ? 'zustand-warn' : '');
+        if (sys.last) zeile('Last (5/15 min)', sys.last.slice(1).map(l => l.toFixed(2).replace('.', ',')).join(' / '));
         zeile('Laufzeit des Systems', dauer(sys.laufzeit_s));
         zeile('System', `${sys.host} · ${sys.os} ${sys.arch} · Node ${sys.node}`);
         if ((sys.netz || []).length) zeile('Netzwerk', sys.netz.map(n => `${n.adresse} (${n.schnittstelle})`).join(', '));
