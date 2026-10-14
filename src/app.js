@@ -84,6 +84,7 @@ if (dienstUpdateAktiv()) {
     if (ergebnis === 'neustart') process.exit(0);
 }
 
+const appVersion = JSON.parse(readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8')).version;
 const syncKonfig = liesSyncKonfig();
 // Server-Cluster nur für Hallen-Server (SYNC_ROLLE=server) mit CLUSTER_KNOTEN.
 const clusterKonfig = syncKonfig.istServer ? liesClusterKonfig() : { aktiv: false };
@@ -205,7 +206,7 @@ if (syncKonfig.istClient) {
         startModus: clusterKonfig.aktiv ? 'secondary' : 'master'
     });
     app.set('sync', sync);
-    const cluster = clusterKonfig.aktiv ? starteClusterDienst({ knex, clusterKonfig, syncKonfig, sync }) : null;
+    const cluster = clusterKonfig.aktiv ? starteClusterDienst({ knex, clusterKonfig, syncKonfig, sync, version: appVersion }) : null;
     app.set('cluster', cluster);
 
     // /db (Dokument-DB) MUSS vor express.json() hängen — sonst konsumiert der JSON-Parser die

@@ -10,11 +10,13 @@
 // Rollenzustand und Verlauf liegen lokal in <SYNC_DATENVERZEICHNIS>/cluster-zustand.json (nicht
 // repliziert — die Epoche des Partners kommt über GET /api/cluster/status).
 import { exec } from 'child_process';
-import { readFileSync, writeFileSync, renameSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, renameSync, mkdirSync, unlinkSync } from 'fs';
 import path from 'path';
 import { entscheideStart, entscheideBefoerderung, pruefePartner, uebernimmPartner } from './rollenLogik.js';
 import { erzeugePgReplikation } from './pgReplikation.js';
 import { erzeugeZeuge } from './zeuge.js';
+import { entscheideUpdate } from './updateLogik.js';
+import { erzeugeUpdateDienst } from './updateDienst.js';
 
 export const PRUEF_MS = 1000;
 const PARTNER_TIMEOUT_MS = 1500;
@@ -36,8 +38,9 @@ function speichereDatei(datei, daten) {
     renameSync(tmp, datei);
 }
 
-export function starteClusterDienst({ knex, clusterKonfig, syncKonfig, sync }) {
+export function starteClusterDienst({ knex, clusterKonfig, syncKonfig, sync, version = null, updateEnv = process.env }) {
     const { knoten, partnerKnoten, partnerUrl } = clusterKonfig;
+    const eigeneVersion = (updateEnv.NODE_ENV === 'test' && updateEnv.CLUSTER_VERSION) || version;
     const pg = erzeugePgReplikation(knex, { partnerKnoten });
     const zeuge = erzeugeZeuge(clusterKonfig.zeuge);
     const datei = path.resolve(syncKonfig.datenverzeichnis, 'cluster-zustand.json');
@@ -114,6 +117,19 @@ export function starteClusterDienst({ knex, clusterKonfig, syncKonfig, sync }) {
             });
         });
     }
+
+    const update = erzeugeUpdateDienst({
+        repo: updateEnv.CLIENT_RELEASE_REPO || 'oensel/Hajime-Pro',
+        token: updateEnv.CLIENT_RELEASE_TOKEN || updateEnv.GITHUB_TOKEN || '',
+        statusDatei: clusterKonfig.updateStatusDatei,
+        updateBefehl: clusterKonfig.updateBefehl,
+        fuehreBefehlAus,
+        env: updateEnv
+    });
+    // Nach einer Master-Übergabe vorgemerktes Update (startet, sobald dieser Server wieder Standby ist).
+    const vorgemerktDatei = path.resolve(syncKonfig.datenverzeichnis, 'update-vorgemerkt.json');
+    const vorgemerkt = () => ladeDatei(vorgemerktDatei);
+    const loescheVorgemerkt = () => { try { unlinkSync(vorgemerktDatei); } catch { /* nicht vorhanden */ } };
 
     // PostgreSQL als Standby des Partners neu aufbauen (der Partner ist mit höherer Epoche Master).
     async function rueckstufen() {
@@ -268,12 +284,53 @@ export function starteClusterDienst({ knex, clusterKonfig, syncKonfig, sync }) {
         setTimeout(() => { uebergabeAngekuendigt = false; }, UEBERGABE_TIMEOUT_MS);
     }
 
+    async function updateEntscheidung(partner) {
+        return entscheideUpdate({
+            eigeneVersion,
+            partnerVersion: partner && partner.version ? partner.version : null,
+            neuesteVersion: await update.neuesteVersion(),
+            rolle,
+            laeuft: update.laeuft() || !!vorgemerkt()
+        });
+    }
+
+    // Update nach einer Master-Übergabe: erst starten, wenn dieser Server wieder Standby ist.
+    async function arbeiteVorgemerktesUpdateAb() {
+        const v = vorgemerkt();
+        if (!v || rolle !== 'secondary' || rueckstufungLaeuft || (zustand && zustand.rueckstufung_erforderlich)) return;
+        if ((await pgRolleOderNull()) !== 'standby') return;
+        loescheVorgemerkt();
+        protokolliere('update_gestartet', { ziel: v.ziel });
+        update.starte(v.ziel).catch(err => console.error('[Cluster] Update fehlgeschlagen:', err.message));
+    }
+
+    // Update dieses Servers (Knopf auf cluster.html): die Regeln prüft der Server selbst, nicht die Seite.
+    async function updateStarten() {
+        const e = await updateEntscheidung(await holePartner());
+        if (!e.knopf) throw Object.assign(new Error(e.grund), { status: 409 });
+        if (e.aktion === 'nach_uebergabe') {
+            mkdirSync(path.dirname(vorgemerktDatei), { recursive: true });
+            writeFileSync(vorgemerktDatei, JSON.stringify({ ziel: e.ziel }));
+            try {
+                await uebergeben();
+            } catch (err) {
+                loescheVorgemerkt();
+                throw err;
+            }
+            return { ok: true, aktion: e.aktion };
+        }
+        protokolliere('update_gestartet', { ziel: e.ziel });
+        update.starte(e.ziel).catch(err => console.error('[Cluster] Update fehlgeschlagen:', err.message));
+        return { ok: true, aktion: e.aktion };
+    }
+
     async function eigenerStatus() {
         const g = await gesundheit();
         return {
             aktiv: true,
             initialisiert,
             knoten,
+            version: eigeneVersion,
             partner_knoten: partnerKnoten,
             vip: clusterKonfig.vip,
             rolle,
@@ -305,7 +362,7 @@ export function starteClusterDienst({ knex, clusterKonfig, syncKonfig, sync }) {
         timer = setInterval(() => {
             if (laeuft) return;
             laeuft = true;
-            seriell(pruefzyklus)
+            seriell(async () => { await pruefzyklus(); await arbeiteVorgemerktesUpdateAb(); })
                 .catch(err => console.error('[Cluster] Prüfzyklus fehlgeschlagen:', err.message))
                 .finally(() => { laeuft = false; });
         }, PRUEF_MS);
@@ -322,11 +379,22 @@ export function starteClusterDienst({ knex, clusterKonfig, syncKonfig, sync }) {
         zurueckstufen,
         uebergeben,
         kuendigeUebergabeAn,
+        updateStarten,
         eigenerStatus,
         async status() {
             const eigen = await eigenerStatus();
             const clients = await sync.listeClients().catch(() => []);
-            return { aktiv: true, eigen, partner: letzterPartner || await holePartner(), clients };
+            const partner = letzterPartner || await holePartner();
+            const entscheidung = await updateEntscheidung(partner);
+            const st = update.status();
+            return {
+                aktiv: true, eigen, partner, clients,
+                update: {
+                    ...entscheidung, neuesteVersion: await update.neuesteVersion(),
+                    zustand: st ? st.zustand : null, meldung: st ? st.meldung : null,
+                    laeuft: update.laeuft(), vorgemerkt: !!vorgemerkt()
+                }
+            };
         },
         stoppe() { if (timer) clearInterval(timer); }
     };
