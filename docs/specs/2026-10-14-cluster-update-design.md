@@ -61,7 +61,26 @@ daher an zwei Stellen einen Hinweis:
 - **dauerhaft nach dem Update**, solange die Versionen beider Server verschieden sind: „Dieser Server ist auf Version X,
   der andere (Name/IP) noch auf Y. Dort muss das Update von Hand angestoßen werden.“
 
-Es gibt bewusst **keinen automatischen Folgeschritt**: Das Update des zweiten Servers wird immer von Hand ausgelöst.
+Es gibt bewusst **keinen automatischen Folgeschritt**: Das Update des zweiten Servers wird immer ausdrücklich ausgelöst.
+
+### Update des Secondary vom Master aus (Aufruf über die VIP)
+
+Ergänzung vom 2026-10-14. Die VIP führt immer zum Master, dem bei gleicher Version kein eigener Update-Knopf zusteht.
+Damit das ganze Cluster-Update über eine Adresse laufen kann, bietet der Master den Knopf **„<Name> (Secondary) auf X
+aktualisieren“** an:
+
+- Sichtbar nur am Master, solange der Secondary erreichbar, nicht neuer als der Master und nicht auf dem neuesten
+  Release ist und dort kein Update läuft (`entscheidePartnerUpdate`, `src/cluster/updateLogik.js`; die Status-Antwort
+  trägt das Ergebnis als `update.partner`).
+- `POST /api/cluster/partner-update` (Steuerungs-Passwort wie die übrigen Schreibaktionen) am Master ruft
+  `POST /api/cluster/update-vom-partner` am Secondary auf (Header `x-hajime-sync-secret`, wie bei der Übergabe). Der
+  Secondary prüft die Regeln **selbst** (`updateStarten`, nur als Secondary und nur Aktion „direkt“); der Master schaltet
+  nichts am Partner um.
+- Der Master bleibt Master und unverändert. Danach ist der Secondary der neuere Server, und am Master erscheint der
+  bekannte Knopf „Übergeben und auf X aktualisieren“. Der zweite Schritt bleibt damit ein bewusster Klick, eine
+  vollautomatische Kette gibt es nicht.
+- Fehlt ein Update-Knopf, obwohl ein neueres Release bekannt ist, nennt die Seite den Grund („Update hier nicht möglich: …“).
+
 
 ## Regeln, serverseitig durchgesetzt
 

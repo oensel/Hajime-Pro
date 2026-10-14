@@ -2,6 +2,7 @@
 // Zeuge, Rückfall auf asynchron und geplante Übergabe. Die Tests bauen aufeinander auf (seriell);
 // der Leitstand simuliert keepalived und die VIP (baseURL = VIP).
 import { test, expect } from '@playwright/test';
+import { SECRET } from './test-env.js';
 import {
     KNOTEN, CLIENT_URL, leitstand, vipHalter, warteAufMaster, warteAufSynchron, knotenStatus,
     warteLeerlauf, legeTurnierAn, legeTeilnehmerAn, teilnehmerNamen, clientStatus
@@ -59,6 +60,40 @@ test('Update: nur der Secondary bekommt den Knopf, der Master wird abgelehnt, Ve
     const erlaubt = await request.post(`${KNOTEN.server2.url}/api/cluster/update`);
     expect(erlaubt.ok(), await erlaubt.text()).toBeTruthy();
     await expect.poll(async () => (await (await request.get(`${KNOTEN.server2.url}/api/cluster/status`)).json()).update.zustand, { timeout: 10_000 }).toBe('fertig');
+});
+
+test('Update über die VIP: der Master stößt das Update des Secondary an, der Secondary prüft selbst', async ({ request, page }) => {
+    const master = await (await request.get(`${KNOTEN.server1.url}/api/cluster/status`)).json();
+    expect(master.update.partner).toMatchObject({ knopf: true, aktion: 'partner', ziel: '1.0.18' });
+    const secondary = await (await request.get(`${KNOTEN.server2.url}/api/cluster/status`)).json();
+    expect(secondary.update.partner.knopf).toBe(false); // nur der Master stößt den Partner an
+
+    // Oberfläche: der Master zeigt den Knopf für den Secondary (und keinen eigenen), der Secondary seinen eigenen
+    await page.goto(`${KNOTEN.server1.url}/cluster.html`);
+    await expect(page.locator('#btnPartnerUpdate')).toBeVisible();
+    await expect(page.locator('#btnPartnerUpdateText')).toContainText('server2 (Secondary) auf 1.0.18 aktualisieren');
+    await expect(page.locator('#btnUpdate')).toBeHidden();
+    await page.goto(`${KNOTEN.server2.url}/cluster.html`);
+    await expect(page.locator('#btnUpdate')).toBeVisible();
+    await expect(page.locator('#btnPartnerUpdate')).toBeHidden();
+
+    // Gegenstellen: Secondary lehnt den Master-Aufruf ohne Secret ab, der Master lässt sich nicht vom Partner aktualisieren
+    // (der Playwright-Kontext sendet das Secret in jeder Anfrage mit, daher eine Anfrage ganz ohne Header)
+    const ohneSecret = await fetch(`${KNOTEN.server2.url}/api/cluster/update-vom-partner`, { method: 'POST' });
+    expect(ohneSecret.status).toBe(401);
+    const amMaster = await request.post(`${KNOTEN.server1.url}/api/cluster/update-vom-partner`, { headers: { 'x-hajime-sync-secret': SECRET } });
+    expect(amMaster.status()).toBe(409);
+    const vomSecondary = await request.post(`${KNOTEN.server2.url}/api/cluster/partner-update`);
+    expect(vomSecondary.status()).toBe(409);
+
+    // Aufruf über die VIP (landet auf dem Master): der Secondary startet sein Update
+    const erlaubt = await request.post('/api/cluster/partner-update');
+    expect(erlaubt.ok(), await erlaubt.text()).toBeTruthy();
+    expect(await erlaubt.json()).toMatchObject({ ok: true, aktion: 'partner', ziel: '1.0.18' });
+    await expect.poll(async () => (await (await request.get(`${KNOTEN.server2.url}/api/cluster/status`)).json()).update.zustand, { timeout: 10_000 }).toBe('fertig');
+    const nachher = await (await request.get(`${KNOTEN.server1.url}/api/cluster/status`)).json();
+    expect(nachher.eigen.rolle).toBe('master'); // der Master bleibt unberührt
+    expect(nachher.update.knopf).toBe(false);
 });
 
 test('Ausfall des Masters: server2 übernimmt automatisch, nichts Bestätigtes geht verloren, Client-Änderung kommt an', async ({ request }) => {
