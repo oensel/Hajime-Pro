@@ -1,7 +1,8 @@
-# Gestaffelte Pipeline: dev -> test -> qa (-> prod = release.yml, ruft diesen Workflow mit vollem Umfang auf).
-#   dev  : schnell und billig (Ubuntu): Plan/Pfadfilter, Unit-Tests, shellcheck. Rot = nichts Teureres startet.
-#   test : E2E-Kern (test:e2e, test:e2e:sync) auf Ubuntu.
-#   qa   : teure Plattform-/Infrastrukturläufe (Windows-Selbststart, macOS vorerst nur im Release, Docker-Cluster, test:e2e:cluster).
+# Gestaffelte Pipeline: dev -> test + qa parallel (-> prod = release.yml, ruft diesen Workflow mit vollem Umfang auf).
+#   dev  : schnell und billig (Ubuntu): Plan/Pfadfilter, Unit-Tests, shellcheck. Rot = nichts weiter startet.
+#   test : E2E-Kern (test:e2e in 3 Shards, test:e2e:sync) auf Ubuntu.
+#   qa   : parallel zu test, nach grünem dev: Plattform-/Infrastrukturläufe (Windows-Selbststart, macOS vorerst nur
+#          im Release, Docker-Cluster, test:e2e:cluster, Server-Paket, Android-APK).
 # Pull Requests laufen mit Pfadfiltern (nur was die Änderung berührt); nach dem Merge läuft nichts erneut (kein Push-
 # Trigger auf main, kein Nachtlauf). VOLLER Umfang ohne Filter: Release (Tag v*, über workflow_call) und manueller Start.
 # Die Sync-Suite (test:e2e:sync) läuft nur im PR, und nur bei passenden Pfaden; das Release führt sie nicht erneut aus.
@@ -121,13 +122,19 @@ jobs:
       - run: shellcheck -S warning deploy/linux/*.sh scripts/test-cluster-install-docker.sh
 
   # --------------------------------------------------------------- test
+  # In 3 Shards aufgeteilt (Playwright --shard, nach Spec-Dateien): jeder Shard hat einen eigenen Runner mit eigenem
+  # Server und eigener DB, die Spec-Dateien hängen nicht voneinander ab. Innerhalb eines Shards bleibt es seriell.
   e2e:
-    name: test / test:e2e
+    name: test / test:e2e (${{ matrix.shard }}/3)
     needs: [plan, unit, shellcheck]
     # shellcheck darf übersprungen sein; fehlgeschlagen/abgebrochen blockiert.
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.kern == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -140,11 +147,11 @@ jobs:
       - run: npx playwright install --with-deps chromium
       # NODE_ENV=test wird NICHT hier gesetzt: tests/e2e-sync/test-env.js und tests/e2e-cluster/test-env.js setzen es
       # selbst in ihren Server-Envs; npm run test:e2e braucht es nicht (keine NODE_ENV-gegateten Test-Endpunkte).
-      - run: npm run test:e2e
+      - run: npm run test:e2e -- --shard=${{ matrix.shard }}/3
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: bericht-e2e
+          name: bericht-e2e-${{ matrix.shard }}
           path: |
             test-results/
             playwright-report/
@@ -185,7 +192,7 @@ jobs:
   # Instanz anlegen, migrieren, sauber beenden, neu starten, Absturz der App überstehen.
   server-selbststart:
     name: qa / selbststart (${{ matrix.os }})
-    needs: [plan, e2e]
+    needs: [plan, unit, shellcheck]
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.plattform == 'true' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
@@ -205,7 +212,7 @@ jobs:
   # Failover). VRRP über Docker-Netz; echte Hardware-Abnahme: deploy/linux/README.md.
   cluster-installation:
     name: qa / cluster-installation
-    needs: [plan, e2e]
+    needs: [plan, unit, shellcheck]
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.cluster == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -215,7 +222,7 @@ jobs:
 
   e2e-cluster:
     name: qa / test:e2e:cluster
-    needs: [plan, e2e]
+    needs: [plan, unit, shellcheck]
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.cluster == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -241,11 +248,11 @@ jobs:
           retention-days: 3
           if-no-files-found: ignore
 
-  # Server-Paket (Installer-Build je Plattform, bis 45 Min.): erst nach dem E2E-Kern, nur bei passenden Pfaden. Bei Tag
+  # Server-Paket (Installer-Build je Plattform, bis 45 Min.): parallel zum E2E-Kern, nur bei passenden Pfaden. Bei Tag
   # baut release.yml es selbst (mit den signierten Client-Dateien).
   server-paket:
     name: qa / server-paket
-    needs: [plan, e2e]
+    needs: [plan, unit, shellcheck]
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.paket == 'true' && !startsWith(github.ref, 'refs/tags/') && !inputs.release }}
     uses: ./.github/workflows/server-paket.yml
 
