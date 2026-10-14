@@ -352,8 +352,8 @@ export async function verteileMannschaftsPoolAufMatten(knex, poolId, mattenIds) 
         const gueltig = await knex('kampfflaechen').where({ turnier_id: pool.turnier_id }).whereIn('id', ids).pluck('id');
         if (gueltig.length !== ids.length) throw new FachFehler(400, 'Mindestens eine gewählte Matte gehört nicht zu diesem Turnier.');
     }
-    if (ids.length > 1 && pool.modus !== 'Jeder-gegen-Jeden') {
-        throw new FachFehler(400, 'Die Verteilung auf mehrere Matten ist bisher nur für Jeder gegen Jeden möglich.');
+    if (ids.length > 1 && !['Jeder-gegen-Jeden', 'Doppel-KO-8', 'Doppel-KO-16'].includes(pool.modus)) {
+        throw new FachFehler(400, 'Die Verteilung auf mehrere Matten ist für dieses Turniersystem nicht möglich.');
     }
 
     const alteMatten = new Set([pool.kampfflaeche_id, ...parseMannschaftsMatten(pool)].filter(Boolean).map(Number));
@@ -365,7 +365,8 @@ export async function verteileMannschaftsPoolAufMatten(knex, poolId, mattenIds) 
             await trx('kaempfe').where({ pool_id: poolId }).update({ kampfflaeche_id: null });
         } else {
             const runden = berechneRunden(begegnungen);
-            const matteJeBegegnung = verteileRundenAufMatten(begegnungen, runden, ids);
+            // Freilose tragen keine Kämpfe und belegen keine Matte.
+            const matteJeBegegnung = verteileRundenAufMatten(begegnungen.filter(b => b.status !== 'freilos'), runden, ids);
             for (const b of begegnungen) {
                 const matte = matteJeBegegnung.get(b.id) ?? null;
                 await trx('mannschaftskaempfe').where({ id: b.id }).update({ kampfflaeche_id: matte, runde: runden.get(b.id) ?? null });
@@ -2261,15 +2262,21 @@ export async function ladeKaempfeDerMatte(knex, matteId) {
 
 async function ermittleVerbundeneMatten(knex, matteId) {
     const ergebnis = new Set();
-    const mannschaftsPoolIds = await knex('pools').where({ kampfflaeche_id: matteId, typ: 'mannschaft' }).pluck('id');
+    const mannschaftsPools = await knex('pools').where({ kampfflaeche_id: matteId, typ: 'mannschaft' }).select('id', 'mannschafts_matten');
+    const mannschaftsPoolIds = mannschaftsPools.map(p => p.id);
+    // Gewählte Matten auch ohne bereits vorhandene Kämpfe (Doppel-KO: spätere Runden entstehen erst).
+    mannschaftsPools.forEach(p => parseMannschaftsMatten(p).forEach(m => ergebnis.add(Number(m))));
     if (mannschaftsPoolIds.length) {
         const matten = await knex('kaempfe').whereIn('pool_id', mannschaftsPoolIds).whereNotNull('kampfflaeche_id').distinct('kampfflaeche_id').pluck('kampfflaeche_id');
         matten.forEach(m => ergebnis.add(Number(m)));
     }
     const fremdePoolIds = await knex('kaempfe').where({ kampfflaeche_id: matteId }).distinct('pool_id').pluck('pool_id');
     if (fremdePoolIds.length) {
-        const haupt = await knex('pools').whereIn('id', fremdePoolIds).whereNotNull('kampfflaeche_id').pluck('kampfflaeche_id');
-        haupt.forEach(m => ergebnis.add(Number(m)));
+        const haupt = await knex('pools').whereIn('id', fremdePoolIds).select('kampfflaeche_id', 'mannschafts_matten');
+        haupt.forEach(p => {
+            if (p.kampfflaeche_id != null) ergebnis.add(Number(p.kampfflaeche_id));
+            parseMannschaftsMatten(p).forEach(m => ergebnis.add(Number(m)));
+        });
         const weitere = await knex('kaempfe').whereIn('pool_id', fremdePoolIds).whereNotNull('kampfflaeche_id').distinct('kampfflaeche_id').pluck('kampfflaeche_id');
         weitere.forEach(m => ergebnis.add(Number(m)));
     }
@@ -2371,7 +2378,7 @@ async function planeEineMatte(knex, kampfflaecheId) {
             .select('id', 'pool_id', 'runde', 'status');
         for (const b of begegnungen) {
             rundeJeBegegnung.set(b.id, { pool_id: b.pool_id, runde: b.runde });
-            if (b.status !== 'beendet') {
+            if (b.status !== 'beendet' && b.status !== 'freilos') {
                 const bisher = offeneMinRunde.get(b.pool_id);
                 if (bisher === undefined || b.runde < bisher) offeneMinRunde.set(b.pool_id, b.runde);
             }

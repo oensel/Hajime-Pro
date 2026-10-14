@@ -122,3 +122,70 @@ test.describe.serial('Mannschaften: Pool auf mehrere Matten', () => {
         await expect(page.locator('#mattenAuswahl input:checked')).toHaveCount(2);
     });
 });
+
+test.describe.serial('Mannschaften: Doppel-KO-8 auf zwei Matten', () => {
+    let turnierId;
+    let poolId;
+    let matten = [];
+
+    test('Turnier mit 6 Teams im Doppel-KO-8, Verteilung auf zwei Matten', async ({ request }) => {
+        const t = await request.post('/api/turniere', {
+            data: { bezeichnung: `E2E DKO Matten ${Date.now()}`, ort: 'Halle', datum: '2027-06-01', ausrichter: 'JC D', anzahl_kampfflaechen: 2 }
+        });
+        turnierId = (await t.json()).turnierId;
+        matten = (await (await request.get(`/api/kampfflaechen?turnierId=${turnierId}`)).json()).map(m => m.id);
+
+        const p = await request.post('/api/pools', {
+            data: {
+                turnier_id: turnierId, bezeichnung: 'DKO-Pool', modus: 'Doppel-KO-8', altersklasse: 'U18',
+                geschlecht: 'männlich', typ: 'mannschaft', mannschafts_gewichtsklassen: ['-73'], kampfzeit_sekunden: 180
+            }
+        });
+        poolId = (await p.json()).poolId;
+        for (let i = 1; i <= 6; i++) {
+            const tm = await request.post('/api/mannschaften', { data: { turnier_id: turnierId, pool_id: poolId, verein: `JC ${i}`, bezeichnung: `Team ${i}` } });
+            const { mannschaftId } = await tm.json();
+            const tn = await request.post('/api/teilnehmer', {
+                data: { turnier_id: turnierId, vorname: `D${i}`, nachname: 'Judoka', geschlecht: 'männlich', verein: `JC ${i}`, geburtsjahr: 2007, gewicht: 70, altersklasse: 'U18' }
+            });
+            const { teilnehmerId } = await tn.json();
+            await request.post(`/api/mannschaften/${mannschaftId}/mitglieder`, { data: { turnier_teilnehmer_id: teilnehmerId } });
+        }
+        const r = await request.put(`/api/mannschaften/pools/${poolId}/matten`, { data: { kampfflaechen: matten } });
+        expect(r.ok(), await r.text()).toBeTruthy();
+
+        const begegnungen = await (await request.get(`/api/mannschaftskaempfe?poolId=${poolId}`)).json();
+        expect(begegnungen.every(b => b.runde != null)).toBeTruthy();
+        // Folgebegegnungen liegen in einer späteren Runde als ihre Quellen.
+        const nachId = new Map(begegnungen.map(b => [b.id, b]));
+        for (const b of begegnungen) {
+            for (const q of [b.mannschaft1_quelle_kampf_id, b.mannschaft2_quelle_kampf_id]) {
+                if (q != null) expect(b.runde).toBeGreaterThan(nachId.get(q).runde);
+            }
+        }
+        const echte = begegnungen.filter(b => b.status !== 'freilos');
+        expect(new Set(echte.map(b => b.kampfflaeche_id))).toEqual(new Set(matten));
+    });
+
+    test('Turnier lässt sich über beide Matten komplett durchspielen', async ({ request }) => {
+        for (let durchlauf = 0; durchlauf < 20; durchlauf++) {
+            const kaempfe = await (await request.get(`/api/kaempfe?poolId=${poolId}`)).json();
+            const bereit = kaempfe.filter(k => k.status === 'bereit');
+            if (bereit.length === 0) break;
+            for (const k of bereit) {
+                const r = await request.put(`/api/kaempfe/${k.id}`, {
+                    data: { status: 'beendet', sieger_id: k.kaempfer1_id, unterbewertung_kaempfer1: 10, unterbewertung_kaempfer2: 0, kampfzeit_in_sekunden: 60 }
+                });
+                expect(r.ok(), await r.text()).toBeTruthy();
+            }
+        }
+        const begegnungen = await (await request.get(`/api/mannschaftskaempfe?poolId=${poolId}`)).json();
+        expect(begegnungen.every(b => b.status === 'beendet' || b.status === 'freilos')).toBeTruthy();
+        const kaempfe = await (await request.get(`/api/kaempfe?poolId=${poolId}`)).json();
+        for (const k of kaempfe) {
+            expect(k.kampfflaeche_id).toBe(begegnungen.find(b => b.id === k.mannschaftskampf_id).kampfflaeche_id);
+        }
+        const pools = await (await request.get(`/api/mannschaften/pools?turnierId=${turnierId}`)).json();
+        expect(pools.find(p => p.id === poolId).status).toBe('kaempfe_beendet');
+    });
+});

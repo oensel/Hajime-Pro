@@ -268,7 +268,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="mannschafts-pool-actions">
                         ${pool.status === 'kaempfe_beendet' ? `<button type="button" class="toolbar-btn toolbar-btn-primary confirm-pool-btn" data-pool-id="${pool.id}" data-pool-name="${escapeHtml(pool.bezeichnung).replace(/"/g, '&quot;')}"><span class="material-icons">fact_check</span><span>Ergebnisse bestätigen</span></button>` : ''}
                         <button type="button" class="toolbar-btn add-team-btn" data-pool-id="${pool.id}"><span class="material-icons">add</span><span>Mannschaft</span></button>
-                        ${matten.length > 1 && pool.modus === 'Jeder-gegen-Jeden' ? `<button type="button" class="toolbar-btn pool-matten-btn" data-pool-id="${pool.id}" data-matten="${escapeHtml(pool.mannschafts_matten || (pool.kampfflaeche_id ? JSON.stringify([pool.kampfflaeche_id]) : '[]'))}" title="Begegnungen auf mehrere Matten verteilen"><span class="material-icons">grid_view</span><span>Matten</span></button>` : ''}
+                        ${matten.length > 1 ? `<button type="button" class="toolbar-btn pool-matten-btn" data-pool-id="${pool.id}" data-matten="${escapeHtml(pool.mannschafts_matten || (pool.kampfflaeche_id ? JSON.stringify([pool.kampfflaeche_id]) : '[]'))}" title="Begegnungen auf mehrere Matten verteilen"><span class="material-icons">grid_view</span><span>Matten</span></button>` : ''}
                         <button type="button" class="icon-btn-small delete-pool-btn" data-pool-id="${pool.id}" title="Pool löschen"><span class="material-icons">delete</span></button>
                     </div>
                 </div>
@@ -418,7 +418,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ${siegerLabel ? `<span class="begegnung-sieger">Sieger: ${escapeHtml(siegerLabel)}</span>` : ''}
                 ${b.stichkampf_gewichtsklasse ? `<span class="begegnung-stichkampf">Stichkampf: ${escapeHtml(b.stichkampf_gewichtsklasse)}</span>` : ''}
                 ${b.runde ? `<span class="begegnung-runde">Runde ${b.runde}</span>` : ''}
-                ${matten.length > 1 && b.status !== 'beendet' ? `<select class="begegnung-matte-select" data-begegnung-id="${b.id}" title="Matte dieser Begegnung">${mattenOptionen(b.kampfflaeche_id)}</select>` : ''}
+                ${matten.length > 1 && b.status !== 'beendet' && b.status !== 'freilos' ? `<select class="begegnung-matte-select" data-begegnung-id="${b.id}" title="Matte dieser Begegnung">${mattenOptionen(b.kampfflaeche_id)}</select>` : ''}
             </div>`;
     }
 

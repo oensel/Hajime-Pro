@@ -2,8 +2,35 @@
 // Rein und DB-frei. Eine Runde enthält keine Mannschaft zweimal, daher kann ein Team nie auf zwei
 // Matten gleichzeitig stehen, wenn Runde n+1 erst nach Runde n beginnt.
 
-// Kreismethode (Berger-Tabelle): n Teams -> n-1 (gerade) bzw. n (ungerade) Runden.
+// Doppel-KO: Runde = Tiefe im Turnierbaum (längster Weg über die Quelle-Verknüpfungen). Ein Team
+// steht damit nie zweimal in derselben Runde, denn jede weitere Begegnung eines Teams hängt über
+// eine Quelle an der vorherigen.
+function berechneRundenAusQuellen(begegnungen) {
+    const nachId = new Map(begegnungen.map(b => [b.id, b]));
+    const tiefe = new Map();
+    const bestimme = (b, besucht = new Set()) => {
+        if (tiefe.has(b.id)) return tiefe.get(b.id);
+        if (besucht.has(b.id)) return 1; // Zyklenschutz, im Turnierbaum nicht vorgesehen
+        besucht.add(b.id);
+        let max = 0;
+        for (const quelleId of [b.mannschaft1_quelle_kampf_id, b.mannschaft2_quelle_kampf_id]) {
+            const quelle = quelleId != null ? nachId.get(quelleId) : null;
+            if (quelle) max = Math.max(max, bestimme(quelle, besucht));
+        }
+        tiefe.set(b.id, max + 1);
+        return max + 1;
+    };
+    for (const b of begegnungen) bestimme(b);
+    return tiefe;
+}
+
+// Rundeneinteilung: mit Quelle-Verknüpfungen (Doppel-KO) nach Baumtiefe, sonst Jeder gegen Jeden
+// per Kreismethode (Berger-Tabelle: n Teams -> n-1 (gerade) bzw. n (ungerade) Runden).
 export function berechneRunden(begegnungen) {
+    if (begegnungen.some(b => b.mannschaft1_quelle_kampf_id != null || b.mannschaft2_quelle_kampf_id != null)) {
+        return berechneRundenAusQuellen(begegnungen);
+    }
+
     const ids = [];
     for (const b of begegnungen) {
         for (const m of [b.mannschaft1_id, b.mannschaft2_id]) {
