@@ -33,14 +33,36 @@ export async function bereinigeTestPostgres(verzeichnis) {
             execFileSync(binaries.pg_ctl, ['-D', dir, '-m', 'immediate', '-w', '-t', '30', 'stop'], { stdio: 'ignore' });
         } catch { /* lief nicht mehr */ }
     }
-    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
-    fs.rmSync(`${dir}.log`, { force: true });
+    // Unter Windows halten die gerade beendeten Server-Prozesse (oder der Virenscanner) Dateien oft noch kurz fest.
+    await fs.promises.rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+    await fs.promises.rm(`${dir}.log`, { force: true, maxRetries: 5, retryDelay: 250 });
+}
+
+const TEMP_PRAEFIX = 'hajime-pg-';
+
+// Löscht liegen gebliebene temporäre Test-Datenbanken (älter als maxAlterMs und ohne postmaster.pid, also ohne
+// laufenden Server), z.B. wenn ein Verzeichnis beim Aufräumen unter Windows noch gesperrt war. Fasst nur die eigenen
+// hajime-pg-*-Verzeichnisse an, nie andere PostgreSQL-Instanzen.
+export function raeumeAlteTempVerzeichnisseAuf({ basis = os.tmpdir(), maxAlterMs = 60 * 60 * 1000 } = {}) {
+    const grenze = Date.now() - maxAlterMs;
+    let eintraege;
+    try { eintraege = fs.readdirSync(basis, { withFileTypes: true }); } catch { return; }
+    for (const eintrag of eintraege) {
+        if (!eintrag.isDirectory() || !eintrag.name.startsWith(TEMP_PRAEFIX)) continue;
+        const dir = path.join(basis, eintrag.name);
+        try {
+            if (fs.existsSync(path.join(dir, 'postmaster.pid')) || fs.statSync(dir).mtimeMs > grenze) continue;
+            fs.rmSync(dir, { recursive: true, force: true });
+            fs.rmSync(`${dir}.log`, { force: true });
+        } catch { /* noch gesperrt: beim nächsten Lauf */ }
+    }
 }
 
 // Frische, migrierte Test-Datenbank. Ohne Angaben: temporäres Verzeichnis und freier Port (Unit-Tests).
 // Rückgabe: { knex, verbindung, stoppe() } — stoppe() schließt knex, beendet PostgreSQL und löscht das Verzeichnis.
 export async function starteTestPostgres({ verzeichnis, port, dbName = 'hajime_test', migriere = true, loescheBeimStopp = true } = {}) {
-    const dir = verzeichnis || fs.mkdtempSync(path.join(os.tmpdir(), 'hajime-pg-'));
+    if (!verzeichnis) raeumeAlteTempVerzeichnisseAuf();
+    const dir = verzeichnis || fs.mkdtempSync(path.join(os.tmpdir(), TEMP_PRAEFIX));
     if (verzeichnis) await bereinigeTestPostgres(dir);
     const instanz = await starteEingebettetesPostgres({
         datenverzeichnis: dir,
@@ -70,7 +92,15 @@ export async function starteTestPostgres({ verzeichnis, port, dbName = 'hajime_t
         async stoppe() {
             await knex.destroy();
             try { instanz.stoppe('fast'); } catch { /* schon beendet */ }
-            if (loescheBeimStopp) await bereinigeTestPostgres(dir);
+            if (!loescheBeimStopp) return;
+            try {
+                await bereinigeTestPostgres(dir);
+            } catch (e) {
+                // Ein vorgegebenes Verzeichnis muss weg (der nächste Lauf nutzt es wieder); ein temporäres darf liegen
+                // bleiben, das Testergebnis hängt nicht davon ab. raeumeAlteTempVerzeichnisseAuf() holt es später nach.
+                if (verzeichnis) throw e;
+                console.warn(`[testPostgres] ${dir} ließ sich nicht löschen (${e.code}), wird bei einem späteren Lauf aufgeräumt.`);
+            }
         }
     };
 }
