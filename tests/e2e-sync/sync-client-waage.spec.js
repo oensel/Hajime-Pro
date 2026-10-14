@@ -43,7 +43,8 @@ test('Waage offline: 5 Wiegungen und 1 Nachmeldung, danach vollständig am Serve
         return r;
     }, { ids: teilnehmerIds, turnierId });
     expect(ergebnisse.every(e => e.ok && e.ausstehend)).toBe(true);
-    expect((await clientStatus(request)).ausstehend).toBe(6);
+    // ausstehend zählt der Änderungs-Feed der lokalen DB zeitversetzt mit (replikation.js), daher warten.
+    await expect.poll(async () => (await clientStatus(request)).ausstehend).toBe(6);
     await expect(page.locator('#syncStatusLeiste')).toContainText('6 Änderungen ausstehend');
 
     await clientVerbinden(request);
