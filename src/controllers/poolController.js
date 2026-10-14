@@ -1110,10 +1110,14 @@ export async function getAltersklassenStatus(knex, req, res) {
         if (!turnierId) {
             return res.status(400).json({ success: false, error: 'turnierId ist erforderlich.' });
         }
-        const teilnehmer = await knex('turnier_teilnehmer')
+        // Vom Turnier nicht ausgetragene Altersklassen werden nicht zur Auslosung angeboten.
+        const turnier = await knex('turniere').where({ id: turnierId }).first();
+        const turnierAltersklassenKeys = turnier ? ermittleTurnierAltersklassenKeys(turnier) : null;
+        const teilnehmer = (await knex('turnier_teilnehmer')
             .where({ turnier_id: turnierId })
             .whereNot({ status: 'zurueckgezogen' })
-            .select('id', 'altersklasse', 'geschlecht', 'gewichtsklasse', 'pool_id', 'status', 'auch_einzelwettkampf');
+            .select('id', 'altersklasse', 'geschlecht', 'gewichtsklasse', 'pool_id', 'status', 'auch_einzelwettkampf'))
+            .filter(t => istAltersklasseAusgetragenServer(t, turnierAltersklassenKeys));
         const mannschaftsMitgliedIds = new Set(
             await knex('mannschaft_mitglieder')
                 .join('mannschaften', 'mannschaft_mitglieder.mannschaft_id', 'mannschaften.id')

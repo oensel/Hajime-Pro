@@ -853,12 +853,30 @@ document.addEventListener('DOMContentLoaded', () => {
             wrapper.className = 'modal-wrapper';
             wrapper.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 10000; display: flex; align-items: center; justify-content: center;';
 
-            const zeilen = eintraege.map((e, i) => `
-                <label class="altersklassen-zeile" style="display: flex; align-items: center; gap: 12px; padding: 8px 4px; cursor: pointer;">
-                    <input type="checkbox" class="altersklassen-checkbox" value="${maskiereAttribut(e.key)}" id="altersklasseWahl_${i}" checked>
-                    <strong>${maskiereAttribut([e.altersklasse, e.geschlecht, e.gewichtsklasse ? `${e.gewichtsklasse} kg` : 'ohne Gewichtsklasse'].filter(Boolean).join(' · '))}</strong>
-                    <span style="color: var(--text-muted);">${e.kampfbereit} eingewogen${e.angemeldet ? `, ${e.angemeldet} noch nicht gewogen` : ''}</span>
-                </label>`).join('');
+            // Gruppen je Altersklasse + Geschlecht (z.B. "U13 m"), darin die Gewichtsklassen.
+            const kuerzel = (g) => ({ 'männlich': 'm', 'weiblich': 'w' }[String(g).toLowerCase()] || g || '');
+            const gruppen = new Map();
+            eintraege.forEach((e, i) => {
+                const gk = `${e.altersklasse}|${e.geschlecht}`;
+                if (!gruppen.has(gk)) gruppen.set(gk, { titel: `${e.altersklasse} ${kuerzel(e.geschlecht)}`.trim(), eintraege: [] });
+                gruppen.get(gk).eintraege.push({ e, i });
+            });
+
+            const zeilen = Array.from(gruppen.values()).map((gruppe, gi) => `
+                <fieldset class="altersklassen-gruppe" data-gruppe="${gi}" style="border: 2px solid var(--border); border-radius: 4px; margin: 0 0 12px 0; padding: 4px 12px 8px;">
+                    <legend style="padding: 0 6px;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 800;">
+                            <input type="checkbox" class="altersklassen-gruppe-checkbox" data-gruppe="${gi}" checked>
+                            ${maskiereAttribut(gruppe.titel)}
+                        </label>
+                    </legend>
+                    ${gruppe.eintraege.map(({ e, i }) => `
+                    <label class="altersklassen-zeile" style="display: flex; align-items: center; gap: 12px; padding: 6px 4px; cursor: pointer;">
+                        <input type="checkbox" class="altersklassen-checkbox" data-gruppe="${gi}" value="${maskiereAttribut(e.key)}" id="altersklasseWahl_${i}" checked>
+                        <strong>${maskiereAttribut(e.gewichtsklasse ? `${e.gewichtsklasse} kg` : 'ohne Gewichtsklasse')}</strong>
+                        <span style="color: var(--text-muted);">${e.kampfbereit} eingewogen${e.angemeldet ? `, ${e.angemeldet} noch nicht gewogen` : ''}</span>
+                    </label>`).join('')}
+                </fieldset>`).join('');
 
             wrapper.innerHTML = `
                 <div class="mdc-card" style="width: 95%; max-width: 520px; max-height: 85vh; overflow: auto; padding: 24px; border-radius: 4px; border: 2px solid var(--border); background-color: var(--bg-card);">
@@ -875,8 +893,21 @@ document.addEventListener('DOMContentLoaded', () => {
             const schliessen = (wert) => { wrapper.remove(); resolve(wert); };
             const bestaetigen = wrapper.querySelector('#altersklassenBestaetigen');
             const boxen = Array.from(wrapper.querySelectorAll('.altersklassen-checkbox'));
-            const aktualisiere = () => { bestaetigen.disabled = !boxen.some(b => b.checked); };
+            const gruppenBoxen = Array.from(wrapper.querySelectorAll('.altersklassen-gruppe-checkbox'));
+            const aktualisiere = () => {
+                bestaetigen.disabled = !boxen.some(b => b.checked);
+                gruppenBoxen.forEach(g => {
+                    const kinder = boxen.filter(b => b.dataset.gruppe === g.dataset.gruppe);
+                    const aktiv = kinder.filter(b => b.checked).length;
+                    g.checked = aktiv === kinder.length;
+                    g.indeterminate = aktiv > 0 && aktiv < kinder.length;
+                });
+            };
             boxen.forEach(b => b.addEventListener('change', aktualisiere));
+            gruppenBoxen.forEach(g => g.addEventListener('change', () => {
+                boxen.filter(b => b.dataset.gruppe === g.dataset.gruppe).forEach(b => { b.checked = g.checked; });
+                aktualisiere();
+            }));
             wrapper.querySelector('#altersklassenAbbrechen').addEventListener('click', () => schliessen(null));
             bestaetigen.addEventListener('click', () => schliessen(boxen.filter(b => b.checked).map(b => b.value)));
         });
