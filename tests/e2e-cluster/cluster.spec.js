@@ -42,6 +42,22 @@ test('Grundzustand: server1 Master, synchrone Replikation, Secondary liest mit u
         .toBe((await (await request.get('/api/sync/status')).json()).instanz_id);
 });
 
+test('Update: nur der Secondary bekommt den Knopf, der Master wird abgelehnt, Versionen beider Server sichtbar', async ({ request }) => {
+    const master = await (await request.get(`${KNOTEN.server1.url}/api/cluster/status`)).json();
+    const secondary = await (await request.get(`${KNOTEN.server2.url}/api/cluster/status`)).json();
+    expect(master.eigen.version).toBe('1.0.17');
+    expect(master.partner.version).toBe('1.0.17');
+    expect(master.update.knopf).toBe(false);
+    expect(secondary.update).toMatchObject({ knopf: true, aktion: 'direkt', ziel: '1.0.18' });
+
+    const abgelehnt = await request.post(`${KNOTEN.server1.url}/api/cluster/update`);
+    expect(abgelehnt.status()).toBe(409);
+
+    const erlaubt = await request.post(`${KNOTEN.server2.url}/api/cluster/update`);
+    expect(erlaubt.ok(), await erlaubt.text()).toBeTruthy();
+    await expect.poll(async () => (await (await request.get(`${KNOTEN.server2.url}/api/cluster/status`)).json()).update.zustand, { timeout: 10_000 }).toBe('fertig');
+});
+
 test('Ausfall des Masters: server2 übernimmt automatisch, nichts Bestätigtes geht verloren, Client-Änderung kommt an', async ({ request }) => {
     await legeTeilnehmerAn(request, turnierId, 'Berta', 'Busch');
     await warteLeerlauf(request);

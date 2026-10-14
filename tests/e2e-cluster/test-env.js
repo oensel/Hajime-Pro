@@ -52,6 +52,10 @@ export function serverEnv(name) {
         CLUSTER_VIP: VIP_URL,
         CLUSTER_ZEUGE: `${LEITSTAND_URL}/zeuge/${name}`,
         CLUSTER_RUECKSTUFEN_BEFEHL: `node "${path.join(PROJEKT, 'tests', 'e2e-cluster', 'rueckstufen.js')}" ${name}`,
+        CLUSTER_VERSION: '1.0.17',
+        CLUSTER_RELEASE_VERSION: '1.0.18',
+        CLUSTER_UPDATE_STATUS_DATEI: path.join(BASIS, `update-status-${name}.json`),
+        CLUSTER_UPDATE_BEFEHL: `node "${path.join(PROJEKT, 'tests', 'e2e-cluster', 'fake-update.js')}" "${path.join(BASIS, `update-status-${name}.json`)}"`,
         STEUERUNG_PASSWORD: '',
         SMTP_HOST: ''
     };
