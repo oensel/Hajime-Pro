@@ -863,23 +863,25 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             const zeilen = Array.from(gruppen.values()).map((gruppe, gi) => `
-                <fieldset class="altersklassen-gruppe" data-gruppe="${gi}" style="border: 2px solid var(--border); border-radius: 4px; margin: 0 0 12px 0; padding: 4px 12px 8px;">
+                <fieldset class="altersklassen-gruppe" data-gruppe="${gi}" style="border: 2px solid var(--border); border-radius: 4px; margin: 0 0 12px 0; padding: 4px 12px 10px;">
                     <legend style="padding: 0 6px;">
-                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 800;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 800; text-transform: none;">
                             <input type="checkbox" class="altersklassen-gruppe-checkbox" data-gruppe="${gi}" checked>
                             ${maskiereAttribut(gruppe.titel)}
                         </label>
                     </legend>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2px 16px;">
                     ${gruppe.eintraege.map(({ e, i }) => `
-                    <label class="altersklassen-zeile" style="display: flex; align-items: center; gap: 12px; padding: 6px 4px; cursor: pointer;">
-                        <input type="checkbox" class="altersklassen-checkbox" data-gruppe="${gi}" value="${maskiereAttribut(e.key)}" id="altersklasseWahl_${i}" checked>
-                        <strong>${maskiereAttribut(e.gewichtsklasse ? `${e.gewichtsklasse} kg` : 'ohne Gewichtsklasse')}</strong>
-                        <span style="color: var(--text-muted);">${e.kampfbereit} eingewogen${e.angemeldet ? `, ${e.angemeldet} noch nicht gewogen` : ''}</span>
-                    </label>`).join('')}
+                        <label class="altersklassen-zeile" style="display: flex; align-items: center; gap: 10px; padding: 6px 4px; cursor: pointer; text-transform: none; letter-spacing: normal; font-weight: 400;">
+                            <input type="checkbox" class="altersklassen-checkbox" data-gruppe="${gi}" value="${maskiereAttribut(e.key)}" id="altersklasseWahl_${i}" checked>
+                            <strong style="min-width: 62px;">${maskiereAttribut(e.gewichtsklasse ? `${e.gewichtsklasse}kg` : 'ohne Klasse')}</strong>
+                            <span style="color: var(--text-muted);">${e.kampfbereit} Teilnehmer${e.angemeldet ? ` · ${e.angemeldet} ungewogen` : ''}</span>
+                        </label>`).join('')}
+                    </div>
                 </fieldset>`).join('');
 
             wrapper.innerHTML = `
-                <div class="mdc-card" style="width: 95%; max-width: 520px; max-height: 85vh; overflow: auto; padding: 24px; border-radius: 4px; border: 2px solid var(--border); background-color: var(--bg-card);">
+                <div class="mdc-card" style="width: 95%; max-width: 560px; max-height: 85vh; overflow: auto; padding: 24px; border-radius: 4px; border: 2px solid var(--border); background-color: var(--bg-card);">
                     <h3 style="margin: 0 0 8px 0;">${maskiereAttribut(titel)}</h3>
                     <p style="margin: 0 0 12px 0; color: var(--text-muted);">${maskiereAttribut(hinweis)}</p>
                     <div>${zeilen}</div>
