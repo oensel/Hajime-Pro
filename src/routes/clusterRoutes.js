@@ -52,6 +52,7 @@ export function getClusterRoutes(holeCluster, { secret }) {
         return { success: true };
     }));
     router.post('/uebergeben', requireWriteAuth, mitCluster, antworte(req => req.cluster.uebergeben()));
+    router.post('/update', requireWriteAuth, mitCluster, antworte(req => req.cluster.updateStarten()));
 
     return router;
 }

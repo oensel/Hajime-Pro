@@ -19,7 +19,7 @@ git clone <repo-url> Hajime-Pro && cd Hajime-Pro && sudo bash deploy/linux/insta
 `install.sh` installiert Node.js 22 und PostgreSQL, legt Systembenutzer `hajime`, Datenbank,
 `/opt/hajime-pro/.env` (mit zufälligen Passwörtern/Geheimnissen), Migrationen, systemd-Dienst
 (Autostart) und ufw-Regeln an und zeigt am Ende Adresse und Passwörter an. Erneutes Ausführen
-nach `git pull` = Update (`.env` und Daten bleiben). **Automatisch:** der Dienst prüft bei jedem Start auf ein neueres GitHub-Release und installiert es selbst (Paket laden, Signatur prüfen, `npm ci`, Migration, Neustart; vorherige Version unter `/opt/hajime-pro/.update/alt-<version>/`). Im Cluster aus, dort von Hand; abschalten mit `HAJIME_SELBSTUPDATE=false` in der `.env`; privates Repository: `CLIENT_RELEASE_TOKEN`. CouchDB ist nicht nötig: die Dokument-DB
+nach `git pull` = Update (`.env` und Daten bleiben). **Automatisch:** der Dienst prüft bei jedem Start auf ein neueres GitHub-Release und installiert es selbst (Paket laden, Signatur prüfen, `npm ci`, Migration, Neustart; vorherige Version unter `/opt/hajime-pro/.update/alt-<version>/`). Im Cluster aus, dort per Knopf „Update“ auf `cluster.html` oder von Hand mit `sudo bash update.sh` (siehe unten); abschalten mit `HAJIME_SELBSTUPDATE=false` in der `.env`; privates Repository: `CLIENT_RELEASE_TOKEN`. CouchDB ist nicht nötig: die Dokument-DB
 für die Client-Geräte ist in die App eingebaut. Den Zwei-Server-Cluster richtet das nächste Skript ein.
 
 ## Schnellstart: Zwei-Server-Cluster (drei Befehle je Server)
@@ -214,3 +214,16 @@ zurück, bleibt der bisherige Master Master (höchste Epoche).
 Windows, ohne Docker): zwei lokale PostgreSQL-Instanzen aus dem Paket `embedded-postgres`, zwei
 Server, ein Client; keepalived, VIP und Zeuge simuliert `tests/e2e-cluster/leitstand.js`. Echtes
 VRRP, `pg_rewind` und die Skripte hier werden über die Checkliste oben abgenommen.
+
+## Update im Cluster
+
+`cluster.html` zeigt die eingesetzte Version beider Server und das neueste Release. Der Knopf „Update“ erscheint nur an
+dem Server, der aktualisiert wird: zuerst am Secondary, danach (nach der Übergabe) am anderen Server. Nach dem Update
+des ersten Servers muss das Update des zweiten **von Hand angestoßen** werden (dort `cluster.html` öffnen und „Update“
+klicken). Am Master löst der Knopf erst die geplante Übergabe aus und aktualisiert den Server danach als Standby.
+
+Technik: Die App ruft über sudoers genau `/usr/local/bin/hajime-update.sh <x.y.z>` auf; das Skript startet `update.sh` im
+Klon (`KLON` in `/etc/hajime/cluster.env`, Release-Tag `v<x.y.z>`) als eigene systemd-Einheit. Status:
+`/var/lib/hajime/update-status.json`, Log: `/var/log/hajime-update.log`. Voraussetzung sind Internet (GitHub) und der Klon;
+die erste Version mit diesem Feature muss einmal von Hand mit `sudo bash update.sh` eingespielt werden. Der Klon steht
+danach auf dem Tag (losgelöster HEAD); `update.sh` wechselt beim nächsten Lauf wieder auf `main`.

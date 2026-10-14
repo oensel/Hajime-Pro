@@ -13,7 +13,8 @@
         rueckstufung_fehlgeschlagen: 'Rückstufung fehlgeschlagen',
         epoche_uebernommen: 'Epoche übernommen',
         uebergabe_gestartet: 'Übergabe gestartet',
-        uebergabe_abgebrochen: 'Übergabe abgebrochen'
+        uebergabe_abgebrochen: 'Übergabe abgebrochen',
+        update_gestartet: 'Update gestartet'
     };
     const GRUENDE = { automatisch: 'automatisch', uebergabe: 'geplante Übergabe', erststart: 'Erststart' };
 
@@ -57,6 +58,7 @@
         zeile('Rolle', s.rolle === 'master' ? 'Master' : 'Secondary', s.rolle === 'master' ? 'rolle-master' : 'rolle-secondary').dataset.feld = 'rolle';
         zeile('Gesund', s.gesund ? 'ja' : `nein – ${(s.gruende || []).join(', ')}`, s.gesund ? 'zustand-gut' : 'zustand-schlecht');
         zeile('Epoche', String(s.epoche ?? '–'));
+        zeile('Version', s.version || 'unbekannt').dataset.feld = 'version';
         const pg = s.pg || {};
         zeile('PostgreSQL', pg.rolle === 'primary' ? 'Primary' : pg.rolle === 'standby' ? 'Standby' : 'nicht erreichbar', pg.rolle ? '' : 'zustand-schlecht');
         if (s.rolle === 'master') {
@@ -131,7 +133,53 @@
         const moeglich = eigen.rolle === 'master' && !eigen.uebergabe_laeuft;
         btn.style.display = moeglich ? 'inline-flex' : 'none';
         document.getElementById('btnUebergabeText').textContent = `Rolle an ${eigen.partner_knoten} übergeben`;
+        zeigeUpdate(daten);
     }
+
+    // Version beider Server, neueste Version, Update-Knopf (nur am Server, der aktualisiert wird) und der Hinweis auf den zweiten Server.
+    function zeigeUpdate(daten) {
+        const { eigen, partner, update } = daten;
+        if (!update) return;
+        const zeile = document.getElementById('updateZeile');
+        const hinweis = document.getElementById('updateHinweis');
+        const btn = document.getElementById('btnUpdate');
+        const anderer = partner && partner.version ? partner.version : null;
+        zeile.textContent = `Diese Version: ${eigen.version || 'unbekannt'} · neueste verfügbar: ${update.neuesteVersion || 'nicht prüfbar'}`
+            + (update.zustand === 'laeuft' || update.laeuft ? ' · Update läuft …' : '')
+            + (update.zustand === 'fehler' ? ` · Letztes Update fehlgeschlagen: ${update.meldung || ''}` : '');
+        const verschieden = !!(anderer && eigen.version && anderer !== eigen.version);
+        hinweis.style.display = verschieden ? 'block' : 'none';
+        hinweis.textContent = verschieden
+            ? `Dieser Server ist auf Version ${eigen.version}, ${eigen.partner_knoten} auf ${anderer}. Der andere Server braucht ebenfalls ein manuell angestoßenes Update (dort cluster.html öffnen und „Update“ klicken).`
+            : '';
+        btn.style.display = update.knopf ? 'inline-flex' : 'none';
+        document.getElementById('btnUpdateText').textContent = update.aktion === 'nach_uebergabe'
+            ? `Übergeben und auf ${update.ziel} aktualisieren`
+            : `Auf ${update.ziel} aktualisieren`;
+    }
+
+    document.getElementById('btnUpdate').addEventListener('click', async () => {
+        if (!aktuell || !aktuell.update || !aktuell.update.knopf) return;
+        const u = aktuell.update;
+        const andere = aktuell.eigen.partner_knoten;
+        const text = u.aktion === 'nach_uebergabe'
+            ? `Master-Rolle an ${andere} übergeben und diesen Server auf ${u.ziel} aktualisieren?
+
+Die Umschaltung dauert einige Sekunden.`
+            : `Diesen Server auf ${u.ziel} aktualisieren?
+
+Der Dienst startet dabei neu.`;
+        if (!confirm(`${text}
+
+Danach muss der andere Server (${andere}) ebenfalls aktualisiert werden: dort cluster.html öffnen und „Update“ klicken.`)) return;
+        const antwort = await fetch('/api/cluster/update', { method: 'POST' });
+        const antwortDaten = await antwort.json().catch(() => ({}));
+        if (!antwort.ok) {
+            alert(`Update nicht möglich: ${antwortDaten.error || antwort.status}`);
+            return;
+        }
+        lade();
+    });
 
     document.getElementById('btnUebergabe').addEventListener('click', async () => {
         if (!aktuell) return;
