@@ -24,7 +24,8 @@ test('Turnierwechsel mit ausstehenden Offline-Änderungen', async ({ request }) 
     await schreibeClientDokument(request, alt.db_name, {
         ...tDoc, gewicht: 58.2, gewogen: true, bearbeitet_von: 'browser', geschrieben_von_knoten: clientId
     });
-    expect((await clientStatus(request)).ausstehend).toBe(2);
+    // ausstehend zählt der Änderungs-Feed der lokalen DB zeitversetzt mit (replikation.js), daher warten.
+    await expect.poll(async () => (await clientStatus(request)).ausstehend).toBe(2);
 
     // Am Server wird inzwischen ein neues Turnier angelegt (löscht das alte komplett).
     await legeTurnierAn(request, 'Sync Wechsel Neu');

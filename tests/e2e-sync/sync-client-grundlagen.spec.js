@@ -33,9 +33,9 @@ test.describe.serial('Client-Knoten: Replikation mit dem Hallen-Server', () => {
             _id: 'test:offline-notiz', dokumenttyp: 'test', text: 'offline geschrieben',
             geschrieben_von_knoten: (await clientStatus(request)).client_id, bearbeitet_von: 'browser'
         });
-        const offline = await clientStatus(request);
-        expect(offline.verbunden).toBe(false);
-        expect(offline.ausstehend).toBe(1);
+        // ausstehend zählt der Änderungs-Feed der lokalen DB zeitversetzt mit (replikation.js), daher warten.
+        await expect.poll(async () => (await clientStatus(request)).ausstehend).toBe(1);
+        expect((await clientStatus(request)).verbunden).toBe(false);
         expect(await ladeDokument(request, dbName, 'test:offline-notiz')).toBeNull();
 
         await clientVerbinden(request);
