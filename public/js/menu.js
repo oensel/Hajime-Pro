@@ -810,6 +810,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (videoLiveLink && currentPath.includes('video-live.html')) videoLiveLink.classList.add('active');
         if (videoLink && currentPath.includes('videobeweis.html')) videoLink.classList.add('active');
         const aktualisiereVideoMenue = async () => {
+            if (document.hidden) return; // versteckter Tab fragt nicht ab
             try {
                 const antwort = await fetch('/api/video/status', { cache: 'no-store' });
                 if (!antwort.ok) return;
@@ -825,7 +826,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         };
         aktualisiereVideoMenue();
-        setInterval(aktualisiereVideoMenue, 10000);
+        setInterval(aktualisiereVideoMenue, 15000);
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) aktualisiereVideoMenue(); });
         // Sync-Konflikte: Menüpunkt mit Zähler der offenen Konflikte (hohe Priorität: rot).
         const syncKonflikteLink = document.getElementById('nav-sync-konflikte');
         if (syncKonflikteLink) {

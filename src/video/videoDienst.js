@@ -87,12 +87,13 @@ export function erzeugeVideoDienst({ speicher, darfSenden = () => true, maxBytes
     return {
         status() {
             const master = darfSenden();
+            const belegung = speicher.speicher();
             return {
                 verfuegbar: master,
                 grund: master ? '' : 'Dieser Server ist nur Secondary.',
-                speicher: speicher.speicher(),
+                speicher: belegung,
                 verzeichnis: speicher.wurzel,
-                clips: speicher.liste({}).length,
+                clips: belegung.clips,
                 live: [...aktive.values()].map(a => beschreibung(a.clip))
             };
         },
