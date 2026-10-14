@@ -92,6 +92,7 @@ export function erzeugeVideoDienst({ speicher, darfSenden = () => true, maxBytes
                 grund: master ? '' : 'Dieser Server ist nur Secondary.',
                 speicher: speicher.speicher(),
                 verzeichnis: speicher.wurzel,
+                clips: speicher.liste({}).length,
                 live: [...aktive.values()].map(a => beschreibung(a.clip))
             };
         },

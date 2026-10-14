@@ -795,7 +795,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // --- SERVER-CLUSTER (Hallen-Server mit CLUSTER_KNOTEN, siehe src/cluster/) ---
-    // Menüpunkt "Cluster"; auf dem Secondary zusätzlich ein Hinweis, dass nur gelesen werden kann.
+    // Zugang zur Cluster-Seite nur über den Knopf "Hallen-Server" in der Kopfzeile; auf dem Secondary zusätzlich ein Hinweis, dass nur gelesen werden kann.
     if (syncRolle === 'server') {
         // Kopplung neuer Client-Geräte (QR-Code + 6-stelliger Code) gibt es nur am Hallen-Server.
         const clientKonfigLink = document.getElementById('nav-client-konfig');
@@ -803,21 +803,33 @@ document.addEventListener('DOMContentLoaded', async () => {
             clientKonfigLink.style.display = '';
             if (currentPath.includes('client-konfig.html')) clientKonfigLink.classList.add('active');
         }
-        // Video-Archiv: Clips der Kämpfe (nur am Hallen-Server gespeichert).
+        // Video live / Video-Archiv: nur sichtbar, wenn eine Kamera live aufnimmt bzw. Clips vorhanden sind
+        // (Clips liegen nur am Hallen-Server). Auf der eigenen Seite bleibt der Punkt immer stehen.
         const videoLiveLink = document.getElementById('nav-video-live');
-        if (videoLiveLink) {
-            videoLiveLink.style.display = '';
-            if (currentPath.includes('video-live.html')) videoLiveLink.classList.add('active');
-        }
         const videoLink = document.getElementById('nav-videobeweis');
-        if (videoLink) {
-            videoLink.style.display = '';
-            if (currentPath.includes('videobeweis.html')) videoLink.classList.add('active');
-        }
+        if (videoLiveLink && currentPath.includes('video-live.html')) videoLiveLink.classList.add('active');
+        if (videoLink && currentPath.includes('videobeweis.html')) videoLink.classList.add('active');
+        const aktualisiereVideoMenue = async () => {
+            try {
+                const antwort = await fetch('/api/video/status', { cache: 'no-store' });
+                if (!antwort.ok) return;
+                const status = await antwort.json();
+                if (videoLiveLink) {
+                    videoLiveLink.style.display = (status.live || []).length > 0 || currentPath.includes('video-live.html') ? '' : 'none';
+                }
+                if (videoLink) {
+                    videoLink.style.display = (status.clips || 0) > 0 || currentPath.includes('videobeweis.html') ? '' : 'none';
+                }
+            } catch (fehler) {
+                // Menü bleibt beim letzten Stand
+            }
+        };
+        aktualisiereVideoMenue();
+        setInterval(aktualisiereVideoMenue, 10000);
         // Sync-Konflikte: Menüpunkt mit Zähler der offenen Konflikte (hohe Priorität: rot).
         const syncKonflikteLink = document.getElementById('nav-sync-konflikte');
         if (syncKonflikteLink) {
-            syncKonflikteLink.style.display = '';
+            // Erst sichtbar, wenn es offene Konflikte gibt (oder auf der eigenen Seite).
             if (currentPath.includes('sync-konflikte.html')) syncKonflikteLink.classList.add('active');
             const syncKonflikteBadge = document.getElementById('nav-sync-konflikte-badge');
             const aktualisiereSyncKonflikte = async () => {
@@ -829,6 +841,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     syncKonflikteBadge.textContent = anzahl > 99 ? '99+' : String(anzahl);
                     syncKonflikteBadge.style.display = anzahl > 0 ? 'inline-block' : 'none';
                     syncKonflikteBadge.classList.toggle('hoch', konflikte.some(k => k.prioritaet === 'hoch'));
+                    syncKonflikteLink.style.display = anzahl > 0 || currentPath.includes('sync-konflikte.html') ? '' : 'none';
                     syncKonflikteLink.title = anzahl > 0 ? `${anzahl} offene${anzahl === 1 ? 'r' : ''} Sync-Konflikt${anzahl === 1 ? '' : 'e'}` : '';
                 } catch (fehler) {
                     // Zähler bleibt beim letzten Stand
@@ -874,16 +887,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             const status = await holeClusterStatus();
             const cluster = status.aktiv ? { aktiv: true, ...status.eigen } : status;
             if (cluster.aktiv) {
-                const nav = document.getElementById('sidebarNavSecondary');
-                if (nav && !document.getElementById('nav-cluster')) {
-                    const a = document.createElement('a');
-                    a.href = '/cluster.html';
-                    a.className = 'menu-item';
-                    a.id = 'nav-cluster';
-                    a.innerHTML = '<span class="material-icons">dns</span><span class="menu-text">Cluster</span>';
-                    nav.appendChild(a);
-                    if (currentPath.includes('cluster.html')) a.classList.add('active');
-                }
                 if (cluster.rolle !== 'master' && !document.getElementById('secondaryBanner')) {
                     const banner = document.createElement('div');
                     banner.id = 'secondaryBanner';

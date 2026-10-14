@@ -237,3 +237,21 @@ test('Löschen einzeln und alle', async () => {
         assert.equal(s.speicher.liste().length, 0);
     } finally { s.ende(); }
 });
+
+test('Status: Anzahl gespeicherter Clips und live aufgenommene Clips (für die bedingten Menüpunkte)', async () => {
+    const s = await starteServer();
+    try {
+        const leer = await (await fetch(`${s.http}/status`)).json();
+        assert.equal(leer.clips, 0);
+        assert.deepEqual(leer.live, []);
+
+        const { ws } = await oeffneSender(s, { ...META, live: true });
+        const laufend = await (await fetch(`${s.http}/status`)).json();
+        assert.equal(laufend.clips, 1);
+        assert.equal(laufend.live.length, 1);
+        ws.close();
+        await pause(100);
+    } finally {
+        s.ende();
+    }
+});
