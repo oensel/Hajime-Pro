@@ -1,6 +1,6 @@
 {
-  "name": "Hajime Live",
-  "short_name": "Hajime Live",
+  "name": "Hajime Pro",
+  "short_name": "Hajime Pro",
   "description": "Verfolge Teilnehmer und Vereine am Wettkampftag.",
   "start_url": "./",
   "scope": "./",

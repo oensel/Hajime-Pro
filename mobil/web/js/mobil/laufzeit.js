@@ -108,7 +108,7 @@ export async function starteLaufzeit(mobil) {
                 if (hoerer && hoerer.remove) hoerer.remove();
             }
             versionsHinweis = ergebnis && ergebnis.status === 'erlaubnis'
-                ? `Update ${update.version}: bitte „Installation unbekannter Apps“ für Hajime Pro erlauben und die App neu starten`
+                ? `Update ${update.version}: bitte „Installation unbekannter Apps“ für Hajime Pro Orga erlauben und die App neu starten`
                 : `Update ${update.version} geladen – Installation wird geöffnet, bitte bestätigen. Die App wird danach neu gestartet.`;
         } catch (e) {
             // Offline bei der Suche: kein Hinweis. Scheitert dagegen der Download, bleibt der Hinweis auf die manuelle APK.

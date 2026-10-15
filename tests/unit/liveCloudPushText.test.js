@@ -6,7 +6,7 @@ const basis = { turnierKey: 'demo-2026', turnierName: 'Demo-Turnier', name: 'Mia
 
 test('Nachricht: Pool-Start, Kampf und beides zusammen', () => {
     const pool = baueNachricht({ ...basis, pool: { abstand: 3 }, kampf: null });
-    assert.equal(pool.titel, 'Hajime Live · Demo-Turnier');
+    assert.equal(pool.titel, 'Hajime Pro · Demo-Turnier');
     assert.equal(pool.text, 'Mia Mustermann: Pool U15 w -44 startet in 3 Kämpfen (Matte 2)');
     assert.equal(baueNachricht({ ...basis, pool: { abstand: 0 }, kampf: null }).text, 'Mia Mustermann: Pool U15 w -44 startet als Nächstes (Matte 2)');
     assert.equal(baueNachricht({ ...basis, pool: { abstand: 1 }, kampf: null }).text, 'Mia Mustermann: Pool U15 w -44 startet in 1 Kampf (Matte 2)');

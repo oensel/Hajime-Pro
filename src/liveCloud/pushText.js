@@ -8,7 +8,7 @@ const inKaempfen = (abstand) => {
 export function baueTeamNachricht({ turnierKey, turnierName, team, gegner, matte, abstand }) {
     const teile = [abstand === 0 ? 'Begegnung als Nächstes' : `Begegnung ${inBegegnungen(abstand)}`];
     return {
-        titel: `Hajime Live · ${turnierName}`,
+        titel: `Hajime Pro · ${turnierName}`,
         text: `${team}${gegner ? ` gegen ${gegner}` : ''}: ${teile.join(', ')}${matte ? ` (${matte})` : ''}`,
         url: `/live/#/t/${encodeURIComponent(turnierKey)}/uebersicht`,
         tag: `hajime-${turnierKey}`
@@ -22,7 +22,7 @@ export function baueNachricht({ turnierKey, turnierName, name, poolBezeichnung, 
     if (pool) teile.push(`Pool ${poolBezeichnung} startet ${inKaempfen(pool.abstand)}`);
     if (kampf) teile.push(`Kampf ${inKaempfen(kampf.abstand)}`);
     return {
-        titel: `Hajime Live · ${turnierName}`,
+        titel: `Hajime Pro · ${turnierName}`,
         text: `${name}: ${teile.join(', ')}${matte ? ` (${matte})` : ''}`,
         url: `/live/#/t/${encodeURIComponent(turnierKey)}/uebersicht`,
         tag: `hajime-${turnierKey}`

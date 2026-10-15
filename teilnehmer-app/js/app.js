@@ -1,4 +1,4 @@
-// Hajime Live: Hash-Router. Die Ansichten liegen in ansicht-*.js; jede exportiert eine Funktion (kontext) → Promise.
+// Hajime Pro: Hash-Router. Die Ansichten liegen in ansicht-*.js; jede exportiert eine Funktion (kontext) → Promise.
 // Routen: #/ Turniere · #/t/<k> Suche · #/t/<k>/uebersicht · #/t/<k>/verein/<vk> · #/t/<k>/pool/<poolId>
 import { zeigeTabs, setzeStatus, rufeStopp } from './ui.js';
 import { zeigeTurniere, zeigeStart } from './ansicht-start.js';

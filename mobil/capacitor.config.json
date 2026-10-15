@@ -1,6 +1,6 @@
 {
   "appId": "de.hajimepro.client",
-  "appName": "Hajime Pro",
+  "appName": "Hajime Pro Orga",
   "webDir": "www",
   "server": {
     "androidScheme": "http"
