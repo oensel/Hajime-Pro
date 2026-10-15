@@ -97,6 +97,12 @@ while [ $# -gt 0 ]; do
     esac
 done
 
+# CLOUD_URL aus der bisherigen .env behalten, wenn --cloud-url nicht angegeben wurde. Hier, nicht in
+# rendere_env: dessen Ausgabe wird per Pipe in dieselbe Datei geschrieben, die Datei wäre schon überschrieben.
+if [ -z "$CLOUD_URL" ] && [ -f "$ENV_DATEI" ]; then
+    CLOUD_URL="$(grep -E '^CLOUD_URL=' "$ENV_DATEI" | head -n1 | cut -d= -f2- || true)"
+fi
+
 ist_ipv4() {
     local ip="$1" teil
     [[ "$ip" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || return 1
@@ -229,10 +235,6 @@ fi
 # Konfigurationsdateien (alle rein textuell, damit sie ohne Installation prüfbar sind: --nur-konfig)
 # ---------------------------------------------------------------------------------------------
 rendere_env() {
-    # CLOUD_URL aus der bisherigen .env behalten, wenn --cloud-url nicht angegeben wurde
-    if [ -z "$CLOUD_URL" ] && [ -f "$ENV_DATEI" ]; then
-        CLOUD_URL="$(grep -E '^CLOUD_URL=' "$ENV_DATEI" | head -n1 | cut -d= -f2- || true)"
-    fi
     cat <<EOF
 # Erzeugt von deploy/linux/install-cluster.sh am $(date -Iseconds) (Knoten $KNOTEN)
 PORT=$APP_PORT
