@@ -3,6 +3,7 @@ import { gueltigeFarbe } from '../shared/kampfFarbe.js';
 import { exportiereVorlagen, importiereVorlagen } from '../services/urkundenVorlagenTransfer.js';
 import { entfernungZuPlzInKm } from '../utils/entfernungHelper.js';
 import { turnierHatEchteKaempfe } from './poolController.js';
+import { FachFehler } from '../utils/fachFehler.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 const { istEinzelbenutzerBetrieb } = betriebsmodus;
 
@@ -678,6 +679,21 @@ export async function importTurnier(knex, req, res) {
             return res.status(400).json({ success: false, error: 'Datei konnte nicht gelesen werden: ' + e.message });
         }
 
+        const ergebnis = await importiereTurnierDaten(knex, req.app.get('sync'), daten);
+        return res.status(201).json({ success: true, ...ergebnis });
+    } catch (error) {
+        if (error instanceof FachFehler) {
+            return res.status(error.statusCode).json({ success: false, error: error.message });
+        }
+        console.error('[Turnier-Import-Fehler]:', error);
+        return res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+// Kern des Turnier-Imports, gemeinsam für den Datei-Import (importTurnier) und das Holen aus der
+// Cloud (cloudRoutes.js). Ersetzt ALLE bestehenden Turniere des Servers; wirft FachFehler bei
+// ungültigem Format. Der Aufrufer prüft vorher den Einzelbenutzerbetrieb.
+export async function importiereTurnierDaten(knex, sync, daten) {
         const t = daten && daten.turnier;
         const kampfflaechen = (daten && daten.kampfflaechen) || [];
         const pools = (daten && daten.pools) || [];
@@ -687,7 +703,7 @@ export async function importTurnier(knex, req, res) {
         const mannschaftMitglieder = (daten && daten.mannschaft_mitglieder) || [];
 
         if (!t || !t.bezeichnung || !t.ort || !t.datum || !t.ausrichter) {
-            return res.status(400).json({ success: false, error: 'Ungültiges Import-Format: Turnier-Pflichtfelder (Bezeichnung, Ort, Datum, Ausrichter) fehlen.' });
+            throw new FachFehler(400, 'Ungültiges Import-Format: Turnier-Pflichtfelder (Bezeichnung, Ort, Datum, Ausrichter) fehlen.');
         }
 
         let ak = t.altersklassen;
@@ -700,7 +716,6 @@ export async function importTurnier(knex, req, res) {
             try { mak = JSON.parse(mak); } catch (e) { mak = []; }
         }
 
-        const sync = req.app.get('sync');
         if (sync) await sync.vorTurnierwechsel();
 
         const neuesTurnierId = await knex.transaction(async (trx) => {
@@ -760,8 +775,7 @@ export async function importTurnier(knex, req, res) {
 
         if (sync) await sync.aktiviereTurnier(neuesTurnierId);
 
-        return res.status(201).json({
-            success: true,
+        return {
             turnierId: neuesTurnierId,
             imported: {
                 kampfflaechen: kampfflaechen.length,
@@ -769,11 +783,7 @@ export async function importTurnier(knex, req, res) {
                 teilnehmer: teilnehmer.length,
                 kaempfe: kaempfe.length
             }
-        });
-    } catch (error) {
-        console.error('[Turnier-Import-Fehler]:', error);
-        return res.status(500).json({ success: false, error: error.message });
-    }
+        };
 }
 
 // Lädt die Ergebnisse eines Turniers hoch, das offline durchgeführt wurde, und ersetzt DAMIT

@@ -26,6 +26,12 @@ export const testDbVerbindung = {
     host: '127.0.0.1', port: TEST_PG_PORT, user: 'postgres', password: '', database: TEST_PG_DB
 };
 
+// Attrappe der Cloud (tests/helpers/fake-cloud.mjs) für „Turnier aus der Cloud holen“.
+export const FAKE_CLOUD_PORT = 3190;
+export const FAKE_CLOUD_URL = `http://127.0.0.1:${FAKE_CLOUD_PORT}`;
+export const FAKE_CLOUD_EMAIL = 'cloud@test.de';
+export const FAKE_CLOUD_PASSWORT = 'cloud-geheim';
+
 export const DURCHSAGE_TESTDATEI = './data/test-durchsage/pcm.raw';
 export const VIDEO_TESTVERZEICHNIS = './data/test-video';
 
@@ -37,6 +43,7 @@ export const testServerEnv = {
     // Videoaufnahme: Clips der Tests in einem eigenen Verzeichnis
     VIDEO_VERZEICHNIS: VIDEO_TESTVERZEICHNIS,
     IS_OFFLINE: 'true',
+    CLOUD_URL: FAKE_CLOUD_URL,
     // Teilnehmer-App (Phase 2): Ingest und App-API sind sonst nur im Modus cloud eingehängt.
     LIVE_API_AKTIV: 'true',
     DB_HOST: '127.0.0.1',

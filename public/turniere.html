@@ -264,6 +264,54 @@
         .pending-request-actions .btn {
             margin: 0;
         }
+        .cloud-trenner {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 32px 0 16px 0;
+            color: var(--text-muted);
+            font-size: 13px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .cloud-trenner::before, .cloud-trenner::after {
+            content: "";
+            flex: 1;
+            border-top: 2px solid var(--border);
+        }
+        .cloud-login {
+            display: grid;
+            grid-template-columns: 1fr 1fr auto;
+            gap: 12px;
+            align-items: end;
+            border: 1px dashed var(--border);
+            border-radius: 6px;
+            padding: 16px;
+        }
+        .cloud-login label {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-muted);
+        }
+        .cloud-login .btn { margin: 0; }
+        .cloud-fehler {
+            margin-top: 12px;
+            font-size: 13px;
+            font-weight: 700;
+            color: #c62828;
+        }
+        .cloud-hinweis {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-muted);
+        }
+        @media (max-width: 640px) {
+            .cloud-login { grid-template-columns: 1fr; }
+        }
     </style>
     <script src="/js/menu.js"></script>
 </head>
@@ -298,6 +346,22 @@
 
     <div id="tournamentsContainer">
         <div class="no-data-msg">Turniere werden geladen...</div>
+    </div>
+
+    <!-- Nur am Hallen-Server und nur, wenn die Cloud erreichbar ist (siehe Skript unten) -->
+    <div id="cloudBereich" style="display: none;">
+        <div class="cloud-trenner"><span class="material-icons">cloud</span>Turniere aus der Cloud</div>
+        <form id="cloudLoginForm" class="cloud-login" autocomplete="off">
+            <label>Benutzer
+                <input type="text" id="cloudEmail" name="cloudEmail" autocomplete="off" placeholder="name@verein.de" required>
+            </label>
+            <label>Passwort
+                <input type="password" id="cloudPasswort" name="cloudPasswort" autocomplete="off" required>
+            </label>
+            <button type="submit" class="btn btn-raised" id="cloudLoginBtn">Anmelden</button>
+        </form>
+        <div id="cloudFehler" class="cloud-fehler" style="display: none;"></div>
+        <div id="cloudListe"></div>
     </div>
 </div>
 
@@ -731,6 +795,149 @@
             }
         });
     }
+
+    // --- TURNIERE AUS DER CLOUD (nur Hallen-Server, nur wenn die Cloud erreichbar ist) ---
+    (function () {
+        const bereich = document.getElementById('cloudBereich');
+        if (!bereich) return;
+        const form = document.getElementById('cloudLoginForm');
+        const fehlerBox = document.getElementById('cloudFehler');
+        const liste = document.getElementById('cloudListe');
+        const loginBtn = document.getElementById('cloudLoginBtn');
+        // Token nur im Arbeitsspeicher dieser Seite, nie in Storage oder URL
+        let cloudToken = null;
+
+        const ERLAUBTE_STATUS = ['anmeldung_geschlossen', 'in_durchfuehrung', 'abgeschlossen'];
+        const STATUS_TEXT = {
+            entwurf: 'Entwurf', veroeffentlicht: 'Anmeldung läuft', anmeldung_geschlossen: 'Anmeldung geschlossen',
+            in_durchfuehrung: 'In Durchführung', abgeschlossen: 'Abgeschlossen', abgesagt: 'Abgesagt'
+        };
+
+        // Maskiert auch Anführungszeichen, da Werte in HTML-Attribute (data-name) eingesetzt werden
+        function esc(s) {
+            return String(s == null ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+        // Statuswert nur als Klassenname zulassen, wenn er aus Kleinbuchstaben/Unterstrich besteht
+        function statusKlasse(s) {
+            return /^[a-z_]+$/.test(String(s || '')) ? String(s) : 'unbekannt';
+        }
+        function datum(s) {
+            if (!s) return '';
+            const d = new Date(s);
+            if (isNaN(d)) return esc(s);
+            return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
+        }
+        function zeigeFehler(text) {
+            fehlerBox.textContent = text || '';
+            fehlerBox.style.display = text ? 'block' : 'none';
+        }
+        function meldung(text, typ) {
+            if (window.zeigeNotification) window.zeigeNotification(text, typ);
+            else alert(text);
+        }
+
+        function renderListe(turniere) {
+            if (!turniere.length) {
+                liste.innerHTML = '<div class="no-data-msg">Keine Turniere in der Cloud.</div>';
+                return;
+            }
+            liste.innerHTML = '<div class="tournaments-grid">' + turniere.map(t => {
+                const holbar = ERLAUBTE_STATUS.includes(t.status_effektiv);
+                const status = STATUS_TEXT[t.status_effektiv] || t.status_effektiv || '';
+                const aktion = holbar
+                    ? `<button type="button" class="btn btn-raised cloud-holen" data-id="${esc(t.id)}" data-name="${esc(t.bezeichnung)}">Auf diesen Server holen</button>`
+                    : `<span class="cloud-hinweis">${t.status_effektiv === 'veroeffentlicht'
+                        ? 'Anmeldung läuft noch' + (t.anmeldeschluss ? ' (bis ' + datum(t.anmeldeschluss) + ')' : '')
+                        : 'Noch nicht abholbar'}</span>`;
+                return `
+                    <div class="tournament-card">
+                        <div>
+                            <h2 class="tournament-name">${esc(t.bezeichnung)}<span class="status-badge status-${statusKlasse(t.status_effektiv)}">${esc(status)}</span></h2>
+                            <div class="tournament-details">
+                                <div class="detail-item"><span class="material-icons">calendar_today</span><span>Datum: ${datum(t.datum)}</span></div>
+                                <div class="detail-item"><span class="material-icons">place</span><span>Ort: ${esc(t.ort)}</span></div>
+                                <div class="detail-item"><span class="material-icons">groups</span><span>Gemeldete Teilnehmer: ${esc(t.teilnehmer_anzahl || 0)}</span></div>
+                            </div>
+                        </div>
+                        <div class="card-actions">${aktion}</div>
+                    </div>`;
+            }).join('') + '</div>';
+        }
+
+        async function holen(id, name) {
+            const bestaetigt = window.zeigeZentraleBestaetigung
+                ? await window.zeigeZentraleBestaetigung(
+                    `Das Turnier "${name}" wird aus der Cloud geholt. Das löscht alle bestehenden Turniere auf diesem Gerät (inkl. Pools, Kämpfe und Teilnehmer). Fortfahren?`,
+                    'Turnier aus der Cloud holen',
+                    'warning'
+                )
+                : confirm('Das Holen löscht alle bestehenden Turniere auf diesem Gerät. Fortfahren?');
+            if (!bestaetigt) return;
+
+            zeigeFehler('');
+            liste.querySelectorAll('.cloud-holen').forEach(b => { b.disabled = true; });
+            try {
+                const resp = await fetch(`/api/cloud/turniere/${encodeURIComponent(id)}/holen`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: cloudToken })
+                });
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok) throw new Error(data.error || 'Das Turnier konnte nicht geholt werden.');
+                meldung(`Turnier geholt: ${data.imported.teilnehmer} Teilnehmer, ${data.imported.pools} Pools, ${data.imported.kampfflaechen} Matten.`, 'success');
+                window.location.href = `/teilnehmer.html?turnierId=${data.turnierId}`;
+            } catch (err) {
+                zeigeFehler(err.message);
+                liste.querySelectorAll('.cloud-holen').forEach(b => { b.disabled = false; });
+            }
+        }
+
+        liste.addEventListener('click', (e) => {
+            const btn = e.target.closest('.cloud-holen');
+            if (btn) holen(btn.dataset.id, btn.dataset.name);
+        });
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            zeigeFehler('');
+            loginBtn.disabled = true;
+            try {
+                const resp = await fetch('/api/cloud/turniere', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: document.getElementById('cloudEmail').value.trim(),
+                        password: document.getElementById('cloudPasswort').value
+                    })
+                });
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok) throw new Error(data.error || 'Anmeldung an der Cloud fehlgeschlagen.');
+                cloudToken = data.token;
+                // Passwort sofort verwerfen, es wird nicht mehr gebraucht
+                document.getElementById('cloudPasswort').value = '';
+                form.style.display = 'none';
+                renderListe(data.turniere || []);
+            } catch (err) {
+                zeigeFehler(err.message);
+            } finally {
+                loginBtn.disabled = false;
+            }
+        });
+
+        // Bereich nur einblenden, wenn dies ein Hallen-Server ist und die Cloud antwortet
+        (async () => {
+            try {
+                const resp = await fetch('/api/cloud/status');
+                if (!resp.ok) return;
+                const data = await resp.json();
+                if (data.verfuegbar) bereich.style.display = 'block';
+            } catch (err) {
+                // Cloud-Bereich bleibt ausgeblendet
+            }
+        })();
+    })();
 </script>
 </body>
 </html>
