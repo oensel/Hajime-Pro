@@ -1,6 +1,7 @@
 // Mannschaften: Team-Ansicht (Stern/Glocke nur am Team) und Mannschafts-Pool mit seinen Teams.
 import { api } from './api.js';
 import { verbindung, teamZeilen, matteText, poolName } from './anzeige.js';
+import { sortiereTeams } from './uebersicht.js';
 import { h, icon, inhalt, setzeStatus, setzeStopp, speicherFuer, teamKachel, zeigeTabs } from './ui.js';
 
 const hinweisKeinTurnier = (f) => {
@@ -95,7 +96,7 @@ export async function zeigeMannschaftsPool({ key, teile }) {
         inhalt().replaceChildren(
             h('a', { class: 'zurueck', href: `#/t/${encodeURIComponent(key)}/pools/mannschaften` }, icon('chevron_left'), 'Pools'),
             h('h1', {}, poolName(pool.bezeichnung), h('small', {}, `${pool.teams} Teams`)),
-            h('div', { 'data-testid': 'mannschaftspool-teams' }, (pool.mannschaften || []).map(t => teamKachel(t, speicher, zeichne, {
+            h('div', { 'data-testid': 'mannschaftspool-teams' }, sortiereTeams(pool.mannschaften || []).map(t => teamKachel(t, speicher, zeichne, {
                 href: `#/t/${encodeURIComponent(key)}/mannschaft/${encodeURIComponent(t.key)}`
             }))));
     }

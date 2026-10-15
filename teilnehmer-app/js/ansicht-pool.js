@@ -93,8 +93,6 @@ export async function zeigePool({ key, teile }) {
                 }, h('span', { class: 'nr' }, k.nr), h('span', { class: klasse(k.k1) }, name(k.k1, 1)), '–', h('span', { class: klasse(k.k2) }, name(k.k2, 2)),
                 h('span', { class: 'rechts' }, s.text));
             });
-            rumpf.push(h('button', { class: 'knopf', type: 'button', 'data-testid': 'baum-oeffnen', onclick: () => { reiter = 'baum'; zeichne(); } },
-                icon('account_tree'), 'Turnierbaum öffnen'));
         } else {
             const modell = baueBaumModell(daten.pool.modus, daten.kaempfe, defs);
             rumpf = modell.abschnitte.map(a => abschnittZeichnen(a, sterne, markierung));

@@ -14,6 +14,12 @@ function vereinRang(t) {
 const vergleich = (a, b) => vereinRang(a) - vereinRang(b)
     || `${a.nachname}${a.vorname}`.localeCompare(`${b.nachname}${b.vorname}`, 'de');
 
+// Teams: läuft jetzt zuerst, dann die nächsten Begegnungen nach Abstand, zuletzt wartende und fertige.
+export function sortiereTeams(teams) {
+    return [...teams].sort((a, b) => vereinRang(a) - vereinRang(b)
+        || String(a.bezeichnung || '').localeCompare(String(b.bezeichnung || ''), 'de', { numeric: true }));
+}
+
 export function sortiereVerein(teilnehmer) {
     return [...teilnehmer].sort(vergleich);
 }

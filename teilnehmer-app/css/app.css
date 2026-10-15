@@ -56,7 +56,7 @@ body {
 }
 .titel { font-family: Outfit, sans-serif; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; color: var(--primary); text-decoration: none; font-size: 16px; }
 .titel { display: inline-flex; align-items: center; gap: 8px; }
-.titel .zeichen { width: 22px; height: 25px; background: var(--primary); -webkit-mask: url(../icons/zeichen.png) center / contain no-repeat; mask: url(../icons/zeichen.png) center / contain no-repeat; }
+.titel .zeichen { width: 30px; height: 30px; background: #ffffff url(../icons/zeichen.png) center / 22px no-repeat; border-radius: 8px; border: 1px solid var(--border); flex-shrink: 0; }
 .live-schild { font-size: 11px; font-weight: 700; color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); padding: 3px 9px; border-radius: 20px; }
 .live-schild.getrennt { color: var(--live); background: color-mix(in srgb, var(--live) 12%, transparent); }
 .kanji { position: fixed; right: -8px; bottom: 70px; font-size: 140px; line-height: 1; color: var(--kanji); pointer-events: none; z-index: 0; }
@@ -95,13 +95,15 @@ input[type="search"] {
 }
 .verein-kachel span { color: var(--muted); font-size: 12px; font-weight: 700; }
 .gruppe { background: var(--card); border: 2px solid var(--border); border-radius: 8px; margin-bottom: 8px; }
-.gruppe > button {
+.gruppe > button, .gruppe > .gruppen-titel {
     width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 11px 12px; min-height: 44px;
-    background: none; border: 0; font: inherit; font-weight: 700; color: var(--text); cursor: pointer;
+    background: none; border: 0; font: inherit; font-weight: 700; color: var(--text);
 }
-.gruppe > button span { color: var(--muted); font-size: 12px; }
+.gruppe > .gruppen-titel { min-height: 0; padding-bottom: 4px; }
+.gruppe > .chips { padding: 4px 12px 12px; }
+.gruppe > button span, .gruppe > .gruppen-titel span { color: var(--muted); font-size: 12px; }
 .gruppe.offen { border-color: var(--primary); }
-.gruppe.offen > button { color: var(--primary); }
+.gruppe.offen > button, .gruppe.offen > .gruppen-titel { color: var(--primary); }
 .chips { padding: 0 12px 10px; display: flex; flex-wrap: wrap; gap: 6px; }
 .chip {
     display: inline-flex; align-items: center; min-height: 36px; padding: 0 12px; border: 2px solid var(--border-strong);

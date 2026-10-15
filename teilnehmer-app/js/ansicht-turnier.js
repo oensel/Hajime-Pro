@@ -14,7 +14,7 @@ function paarung(k) {
 }
 
 function matteKarte(key, m) {
-    const teile = [h('div', { class: 'matte-kopf' }, h('span', {}, m.bezeichnung), icon('sports_martial_arts'))];
+    const teile = [h('div', { class: 'matte-kopf' }, h('span', {}, m.bezeichnung))];
     if (m.laufend) {
         teile.push(h('div', {
             class: 'laufend', 'data-testid': `laufend-${m.id}`, role: 'link', tabindex: '0',

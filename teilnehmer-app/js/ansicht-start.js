@@ -1,5 +1,6 @@
 // Startseiten: Turnierwahl (mit Offline-Zugang) und Suche innerhalb eines Turniers.
 import { api } from './api.js';
+import { sortiereTeams } from './uebersicht.js';
 import { gewichtText, kachelZeilen, klassenTitel, verbindung } from './anzeige.js';
 import { bereinigeAlte, gecachteTurniere } from './speicher.js';
 import { h, inhalt, setzeStatus, speicherFuer, teamKachel, zeigeTabs } from './ui.js';
@@ -65,7 +66,7 @@ export async function zeigeStart({ key }) {
         const teile = [];
         if (t.mannschaften.length) {
             teile.push(h('div', { class: 'abschnitt' }, 'Mannschaften'),
-                ...t.mannschaften.map(m => teamKachel(m, speicher, zeichneTreffer, { href: `#/t/${encodeURIComponent(key)}/mannschaft/${encodeURIComponent(m.key)}` })));
+                ...sortiereTeams(t.mannschaften).map(m => teamKachel(m, speicher, zeichneTreffer, { href: `#/t/${encodeURIComponent(key)}/mannschaft/${encodeURIComponent(m.key)}` })));
         }
         if (t.mitglieder.length) {
             teile.push(h('div', { class: 'abschnitt' }, 'Kämpfer in Mannschaften'),
@@ -106,22 +107,12 @@ export async function zeigeStart({ key }) {
 
     const klassen = (turnier.klassen || []).map(gruppe => {
         const id = `${gruppe.altersklasse}-${gruppe.geschlecht}`;
-        const chips = h('div', { class: 'chips', hidden: true }, gruppe.pools.map(p => h('a', {
+        const chips = h('div', { class: 'chips' }, gruppe.pools.map(p => h('a', {
             class: 'chip', 'data-testid': `gewicht-${p.poolId}`,
             href: `#/t/${encodeURIComponent(key)}/pool/${p.poolId}/teilnehmer`
         }, gewichtText(p.gewichtsklasse) || p.bezeichnung)));
-        const kasten = h('div', { class: 'gruppe' });
-        const knopf = h('button', {
-            type: 'button', 'data-testid': `klasse-${id}`, 'aria-expanded': 'false',
-            onclick: () => {
-                const offen = chips.hidden;
-                chips.hidden = !offen;
-                kasten.classList.toggle('offen', offen);
-                knopf.setAttribute('aria-expanded', String(offen));
-            }
-        }, klassenTitel(gruppe), h('span', {}, `${gruppe.pools.length} Pools`));
-        kasten.append(knopf, chips);
-        return kasten;
+        const titel = h('div', { class: 'gruppen-titel', 'data-testid': `klasse-${id}` }, klassenTitel(gruppe), h('span', {}, `${gruppe.pools.length} Pools`));
+        return h('div', { class: 'gruppe' }, titel, chips);
     });
 
     inhalt().replaceChildren(
