@@ -62,6 +62,59 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
     }
 
+    // Mannschaften je Alters-/Geschlechtsklasse in einem Container über die ganze Breite; die Teams
+    // aller Pools dieser Klasse stehen darin nebeneinander.
+    function teamKarteHtml(team) {
+        const mitglieder = team.mitglieder.length === 0
+            ? `<div class="pool-leer">Keine Kämpfer zugeordnet</div>`
+            : team.mitglieder.map(m => `
+                <div class="teilnehmer-row">
+                    <span class="teilnehmer-name">${escapeHtml(m.nachname)}, ${escapeHtml(m.vorname)}</span>
+                    <span class="teilnehmer-verein">${escapeHtml(m.gewichtsklasse ? `${m.gewichtsklasse}kg` : '')}</span>
+                </div>`).join('');
+        return `
+            <div class="team-card">
+                <div class="team-head"><strong>${escapeHtml(team.bezeichnung)}</strong><span>${escapeHtml(team.verein || '')}</span></div>
+                ${mitglieder}
+            </div>`;
+    }
+
+    const altersklasseRang = (ak) => {
+        const m = String(ak || '').match(/\d+/);
+        return m ? parseInt(m[0], 10) : 999;
+    };
+    const geschlechtRang = (g) => ({ weiblich: 0, männlich: 1, mixed: 2 }[String(g).toLowerCase()] ?? 3);
+    const geschlechtLabel = (g) => (String(g).toLowerCase() === 'mixed' ? 'mixed' : g);
+
+    function mannschaftsKlassenHtml(pools, mattenNamenVon) {
+        const klassen = new Map();
+        for (const pool of pools) {
+            const key = `${pool.altersklasse}|${pool.geschlecht}`;
+            if (!klassen.has(key)) klassen.set(key, { altersklasse: pool.altersklasse, geschlecht: pool.geschlecht, pools: [] });
+            klassen.get(key).pools.push(pool);
+        }
+        return [...klassen.values()]
+            .sort((a, b) => altersklasseRang(a.altersklasse) - altersklasseRang(b.altersklasse)
+                || geschlechtRang(a.geschlecht) - geschlechtRang(b.geschlecht))
+            .map(k => {
+                const teams = k.pools.flatMap(p => p.mannschaften || []);
+                const systeme = [...new Set(k.pools.map(p => String(p.modus || '').replace('Jeder-gegen-Jeden', 'Jeder gegen Jeden').replace(/-/g, ' ')))].filter(Boolean);
+                const matten = [...new Set(k.pools.flatMap(p => mattenNamenVon(p)))];
+                const info = [`${teams.length} ${teams.length === 1 ? 'Team' : 'Teams'}`, ...systeme, matten.join(', ')].filter(Boolean).join(' · ');
+                return `
+                    <section class="klassen-container">
+                        <div class="klassen-header">
+                            <span class="material-icons">groups_2</span>
+                            <span class="klassen-titel">${escapeHtml(k.altersklasse)} ${escapeHtml(geschlechtLabel(k.geschlecht))}</span>
+                            <span class="klassen-info">${escapeHtml(info)}</span>
+                        </div>
+                        ${teams.length === 0
+                            ? '<div class="pool-leer">Keine Mannschaften</div>'
+                            : `<div class="team-grid">${teams.map(teamKarteHtml).join('')}</div>`}
+                    </section>`;
+            }).join('');
+    }
+
     function poolBlockHtml(pool) {
         if (pool.typ === 'mannschaft') return mannschaftsPoolBlockHtml(pool);
         const teilnehmerHtml = pool.teilnehmer.length === 0
@@ -124,11 +177,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (mannschaftsPools.size > 0) {
                 mannschaftenSection.style.display = 'block';
-                mannschaftenGrid.innerHTML = [...mannschaftsPools.values()].map(pool => {
+                mannschaftenGrid.innerHTML = mannschaftsKlassenHtml([...mannschaftsPools.values()], (pool) => {
                     const matteIds = new Set([pool.kampfflaeche_id, ...(pool.matten_ids || [])].filter(id => id != null));
-                    const namen = [...matteIds].map(id => mattenNamen.get(id)).filter(Boolean);
-                    return mannschaftsPoolBlockHtml(pool, namen);
-                }).join('');
+                    return [...matteIds].map(id => mattenNamen.get(id)).filter(Boolean);
+                });
             } else {
                 mannschaftenSection.style.display = 'none';
                 mannschaftenGrid.innerHTML = '';

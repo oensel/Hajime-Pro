@@ -67,9 +67,19 @@ test.describe('Mannschaften: Gewichtsklassen bearbeiten', () => {
         expect(pool.mannschaften[0].mitglieder[0].gewichtsklasse).toBeTruthy();
 
         await page.goto(`/uebersicht.html?turnierId=${turnierId}`);
-        // Mannschaften stehen gesondert unter "Mannschaften", nicht auf den Matten.
-        await expect(page.locator('#mannschaftenGrid .pool-block', { hasText: 'Team Ü' })).toContainText('Übersicht, Uwe');
-        await expect(page.locator('#matsGrid .pool-block', { hasText: 'Team Ü' })).toHaveCount(0);
+        // Mannschaften stehen gesondert unter "Mannschaften", je Alters-/Geschlechtsklasse ein Container.
+        const container = page.locator('#mannschaftenGrid .klassen-container', { hasText: 'U15' });
+        await expect(container).toHaveCount(1);
+        await expect(container.locator('.klassen-titel')).toContainText('U15');
+        await expect(container.locator('.team-card', { hasText: 'Team Ü' })).toContainText('Übersicht, Uwe');
+        await expect(page.locator('#matsGrid .team-card, #matsGrid .pool-block', { hasText: 'Team Ü' })).toHaveCount(0);
         await expect(page.locator('#unassignedGrid .pool-block', { hasText: 'Team Ü' })).toHaveCount(0);
+
+        // Der Container läuft über die ganze Breite des Inhaltsbereichs.
+        const breiten = await page.evaluate(() => ({
+            container: document.querySelector('.klassen-container').getBoundingClientRect().width,
+            eltern: document.querySelector('#mannschaftenGrid').getBoundingClientRect().width
+        }));
+        expect(Math.round(breiten.container)).toBe(Math.round(breiten.eltern));
     });
 });
