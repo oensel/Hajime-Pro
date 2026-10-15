@@ -141,6 +141,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const begegnungenJeMatte = new Map();
         const begegnungenOhneMatte = [];
+        // Begegnungen in Spielreihenfolge: nach Runde, dann nach Nummer der Begegnung.
+        begegnungen.sort((a, b) => (a.runde ?? Number.MAX_SAFE_INTEGER) - (b.runde ?? Number.MAX_SAFE_INTEGER) || a.id - b.id);
         begegnungen.forEach(b => {
             if (b.matte_id != null && zugeordnet.has(b.matte_id)) {
                 if (!begegnungenJeMatte.has(b.matte_id)) begegnungenJeMatte.set(b.matte_id, []);

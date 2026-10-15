@@ -456,3 +456,44 @@ test('Dashboard: Pools stehen in der Reihenfolge der Matte, nicht nach Status', 
     const reihenfolge = daten.mats[0].pools.map(p => p.bezeichnung);
     expect(reihenfolge).toEqual(['Erster-Pool', 'Zweiter-Pool']);
 });
+
+test('Dashboard: Einzel-Pools stehen vor den Mannschafts-Pools (wie auf der Matten-Seite)', async ({ request, page }) => {
+    const t = await request.post('/api/turniere', {
+        data: { bezeichnung: `E2E Dashboard Einzel zuerst ${Date.now()}`, ort: 'Halle', datum: '2027-06-01', ausrichter: 'JC E', anzahl_kampfflaechen: 1 }
+    });
+    const turnierId = (await t.json()).turnierId;
+    const matte = (await (await request.get(`/api/kampfflaechen?turnierId=${turnierId}`)).json())[0].id;
+
+    // Mannschafts-Pool bekommt die niedrigere Position, der Einzel-Pool die höhere.
+    const tp = await request.post('/api/pools', {
+        data: {
+            turnier_id: turnierId, bezeichnung: 'Team-Pool', modus: 'Jeder-gegen-Jeden', altersklasse: 'U18',
+            geschlecht: 'männlich', typ: 'mannschaft', mannschafts_gewichtsklassen: ['-73'], kampfzeit_sekunden: 180
+        }
+    });
+    const teamPool = (await tp.json()).poolId;
+    for (let i = 1; i <= 2; i++) {
+        const tm = await request.post('/api/mannschaften', { data: { turnier_id: turnierId, pool_id: teamPool, verein: `JC ${i}`, bezeichnung: `Team ${i}` } });
+        const { mannschaftId } = await tm.json();
+        const tn = await request.post('/api/teilnehmer', {
+            data: { turnier_id: turnierId, vorname: `E${i}`, nachname: 'Judoka', geschlecht: 'männlich', verein: `JC ${i}`, geburtsjahr: 2007, gewicht: 70, altersklasse: 'U18' }
+        });
+        const { teilnehmerId } = await tn.json();
+        await request.post(`/api/mannschaften/${mannschaftId}/mitglieder`, { data: { turnier_teilnehmer_id: teilnehmerId } });
+    }
+    const ep = await request.post('/api/pools', {
+        data: { turnier_id: turnierId, bezeichnung: 'Einzel-Pool', modus: 'Jeder-gegen-Jeden', altersklasse: 'U18', geschlecht: 'männlich', gewichtsklasse: '-73', kampfzeit_sekunden: 180 }
+    });
+    const einzelPool = (await ep.json()).poolId;
+    expect((await request.put('/api/pools/kampfflaeche-zuordnen', { data: { poolId: teamPool, kampflaecheId: matte, position: 0 } })).ok()).toBeTruthy();
+    expect((await request.put('/api/pools/kampfflaeche-zuordnen', { data: { poolId: einzelPool, kampflaecheId: matte, position: 1 } })).ok()).toBeTruthy();
+
+    const daten = await (await request.get(`/api/pools/dashboard?turnierId=${turnierId}`)).json();
+    expect(daten.mats[0].pools.map(p => p.bezeichnung)).toEqual(['Einzel-Pool', 'Team-Pool']);
+
+    // Matten-Seite: Pool-Karte vor den Begegnungs-Karten
+    await page.goto(`/matten.html?turnierId=${turnierId}`);
+    const karten = page.locator(`.matte-drop-zone[data-kampflaeche-id="${matte}"] .pool-card`);
+    await expect(karten.first()).toContainText('Einzel-Pool');
+    await expect(karten.nth(1)).toContainText('Team 1 vs. Team 2');
+});

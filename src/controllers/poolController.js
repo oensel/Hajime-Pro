@@ -2779,8 +2779,11 @@ export async function getDashboardData(knex, req, res) {
                 };
             });
 
-            // Reihenfolge der Pools = Reihenfolge auf der Matte (matte_reihenfolge, wie matten.html), nie nach Status.
-            mappedPools.sort((a, b) => (a.reihenfolge ?? Number.MAX_SAFE_INTEGER) - (b.reihenfolge ?? Number.MAX_SAFE_INTEGER) || a.id - b.id);
+            // Reihenfolge wie auf matten.html: zuerst die Einzel-Pools nach matte_reihenfolge, danach die Mannschafts-
+            // Pools (ihre Begegnungen werden erst nach allen Einzel-Pools der Matte eingeplant) — nie nach Status.
+            const mannschaftsPoolIds = new Set(matPools.filter(p => p.typ === 'mannschaft').map(p => p.id));
+            mappedPools.sort((a, b) => (mannschaftsPoolIds.has(a.id) ? 1 : 0) - (mannschaftsPoolIds.has(b.id) ? 1 : 0)
+                || (a.reihenfolge ?? Number.MAX_SAFE_INTEGER) - (b.reihenfolge ?? Number.MAX_SAFE_INTEGER) || a.id - b.id);
 
             // Der "als nächstes hinzuzuholende Pool" auf dieser Matte ist der erste Pool in der Reihenfolge, der den Status 'bereit' hat (noch 0% Fortschritt)
             const nextPool = mappedPools.find(p => p.status === 'bereit') || null;
