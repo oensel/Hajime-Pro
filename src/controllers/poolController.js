@@ -2779,17 +2779,8 @@ export async function getDashboardData(knex, req, res) {
                 };
             });
 
-            // Sortieren: aktiv -> bereit (nach reihenfolge) -> beendet
-            mappedPools.sort((a, b) => {
-                const statusOrder = { 'aktiv': 1, 'bereit': 2, 'beendet': 3 };
-                const orderA = statusOrder[a.status] || 99;
-                const orderB = statusOrder[b.status] || 99;
-                
-                if (orderA !== orderB) {
-                    return orderA - orderB;
-                }
-                return (a.reihenfolge ?? 0) - (b.reihenfolge ?? 0);
-            });
+            // Reihenfolge der Pools = Reihenfolge auf der Matte (matte_reihenfolge, wie matten.html), nie nach Status.
+            mappedPools.sort((a, b) => (a.reihenfolge ?? Number.MAX_SAFE_INTEGER) - (b.reihenfolge ?? Number.MAX_SAFE_INTEGER) || a.id - b.id);
 
             // Der "als nächstes hinzuzuholende Pool" auf dieser Matte ist der erste Pool in der Reihenfolge, der den Status 'bereit' hat (noch 0% Fortschritt)
             const nextPool = mappedPools.find(p => p.status === 'bereit') || null;

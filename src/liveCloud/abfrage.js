@@ -331,11 +331,13 @@ export async function listePools(knex, turnierKey) {
     return pools
         .map(p => ({
             poolId: p.pool_id, bezeichnung: p.bezeichnung, modus: p.modus, status: p.status, matteId: p.matte_id,
+            reihenfolge: p.reihenfolge,
             matteBezeichnung: kopf && p.matte_id != null ? mattenName(kopf, p.matte_id) : '',
             altersklasse: p.altersklasse, geschlecht: p.geschlecht, gewichtsklasse: p.gewichtsklasse,
             teilnehmer: anzahl.get(p.pool_id) || 0, ...(summen.get(p.pool_id) || { gesamt: 0, beendet: 0, laeuft: 0 })
         }))
-        .sort((a, b) => (a.matteId ?? Infinity) - (b.matteId ?? Infinity) || a.poolId - b.poolId);
+        .sort((a, b) => (a.matteId ?? Infinity) - (b.matteId ?? Infinity)
+            || (a.reihenfolge ?? Infinity) - (b.reihenfolge ?? Infinity) || a.poolId - b.poolId);
 }
 
 export async function ladeDashboard(knex, turnierKey) {
@@ -357,7 +359,9 @@ export async function ladeDashboard(knex, turnierKey) {
         return { gesamt: eigene.length, beendet: eigene.filter(k => BEENDET.has(k.status)).length };
     };
     const matten = (Array.isArray(kopf.matten) ? kopf.matten : []).map(m => {
-        const poolsDerMatte = pools.filter(p => p.matte_id === m.id);
+        // Reihenfolge der Pools wie auf der Matte (matte_reihenfolge), ohne Angabe nach Pool-ID.
+        const poolsDerMatte = pools.filter(p => p.matte_id === m.id)
+            .sort((a, b) => (a.reihenfolge ?? Infinity) - (b.reihenfolge ?? Infinity) || a.pool_id - b.pool_id);
         const ids = new Set(poolsDerMatte.map(p => p.pool_id));
         const dieser = kaempfe.filter(k => ids.has(k.pool_id)).sort(nachReihenfolge);
         const laufend = dieser.find(k => k.status === 'gestartet') || null;

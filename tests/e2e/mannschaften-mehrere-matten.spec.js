@@ -415,3 +415,44 @@ test.describe.serial('Mannschaften: kein Team auf zwei Matten, Dashboard', () =>
         expect(breiten.container).toBe(breiten.fenster);
     });
 });
+
+test('Dashboard: Pools stehen in der Reihenfolge der Matte, nicht nach Status', async ({ request }) => {
+    const t = await request.post('/api/turniere', {
+        data: { bezeichnung: `E2E Dashboard Reihenfolge ${Date.now()}`, ort: 'Halle', datum: '2027-06-01', ausrichter: 'JC R', anzahl_kampfflaechen: 1 }
+    });
+    const turnierId = (await t.json()).turnierId;
+    const matte = (await (await request.get(`/api/kampfflaechen?turnierId=${turnierId}`)).json())[0].id;
+    const poolIds = [];
+    for (const [index, name] of ['Erster', 'Zweiter'].entries()) {
+        const p = await request.post('/api/pools', {
+            data: {
+                turnier_id: turnierId, bezeichnung: `${name}-Pool`, modus: 'Jeder-gegen-Jeden', altersklasse: 'U18',
+                geschlecht: 'männlich', typ: 'mannschaft', mannschafts_gewichtsklassen: ['-73'], kampfzeit_sekunden: 180
+            }
+        });
+        const poolId = (await p.json()).poolId;
+        poolIds.push(poolId);
+        for (let i = 1; i <= 2; i++) {
+            const tm = await request.post('/api/mannschaften', { data: { turnier_id: turnierId, pool_id: poolId, verein: `JC ${index}${i}`, bezeichnung: `T${index}${i}` } });
+            const { mannschaftId } = await tm.json();
+            const tn = await request.post('/api/teilnehmer', {
+                data: { turnier_id: turnierId, vorname: `R${index}${i}`, nachname: 'Judoka', geschlecht: 'männlich', verein: `JC ${index}${i}`, geburtsjahr: 2007, gewicht: 70, altersklasse: 'U18' }
+            });
+            const { teilnehmerId } = await tn.json();
+            await request.post(`/api/mannschaften/${mannschaftId}/mitglieder`, { data: { turnier_teilnehmer_id: teilnehmerId } });
+        }
+        const z = await request.put('/api/pools/kampfflaeche-zuordnen', { data: { poolId, kampflaecheId: matte, position: index } });
+        expect(z.ok(), await z.text()).toBeTruthy();
+    }
+    // Der erste Pool ist fertig ausgekämpft: nach Status stünde er hinten, nach Reihenfolge der Matte bleibt er vorn.
+    const kaempfe = await (await request.get(`/api/kaempfe?poolId=${poolIds[0]}`)).json();
+    for (const k of kaempfe) {
+        const r = await request.put(`/api/kaempfe/${k.id}`, {
+            data: { status: 'beendet', sieger_id: k.kaempfer1_id, unterbewertung_kaempfer1: 10, unterbewertung_kaempfer2: 0, kampfzeit_in_sekunden: 60 }
+        });
+        expect(r.ok(), await r.text()).toBeTruthy();
+    }
+    const daten = await (await request.get(`/api/pools/dashboard?turnierId=${turnierId}`)).json();
+    const reihenfolge = daten.mats[0].pools.map(p => p.bezeichnung);
+    expect(reihenfolge).toEqual(['Erster-Pool', 'Zweiter-Pool']);
+});

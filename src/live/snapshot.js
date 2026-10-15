@@ -92,6 +92,7 @@ export function baueSnapshot({ turnier, kampfflaechen, pools, teilnehmer, kaempf
     const poolsAusgabe = einzelPools.map(p => ({
         id: p.id, bezeichnung: p.bezeichnung, modus: p.modus, status: p.status,
         matteId: p.kampfflaeche_id != null ? p.kampfflaeche_id : null,
+        reihenfolge: p.matte_reihenfolge == null ? null : Number(p.matte_reihenfolge),
         altersklasse: p.altersklasse, geschlecht: p.geschlecht, gewichtsklasse: p.gewichtsklasse,
         farbe2: p.farbe_kaempfer2 || turnier.farbe_kaempfer2 || 'blau'
     }));

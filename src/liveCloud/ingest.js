@@ -80,7 +80,8 @@ function poolZeilen(turnierKey, pools) {
         gesehen.add(p.id);
         zeilen.push({
             turnier_key: turnierKey, pool_id: p.id, bezeichnung: text(p.bezeichnung, 200), modus: text(p.modus, 60),
-            status: text(p.status, 40), matte_id: ganzzahl(p.matteId), altersklasse: text(p.altersklasse, 20),
+            status: text(p.status, 40), matte_id: ganzzahl(p.matteId), reihenfolge: ganzzahl(p.reihenfolge),
+            altersklasse: text(p.altersklasse, 20),
             geschlecht: text(p.geschlecht, 5), gewichtsklasse: text(p.gewichtsklasse, 20), farbe2: p.farbe2 === 'rot' ? 'rot' : 'blau'
         });
     }
