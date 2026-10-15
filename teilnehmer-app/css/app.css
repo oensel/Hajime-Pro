@@ -55,6 +55,8 @@ body {
     background: var(--card); border-bottom: 2px solid var(--border);
 }
 .titel { font-family: Outfit, sans-serif; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; color: var(--primary); text-decoration: none; font-size: 16px; }
+.titel { display: inline-flex; align-items: center; gap: 8px; }
+.titel .zeichen { width: 22px; height: 25px; background: var(--primary); -webkit-mask: url(../icons/zeichen.png) center / contain no-repeat; mask: url(../icons/zeichen.png) center / contain no-repeat; }
 .live-schild { font-size: 11px; font-weight: 700; color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); padding: 3px 9px; border-radius: 20px; }
 .live-schild.getrennt { color: var(--live); background: color-mix(in srgb, var(--live) 12%, transparent); }
 .kanji { position: fixed; right: -8px; bottom: 70px; font-size: 140px; line-height: 1; color: var(--kanji); pointer-events: none; z-index: 0; }

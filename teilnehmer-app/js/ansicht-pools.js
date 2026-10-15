@@ -1,7 +1,7 @@
 // Reiter Pools: alle Einzel-Pools mit Matte, Status und Fortschritt, filterbar nach Matte.
 import { api } from './api.js';
 import { h, inhalt, setzeStatus, zeigeTabs } from './ui.js';
-import { poolStatus, gewichtText, klassenTitel } from './anzeige.js';
+import { poolStatus, gewichtText, klassenTitel, poolName } from './anzeige.js';
 
 // Umschalter Einzel | Mannschaften: nur, wenn das Turnier wirklich beides hat.
 function umschalter(key, aktiv) {
@@ -78,7 +78,7 @@ async function zeigeEinzelPools(key, kopf) {
                 const s = poolStatus(p);
                 const anteil = p.gesamt ? Math.round((p.beendet / p.gesamt) * 100) : 0;
                 return h('a', { class: 'pool-karte', 'data-testid': `pool-${p.poolId}`, href: `#/t/${encodeURIComponent(key)}/pool/${p.poolId}/baum` },
-                    h('div', { class: 'kopfzeile' }, h('span', {}, p.bezeichnung || `${klassenTitel(p)} ${gewichtText(p.gewichtsklasse)}`), h('span', { class: `schild ${s.art}` }, s.text)),
+                    h('div', { class: 'kopfzeile' }, h('span', {}, p.bezeichnung ? poolName(p.bezeichnung) : `${klassenTitel(p)} ${gewichtText(p.gewichtsklasse)}`), h('span', { class: `schild ${s.art}` }, s.text)),
                     h('div', { class: 'fuss' }, [p.matteBezeichnung || 'noch keine Matte', `${p.teilnehmer} Teilnehmer`, p.modus].filter(Boolean).join(' · ')),
                     h('div', { class: 'balken' }, h('i', { class: s.art === 'fertig' ? 'fertig' : '', style: `width:${anteil}%` })));
             }) : [h('p', { class: 'hinweis' }, 'Keine Pools in dieser Auswahl.')]));

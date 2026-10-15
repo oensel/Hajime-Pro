@@ -1,6 +1,6 @@
 // Mannschaften: Team-Ansicht (Stern/Glocke nur am Team) und Mannschafts-Pool mit seinen Teams.
 import { api } from './api.js';
-import { verbindung, teamZeilen, matteText } from './anzeige.js';
+import { verbindung, teamZeilen, matteText, poolName } from './anzeige.js';
 import { h, icon, inhalt, setzeStatus, setzeStopp, speicherFuer, teamKachel, zeigeTabs } from './ui.js';
 
 const hinweisKeinTurnier = (f) => {
@@ -53,7 +53,7 @@ export async function zeigeMannschaft({ key, teile }) {
                     knopf(gesternt, 'star', 'star_border', gesternt ? 'Nicht mehr verfolgen' : 'Verfolgen', (an) => speicher.stern(t.key, an), 'team-stern'),
                     t.zustand === 'abgeschlossen' ? null
                         : knopf(glocke, 'notifications', 'notifications_off', glocke ? 'Benachrichtigung aus' : 'Benachrichtigung an', (an) => speicher.glocke(t.key, an), 'team-glocke'))),
-            h('p', { class: 'hinweis-klein', style: 'margin:0 0 8px;color:var(--muted);font-weight:600' }, [t.verein, t.poolBezeichnung].filter(Boolean).join(' · ')),
+            h('p', { class: 'hinweis-klein', style: 'margin:0 0 8px;color:var(--muted);font-weight:600' }, [t.verein, poolName(t.poolBezeichnung)].filter(Boolean).join(' · ')),
             h('div', { class: `kachel ${z.art === 'laeuft' ? 'laeuft' : z.art === 'bald' ? 'bald' : ''} ${matte ? 'mit-matte' : ''}`, 'data-testid': 'team-status' },
                 matte ? h('div', { class: 'matte-block' }, h('small', {}, 'Matte'), h('span', { class: matteText(matte).length > 3 ? 'lang' : '' }, matte.replace(/^matte\s+/i, ''))) : null,
                 h('div', { class: 'kachel-inhalt' },
@@ -94,7 +94,7 @@ export async function zeigeMannschaftsPool({ key, teile }) {
     function zeichne() {
         inhalt().replaceChildren(
             h('a', { class: 'zurueck', href: `#/t/${encodeURIComponent(key)}/pools/mannschaften` }, icon('chevron_left'), 'Pools'),
-            h('h1', {}, pool.bezeichnung, h('small', {}, `${pool.teams} Teams`)),
+            h('h1', {}, poolName(pool.bezeichnung), h('small', {}, `${pool.teams} Teams`)),
             h('div', { 'data-testid': 'mannschaftspool-teams' }, (pool.mannschaften || []).map(t => teamKachel(t, speicher, zeichne, {
                 href: `#/t/${encodeURIComponent(key)}/mannschaft/${encodeURIComponent(t.key)}`
             }))));

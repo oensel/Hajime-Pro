@@ -2,7 +2,7 @@
 // #/t/<k>/pool/<poolId>/<baum|kaempfe|teilnehmer>/<markierung>
 import { api } from './api.js';
 import { h, icon, inhalt, kachel, setzeStatus, speicherFuer, zeigeTabs } from './ui.js';
-import { kampfStatus } from './anzeige.js';
+import { kampfStatus, poolName } from './anzeige.js';
 import { baueBaumModell } from './baum.js';
 import { POOL_RUNDEN, UEBERKREUZ_GRUPPEN, UEBERKREUZ_FINALRUNDE } from '/js/shared/poolRunden.js';
 
@@ -68,7 +68,7 @@ export async function zeigePool({ key, teile }) {
         const sterne = new Set(daten.teilnehmer.filter(t => speicher.istGesternt(t.key, t.vereinKey)).map(t => t.key));
         const kopf = [
             h('a', { class: 'zurueck', href: `#/t/${encodeURIComponent(key)}/pools` }, icon('chevron_left'), 'Pools'),
-            h('h1', {}, daten.pool.bezeichnung, daten.pool.matteBezeichnung ? h('small', {}, daten.pool.matteBezeichnung) : null),
+            h('h1', {}, poolName(daten.pool.bezeichnung), daten.pool.matteBezeichnung ? h('small', {}, daten.pool.matteBezeichnung) : null),
             h('div', { class: 'segment' }, REITER.map(([id, titel]) => h('a', {
                 href: '#', 'data-testid': `reiter-${id}`, class: id === reiter ? 'aktiv' : '',
                 onclick: (e) => { e.preventDefault(); reiter = id; zeichne(); }

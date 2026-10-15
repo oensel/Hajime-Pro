@@ -3,6 +3,12 @@ export function gewichtText(gewichtsklasse) {
     return gewichtsklasse ? `${String(gewichtsklasse).replace(/^-/, '−')} kg` : '';
 }
 
+// Poolname mit Einheit: „U15 m -40“ → „U15 m −40 kg“ (ein Name ohne Gewichtsklasse, etwa „U15 w Team“, bleibt).
+export function poolName(bezeichnung) {
+    const text = String(bezeichnung == null ? '' : bezeichnung);
+    return text.replace(/([+\-−])\s?(\d+(?:[.,]\d+)?)\s*(?:kg)?\s*$/i, (_, v, z) => `${v === '-' ? '−' : v}${z} kg`);
+}
+
 export function klassenTitel({ altersklasse, geschlecht }) {
     const g = geschlecht === 'w' ? 'weiblich' : geschlecht === 'm' ? 'männlich' : '';
     return [altersklasse, g].filter(Boolean).join(' ');

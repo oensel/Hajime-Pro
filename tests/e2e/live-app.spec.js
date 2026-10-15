@@ -154,7 +154,7 @@ test('Pools: Liste, Baum, Kampfliste und Teilnehmer eines Pools', async ({ page,
     await sende(request, paket(Date.now()));
     await page.goto(`/live/#/t/${KEY}`);
     await page.getByTestId('tab-pools').click();
-    await expect(page.getByTestId('pool-10')).toContainText('U15 w -44');
+    await expect(page.getByTestId('pool-10')).toContainText('U15 w −44 kg');
     await page.getByTestId('pool-10').click();
     await expect(page.getByTestId('reiter-baum')).toHaveClass(/aktiv/);
     await expect(page.getByTestId('kampf-1')).toContainText('Anna Muster');
