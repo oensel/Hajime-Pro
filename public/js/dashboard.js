@@ -163,6 +163,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 currentFightHtml = `
                     <div class="current-fight-box active">
                         <span class="current-label">Laufender Kampf</span>
+                        ${f.mannschaft1_bezeichnung || f.mannschaft2_bezeichnung ? `<div class="current-fight-class" style="font-weight: 800;">${escapeHtml(f.mannschaft1_bezeichnung || 'offen')} vs. ${escapeHtml(f.mannschaft2_bezeichnung || 'offen')}${f.begegnung_runde ? ` · Runde ${f.begegnung_runde}` : ''}</div>` : ''}
                         <div class="current-fight-class">${escapeHtml(f.pool_bezeichnung)}</div>
                         <div class="current-fighters" style="display: flex; flex-direction: row; align-items: center; margin-top: 12px; margin-bottom: 8px; width: 100%;">
                             <!-- Blau / Rot (linksbündig, Name & Verein untereinander, links abgerundet) -->
@@ -202,7 +203,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <span style="color: var(--text-muted); font-size: 11px; margin: 0 4px;">vs</span>
                                 <span>${escapeHtml(nameB)}</span>
                             </div>
-                            <div style="font-size: 11px; font-weight: 700; color: var(--text-muted);">${escapeHtml(f.pool_bezeichnung)}</div>
+                            <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-align: right;">${f.mannschaft1_bezeichnung || f.mannschaft2_bezeichnung ? `${escapeHtml(f.mannschaft1_bezeichnung || 'offen')} vs. ${escapeHtml(f.mannschaft2_bezeichnung || 'offen')}<br>` : ''}${escapeHtml(f.pool_bezeichnung)}</div>
                         </div>
                     `;
                 }).join('');

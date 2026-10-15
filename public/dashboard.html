@@ -17,9 +17,12 @@
             min-height: 100vh;
         }
 
+        /* body ist per common.css ein Flex-Container: ohne feste Breite schrumpft der Inhalt auf seine
+           Breite zusammen und wird zentriert — das Dashboard nutzt immer die ganze Bildschirmbreite. */
         .dashboard-container {
+            width: 100%;
             max-width: 100%;
-            margin: 0 auto;
+            margin: 0;
             padding: 24px;
             box-sizing: border-box;
         }

@@ -196,6 +196,40 @@
             font-style: italic;
         }
 
+        /* Mannschaften: je Alters-/Geschlechtsklasse ein Container über die ganze Breite */
+        .klassen-container {
+            border: 2px solid var(--border);
+            border-radius: 10px;
+            background: var(--bg-card);
+            padding: 14px 16px 16px;
+            margin-bottom: 18px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .klassen-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid var(--border);
+        }
+        .klassen-header .material-icons { color: var(--primary); }
+        .klassen-titel { font-size: 15px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; }
+        .klassen-info { margin-left: auto; font-size: 11px; font-weight: 700; color: var(--text-muted); text-align: right; }
+        .team-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+        .team-card { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--bg-main); }
+        .team-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 6px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid var(--border);
+            font-size: 12px;
+        }
+        .team-head span { color: var(--text-muted); font-weight: 600; }
+
         .hinweis-box {
             background: rgba(255, 152, 0, 0.1);
             border: 1px solid #ff9800;
@@ -225,6 +259,11 @@
 
     <div class="mats-grid" id="matsGrid">
         <!-- Dynamisch per JS befüllt -->
+    </div>
+
+    <div class="unassigned-section" id="mannschaftenSection" style="display: none;">
+        <div class="section-title">Mannschaften</div>
+        <div id="mannschaftenGrid"></div>
     </div>
 
     <div class="unassigned-section" id="unassignedSection" style="display: none;">

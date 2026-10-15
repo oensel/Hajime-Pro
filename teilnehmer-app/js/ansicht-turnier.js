@@ -1,7 +1,7 @@
 // Reiter Turnier: das Dashboard der Halle fürs Handy (Variante B: eine Matte je Ansicht, Wechsel per Chip).
 import { api } from './api.js';
 import { h, icon, inhalt, setzeStatus, setzeStopp, zeigeTabs } from './ui.js';
-import { kaempferAnzeige, kampfLink, verbindung, poolStatus } from './anzeige.js';
+import { kaempferAnzeige, kampfLink, verbindung, poolStatus, poolName } from './anzeige.js';
 
 const MERKER = 'hajime-live-meta:matte';
 
@@ -14,12 +14,12 @@ function paarung(k) {
 }
 
 function matteKarte(key, m) {
-    const teile = [h('div', { class: 'matte-kopf' }, h('span', {}, m.bezeichnung), icon('sports_martial_arts'))];
+    const teile = [h('div', { class: 'matte-kopf' }, h('span', {}, m.bezeichnung))];
     if (m.laufend) {
         teile.push(h('div', {
             class: 'laufend', 'data-testid': `laufend-${m.id}`, role: 'link', tabindex: '0',
             onclick: () => { location.hash = kampfLink(key, m.laufend); }
-        }, h('span', { class: 'etikett' }, 'Laufender Kampf'), h('div', { class: 'klasse' }, m.laufend.poolBezeichnung), paarung(m.laufend)));
+        }, h('span', { class: 'etikett' }, 'Laufender Kampf'), h('div', { class: 'klasse' }, poolName(m.laufend.poolBezeichnung)), paarung(m.laufend)));
     } else {
         teile.push(h('div', { class: 'laufend' }, h('span', { class: 'etikett' }, 'Pause'), h('div', { class: 'klasse' }, 'Kein aktiver Kampf')));
     }
@@ -27,7 +27,11 @@ function matteKarte(key, m) {
     if (m.naechste.length) {
         m.naechste.forEach((k, i) => teile.push(h('div', {
             class: 'naechster', 'data-testid': `naechster-${k.id}`, onclick: () => { location.hash = kampfLink(key, k); }
-        }, h('span', { class: 'nr' }, String(i + 1)), `${kaempferAnzeige(k.k1).name} – ${kaempferAnzeige(k.k2).name}`, h('em', {}, k.poolBezeichnung))));
+        }, h('span', { class: 'nr' }, String(i + 1)),
+            h('span', { class: 'namen' },
+                h('span', { class: `chip ${k.farbe2 === 'rot' ? 'rot' : 'blau'}`, title: k.farbe2 === 'rot' ? 'Rot' : 'Blau' }, kaempferAnzeige(k.k2).name),
+                h('span', { class: 'chip weiss', title: 'Weiß' }, kaempferAnzeige(k.k1).name)),
+            h('em', {}, poolName(k.poolBezeichnung)))));
     } else teile.push(h('p', { class: 'hinweis' }, 'Keine anstehenden Kämpfe.'));
     teile.push(h('div', { class: 'abschnitt' }, 'Pools und Fortschritt'));
     if (m.pools.length) {
@@ -35,7 +39,7 @@ function matteKarte(key, m) {
             const s = poolStatus(p);
             const anteil = p.gesamt ? Math.round((p.beendet / p.gesamt) * 100) : 0;
             teile.push(h('a', { class: 'fortschritt', href: `#/t/${encodeURIComponent(key)}/pool/${p.poolId}/baum`, style: 'display:block;color:inherit;text-decoration:none' },
-                h('div', { class: 'zeile' }, h('span', {}, p.bezeichnung), h('span', {}, s.text)),
+                h('div', { class: 'zeile' }, h('span', {}, poolName(p.bezeichnung)), h('span', {}, s.text)),
                 h('div', { class: 'balken' }, h('i', { class: s.art === 'fertig' ? 'fertig' : '', style: `width:${anteil}%` }))));
         });
     } else teile.push(h('p', { class: 'hinweis' }, 'Keine Pools zugeordnet.'));
@@ -84,10 +88,12 @@ export async function zeigeTurnier({ key, teile }) {
             h('h1', {}, 'Turnier'),
             h('div', { class: 'chips', style: 'padding:0 0 10px' }, chip('alle', 'Alle Matten'), ...antwort.matten.map(m => chip(m.id, m.bezeichnung))),
             ...sichtbar.map(m => matteKarte(key, m)),
-            antwort.warteschlange.length ? h('div', { class: 'abschnitt' }, 'Warteschlange ohne Matte') : null,
-            antwort.warteschlange.length ? h('div', { class: 'chips', style: 'padding:0' }, antwort.warteschlange.map(p => h('a', {
-                class: 'chip', href: `#/t/${encodeURIComponent(key)}/pool/${p.poolId}/teilnehmer`
-            }, p.bezeichnung))) : null);
+            ...(antwort.warteschlange.length ? [
+                h('div', { class: 'abschnitt' }, 'Warteschlange ohne Matte'),
+                h('div', { class: 'chips', style: 'padding:0' }, antwort.warteschlange.map(p => h('a', {
+                    class: 'chip', href: `#/t/${encodeURIComponent(key)}/pool/${p.poolId}/teilnehmer`
+                }, poolName(p.bezeichnung))))
+            ] : []));
     }
     await lade();
     if (!beendet) timer = setInterval(() => { if (document.visibilityState === 'visible') lade(); }, 5000);

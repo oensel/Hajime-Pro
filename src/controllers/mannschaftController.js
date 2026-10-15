@@ -2,7 +2,7 @@ import { readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { resolveUserVereinName, hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
-import { mannschaftsPoolsHabenEchteKaempfe, poolHatBereitsEchteKaempfe, regeneriereMannschaftsPool, ermittleGoldenScoreEinstellungen } from './poolController.js';
+import { mannschaftsPoolsHabenEchteKaempfe, poolHatBereitsEchteKaempfe, regeneriereMannschaftsPool, ermittleGoldenScoreEinstellungen, verteileMannschaftsPoolAufMatten, setzeBegegnungMatte } from './poolController.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 const { istEinzelbenutzerBetrieb } = betriebsmodus;
 
@@ -379,6 +379,112 @@ export async function verschiebeMitglied(knex, req, res) {
         await knex('mannschaft_mitglieder').where({ id: mitgliedId }).update({ gewichtsklasse, updated_at: knex.fn.now() });
         if (mannschaft.pool_id) await regeneriereMannschaftsPool(knex, mannschaft.pool_id);
 
+        return res.json({ success: true });
+    } catch (error) {
+        return res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+// Prüft Pool-Zugriff für Änderungen an den Gewichtsklassen-Positionen (nur Mannschafts-Pools,
+// Zugriff wie bei den Mannschaften des Turniers, gesperrt sobald echte Kämpfe stattfanden).
+async function ladePoolFuerPositionsAenderung(knex, req, res, { sperreBeiKaempfen = true } = {}) {
+    const pool = await knex('pools').where({ id: parseInt(req.params.poolId), typ: 'mannschaft' }).first();
+    if (!pool) {
+        res.status(404).json({ success: false, error: 'Mannschafts-Pool nicht gefunden.' });
+        return null;
+    }
+    if (!istEinzelbenutzerBetrieb()) {
+        const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
+        const turnier = await knex('turniere').where({ id: pool.turnier_id }).first();
+        if (!hatVereinsZugriffAufTurnier(user, turnier)) {
+            res.status(403).json({ success: false, error: 'Kein Zugriff auf diesen Pool.' });
+            return null;
+        }
+    }
+    if (sperreBeiKaempfen && await poolHatBereitsEchteKaempfe(knex, pool.id)) {
+        res.status(409).json({ success: false, error: TEILNEHMERLISTE_GESPERRT_FEHLER });
+        return null;
+    }
+    return pool;
+}
+
+// Ersetzt die Gewichtsklassen-Positionen eines Mannschafts-Pools (Hinzufügen/Ändern/Löschen im
+// UI). Die Zuordnung der Mitglieder bleibt unverändert; Positionen, die es nicht mehr gibt,
+// erscheinen als "Sonstige" bis "neu verteilen" ausgeführt wird.
+export async function aktualisierePoolGewichtsklassen(knex, req, res) {
+    try {
+        const pool = await ladePoolFuerPositionsAenderung(knex, req, res);
+        if (!pool) return;
+
+        const roh = req.body.gewichtsklassen;
+        if (!Array.isArray(roh)) {
+            return res.status(400).json({ success: false, error: 'Fehlendes Pflichtfeld (gewichtsklassen).' });
+        }
+        const liste = [];
+        for (const eintrag of roh) {
+            const text = String(eintrag ?? '').trim().replace(/\s*kg$/i, '').replace(',', '.');
+            if (!/^[+-]\d+(\.\d+)?$/.test(text)) {
+                return res.status(400).json({ success: false, error: `Ungültige Gewichtsklasse "${eintrag}" (erwartet z.B. -60 oder +90).` });
+            }
+            if (!liste.includes(text)) liste.push(text);
+        }
+        const minus = liste.filter(g => g.startsWith('-')).sort((a, b) => parseFloat(a.slice(1)) - parseFloat(b.slice(1)));
+        const plus = liste.filter(g => g.startsWith('+')).sort((a, b) => parseFloat(a.slice(1)) - parseFloat(b.slice(1)));
+        const sortiert = [...minus, ...plus];
+
+        await knex('pools').where({ id: pool.id }).update({
+            mannschafts_gewichtsklassen: JSON.stringify(sortiert)
+        });
+        await regeneriereMannschaftsPool(knex, pool.id);
+        return res.json({ success: true, gewichtsklassen: sortiert });
+    } catch (error) {
+        return res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+// Mannschafts-Pool auf eine oder mehrere Matten verteilen (Begegnungen rundenweise reihum).
+export async function setzePoolMatten(knex, req, res) {
+    try {
+        const pool = await ladePoolFuerPositionsAenderung(knex, req, res);
+        if (!pool) return;
+        const matten = Array.isArray(req.body.kampfflaechen) ? req.body.kampfflaechen : [];
+        await verteileMannschaftsPoolAufMatten(knex, pool.id, matten);
+        return res.json({ success: true });
+    } catch (error) {
+        return res.status(error.statusCode || 500).json({ success: false, error: error.message });
+    }
+}
+
+// Eine Begegnung (samt Einzelkämpfen) einer anderen Matte zuordnen.
+export async function setzeBegegnungMatteHandler(knex, req, res) {
+    try {
+        const begegnung = await knex('mannschaftskaempfe').where({ id: parseInt(req.params.id, 10) }).first();
+        if (!begegnung) return res.status(404).json({ success: false, error: 'Begegnung nicht gefunden.' });
+        req.params.poolId = begegnung.pool_id;
+        // Noch nicht begonnene Begegnungen bleiben auch nach Start des Pools verschiebbar.
+        const pool = await ladePoolFuerPositionsAenderung(knex, req, res, { sperreBeiKaempfen: false });
+        if (!pool) return;
+        await setzeBegegnungMatte(knex, begegnung.id, req.body.kampfflaecheId);
+        return res.json({ success: true });
+    } catch (error) {
+        return res.status(error.statusCode || 500).json({ success: false, error: error.message });
+    }
+}
+
+// Ordnet alle Mitglieder aller Mannschaften des Pools anhand ihres Gewichts neu den aktuellen
+// Gewichtsklassen-Positionen zu ("neu verteilen").
+export async function verteileMitgliederNeu(knex, req, res) {
+    try {
+        const pool = await ladePoolFuerPositionsAenderung(knex, req, res);
+        if (!pool) return;
+
+        const liste = parsePoolGewichtsklassen(pool);
+        if (liste.length === 0) {
+            return res.status(400).json({ success: false, error: 'Der Pool hat keine Gewichtsklassen-Positionen.' });
+        }
+        const teams = await knex('mannschaften').where({ pool_id: pool.id }).select('id');
+        for (const t of teams) await aktualisierePositionenFuerMannschaft(knex, t.id, liste);
+        await regeneriereMannschaftsPool(knex, pool.id);
         return res.json({ success: true });
     } catch (error) {
         return res.status(500).json({ success: false, error: error.message });

@@ -7,6 +7,13 @@ export function teilnehmerSchluessel(geheimnis, passnummerHash) {
     return crypto.createHmac('sha256', String(geheimnis)).update(String(passnummerHash)).digest('hex').slice(0, 24);
 }
 
+// Schlüssel einer Mannschaft: stabil über Re-Importe, solange Verein und Bezeichnung gleich bleiben
+// (Mannschaften haben keine Passnummer).
+export function mannschaftsSchluessel(geheimnis, turnierKey, verein, bezeichnung) {
+    const basis = `${turnierKey}:team:${normalisiereVerein(verein)}:${String(bezeichnung || '').trim().toLowerCase()}`;
+    return crypto.createHmac('sha256', String(geheimnis)).update(basis).digest('hex').slice(0, 24);
+}
+
 const ABKUERZUNGEN = [
     [/\bjudo\s*club\b/g, 'jc'],
     [/\bjudoclub\b/g, 'jc'],

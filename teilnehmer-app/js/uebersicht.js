@@ -4,7 +4,7 @@ const JETZT = new Set(['laeuft']);
 // Eine Reihenfolge für Übersicht und Vereinsansicht: wer gerade dran ist oben, dann nach Abstand; danach alles ohne Kampf in Sicht.
 const VEREIN_RANG = {
     laeuft: 0, als_naechstes: 1, wartet_auf_gegner: 1000, nicht_ausgelost: 1100, ohne_matte: 1200,
-    verspaetet: 1300, keine_weiteren: 1400, abgeschlossen: 1500, nicht_erschienen: 1600
+    verspaetet: 1300, wartet: 1250, keine_weiteren: 1400, abgeschlossen: 1500, nicht_erschienen: 1600
 };
 function vereinRang(t) {
     if (t.zustand === 'in_n') return 2 + (Number.isInteger(t.abstand) ? t.abstand : 998);
@@ -14,6 +14,12 @@ function vereinRang(t) {
 const vergleich = (a, b) => vereinRang(a) - vereinRang(b)
     || `${a.nachname}${a.vorname}`.localeCompare(`${b.nachname}${b.vorname}`, 'de');
 
+// Teams: läuft jetzt zuerst, dann die nächsten Begegnungen nach Abstand, zuletzt wartende und fertige.
+export function sortiereTeams(teams) {
+    return [...teams].sort((a, b) => vereinRang(a) - vereinRang(b)
+        || String(a.bezeichnung || '').localeCompare(String(b.bezeichnung || ''), 'de', { numeric: true }));
+}
+
 export function sortiereVerein(teilnehmer) {
     return [...teilnehmer].sort(vergleich);
 }
@@ -21,7 +27,7 @@ export function sortiereVerein(teilnehmer) {
 // Abschnitte: bald dran / noch nicht dran (kein Pool oder Pool beginnt auch in POOL_BALD Kämpfen noch nicht) / fertig.
 export const POOL_BALD = 3;
 const OHNE_KAMPF = new Set(['keine_weiteren', 'abgeschlossen', 'nicht_erschienen']);
-const NOCH_NICHT = new Set(['nicht_ausgelost', 'ohne_matte', 'verspaetet']);
+const NOCH_NICHT = new Set(['nicht_ausgelost', 'ohne_matte', 'verspaetet', 'wartet']);
 export const ABSCHNITTE = [
     { id: 'bald', titel: 'Bald dran' },
     { id: 'spaeter', titel: 'Noch nicht dran' },

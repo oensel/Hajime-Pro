@@ -11,7 +11,11 @@ import {
     getMannschaftskaempfeByPool,
     getMannschaftsPoolsByTurnier,
     verteileMannschaftenAutomatisch,
-    loescheAlleMannschaftsPools
+    loescheAlleMannschaftsPools,
+    aktualisierePoolGewichtsklassen,
+    verteileMitgliederNeu,
+    setzePoolMatten,
+    setzeBegegnungMatteHandler
 } from '../controllers/mannschaftController.js';
 import { requireAuth } from '../middleware/auth.js';
 
@@ -24,6 +28,9 @@ export function getMannschaftRoutes(knex) {
     // nicht als Mannschafts-ID interpretiert werden
     router.get('/pools', (req, res) => getMannschaftsPoolsByTurnier(knex, req, res));
     router.post('/pools/alle-loeschen', (req, res) => loescheAlleMannschaftsPools(knex, req, res));
+    router.put('/pools/:poolId/gewichtsklassen', (req, res) => aktualisierePoolGewichtsklassen(knex, req, res));
+    router.put('/pools/:poolId/matten', (req, res) => setzePoolMatten(knex, req, res));
+    router.post('/pools/:poolId/neu-verteilen', (req, res) => verteileMitgliederNeu(knex, req, res));
     router.post('/auto-verteilen', (req, res) => verteileMannschaftenAutomatisch(knex, req, res));
 
     router.get('/:id', (req, res) => getMannschaftById(knex, req, res));
@@ -43,5 +50,6 @@ export function getMannschaftskampfRoutes(knex) {
     const router = express.Router();
     router.use(requireAuth);
     router.get('/', (req, res) => getMannschaftskaempfeByPool(knex, req, res));
+    router.put('/:id/matte', (req, res) => setzeBegegnungMatteHandler(knex, req, res));
     return router;
 }

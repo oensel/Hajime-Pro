@@ -146,7 +146,7 @@ test('baueSnapshot: pools und kaempfe für die App (Baum, Kampfliste, Dashboard)
     const s = baueSnapshot(roh, { geheimnis: 'g' });
     assert.deepEqual(s.pools.map(p => p.id), [10, 13]);
     assert.deepEqual(s.pools[0], {
-        id: 10, bezeichnung: 'U15 w -44', modus: 'Jeder-gegen-Jeden', status: 'matte_zugewiesen', matteId: 1,
+        id: 10, bezeichnung: 'U15 w -44', modus: 'Jeder-gegen-Jeden', status: 'matte_zugewiesen', matteId: 1, reihenfolge: 1,
         altersklasse: 'U15', geschlecht: 'w', gewichtsklasse: '-44', farbe2: 'rot'
     });
     assert.equal(s.pools[1].farbe2, 'blau');

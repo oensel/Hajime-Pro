@@ -1,9 +1,9 @@
 // Service Worker der Teilnehmer-App: hält nur die App-Hülle vor. Die API wird nie zwischengespeichert (veraltete
 // Kampfstände wären schlimmer als keine); die App merkt sich den letzten Stand selbst.
-const CACHE = 'hajime-live-v15';
+const CACHE = 'hajime-live-v23';
 const HUELLE = ['./', './index.html', './css/app.css', './js/app.js', './js/api.js', './js/anzeige.js', './js/speicher.js', './js/ui.js',
-    './js/ansicht-start.js', './js/ansicht-pool.js', './js/ansicht-pools.js', './js/ansicht-turnier.js', './js/uebersicht.js', './js/baum.js', '/js/shared/poolRunden.js', './js/ansicht-verein.js', './js/ansicht-uebersicht.js', './js/push.js',
-    './manifest.webmanifest', './icons/icon-192.png'];
+    './js/ansicht-start.js', './js/ansicht-pool.js', './js/ansicht-pools.js', './js/ansicht-turnier.js', './js/uebersicht.js', './js/baum.js', '/js/shared/poolRunden.js', './js/ansicht-verein.js', './js/ansicht-uebersicht.js', './js/ansicht-mannschaft.js', './js/push.js',
+    './manifest.webmanifest', './icons/icon-192.png', './icons/zeichen.png'];
 
 self.addEventListener('install', (e) => {
     e.waitUntil(caches.open(CACHE).then(c => c.addAll(HUELLE)).then(() => self.skipWaiting()));
@@ -28,8 +28,8 @@ self.addEventListener('fetch', (e) => {
 // Push-Nachrichten (Phase 3): die Cloud sendet { titel, text, url, tag }.
 self.addEventListener('push', (e) => {
     let daten = {};
-    try { daten = e.data ? e.data.json() : {}; } catch { daten = { titel: 'Hajime Live', text: e.data ? e.data.text() : '' }; }
-    e.waitUntil(self.registration.showNotification(daten.titel || 'Hajime Live', {
+    try { daten = e.data ? e.data.json() : {}; } catch { daten = { titel: 'Hajime Pro', text: e.data ? e.data.text() : '' }; }
+    e.waitUntil(self.registration.showNotification(daten.titel || 'Hajime Pro', {
         body: daten.text || '', tag: daten.tag || 'hajime-live', renotify: true,
         icon: './icons/icon-192.png', data: { url: daten.url || '/live/' }
     }));

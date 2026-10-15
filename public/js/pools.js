@@ -96,7 +96,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (cleaned === 'mixed') return 2;
         return 3;
     };
-    const gewichtsklasseWert = (gk) => parseFloat(String(gk || '').replace(/[^0-9.]/g, '')) || 0;
+    // "+X" (Schwergewicht) ist immer die letzte Gewichtsklasse, auch hinter allen "-Y".
+    const gewichtsklasseWert = (gk) => {
+        const text = String(gk || '').trim();
+        const wert = parseFloat(text.replace(',', '.').replace(/[^0-9.]/g, '')) || 0;
+        return text.startsWith('+') ? 100000 + wert : wert;
+    };
+    const klassenSchluessel = (t) => `${t.altersklasse || ''}|${t.geschlecht || ''}|${t.gewichtsklasse || ''}`;
     const vergleichePools = (a, b) => {
         return altersklasseRang(a.altersklasse) - altersklasseRang(b.altersklasse)
             || geschlechtRang(a.geschlecht) - geschlechtRang(b.geschlecht)
@@ -745,7 +751,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- AUTOMATISCHE POOL-GENERIERUNG NACH REGLEMENT ---
-    async function fuehrePoolGenerierungAus({ neuGenerieren = false, altersklassen = null } = {}) {
+    async function fuehrePoolGenerierungAus({ neuGenerieren = false, klassen = null } = {}) {
         const button = neuGenerieren ? regeneratePoolsBtn : generatePoolsBtn;
         const urspruenglicherButtonText = button ? button.innerHTML : '';
 
@@ -762,7 +768,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify({
                     turnierId: parseInt(turnierId, 10),
                     neuGenerieren,
-                    ...(altersklassen ? { altersklassen } : {})
+                    ...(klassen ? { klassen } : {})
                 })
             });
 
@@ -804,13 +810,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function warneVorNichtKampfbereitenTeilnehmern(altersklassen) {
+    async function warneVorNichtKampfbereitenTeilnehmern(klassen) {
         const nichtBereite = (await ermittleNichtKampfbereiteTeilnehmer())
-            .filter(t => !altersklassen || altersklassen.includes(t.altersklasse));
+            .filter(t => !klassen || klassen.includes(klassenSchluessel(t)));
         if (nichtBereite.length === 0) return true;
 
         return zeigeBestaetigung(
-            `${nichtBereite.length} Teilnehmer der gewählten Altersklassen ${nichtBereite.length === 1 ? 'ist' : 'sind'} noch nicht als kampfbereit bestätigt und daher nicht für die Zuordnung in Pools zugelassen. ${nichtBereite.length === 1 ? 'Dieser wird' : 'Diese werden'} bei der Pool-Bildung ignoriert. Trotzdem fortfahren?`,
+            `${nichtBereite.length} Teilnehmer der gewählten Klassen ${nichtBereite.length === 1 ? 'ist' : 'sind'} noch nicht als kampfbereit bestätigt und daher nicht für die Zuordnung in Pools zugelassen. ${nichtBereite.length === 1 ? 'Dieser wird' : 'Diese werden'} bei der Pool-Bildung ignoriert. Trotzdem fortfahren?`,
             'Nicht kampfbereite Teilnehmer',
             'warning'
         );
@@ -824,7 +830,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch(`/api/pools/altersklassen-status?turnierId=${encodeURIComponent(turnierId)}`);
             if (!response.ok) return [];
             const result = await response.json();
-            return Array.isArray(result.altersklassen) ? result.altersklassen : [];
+            const klassen = Array.isArray(result.klassen) ? result.klassen : [];
+            return klassen.sort((a, b) => vergleichePools(a, b)
+                || String(a.altersklasse).localeCompare(String(b.altersklasse), 'de', { numeric: true }));
         } catch (err) {
             console.error('Fehler beim Laden des Altersklassen-Status:', err);
             return [];
@@ -845,15 +853,35 @@ document.addEventListener('DOMContentLoaded', () => {
             wrapper.className = 'modal-wrapper';
             wrapper.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 10000; display: flex; align-items: center; justify-content: center;';
 
-            const zeilen = eintraege.map((e, i) => `
-                <label class="altersklassen-zeile" style="display: flex; align-items: center; gap: 12px; padding: 8px 4px; cursor: pointer;">
-                    <input type="checkbox" class="altersklassen-checkbox" value="${maskiereAttribut(e.altersklasse)}" id="altersklasseWahl_${i}" checked>
-                    <strong>${maskiereAttribut(e.altersklasse)}</strong>
-                    <span style="color: var(--text-muted);">${e.kampfbereit} eingewogen${e.angemeldet ? `, ${e.angemeldet} noch nicht gewogen` : ''}</span>
-                </label>`).join('');
+            // Gruppen je Altersklasse + Geschlecht (z.B. "U13 m"), darin die Gewichtsklassen.
+            const kuerzel = (g) => ({ 'männlich': 'm', 'weiblich': 'w' }[String(g).toLowerCase()] || g || '');
+            const gruppen = new Map();
+            eintraege.forEach((e, i) => {
+                const gk = `${e.altersklasse}|${e.geschlecht}`;
+                if (!gruppen.has(gk)) gruppen.set(gk, { titel: `${e.altersklasse} ${kuerzel(e.geschlecht)}`.trim(), eintraege: [] });
+                gruppen.get(gk).eintraege.push({ e, i });
+            });
+
+            const zeilen = Array.from(gruppen.values()).map((gruppe, gi) => `
+                <fieldset class="altersklassen-gruppe" data-gruppe="${gi}" style="border: 2px solid var(--border); border-radius: 4px; margin: 0 0 12px 0; padding: 4px 12px 10px;">
+                    <legend style="padding: 0 6px;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 800; text-transform: none;">
+                            <input type="checkbox" class="altersklassen-gruppe-checkbox" data-gruppe="${gi}" checked>
+                            ${maskiereAttribut(gruppe.titel)}
+                        </label>
+                    </legend>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2px 16px;">
+                    ${gruppe.eintraege.map(({ e, i }) => `
+                        <label class="altersklassen-zeile" style="display: flex; align-items: center; gap: 10px; padding: 6px 4px; cursor: pointer; text-transform: none; letter-spacing: normal; font-weight: 400;">
+                            <input type="checkbox" class="altersklassen-checkbox" data-gruppe="${gi}" value="${maskiereAttribut(e.key)}" id="altersklasseWahl_${i}" checked>
+                            <strong style="min-width: 62px;">${maskiereAttribut(e.gewichtsklasse ? `${e.gewichtsklasse}kg` : 'ohne Klasse')}</strong>
+                            <span style="color: var(--text-muted);">${e.kampfbereit} Teilnehmer${e.angemeldet ? ` · ${e.angemeldet} ungewogen` : ''}</span>
+                        </label>`).join('')}
+                    </div>
+                </fieldset>`).join('');
 
             wrapper.innerHTML = `
-                <div class="mdc-card" style="width: 95%; max-width: 520px; max-height: 85vh; overflow: auto; padding: 24px; border-radius: 4px; border: 2px solid var(--border); background-color: var(--bg-card);">
+                <div class="mdc-card" style="width: 95%; max-width: 560px; max-height: 85vh; overflow: auto; padding: 24px; border-radius: 4px; border: 2px solid var(--border); background-color: var(--bg-card);">
                     <h3 style="margin: 0 0 8px 0;">${maskiereAttribut(titel)}</h3>
                     <p style="margin: 0 0 12px 0; color: var(--text-muted);">${maskiereAttribut(hinweis)}</p>
                     <div>${zeilen}</div>
@@ -867,8 +895,21 @@ document.addEventListener('DOMContentLoaded', () => {
             const schliessen = (wert) => { wrapper.remove(); resolve(wert); };
             const bestaetigen = wrapper.querySelector('#altersklassenBestaetigen');
             const boxen = Array.from(wrapper.querySelectorAll('.altersklassen-checkbox'));
-            const aktualisiere = () => { bestaetigen.disabled = !boxen.some(b => b.checked); };
+            const gruppenBoxen = Array.from(wrapper.querySelectorAll('.altersklassen-gruppe-checkbox'));
+            const aktualisiere = () => {
+                bestaetigen.disabled = !boxen.some(b => b.checked);
+                gruppenBoxen.forEach(g => {
+                    const kinder = boxen.filter(b => b.dataset.gruppe === g.dataset.gruppe);
+                    const aktiv = kinder.filter(b => b.checked).length;
+                    g.checked = aktiv === kinder.length;
+                    g.indeterminate = aktiv > 0 && aktiv < kinder.length;
+                });
+            };
             boxen.forEach(b => b.addEventListener('change', aktualisiere));
+            gruppenBoxen.forEach(g => g.addEventListener('change', () => {
+                boxen.filter(b => b.dataset.gruppe === g.dataset.gruppe).forEach(b => { b.checked = g.checked; });
+                aktualisiere();
+            }));
             wrapper.querySelector('#altersklassenAbbrechen').addEventListener('click', () => schliessen(null));
             bestaetigen.addEventListener('click', () => schliessen(boxen.filter(b => b.checked).map(b => b.value)));
         });
@@ -878,13 +919,13 @@ document.addEventListener('DOMContentLoaded', () => {
     async function starteAuslosungDerGewaehltenAltersklassen() {
         const eintraege = (await ladeAltersklassenStatus()).filter(istOffeneAltersklasse);
         if (eintraege.length === 0) {
-            zeigeNotification('Keine Altersklasse mit eingewogenen Teilnehmern.', 'warning');
+            zeigeNotification('Keine Klasse mit eingewogenen Teilnehmern.', 'warning');
             return;
         }
 
         const gewaehlt = await waehleAltersklassen({
             titel: 'Pools generieren',
-            hinweis: 'Welche Altersklassen sind fertig gewogen und sollen jetzt ausgelost werden?',
+            hinweis: 'Welche Klassen (Altersklasse, Geschlecht, Gewichtsklasse) sind fertig gewogen und sollen jetzt ausgelost werden?',
             eintraege,
             bestaetigenText: 'Pools generieren'
         });
@@ -892,7 +933,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!await warneVorNichtKampfbereitenTeilnehmern(gewaehlt)) return;
 
-        await fuehrePoolGenerierungAus({ neuGenerieren: false, altersklassen: gewaehlt });
+        await fuehrePoolGenerierungAus({ neuGenerieren: false, klassen: gewaehlt });
     }
 
     // --- GLOBALER AKKREDITIERUNGS-AUSLOSUNGSTRIGGER ---
@@ -916,13 +957,13 @@ document.addEventListener('DOMContentLoaded', () => {
         regeneratePoolsBtn.addEventListener('click', async () => {
             const eintraege = (await ladeAltersklassenStatus()).filter(istNeuAuslosbareAltersklasse);
             if (eintraege.length === 0) {
-                zeigeNotification('Keine Altersklasse kann neu generiert werden (alle haben bereits echte Kämpfe).', 'warning');
+                zeigeNotification('Keine Klasse kann neu generiert werden (alle haben bereits echte Kämpfe).', 'warning');
                 return;
             }
 
             const gewaehlt = await waehleAltersklassen({
                 titel: 'Pools neu generieren',
-                hinweis: 'Für welche Altersklassen sollen die Pools verworfen und neu ausgelost werden? Nur Altersklassen ohne echte Kämpfe stehen zur Wahl.',
+                hinweis: 'Für welche Klassen sollen die Pools verworfen und neu ausgelost werden? Nur Klassen ohne echte Kämpfe stehen zur Wahl.',
                 eintraege,
                 bestaetigenText: 'Weiter'
             });
@@ -931,13 +972,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!await warneVorNichtKampfbereitenTeilnehmern(gewaehlt)) return;
 
             const bestaetigt = await zeigeBestaetigung(
-                'Wollen Sie die Pools der gewählten Altersklassen wirklich neu generieren?',
+                'Wollen Sie die Pools der gewählten Klassen wirklich neu generieren?',
                 'Pools neu generieren',
                 'restart_alt'
             );
             if (!bestaetigt) return;
 
-            await fuehrePoolGenerierungAus({ neuGenerieren: true, altersklassen: gewaehlt });
+            await fuehrePoolGenerierungAus({ neuGenerieren: true, klassen: gewaehlt });
         });
     }
 

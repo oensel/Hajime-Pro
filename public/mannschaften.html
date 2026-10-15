@@ -14,20 +14,19 @@
 <div class="kanji-right">道</div>
 
 <div class="mdc-card">
-    <div class="form-title-area">
+    <div class="form-title-area titel-zentriert">
         <span class="material-icons">groups_2</span>
         <h1 id="formTitle">Mannschaften</h1>
-        <div class="title-action-group">
-
-            <button type="button" class="toolbar-btn" id="autoVerteilenBtn" title="Legt für nicht zugeordnete Mannschaften automatisch passende Pools nach Altersklasse und Geschlecht an und ordnet sie zu">
+        <div class="titel-icons">
+            <button type="button" class="toolbar-btn" id="autoVerteilenBtn" aria-label="Automatisch verteilen" data-tooltip="Automatisch verteilen: legt für nicht zugeordnete Mannschaften passende Pools nach Altersklasse und Geschlecht an und ordnet sie zu">
                 <span class="material-icons">auto_awesome</span>
                 <span>Automatisch verteilen</span>
             </button>
-            <button type="button" class="toolbar-btn toolbar-btn-primary" id="neuerPoolBtn">
+            <button type="button" class="toolbar-btn" id="neuerPoolBtn" aria-label="Neuer Mannschafts-Pool" data-tooltip="Neuer Mannschafts-Pool">
                 <span class="material-icons">add</span>
                 <span>Neuer Mannschafts-Pool</span>
             </button>
-            <button type="button" class="toolbar-btn toolbar-btn-danger" id="alleLoeschenBtn" title="Löscht alle Mannschafts-Pools dieses Turniers (Mannschaften bleiben erhalten, werden nur entzogen)">
+            <button type="button" class="toolbar-btn toolbar-btn-danger" id="alleLoeschenBtn" aria-label="Alle Pools löschen" data-tooltip="Alle Pools löschen (Mannschaften bleiben erhalten, werden nur entzogen)">
                 <span class="material-icons">delete_sweep</span>
                 <span>Alle Pools löschen</span>
             </button>
@@ -118,6 +117,30 @@
             <div class="mannschaften-modal-actions">
                 <button type="button" class="btn btn-outlined" id="teamModalCancel">Abbrechen</button>
                 <button type="submit" class="btn btn-raised">Mannschaft anlegen</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Gewichtsklasse hinzufügen/ändern -->
+<div id="gkModal" class="modal-wrapper" style="display: none;">
+    <div class="mdc-card mannschaften-modal-card">
+        <div class="mannschaften-modal-header">
+            <span class="material-icons" style="font-size: 28px; color: var(--primary);">fitness_center</span>
+            <h2 id="gkModalTitel">Gewichtsklasse</h2>
+            <span class="material-icons mannschaften-modal-close" id="gkModalClose">close</span>
+        </div>
+        <form id="gkForm">
+            <input type="hidden" id="gkPoolId">
+            <input type="hidden" id="gkAlt">
+            <div class="form-group">
+                <label for="gkWert">Gewichtsklasse in kg</label>
+                <input type="text" id="gkWert" placeholder="-66 oder +90" required autocomplete="off">
+                <span class="mannschaften-hint">&bdquo;-X&ldquo; = bis X kg, &bdquo;+X&ldquo; = über X kg (Schwergewicht).</span>
+            </div>
+            <div class="mannschaften-modal-actions">
+                <button type="button" class="btn btn-outlined" id="gkModalCancel">Abbrechen</button>
+                <button type="submit" class="btn btn-raised" id="gkModalSpeichern">Speichern</button>
             </div>
         </form>
     </div>

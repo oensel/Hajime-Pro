@@ -3,6 +3,12 @@ export function gewichtText(gewichtsklasse) {
     return gewichtsklasse ? `${String(gewichtsklasse).replace(/^-/, '−')} kg` : '';
 }
 
+// Poolname mit Einheit: „U15 m -40“ → „U15 m −40 kg“ (ein Name ohne Gewichtsklasse, etwa „U15 w Team“, bleibt).
+export function poolName(bezeichnung) {
+    const text = String(bezeichnung == null ? '' : bezeichnung);
+    return text.replace(/([+\-−])\s?(\d+(?:[.,]\d+)?)\s*(?:kg)?\s*$/i, (_, v, z) => `${v === '-' ? '−' : v}${z} kg`);
+}
+
 export function klassenTitel({ altersklasse, geschlecht }) {
     const g = geschlecht === 'w' ? 'weiblich' : geschlecht === 'm' ? 'männlich' : '';
     return [altersklasse, g].filter(Boolean).join(' ');
@@ -54,6 +60,21 @@ export function kachelZeilen(t) {
     const kampf = kampfText(t);
     if (kampf) return { titel, zeile1, zeile2: `nächster Kampf: ${kampf.text}`, zeile3: null, art: kampf.art };
     return { titel, zeile1, zeile2: HINWEIS[t.zustand] ?? null, zeile3: null, art: 'info' };
+}
+
+// Kachelzeilen eines Teams (Mannschaft).
+export function teamZeilen(t) {
+    const geschlecht = { w: 'weiblich', m: 'männlich' }[t.geschlecht] || t.geschlecht;
+    const klasse = [t.altersklasse, geschlecht].filter(Boolean).join(' ');
+    const zeile1 = [klasse, t.gegner ? `gegen ${t.gegner}` : null].filter(Boolean).join(' · ');
+    const titel = [t.bezeichnung, t.verein].filter(Boolean).join(' · ');
+    switch (t.zustand) {
+        case 'laeuft': return { titel, zeile1, zeile2: 'Läuft jetzt', art: 'laeuft' };
+        case 'als_naechstes': return { titel, zeile1, zeile2: 'Als Nächstes', art: 'bald' };
+        case 'in_n': return { titel, zeile1, zeile2: t.abstand === 1 ? 'In 1 Begegnung' : `In ${t.abstand} Begegnungen`, art: 'bald' };
+        case 'abgeschlossen': return { titel, zeile1: klasse, zeile2: `Abgeschlossen · ${t.siege ?? 0} ${t.siege === 1 ? 'Sieg' : 'Siege'}`, art: 'fertig' };
+        default: return { titel, zeile1, zeile2: 'Wartet auf die nächste Runde', art: 'info' };
+    }
 }
 
 // Alter aus den Zeiten der Cloud (nicht der Geräteuhr): der Uplink sendet spätestens alle 60 s ein Lebenszeichen.

@@ -1,7 +1,7 @@
 // Übersicht der verfolgten Teilnehmer nach Dringlichkeit. Offline: letzter gemerkter Stand.
 import { api } from './api.js';
 import { verbindung } from './anzeige.js';
-import { glockeAlleKnopf, h, icon, inhalt, kachel, setzeStatus, setzeStopp, speicherFuer, zeigeTabs } from './ui.js';
+import { glockeAlleKnopf, h, icon, inhalt, kachel, setzeStatus, setzeStopp, speicherFuer, teamKachel, zeigeTabs } from './ui.js';
 import { gruppiereUebersicht } from './uebersicht.js';
 import { aktuellerPushHinweis } from './push.js';
 
@@ -50,10 +50,14 @@ export async function zeigeUebersicht({ key }) {
         const v = verbindung(antwort);
         setzeStatus(ausCache ? `Keine Verbindung · ${v.text}` : v.text, ausCache || !v.verbunden);
         const pushHinweis = aktuellerPushHinweis(speicher);
-        const zeichneKachel = (t) => kachel(t, speicher, lade, {
-            href: t.poolId != null ? `#/t/${encodeURIComponent(key)}/pool/${t.poolId}/teilnehmer/${encodeURIComponent(t.key)}` : null
-        });
-        const { gruppen } = gruppiereUebersicht(antwort.teilnehmer, { ...anfrage, abgewaehlt: speicher.abgewaehlt() });
+        // Verfolgte Teams stehen gemeinsam mit den Einzelstartern nach Dringlichkeit (Stern/Glocke gelten dem Team).
+        const teams = (antwort.mannschaften || []).map(m => ({ ...m, art: 'team', vorname: '', nachname: m.bezeichnung }));
+        const zeichneKachel = (t) => (t.art === 'team'
+            ? teamKachel(t, speicher, lade, { href: `#/t/${encodeURIComponent(key)}/mannschaft/${encodeURIComponent(t.key)}` })
+            : kachel(t, speicher, lade, {
+                href: t.poolId != null ? `#/t/${encodeURIComponent(key)}/pool/${t.poolId}/teilnehmer/${encodeURIComponent(t.key)}` : null
+            }));
+        const { gruppen } = gruppiereUebersicht([...antwort.teilnehmer, ...teams], { ...anfrage, abgewaehlt: speicher.abgewaehlt() });
         // Ein einziger verfolgter Verein: kein Vereinsname, die Glocke für alle sitzt rechts in der Überschriftenzeile.
         const vereinsGruppen = gruppen.filter(g => g.id === 'verein');
         const einzigerVerein = vereinsGruppen.length === 1 ? vereinsGruppen[0] : null;
@@ -69,7 +73,7 @@ export async function zeigeUebersicht({ key }) {
                 ...(g.abschnitte && g.abschnitte.length > 1
                     ? g.abschnitte.flatMap(a => [h('div', { class: 'abschnitt trenner', 'data-testid': `abschnitt-${g.vereinKey}-${a.id}` }, a.titel), ...a.eintraege.map(zeichneKachel)])
                     : g.eintraege.map(zeichneKachel)))),
-            ...(gruppen.length ? [] : [h('p', { class: 'hinweis' }, 'Die verfolgten Teilnehmer sind (noch) nicht gemeldet.')]));
+            ...(gruppen.length ? [] : [h('p', { class: 'hinweis' }, 'Die verfolgten Teilnehmer und Teams sind (noch) nicht gemeldet.')]));
     }
     await lade();
     if (!beendet) timer = setInterval(() => { if (document.visibilityState === 'visible') lade(); }, 15000);

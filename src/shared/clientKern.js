@@ -109,8 +109,9 @@ export async function erzeugeClientKern({ konfig, PouchDB, oeffneDb, clientKonfi
     async function kampfDokumenteDerMatte(matteId) {
         const alle = await zustand.db.allDocs({ include_docs: true });
         const docs = alle.rows.map(r => r.doc).filter(Boolean);
-        const poolIds = new Set(docs.filter(d => d.dokumenttyp === 'pool' && Number(d.kampfflaeche_id) === Number(matteId)).map(d => d.id));
-        return { docs, kaempfe: docs.filter(d => d.dokumenttyp === 'kampf' && poolIds.has(d.pool_id)) };
+        const poolById = new Map(docs.filter(d => d.dokumenttyp === 'pool').map(d => [d.id, d]));
+        const wirksam = (k) => (k.kampfflaeche_id != null ? k.kampfflaeche_id : (poolById.get(k.pool_id) || {}).kampfflaeche_id);
+        return { docs, kaempfe: docs.filter(d => d.dokumenttyp === 'kampf' && Number(wirksam(d)) === Number(matteId)) };
     }
 
     const dienst = {

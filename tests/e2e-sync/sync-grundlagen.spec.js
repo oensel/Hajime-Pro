@@ -1,6 +1,6 @@
 // Grundlagen der Sync-Schicht auf dem Hallen-Server: /api/sync/status, Anlage der Dokument-DB je
 // Turnier-Instanz und das Ersetzen des (einzigen) Turniers beim Anlegen eines neuen.
-import { test, expect } from '@playwright/test';
+import { test, expect, request as pwRequest } from '@playwright/test';
 import { syncStatus, legeTurnierAn } from './helpers.js';
 
 test.describe.serial('Sync-Grundlagen: Dokument-DB und Turnier-Instanz', () => {
@@ -19,6 +19,19 @@ test.describe.serial('Sync-Grundlagen: Dokument-DB und Turnier-Instanz', () => {
         expect(status.db_name).toBe(`turnier_${status.instanz_id}`);
         expect((await request.get(`/db/${status.db_name}`)).ok()).toBeTruthy();
         expect((await request.get('/db/irgendeine_andere_db')).status()).toBe(404);
+    });
+
+    test('Browser der eigenen Seite (ohne Sec-Fetch, über http) braucht das SYNC_SECRET nicht', async ({ request, baseURL }) => {
+        const status = await syncStatus(request);
+        const ohneSecret = await pwRequest.newContext({ baseURL, extraHTTPHeaders: {} });
+        const url = `/db/${status.db_name}/_all_docs`;
+        // Ohne Secret und ohne Herkunft: abgelehnt.
+        expect((await ohneSecret.get(url)).status()).toBe(401);
+        // Referer/Origin der eigenen Seite (Host = Host-Header): wie ein Browser über http erlaubt.
+        expect((await ohneSecret.get(url, { headers: { referer: `${baseURL}/kampf.html` } })).ok()).toBeTruthy();
+        // Fremde Herkunft bleibt abgelehnt.
+        expect((await ohneSecret.get(url, { headers: { referer: 'http://fremd.example/x.html' } })).status()).toBe(401);
+        await ohneSecret.dispose();
     });
 
     test('zweites Turnier ersetzt das erste komplett (SQL und Dokument-DB)', async ({ request }) => {

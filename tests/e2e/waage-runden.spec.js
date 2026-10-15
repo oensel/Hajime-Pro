@@ -268,7 +268,7 @@ test.describe.serial('Waage in Runden', () => {
         const dialog = page.locator('#altersklassenDialog');
         await expect(dialog).toBeVisible();
         await expect(dialog.locator('.altersklassen-checkbox')).toHaveCount(1);
-        await expect(dialog.locator('.altersklassen-checkbox')).toHaveValue('U21');
+        await expect(dialog.locator('.altersklassen-checkbox')).toHaveValue(/^U21\|/);
         await page.locator('#altersklassenAbbrechen').click();
         await expect(dialog).toBeHidden();
     });

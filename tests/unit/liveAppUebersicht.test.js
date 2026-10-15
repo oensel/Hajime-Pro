@@ -66,3 +66,12 @@ test('Abschnitte: bald dran, noch nicht dran (kein Pool oder Pool beginnt nicht 
     assert.deepEqual(a[2].eintraege.map(x => x.key), ['i', 'j', 'k']);
     assert.equal(abschnittVon(mit('z', 'wartet_auf_gegner', { poolBegonnen: false, poolStartetIn: null })), 'spaeter');
 });
+
+test('sortiereTeams: läuft zuerst, dann nach Abstand, fertige zuletzt', async () => {
+    const { sortiereTeams } = await import('../../teilnehmer-app/js/uebersicht.js');
+    const teams = [
+        { bezeichnung: 'D', zustand: 'abgeschlossen' }, { bezeichnung: 'C', zustand: 'in_n', abstand: 3 },
+        { bezeichnung: 'B', zustand: 'als_naechstes', abstand: 0 }, { bezeichnung: 'A', zustand: 'laeuft' }, { bezeichnung: 'E', zustand: 'in_n', abstand: 1 }
+    ];
+    assert.deepEqual(sortiereTeams(teams).map(t => t.bezeichnung), ['A', 'B', 'E', 'C', 'D']);
+});

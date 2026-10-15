@@ -2,8 +2,9 @@
 // #/t/<k>/pool/<poolId>/<baum|kaempfe|teilnehmer>/<markierung>
 import { api } from './api.js';
 import { h, icon, inhalt, kachel, setzeStatus, speicherFuer, zeigeTabs } from './ui.js';
-import { kampfStatus } from './anzeige.js';
+import { kampfStatus, poolName } from './anzeige.js';
 import { baueBaumModell } from './baum.js';
+import { sortiereVerein } from './uebersicht.js';
 import { POOL_RUNDEN, UEBERKREUZ_GRUPPEN, UEBERKREUZ_FINALRUNDE } from '/js/shared/poolRunden.js';
 
 const REITER = [['baum', 'Baum'], ['kaempfe', 'Kämpfe'], ['teilnehmer', 'Teilnehmer']];
@@ -68,7 +69,7 @@ export async function zeigePool({ key, teile }) {
         const sterne = new Set(daten.teilnehmer.filter(t => speicher.istGesternt(t.key, t.vereinKey)).map(t => t.key));
         const kopf = [
             h('a', { class: 'zurueck', href: `#/t/${encodeURIComponent(key)}/pools` }, icon('chevron_left'), 'Pools'),
-            h('h1', {}, daten.pool.bezeichnung, daten.pool.matteBezeichnung ? h('small', {}, daten.pool.matteBezeichnung) : null),
+            h('h1', {}, poolName(daten.pool.bezeichnung), daten.pool.matteBezeichnung ? h('small', {}, daten.pool.matteBezeichnung) : null),
             h('div', { class: 'segment' }, REITER.map(([id, titel]) => h('a', {
                 href: '#', 'data-testid': `reiter-${id}`, class: id === reiter ? 'aktiv' : '',
                 onclick: (e) => { e.preventDefault(); reiter = id; zeichne(); }
@@ -77,7 +78,7 @@ export async function zeigePool({ key, teile }) {
         let rumpf;
         if (reiter === 'teilnehmer') {
             rumpf = daten.teilnehmer.length
-                ? daten.teilnehmer.map(t => kachel(t, speicher, zeichne, { markiert: markierung === t.key }))
+                ? sortiereVerein(daten.teilnehmer).map(t => kachel(t, speicher, zeichne, { markiert: markierung === t.key }))
                 : [h('p', { class: 'hinweis' }, 'Keine Teilnehmer.')];
         } else if (!daten.kaempfe || !daten.kaempfe.length) {
             rumpf = [h('p', { class: 'hinweis' }, daten.pool.modus || daten.pool.status ? 'Noch nicht ausgelost.' : 'Noch keine Kampfdaten von der Halle.')];
@@ -93,8 +94,6 @@ export async function zeigePool({ key, teile }) {
                 }, h('span', { class: 'nr' }, k.nr), h('span', { class: klasse(k.k1) }, name(k.k1, 1)), '–', h('span', { class: klasse(k.k2) }, name(k.k2, 2)),
                 h('span', { class: 'rechts' }, s.text));
             });
-            rumpf.push(h('button', { class: 'knopf', type: 'button', 'data-testid': 'baum-oeffnen', onclick: () => { reiter = 'baum'; zeichne(); } },
-                icon('account_tree'), 'Turnierbaum öffnen'));
         } else {
             const modell = baueBaumModell(daten.pool.modus, daten.kaempfe, defs);
             rumpf = modell.abschnitte.map(a => abschnittZeichnen(a, sterne, markierung));

@@ -142,7 +142,7 @@ test('Startbildschirm: Vereine direkt, Klassen darunter, Klick auf Gewichtsklass
     await page.goto(`/live/#/t/${KEY}`);
     await expect(page.getByTestId('verein-v1')).toContainText('JC Muster');
     await expect(page.getByTestId('verein-v2')).toContainText('TV Beispiel');
-    await page.getByTestId('klasse-U15-w').click();
+    await expect(page.getByTestId('klasse-U15-w')).toContainText('U15');
     await page.getByTestId('gewicht-10').click();
     await expect(page).toHaveURL(new RegExp(`#/t/${KEY}/pool/10/teilnehmer`));
     await page.goto(`/live/#/t/${KEY}`);
@@ -154,14 +154,16 @@ test('Pools: Liste, Baum, Kampfliste und Teilnehmer eines Pools', async ({ page,
     await sende(request, paket(Date.now()));
     await page.goto(`/live/#/t/${KEY}`);
     await page.getByTestId('tab-pools').click();
-    await expect(page.getByTestId('pool-10')).toContainText('U15 w -44');
+    await expect(page.getByTestId('pool-10')).toContainText('U15 w −44 kg');
     await page.getByTestId('pool-10').click();
     await expect(page.getByTestId('reiter-baum')).toHaveClass(/aktiv/);
     await expect(page.getByTestId('kampf-1')).toContainText('Anna Muster');
     await page.getByTestId('reiter-kaempfe').click();
-    await expect(page.getByTestId('baum-oeffnen')).toBeVisible();
+    await expect(page.getByTestId('baum-oeffnen')).toHaveCount(0);
     await page.getByTestId('reiter-teilnehmer').click();
     await expect(page.getByTestId('kachel-a1')).toContainText('Anna Muster');
+    // läuft jetzt zuerst, dann nach Abstand (Mia läuft, Anna in 3 Kämpfen)
+    await expect(page.locator('[data-testid^="kachel-"]').first()).toHaveAttribute('data-testid', 'kachel-a2');
     await page.goto(`/live/#/t/${KEY}/pool/999/baum`);
     await expect(page.getByText('Pool nicht gefunden')).toBeVisible();
 });
@@ -175,7 +177,7 @@ test('Turnier: Matte mit laufendem Kampf, Klick öffnet die Kampfliste, von dort
     await page.getByTestId('laufend-1').click();
     await expect(page).toHaveURL(new RegExp('/pool/10/kaempfe/'));
     await expect(page.getByTestId('reiter-kaempfe')).toHaveClass(/aktiv/);
-    await page.getByTestId('baum-oeffnen').click();
+    await page.getByTestId('reiter-baum').click();
     await expect(page.getByTestId('reiter-baum')).toHaveClass(/aktiv/);
 });
 

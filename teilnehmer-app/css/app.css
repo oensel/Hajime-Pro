@@ -55,6 +55,8 @@ body {
     background: var(--card); border-bottom: 2px solid var(--border);
 }
 .titel { font-family: Outfit, sans-serif; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; color: var(--primary); text-decoration: none; font-size: 16px; }
+.titel { display: inline-flex; align-items: center; gap: 8px; }
+.titel .zeichen { width: 30px; height: 30px; background: #ffffff url(../icons/zeichen.png) center / 22px no-repeat; border-radius: 8px; border: 1px solid var(--border); flex-shrink: 0; }
 .live-schild { font-size: 11px; font-weight: 700; color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); padding: 3px 9px; border-radius: 20px; }
 .live-schild.getrennt { color: var(--live); background: color-mix(in srgb, var(--live) 12%, transparent); }
 .kanji { position: fixed; right: -8px; bottom: 70px; font-size: 140px; line-height: 1; color: var(--kanji); pointer-events: none; z-index: 0; }
@@ -93,13 +95,15 @@ input[type="search"] {
 }
 .verein-kachel span { color: var(--muted); font-size: 12px; font-weight: 700; }
 .gruppe { background: var(--card); border: 2px solid var(--border); border-radius: 8px; margin-bottom: 8px; }
-.gruppe > button {
+.gruppe > button, .gruppe > .gruppen-titel {
     width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 11px 12px; min-height: 44px;
-    background: none; border: 0; font: inherit; font-weight: 700; color: var(--text); cursor: pointer;
+    background: none; border: 0; font: inherit; font-weight: 700; color: var(--text);
 }
-.gruppe > button span { color: var(--muted); font-size: 12px; }
+.gruppe > .gruppen-titel { min-height: 0; padding-bottom: 4px; }
+.gruppe > .chips { padding: 4px 12px 12px; }
+.gruppe > button span, .gruppe > .gruppen-titel span { color: var(--muted); font-size: 12px; }
 .gruppe.offen { border-color: var(--primary); }
-.gruppe.offen > button { color: var(--primary); }
+.gruppe.offen > button, .gruppe.offen > .gruppen-titel { color: var(--primary); }
 .chips { padding: 0 12px 10px; display: flex; flex-wrap: wrap; gap: 6px; }
 .chip {
     display: inline-flex; align-items: center; min-height: 36px; padding: 0 12px; border: 2px solid var(--border-strong);
@@ -232,3 +236,11 @@ h1 + .abschnitt.trenner, h1 + div > .abschnitt.trenner:first-child { margin-top:
 .bogen td.diagonale { background: var(--border); }
 .bogen td.markiert { outline: 3px solid var(--primary); outline-offset: -3px; }
 .bogen .zusatz { display: inline-block; margin-left: 3px; padding: 0 4px; border-radius: 4px; background: color-mix(in srgb, var(--warn) 20%, transparent); font-size: 10px; }
+
+.naechster { display: grid; grid-template-columns: 22px minmax(0, 1fr); column-gap: 10px; row-gap: 4px; align-items: center; }
+.naechster .namen { display: flex; gap: 8px; min-width: 0; }
+.naechster .chip { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid var(--border); border-left-width: 6px; border-radius: 6px; font-size: 13px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.naechster .chip.weiss { border-left-color: #ffffff; }
+.naechster .chip.blau { border-left-color: #007bff; }
+.naechster .chip.rot { border-left-color: #dc3545; }
+.naechster em { grid-column: 2; margin-left: 0; }

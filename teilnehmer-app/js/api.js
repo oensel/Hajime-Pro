@@ -16,6 +16,8 @@ export const api = {
     suche: (key, q) => hole(`${t(key)}/suche?q=${encodeURIComponent(q)}`),
     pools: (key) => hole(`${t(key)}/pools`),
     dashboard: (key) => hole(`${t(key)}/dashboard`),
+    mannschaften: (key) => hole(`${t(key)}/mannschaften`),
+    mannschaft: (key, teamKey) => hole(`${t(key)}/mannschaften/${encodeURIComponent(teamKey)}`),
     pool: (key, poolId) => hole(`${t(key)}/pools/${encodeURIComponent(poolId)}`),
     verein: (key, vereinKey) => hole(`${t(key)}/vereine/${encodeURIComponent(vereinKey)}`),
     uebersicht: (key, anfrage) => hole(`${t(key)}/uebersicht`, {

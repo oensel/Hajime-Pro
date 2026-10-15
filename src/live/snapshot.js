@@ -3,7 +3,8 @@
 // Uplink Änderungen über einen Hash erkennen kann; ladeSnapshots liest nur über die schreibgeschützte Rolle live_ro.
 import { berechneKacheln } from '../shared/liveKachel.js';
 import { berechnePlatzierungen } from '../shared/platzierungen.js';
-import { teilnehmerSchluessel, vereinSchluessel, waehleAnzeigename } from './schluessel.js';
+import { berechneMannschaften } from '../shared/liveMannschaft.js';
+import { mannschaftsSchluessel, teilnehmerSchluessel, vereinSchluessel, waehleAnzeigename } from './schluessel.js';
 
 const OFFEN = new Set(['bereit', 'vorbereiten', 'gestartet']);
 
@@ -30,7 +31,7 @@ function platzierungenJePool(pools, teilnehmer, kaempfe) {
     return ergebnis;
 }
 
-export function baueSnapshot({ turnier, kampfflaechen, pools, teilnehmer, kaempfe }, { geheimnis }) {
+export function baueSnapshot({ turnier, kampfflaechen, pools, teilnehmer, kaempfe, mannschaften = [], mitglieder = [], begegnungen = [] }, { geheimnis }) {
     const sichtbar = teilnehmer.filter(t => t.status !== 'zurueckgezogen' && !t.nur_mannschaft);
     const kacheln = berechneKacheln({
         pools, teilnehmer: sichtbar, kaempfe, platzierungen: platzierungenJePool(pools, sichtbar, kaempfe)
@@ -67,9 +68,10 @@ export function baueSnapshot({ turnier, kampfflaechen, pools, teilnehmer, kaempf
 
     const warteschlangen = kampfflaechen
         .map(m => {
-            const poolIds = new Set(pools.filter(p => p.kampfflaeche_id === m.id).map(p => p.id));
+            const poolById = new Map(pools.map(p => [p.id, p]));
+            const wirksameMatte = (k) => (k.kampfflaeche_id != null ? k.kampfflaeche_id : (poolById.get(k.pool_id) || {}).kampfflaeche_id);
             const offen = kaempfe
-                .filter(k => poolIds.has(k.pool_id) && OFFEN.has(k.status))
+                .filter(k => wirksameMatte(k) === m.id && OFFEN.has(k.status))
                 .sort((a, b) => {
                     const ra = a.matten_reihenfolge == null ? Infinity : Number(a.matten_reihenfolge);
                     const rb = b.matten_reihenfolge == null ? Infinity : Number(b.matten_reihenfolge);
@@ -90,6 +92,7 @@ export function baueSnapshot({ turnier, kampfflaechen, pools, teilnehmer, kaempf
     const poolsAusgabe = einzelPools.map(p => ({
         id: p.id, bezeichnung: p.bezeichnung, modus: p.modus, status: p.status,
         matteId: p.kampfflaeche_id != null ? p.kampfflaeche_id : null,
+        reihenfolge: p.matte_reihenfolge == null ? null : Number(p.matte_reihenfolge),
         altersklasse: p.altersklasse, geschlecht: p.geschlecht, gewichtsklasse: p.gewichtsklasse,
         farbe2: p.farbe_kaempfer2 || turnier.farbe_kaempfer2 || 'blau'
     }));
@@ -104,12 +107,30 @@ export function baueSnapshot({ turnier, kampfflaechen, pools, teilnehmer, kaempf
             p1: Number(k.unterbewertung_kaempfer1) || 0, p2: Number(k.unterbewertung_kaempfer2) || 0
         }));
 
+    // Mannschaften (Teams) mit Kader und Begegnungen; Mitglieder ohne Einzelstart stehen nur hier.
+    const turnierKey = String(turnier.urspruengliche_id);
+    const matteName = (id) => (matteById.get(id) || {}).bezeichnung || '';
+    const team = berechneMannschaften(
+        { pools, mannschaften, mitglieder, begegnungen, kaempfe, teilnehmer },
+        { schluesselVon: (m) => mannschaftsSchluessel(geheimnis, turnierKey, m.verein, m.bezeichnung), matteName }
+    );
+    const teamsAusgabe = team.teams.map(t => ({ ...t, vereinKey: vereinSchluessel(t.verein) }));
+    for (const t of teamsAusgabe) {
+        if (!vereinNamen.has(t.vereinKey)) vereinNamen.set(t.vereinKey, []);
+        vereinNamen.get(t.vereinKey).push(t.verein);
+    }
+    const vereineAlle = [...vereinNamen.entries()]
+        .map(([key, namen]) => ({ key, name: waehleAnzeigename(namen) }))
+        .sort((a, b) => a.key.localeCompare(b.key));
+
     return {
         version: 1,
-        turnierKey: String(turnier.urspruengliche_id),
+        turnierKey,
         name: turnier.bezeichnung,
         datum: datumText(turnier.datum),
-        vereine,
+        vereine: vereineAlle,
+        mannschaften: teamsAusgabe,
+        begegnungen: team.begegnungen,
         matten: kampfflaechen.map(m => ({ id: m.id, bezeichnung: m.bezeichnung })).sort((a, b) => a.id - b.id),
         teilnehmer: eintraege,
         warteschlangen,
@@ -125,14 +146,20 @@ export async function ladeSnapshots(knexLive, { geheimnis }) {
         .orderBy('id');
     const snapshots = [];
     for (const turnier of turniere) {
-        const [kampfflaechen, pools, teilnehmer] = await Promise.all([
+        const [kampfflaechen, pools, teilnehmer, mannschaften] = await Promise.all([
             knexLive('live.kampfflaechen').where({ turnier_id: turnier.id }),
             knexLive('live.pools').where({ turnier_id: turnier.id }),
-            knexLive('live.teilnehmer').where({ turnier_id: turnier.id })
+            knexLive('live.teilnehmer').where({ turnier_id: turnier.id }),
+            knexLive('live.mannschaften').where({ turnier_id: turnier.id })
         ]);
         const poolIds = pools.map(p => p.id);
-        const kaempfe = poolIds.length ? await knexLive('live.kaempfe').whereIn('pool_id', poolIds) : [];
-        snapshots.push(baueSnapshot({ turnier, kampfflaechen, pools, teilnehmer, kaempfe }, { geheimnis }));
+        const mannschaftsIds = mannschaften.map(m => m.id);
+        const [kaempfe, begegnungen, mitglieder] = await Promise.all([
+            poolIds.length ? knexLive('live.kaempfe').whereIn('pool_id', poolIds) : [],
+            poolIds.length ? knexLive('live.mannschaftskaempfe').whereIn('pool_id', poolIds) : [],
+            mannschaftsIds.length ? knexLive('live.mannschaft_mitglieder').whereIn('mannschaft_id', mannschaftsIds) : []
+        ]);
+        snapshots.push(baueSnapshot({ turnier, kampfflaechen, pools, teilnehmer, kaempfe, mannschaften, mitglieder, begegnungen }, { geheimnis }));
     }
     return snapshots;
 }
