@@ -162,6 +162,8 @@ test('Pools: Liste, Baum, Kampfliste und Teilnehmer eines Pools', async ({ page,
     await expect(page.getByTestId('baum-oeffnen')).toHaveCount(0);
     await page.getByTestId('reiter-teilnehmer').click();
     await expect(page.getByTestId('kachel-a1')).toContainText('Anna Muster');
+    // läuft jetzt zuerst, dann nach Abstand (Mia läuft, Anna in 3 Kämpfen)
+    await expect(page.locator('[data-testid^="kachel-"]').first()).toHaveAttribute('data-testid', 'kachel-a2');
     await page.goto(`/live/#/t/${KEY}/pool/999/baum`);
     await expect(page.getByText('Pool nicht gefunden')).toBeVisible();
 });

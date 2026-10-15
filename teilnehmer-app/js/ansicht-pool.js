@@ -4,6 +4,7 @@ import { api } from './api.js';
 import { h, icon, inhalt, kachel, setzeStatus, speicherFuer, zeigeTabs } from './ui.js';
 import { kampfStatus, poolName } from './anzeige.js';
 import { baueBaumModell } from './baum.js';
+import { sortiereVerein } from './uebersicht.js';
 import { POOL_RUNDEN, UEBERKREUZ_GRUPPEN, UEBERKREUZ_FINALRUNDE } from '/js/shared/poolRunden.js';
 
 const REITER = [['baum', 'Baum'], ['kaempfe', 'Kämpfe'], ['teilnehmer', 'Teilnehmer']];
@@ -77,7 +78,7 @@ export async function zeigePool({ key, teile }) {
         let rumpf;
         if (reiter === 'teilnehmer') {
             rumpf = daten.teilnehmer.length
-                ? daten.teilnehmer.map(t => kachel(t, speicher, zeichne, { markiert: markierung === t.key }))
+                ? sortiereVerein(daten.teilnehmer).map(t => kachel(t, speicher, zeichne, { markiert: markierung === t.key }))
                 : [h('p', { class: 'hinweis' }, 'Keine Teilnehmer.')];
         } else if (!daten.kaempfe || !daten.kaempfe.length) {
             rumpf = [h('p', { class: 'hinweis' }, daten.pool.modus || daten.pool.status ? 'Noch nicht ausgelost.' : 'Noch keine Kampfdaten von der Halle.')];
