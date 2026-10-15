@@ -233,8 +233,10 @@ h1 + .abschnitt.trenner, h1 + div > .abschnitt.trenner:first-child { margin-top:
 .bogen td.markiert { outline: 3px solid var(--primary); outline-offset: -3px; }
 .bogen .zusatz { display: inline-block; margin-left: 3px; padding: 0 4px; border-radius: 4px; background: color-mix(in srgb, var(--warn) 20%, transparent); font-size: 10px; }
 
-.naechster .namen { display: flex; flex-wrap: wrap; gap: 4px; flex: 1; min-width: 0; }
-.naechster .chip { padding: 2px 8px; border-radius: 6px; border: 2px solid; font-size: 12px; font-weight: 700; }
-.naechster .chip.weiss { background: #ffffff; color: #1f2937; border-color: #d9d4c7; }
-.naechster .chip.blau { background: #007bff; color: #ffffff; border-color: #0056b3; }
-.naechster .chip.rot { background: #dc3545; color: #ffffff; border-color: #bd2130; }
+.naechster { display: grid; grid-template-columns: 22px minmax(0, 1fr); column-gap: 10px; row-gap: 4px; align-items: center; }
+.naechster .namen { display: flex; gap: 8px; min-width: 0; }
+.naechster .chip { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid var(--border); border-left-width: 6px; border-radius: 6px; font-size: 13px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.naechster .chip.weiss { border-left-color: #ffffff; }
+.naechster .chip.blau { border-left-color: #007bff; }
+.naechster .chip.rot { border-left-color: #dc3545; }
+.naechster em { grid-column: 2; margin-left: 0; }
