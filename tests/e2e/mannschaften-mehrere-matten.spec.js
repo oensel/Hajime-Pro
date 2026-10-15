@@ -403,4 +403,15 @@ test.describe.serial('Mannschaften: kein Team auf zwei Matten, Dashboard', () =>
         // Der Pool erscheint auf beiden Matten (Hauptmatte und Matte mit verschobenen Begegnungen).
         expect(mat2.pools.map(p => p.bezeichnung)).toContain('D-Pool');
     });
+
+    test('Dashboard nutzt die ganze Bildschirmbreite', async ({ page }) => {
+        await page.setViewportSize({ width: 1500, height: 800 });
+        await page.goto(`/dashboard.html?turnierId=${turnierId}`);
+        await expect(page.locator('#matsGrid > *').first()).toBeVisible();
+        const breiten = await page.evaluate(() => ({
+            fenster: window.innerWidth,
+            container: document.querySelector('.dashboard-container').getBoundingClientRect().width
+        }));
+        expect(breiten.container).toBe(breiten.fenster);
+    });
 });

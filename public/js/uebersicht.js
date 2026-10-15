@@ -29,13 +29,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const matsGrid = document.getElementById('matsGrid');
     const unassignedSection = document.getElementById('unassignedSection');
     const unassignedGrid = document.getElementById('unassignedGrid');
+    const mannschaftenSection = document.getElementById('mannschaftenSection');
+    const mannschaftenGrid = document.getElementById('mannschaftenGrid');
 
     if (!turnierId) {
         hinweisContainer.innerHTML = `<div class="hinweis-box">Kein Turnier ausgewählt. Bitte die Seite mit <code>?turnierId=&lt;ID&gt;</code> in der URL aufrufen.</div>`;
         return;
     }
 
-    function mannschaftsPoolBlockHtml(pool) {
+    function mannschaftsPoolBlockHtml(pool, mattenNamen = []) {
         const teams = (pool.mannschaften || []).length === 0
             ? `<li class="pool-leer">Keine Mannschaften</li>`
             : pool.mannschaften.map(team => `
@@ -54,7 +56,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </li>`).join('');
         return `
             <div class="pool-block">
-                <div class="pool-block-header">${escapeHtml(pool.bezeichnung)}</div>
+                <div class="pool-block-header">${escapeHtml(pool.bezeichnung)}${mattenNamen.length ? ` <span style="font-weight: 600; opacity: 0.75;">· ${escapeHtml(mattenNamen.join(', '))}</span>` : ''}</div>
                 <ul class="teilnehmer-liste">${teams}</ul>
             </div>
         `;
@@ -103,15 +105,38 @@ document.addEventListener('DOMContentLoaded', () => {
 
             hinweisContainer.innerHTML = '';
 
-            if (!data.mats || data.mats.length === 0) {
+            // Mannschafts-Pools stehen gesondert unter "Mannschaften", nicht auf den Matten.
+            const mannschaftsPools = new Map();
+            const mattenNamen = new Map((data.mats || []).map(m => [m.id, m.bezeichnung]));
+            const ohneMannschaften = (pools) => (pools || []).filter(p => {
+                if (p.typ !== 'mannschaft') return true;
+                mannschaftsPools.set(p.id, p);
+                return false;
+            });
+            const mats = (data.mats || []).map(m => ({ ...m, pools: ohneMannschaften(m.pools) }));
+            const unzugeordnet = ohneMannschaften(data.unzugeordnetePools);
+
+            if (mats.length === 0) {
                 matsGrid.innerHTML = `<div class="empty-text">Keine Wettkampfflächen für dieses Turnier konfiguriert.</div>`;
             } else {
-                matsGrid.innerHTML = data.mats.map((mat, i) => matCardHtml(mat, i + 1)).join('');
+                matsGrid.innerHTML = mats.map((mat, i) => matCardHtml(mat, i + 1)).join('');
             }
 
-            if (data.unzugeordnetePools && data.unzugeordnetePools.length > 0) {
+            if (mannschaftsPools.size > 0) {
+                mannschaftenSection.style.display = 'block';
+                mannschaftenGrid.innerHTML = [...mannschaftsPools.values()].map(pool => {
+                    const matteIds = new Set([pool.kampfflaeche_id, ...(pool.matten_ids || [])].filter(id => id != null));
+                    const namen = [...matteIds].map(id => mattenNamen.get(id)).filter(Boolean);
+                    return mannschaftsPoolBlockHtml(pool, namen);
+                }).join('');
+            } else {
+                mannschaftenSection.style.display = 'none';
+                mannschaftenGrid.innerHTML = '';
+            }
+
+            if (unzugeordnet.length > 0) {
                 unassignedSection.style.display = 'block';
-                unassignedGrid.innerHTML = data.unzugeordnetePools.map(poolBlockHtml).join('');
+                unassignedGrid.innerHTML = unzugeordnet.map(poolBlockHtml).join('');
             } else {
                 unassignedSection.style.display = 'none';
                 unassignedGrid.innerHTML = '';

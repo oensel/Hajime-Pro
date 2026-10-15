@@ -67,6 +67,9 @@ test.describe('Mannschaften: Gewichtsklassen bearbeiten', () => {
         expect(pool.mannschaften[0].mitglieder[0].gewichtsklasse).toBeTruthy();
 
         await page.goto(`/uebersicht.html?turnierId=${turnierId}`);
-        await expect(page.locator('.pool-block', { hasText: 'Team Ü' })).toContainText('Übersicht, Uwe');
+        // Mannschaften stehen gesondert unter "Mannschaften", nicht auf den Matten.
+        await expect(page.locator('#mannschaftenGrid .pool-block', { hasText: 'Team Ü' })).toContainText('Übersicht, Uwe');
+        await expect(page.locator('#matsGrid .pool-block', { hasText: 'Team Ü' })).toHaveCount(0);
+        await expect(page.locator('#unassignedGrid .pool-block', { hasText: 'Team Ü' })).toHaveCount(0);
     });
 });
