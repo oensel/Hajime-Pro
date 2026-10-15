@@ -39,11 +39,13 @@ await uebernimmPaket(db.knex, {
     ],
     pools: [
         { id: 10, bezeichnung: 'U15 w -44', modus: 'Doppel-KO-8', status: 'matte_zugewiesen', matteId: 1, altersklasse: 'U15', geschlecht: 'w', gewichtsklasse: '-44', farbe2: 'blau', reihenfolge: 0 },
-        { id: 11, bezeichnung: 'U15 m -50', modus: 'Jeder-gegen-Jeden', status: 'matte_zugewiesen', matteId: 1, altersklasse: 'U15', geschlecht: 'm', gewichtsklasse: '-50', farbe2: 'blau', reihenfolge: 1 }
+        { id: 11, bezeichnung: 'U15 m -50', modus: 'Jeder-gegen-Jeden', status: 'matte_zugewiesen', matteId: 1, altersklasse: 'U15', geschlecht: 'm', gewichtsklasse: '-50', farbe2: 'rot', reihenfolge: 1 }
     ],
     kaempfe: [
         { id: 1, poolId: 10, nr: 'H1', status: 'beendet', reihenfolge: 1, k1: 'a1', k2: 'a2', sieger: 'a1', p1: 7, p2: 0 },
-        { id: 2, poolId: 10, nr: 'H2', status: 'gestartet', reihenfolge: 2, k1: 'a1', k2: 'a2', sieger: null, p1: 0, p2: 0 }
+        { id: 2, poolId: 10, nr: 'H2', status: 'gestartet', reihenfolge: 2, k1: 'a1', k2: 'a2', sieger: null, p1: 0, p2: 0 },
+        { id: 3, poolId: 10, nr: 'H3', status: 'bereit', reihenfolge: 3, k1: 'a2', k2: 'a1', sieger: null, p1: 0, p2: 0 },
+        { id: 4, poolId: 11, nr: '1', status: 'bereit', reihenfolge: 4, k1: 'b1', k2: 'a1', sieger: null, p1: 0, p2: 0 }
     ],
     mannschaften: [team('t1', 'Team 1'), team('t2', 'Team 2', { zustand: 'laeuft', abstand: 0, naechsteBegegnungId: 30, gegner: 'Team 1' })],
     begegnungen: [

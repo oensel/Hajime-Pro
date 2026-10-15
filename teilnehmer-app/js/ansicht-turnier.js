@@ -27,7 +27,11 @@ function matteKarte(key, m) {
     if (m.naechste.length) {
         m.naechste.forEach((k, i) => teile.push(h('div', {
             class: 'naechster', 'data-testid': `naechster-${k.id}`, onclick: () => { location.hash = kampfLink(key, k); }
-        }, h('span', { class: 'nr' }, String(i + 1)), `${kaempferAnzeige(k.k1).name} – ${kaempferAnzeige(k.k2).name}`, h('em', {}, k.poolBezeichnung))));
+        }, h('span', { class: 'nr' }, String(i + 1)),
+            h('span', { class: 'namen' },
+                h('span', { class: `chip ${k.farbe2 === 'rot' ? 'rot' : 'blau'}`, title: k.farbe2 === 'rot' ? 'Rot' : 'Blau' }, kaempferAnzeige(k.k2).name),
+                h('span', { class: 'chip weiss', title: 'Weiß' }, kaempferAnzeige(k.k1).name)),
+            h('em', {}, k.poolBezeichnung))));
     } else teile.push(h('p', { class: 'hinweis' }, 'Keine anstehenden Kämpfe.'));
     teile.push(h('div', { class: 'abschnitt' }, 'Pools und Fortschritt'));
     if (m.pools.length) {
@@ -84,10 +88,12 @@ export async function zeigeTurnier({ key, teile }) {
             h('h1', {}, 'Turnier'),
             h('div', { class: 'chips', style: 'padding:0 0 10px' }, chip('alle', 'Alle Matten'), ...antwort.matten.map(m => chip(m.id, m.bezeichnung))),
             ...sichtbar.map(m => matteKarte(key, m)),
-            antwort.warteschlange.length ? h('div', { class: 'abschnitt' }, 'Warteschlange ohne Matte') : null,
-            antwort.warteschlange.length ? h('div', { class: 'chips', style: 'padding:0' }, antwort.warteschlange.map(p => h('a', {
-                class: 'chip', href: `#/t/${encodeURIComponent(key)}/pool/${p.poolId}/teilnehmer`
-            }, p.bezeichnung))) : null);
+            ...(antwort.warteschlange.length ? [
+                h('div', { class: 'abschnitt' }, 'Warteschlange ohne Matte'),
+                h('div', { class: 'chips', style: 'padding:0' }, antwort.warteschlange.map(p => h('a', {
+                    class: 'chip', href: `#/t/${encodeURIComponent(key)}/pool/${p.poolId}/teilnehmer`
+                }, p.bezeichnung)))
+            ] : []));
     }
     await lade();
     if (!beendet) timer = setInterval(() => { if (document.visibilityState === 'visible') lade(); }, 5000);
