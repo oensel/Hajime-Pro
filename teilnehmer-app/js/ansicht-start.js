@@ -2,7 +2,7 @@
 import { api } from './api.js';
 import { gewichtText, kachelZeilen, klassenTitel, verbindung } from './anzeige.js';
 import { bereinigeAlte, gecachteTurniere } from './speicher.js';
-import { h, inhalt, setzeStatus, zeigeTabs } from './ui.js';
+import { h, inhalt, setzeStatus, speicherFuer, teamKachel, zeigeTabs } from './ui.js';
 
 // Namen der zuletzt gesehenen Turniere, damit der Offline-Start sie benennen kann (bewusst außerhalb des Präfixes
 // hajime-live:, das bereinigeAlte aufräumt).
@@ -55,7 +55,32 @@ export async function zeigeStart({ key }) {
     const v = verbindung(turnier);
     setzeStatus(v.text, !v.verbunden);
 
+    const speicher = speicherFuer(key);
     const trefferListe = h('div', { 'data-testid': 'treffer' });
+    let letzteTreffer = null;
+    // Mannschaften zuerst, dann Kämpfer in Mannschaften (führen zum Team, ohne eigenen Stern), dann Einzelstarter.
+    function zeichneTreffer() {
+        const t = letzteTreffer;
+        if (!t) { trefferListe.replaceChildren(); return; }
+        const teile = [];
+        if (t.mannschaften.length) {
+            teile.push(h('div', { class: 'abschnitt' }, 'Mannschaften'),
+                ...t.mannschaften.map(m => teamKachel(m, speicher, zeichneTreffer, { href: `#/t/${encodeURIComponent(key)}/mannschaft/${encodeURIComponent(m.key)}` })));
+        }
+        if (t.mitglieder.length) {
+            teile.push(h('div', { class: 'abschnitt' }, 'Kämpfer in Mannschaften'),
+                h('div', { class: 'treffer' }, t.mitglieder.map(m => h('a', {
+                    href: `#/t/${encodeURIComponent(key)}/mannschaft/${encodeURIComponent(m.mannschaft.key)}`,
+                    'data-testid': `mitglied-${m.mannschaft.key}`
+                }, `${m.nachname}, ${m.vorname}`,
+                h('small', {}, [`Mannschaft ${m.mannschaft.bezeichnung}`, m.gewichtsklasse ? `${String(m.gewichtsklasse).replace(/^-/, '−')} kg` : null].filter(Boolean).join(' · '))))));
+        }
+        if (t.treffer.length) {
+            if (teile.length) teile.push(h('div', { class: 'abschnitt' }, 'Einzelstarter'));
+            teile.push(h('div', { class: 'treffer' }, t.treffer.map(x => trefferZeile(key, x))));
+        }
+        trefferListe.replaceChildren(...(teile.length ? teile : [h('p', { class: 'hinweis' }, 'Keine Treffer.')]));
+    }
     const suchfeld = h('input', {
         type: 'search', placeholder: 'Name oder Vorname suchen', 'aria-label': 'Teilnehmer suchen', 'data-testid': 'suchfeld',
         autocomplete: 'off',
@@ -65,10 +90,11 @@ export async function zeigeStart({ key }) {
             if (q.length < 2) { trefferListe.replaceChildren(); return; }
             suchTimer = setTimeout(async () => {
                 try {
-                    const { treffer } = await api.suche(key, q);
-                    trefferListe.replaceChildren(treffer.length
-                        ? h('div', { class: 'treffer' }, treffer.map(t => trefferZeile(key, t)))
-                        : h('p', { class: 'hinweis' }, 'Keine Treffer.'));
+                    const antwort = await api.suche(key, q);
+                    letzteTreffer = {
+                        treffer: antwort.treffer || [], mannschaften: antwort.mannschaften || [], mitglieder: antwort.mitglieder || []
+                    };
+                    zeichneTreffer();
                 } catch { trefferListe.replaceChildren(h('p', { class: 'hinweis' }, 'Keine Verbindung.')); }
             }, 250);
         }

@@ -7,6 +7,7 @@ import { zeigeUebersicht } from './ansicht-uebersicht.js';
 import { zeigePool } from './ansicht-pool.js';
 import { zeigePools } from './ansicht-pools.js';
 import { zeigeTurnier } from './ansicht-turnier.js';
+import { zeigeMannschaft, zeigeMannschaftsPool } from './ansicht-mannschaft.js';
 
 const ROUTEN = {
     suche: zeigeStart,
@@ -14,7 +15,9 @@ const ROUTEN = {
     verein: zeigeVerein,
     pool: zeigePool,
     pools: zeigePools,
-    turnier: zeigeTurnier
+    turnier: zeigeTurnier,
+    mannschaft: zeigeMannschaft,
+    mannschaftspool: zeigeMannschaftsPool
 };
 
 async function route() {

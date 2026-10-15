@@ -56,6 +56,21 @@ export function kachelZeilen(t) {
     return { titel, zeile1, zeile2: HINWEIS[t.zustand] ?? null, zeile3: null, art: 'info' };
 }
 
+// Kachelzeilen eines Teams (Mannschaft).
+export function teamZeilen(t) {
+    const geschlecht = { w: 'weiblich', m: 'männlich' }[t.geschlecht] || t.geschlecht;
+    const klasse = [t.altersklasse, geschlecht].filter(Boolean).join(' ');
+    const zeile1 = [klasse, t.gegner ? `gegen ${t.gegner}` : null].filter(Boolean).join(' · ');
+    const titel = [t.bezeichnung, t.verein].filter(Boolean).join(' · ');
+    switch (t.zustand) {
+        case 'laeuft': return { titel, zeile1, zeile2: 'Läuft jetzt', art: 'laeuft' };
+        case 'als_naechstes': return { titel, zeile1, zeile2: 'Als Nächstes', art: 'bald' };
+        case 'in_n': return { titel, zeile1, zeile2: t.abstand === 1 ? 'In 1 Begegnung' : `In ${t.abstand} Begegnungen`, art: 'bald' };
+        case 'abgeschlossen': return { titel, zeile1: klasse, zeile2: `Abgeschlossen · ${t.siege ?? 0} ${t.siege === 1 ? 'Sieg' : 'Siege'}`, art: 'fertig' };
+        default: return { titel, zeile1, zeile2: 'Wartet auf die nächste Runde', art: 'info' };
+    }
+}
+
 // Alter aus den Zeiten der Cloud (nicht der Geräteuhr): der Uplink sendet spätestens alle 60 s ein Lebenszeichen.
 export function verbindung({ empfangenAm, serverzeit, stand } = {}, schwelleSekunden = 180) {
     const empfangen = Date.parse(empfangenAm);

@@ -1,5 +1,5 @@
 // Gemeinsame Bausteine der Ansichten: DOM-Helfer, Reiterleiste, Statuszeile, Kachel. Alle Texte laufen über textContent.
-import { kachelZeilen, klasseText, matteKurz, matteText } from './anzeige.js';
+import { kachelZeilen, klasseText, matteKurz, matteText, teamZeilen } from './anzeige.js';
 import { erzeugeSpeicher } from './speicher.js';
 import { planeAbgleich } from './push.js';
 
@@ -78,6 +78,36 @@ export function glockeAlleKnopf(an, beiAenderung) {
         title: an ? 'Benachrichtigung für alle aus' : 'Benachrichtigung für alle an',
         onclick: (e) => { e.stopPropagation(); beiAenderung(!an); }
     }, icon(an ? 'notifications' : 'notifications_off'));
+}
+
+// Kachel eines Teams: Stern und Glocke gelten dem Team (nicht seinen Kämpfern).
+export function teamKachel(t, speicher, neuZeichnen, { href = null } = {}) {
+    const z = teamZeilen(t);
+    const gesternt = speicher.istGesternt(t.key);
+    const glocke = speicher.hatGlocke(t.key);
+    const klassen = ['kachel'];
+    if (z.art === 'laeuft') klassen.push('laeuft');
+    if (z.art === 'bald') klassen.push('bald');
+    const matte = t.zustand === 'abgeschlossen' ? '' : matteKurz(t.matteBezeichnung);
+    if (matte) klassen.push('mit-matte');
+    const knopf = (testId, an, beschriftungAn, beschriftungAus, symbolAn, symbolAus, aktion) => h('button', {
+        class: 'icon-knopf', 'data-testid': `${testId}-${t.key}`, 'aria-pressed': String(an),
+        'aria-label': an ? beschriftungAn : beschriftungAus,
+        onclick: (e) => { e.stopPropagation(); aktion(!an); neuZeichnen(); }
+    }, icon(an ? symbolAn : symbolAus));
+    return h('div', {
+        class: klassen.join(' '), 'data-testid': `team-${t.key}`,
+        onclick: () => { if (href) location.hash = href; }
+    },
+        matte ? h('div', { class: 'matte-block', 'aria-label': matteText(t.matteBezeichnung) },
+            h('small', {}, 'Matte'), h('span', { class: matte.length > 3 ? 'lang' : '' }, matte)) : null,
+        h('div', { class: 'kachel-inhalt' },
+            h('div', { class: 'name' }, z.titel),
+            h('div', { class: 'aktionen' },
+                knopf('stern', gesternt, 'Nicht mehr verfolgen', 'Verfolgen', 'star', 'star_border', (an) => speicher.stern(t.key, an)),
+                z.art === 'fertig' ? null : knopf('glocke', glocke, 'Benachrichtigung aus', 'Benachrichtigung an', 'notifications', 'notifications_off', (an) => speicher.glocke(t.key, an))),
+            z.zeile1 && h('div', { class: 'zeile' }, z.zeile1),
+            z.zeile2 && h('div', { class: `zeile status ${z.art}` }, z.zeile2)));
 }
 
 const KEINE_MATTE_MEHR = new Set(['keine_weiteren', 'abgeschlossen', 'nicht_erschienen']);

@@ -21,10 +21,11 @@ export function pruefePaket(paket) {
     for (const feld of ['vereine', 'matten', 'teilnehmer', 'warteschlangen']) {
         if (!Array.isArray(paket[feld])) return `${feld} fehlt`;
     }
-    for (const feld of ['pools', 'kaempfe']) {
+    for (const feld of ['pools', 'kaempfe', 'mannschaften', 'begegnungen']) {
         if (paket[feld] !== undefined && !Array.isArray(paket[feld])) return `${feld} muss eine Liste sein`;
     }
     if ((paket.pools || []).length > 2000 || (paket.kaempfe || []).length > 20000) return 'zu viele Pools oder Kämpfe';
+    if ((paket.mannschaften || []).length > 2000 || (paket.begegnungen || []).length > 20000) return 'zu viele Mannschaften oder Begegnungen';
     if (paket.teilnehmer.length > MAX_TEILNEHMER) return 'zu viele Teilnehmer';
     for (const t of paket.teilnehmer) {
         if (!t || typeof t.key !== 'string' || !t.key || typeof t.zustand !== 'string') return 'Teilnehmer ungültig';
@@ -102,6 +103,49 @@ function kampfZeilen(turnierKey, kaempfe) {
     return zeilen;
 }
 
+function mannschaftsZeilen(turnierKey, liste, matten) {
+    const gesehen = new Set();
+    const zeilen = [];
+    for (const m of liste || []) {
+        if (!m || typeof m.key !== 'string' || !m.key || gesehen.has(m.key)) continue;
+        const key = text(m.key, 64);
+        gesehen.add(m.key);
+        const mitglieder = (Array.isArray(m.mitglieder) ? m.mitglieder : []).slice(0, 40).map(x => ({
+            vorname: text(x?.vorname), nachname: text(x?.nachname), gewichtsklasse: text(x?.gewichtsklasse, 20)
+        }));
+        zeilen.push({
+            turnier_key: turnierKey, key, bezeichnung: text(m.bezeichnung, 200), verein_key: text(m.vereinKey, 64),
+            verein: text(m.verein, 200),
+            suche: suchtextFuer(m.bezeichnung, `${m.verein ?? ''} ${mitglieder.map(x => `${x.vorname} ${x.nachname}`).join(' ')}`),
+            pool_id: ganzzahl(m.poolId), pool_bezeichnung: text(m.poolBezeichnung, 200), modus: text(m.modus, 60),
+            pool_status: text(m.poolStatus, 40), altersklasse: text(m.altersklasse, 20), geschlecht: text(m.geschlecht, 12),
+            matte_id: ganzzahl(m.matteId), matte_bezeichnung: text(m.matteBezeichnung, 100),
+            zustand: text(m.zustand, 40) || 'wartet', abstand: ganzzahl(m.abstand),
+            naechste_begegnung_id: ganzzahl(m.naechsteBegegnungId), gegner: text(m.gegner, 200),
+            siege: ganzzahl(m.siege) ?? 0, niederlagen: ganzzahl(m.niederlagen) ?? 0,
+            mitglieder: JSON.stringify(mitglieder)
+        });
+    }
+    void matten;
+    return zeilen;
+}
+
+function begegnungsZeilen(turnierKey, liste) {
+    const gesehen = new Set();
+    const zeilen = [];
+    for (const b of liste || []) {
+        if (!Number.isInteger(b?.id) || !Number.isInteger(b?.poolId) || gesehen.has(b.id)) continue;
+        gesehen.add(b.id);
+        const key = (wert) => (wert ? text(wert, 64) : null);
+        zeilen.push({
+            turnier_key: turnierKey, begegnung_id: b.id, pool_id: b.poolId, nr: text(b.nr, 30), runde: ganzzahl(b.runde),
+            status: text(b.status, 30), matte_id: ganzzahl(b.matteId), team1_key: key(b.team1), team2_key: key(b.team2),
+            s1: ganzzahl(b.s1) ?? 0, s2: ganzzahl(b.s2) ?? 0, sieger_key: key(b.sieger), abstand: ganzzahl(b.abstand)
+        });
+    }
+    return zeilen;
+}
+
 async function fuegeEin(trx, tabelle, zeilen) {
     for (let i = 0; i < zeilen.length; i += BLOCK) await trx(tabelle).insert(zeilen.slice(i, i + BLOCK));
 }
@@ -123,6 +167,8 @@ export async function uebernimmPaket(knex, paket, { jetzt = () => new Date() } =
                 await trx('live_kampf_positionen').where({ turnier_key: key }).del();
                 await trx('live_pools').where({ turnier_key: key }).del();
                 await trx('live_kaempfe').where({ turnier_key: key }).del();
+                await trx('live_mannschaften').where({ turnier_key: key }).del();
+                await trx('live_begegnungen').where({ turnier_key: key }).del();
                 // Push-Anmeldungen enden mit der Rücknahme (Spec Phase 3, Entscheidung 8); die Kindzeilen folgen per CASCADE.
                 await trx('live_push_abos').where({ turnier_key: key }).del();
                 await trx('live_turniere').where({ turnier_key: key })
@@ -148,6 +194,8 @@ export async function uebernimmPaket(knex, paket, { jetzt = () => new Date() } =
             await trx('live_kampf_positionen').where({ turnier_key: key }).del();
                 await trx('live_pools').where({ turnier_key: key }).del();
                 await trx('live_kaempfe').where({ turnier_key: key }).del();
+            await trx('live_mannschaften').where({ turnier_key: key }).del();
+            await trx('live_begegnungen').where({ turnier_key: key }).del();
         } else {
             await trx('live_turniere').insert({ turnier_key: key, ...kopf });
         }
@@ -155,6 +203,8 @@ export async function uebernimmPaket(knex, paket, { jetzt = () => new Date() } =
         await fuegeEin(trx, 'live_kampf_positionen', positionsZeilen(key, paket.warteschlangen));
         await fuegeEin(trx, 'live_pools', poolZeilen(key, paket.pools));
         await fuegeEin(trx, 'live_kaempfe', kampfZeilen(key, paket.kaempfe));
+        await fuegeEin(trx, 'live_mannschaften', mannschaftsZeilen(key, paket.mannschaften));
+        await fuegeEin(trx, 'live_begegnungen', begegnungsZeilen(key, paket.begegnungen));
         return 'uebernommen';
     });
 }
