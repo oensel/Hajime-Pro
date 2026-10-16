@@ -422,8 +422,11 @@ export async function aktualisierePoolGewichtsklassen(knex, req, res) {
         }
         const liste = [];
         for (const eintrag of roh) {
-            const text = String(eintrag ?? '').trim().replace(/\s*kg$/i, '').replace(',', '.');
-            if (!/^[+-]\d+(\.\d+)?$/.test(text)) {
+            // Suffix "kg" ohne Regex entfernen (ein Regex mit \s* wäre bei vielen Leerzeichen quadratisch)
+            let text = String(eintrag ?? '').trim();
+            if (text.toLowerCase().endsWith('kg')) text = text.slice(0, -2).trimEnd();
+            text = text.replace(',', '.');
+            if (text.length > 12 || !/^[+-]\d+(\.\d+)?$/.test(text)) {
                 return res.status(400).json({ success: false, error: `Ungültige Gewichtsklasse "${eintrag}" (erwartet z.B. -60 oder +90).` });
             }
             if (!liste.includes(text)) liste.push(text);
