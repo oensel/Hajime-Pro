@@ -38,6 +38,10 @@ Wie 2, dazu Internet: Updates beim Start, Austausch mit dem Cloud-Server, automa
 
 Vergleichstabelle und Hinweise zu Drucker, Dashboard, Kamera und Durchsagen: [`docs/betriebsmodi.md`](docs/betriebsmodi.md).
 
+## Preise & Features
+
+![Preise und Features der Tarife Randori, Dojo, Shiai und Arena](docs/img/preise.svg)
+
 ## Technik in Kürze
 
 Node.js (ES-Module) + Express, PostgreSQL (Hallen-Server: eingebettet, Cloud: Supabase oder eigener Server), Vanilla-JS-Frontend in `public/`, Desktop-Client (Electron), Android-App (Capacitor). Die Rolle eines Geräts bestimmt die Umgebungsvariable `BETRIEBSMODUS` (`cloud`, `server`, `client`).
