@@ -40,6 +40,8 @@
 #   --schnittstelle NAME            Netzwerkschnittstelle zum Router (Standard: die mit --eigene-ip)
 #   --vrrp-id N                     virtual_router_id, im Hallennetz eindeutig (Standard 51)
 #   --geheimnisse DATEI             Geheimnis-Datei von server1 (Standard /root/hajime-cluster-geheimnisse.env)
+#   --cloud-url URL                 Cloud, aus der die Turnierauswahl Turniere holen kann (CLOUD_URL; ohne Angabe bleibt
+#                                   ein bereits eingetragener Wert erhalten)
 #   --nur-konfig VERZEICHNIS        nur die Konfigurationsdateien erzeugen (zum Prüfen), nichts installieren
 #   -h, --help                      diese Hilfe
 #
@@ -62,7 +64,7 @@ MARKE_ANFANG="# >>> hajime-cluster (automatisch erzeugt, nicht von Hand ändern)
 MARKE_ENDE="# <<< hajime-cluster"
 
 KNOTEN=""; EIGENE_IP=""; PARTNER_IP=""; VIP=""; ZEUGE=""; SCHNITTSTELLE=""; VRRP_ID="51"
-GEHEIMNIS_DATEI=""; NUR_KONFIG=""; KOPPLUNGSCODE=""; KOPPLUNGSCODE_DATEI=""
+GEHEIMNIS_DATEI=""; NUR_KONFIG=""; KOPPLUNGSCODE=""; KOPPLUNGSCODE_DATEI=""; CLOUD_URL=""
 URSPRUENGLICHE_ARGUMENTE=("$@")
 REPO_URL_STANDARD="https://github.com/oensel/Hajime-Pro.git"
 KOPPLUNGS_DATEI="/root/hajime-kopplungscode.txt"
@@ -89,10 +91,17 @@ while [ $# -gt 0 ]; do
         --nur-konfig) NUR_KONFIG="${2:-}"; shift 2 ;;
         --kopplungscode) KOPPLUNGSCODE="${2:-}"; shift 2 ;;
         --kopplungscode-datei) KOPPLUNGSCODE_DATEI="${2:-}"; shift 2 ;;
+        --cloud-url) CLOUD_URL="${2:-}"; shift 2 ;;
         -h|--help) hilfe; exit 0 ;;
         *) fehler "Unbekannte Option: $1 (Hilfe: --help)" ;;
     esac
 done
+
+# CLOUD_URL aus der bisherigen .env behalten, wenn --cloud-url nicht angegeben wurde. Hier, nicht in
+# rendere_env: dessen Ausgabe wird per Pipe in dieselbe Datei geschrieben, die Datei wäre schon überschrieben.
+if [ -z "$CLOUD_URL" ] && [ -f "$ENV_DATEI" ]; then
+    CLOUD_URL="$(grep -E '^CLOUD_URL=' "$ENV_DATEI" | head -n1 | cut -d= -f2- || true)"
+fi
 
 ist_ipv4() {
     local ip="$1" teil
@@ -243,6 +252,7 @@ STEUERUNG_PASSWORD=$G_STEUERUNG_PASSWORD
 SUPER_ADMIN_INITIAL_PASSWORD=$G_SUPER_ADMIN_INITIAL_PASSWORD
 MDNS_NAME=$MDNS_NAME
 ${CLIENT_RELEASE_TOKEN:+CLIENT_RELEASE_TOKEN=$CLIENT_RELEASE_TOKEN}
+${CLOUD_URL:+CLOUD_URL=$CLOUD_URL}
 CLUSTER_KNOTEN=$KNOTEN
 CLUSTER_PARTNER_URL=http://$PARTNER_IP:$APP_PORT
 CLUSTER_VIP=$VIP

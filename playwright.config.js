@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
-import { BASE_URL, testServerEnv, pgDienstEnv, TEST_PG_BEREIT_PORT } from './tests/e2e/test-env.js';
+import {
+    BASE_URL, testServerEnv, pgDienstEnv, TEST_PG_BEREIT_PORT,
+    FAKE_CLOUD_PORT, FAKE_CLOUD_URL, FAKE_CLOUD_EMAIL, FAKE_CLOUD_PASSWORT
+} from './tests/e2e/test-env.js';
 
 export default defineConfig({
     testDir: './tests/e2e',
@@ -33,6 +36,15 @@ export default defineConfig({
             env: pgDienstEnv,
             reuseExistingServer: false,
             timeout: 120_000,
+            stdout: 'pipe',
+            stderr: 'pipe'
+        },
+        {
+            command: 'node tests/helpers/fake-cloud.mjs',
+            url: `${FAKE_CLOUD_URL}/api/auth/mode`,
+            env: { ...process.env, FAKE_CLOUD_PORT: String(FAKE_CLOUD_PORT), FAKE_CLOUD_EMAIL, FAKE_CLOUD_PASSWORT },
+            reuseExistingServer: false,
+            timeout: 15_000,
             stdout: 'pipe',
             stderr: 'pipe'
         },

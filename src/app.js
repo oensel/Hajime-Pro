@@ -16,6 +16,8 @@ import { getAuthRoutes } from './routes/authRoutes.js';
 import { initialisiere as initialisiereSteuerungPasswort } from './utils/steuerungPasswort.js';
 import { getVereinRoutes } from './routes/vereinRoutes.js';
 import { getTurnierRoutes } from './routes/turnierRoutes.js';
+import { getCloudRoutes } from './routes/cloudRoutes.js';
+import { erzeugeCloudZugriff } from './services/cloudZugriff.js';
 import { getTeilnehmerRoutes } from './routes/teilnehmerRoutes.js';
 import { getPoolRoutes } from './routes/poolRoutes.js';
 import { getKampfflaecheRoutes } from './routes/kampfflaecheRoutes.js';
@@ -305,6 +307,7 @@ if (syncKonfig.istClient) {
     app.use('/api/mannschaften', requireWriteAuth, getMannschaftRoutes(knex));
     app.use('/api/mannschaftskaempfe', requireWriteAuth, getMannschaftskampfRoutes(knex));
     app.use('/api/urkunden', requireWriteAuth, getUrkundenRoutes(knex));
+    app.use('/api/cloud', requireWriteAuth, getCloudRoutes(knex, { cloud: erzeugeCloudZugriff(), holeCluster: () => app.get('cluster') }));
     app.use('/api/sync', getSyncRoutes(() => app.get('sync')));
 
     // Teilnehmer-App (Phase 2): Ingest des Live-Prozesses und öffentliche App-API. Nur in der Cloud — ein Hallen-Server
