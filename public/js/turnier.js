@@ -13,6 +13,30 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // --- FARBE VON KÄMPFER 2: Umschalter Blau/Rot, der Wert liegt im versteckten Select ---
+    const farbSelect = document.getElementById('farbe_kaempfer2');
+    const farbSchalter = document.getElementById('farbSchalter');
+    function zeigeFarbSchalter() {
+        const rot = farbSelect.value === 'rot';
+        farbSchalter.classList.toggle('rot', rot);
+        farbSchalter.setAttribute('aria-checked', String(rot));
+        const blauEl = document.getElementById('farbSchalterBlau');
+        const rotEl = document.getElementById('farbSchalterRot');
+        blauEl.classList.toggle('aktiv', !rot);
+        rotEl.classList.toggle('aktiv', rot);
+        blauEl.innerHTML = (rot ? '' : '<i class="farb-schalter-punkt"></i>') + 'Blau';
+        rotEl.innerHTML = (rot ? '<i class="farb-schalter-punkt"></i>' : '') + 'Rot';
+    }
+    function wechsleFarbe() {
+        farbSelect.value = farbSelect.value === 'rot' ? 'blau' : 'rot';
+        zeigeFarbSchalter();
+    }
+    farbSchalter.addEventListener('click', wechsleFarbe);
+    farbSchalter.addEventListener('keydown', (e) => {
+        if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); wechsleFarbe(); }
+    });
+    zeigeFarbSchalter();
+
     // --- AUSSCHREIBUNG (PDF) ---
     // ausschreibungPdfBase64: undefined = beim Speichern unverändert lassen, String = neue Datei
     // hochladen, null = ausdrücklich entfernen (siehe baueAusschreibungFragment in
@@ -341,6 +365,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('ausrichter').value = turnier.ausrichter || '';
             document.getElementById('anzahl_kampfflaechen').value = turnier.anzahl_kampfflaechen || 1;
             document.getElementById('farbe_kaempfer2').value = turnier.farbe_kaempfer2 === 'rot' ? 'rot' : 'blau';
+            zeigeFarbSchalter();
             document.getElementById('startgeld').value = turnier.startgeld !== null && turnier.startgeld !== undefined ? turnier.startgeld : '';
             document.getElementById('iban').value = turnier.iban || '';
             document.getElementById('kontoinhaber').value = turnier.kontoinhaber || '';
@@ -759,7 +784,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (importTurnierBtn && !istOffline && wettkampftagErreicht && ['anmeldung_geschlossen', 'in_durchfuehrung'].includes(statusEffektiv)) {
                 importTurnierBtn.style.display = 'inline-flex';
             }
-            if (veroeffentlichenBtn && status === 'entwurf') {
+            if (veroeffentlichenBtn && !istOffline && status === 'entwurf') {
                 veroeffentlichenBtn.style.display = 'inline-flex';
             }
             if (durchfuehrungBeendenBtn && statusEffektiv === 'in_durchfuehrung' && wettkampftagErreicht) {
