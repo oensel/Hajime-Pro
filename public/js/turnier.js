@@ -656,22 +656,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            // Hallen-Server mit Sync trägt genau ein Turnier: eine Neuanlage löscht das bisherige
-            // komplett (siehe Spec CouchDB-Umbau Abschnitt 8) — vorher ausdrücklich nachfragen.
-            if (!turnierId) {
-                const syncStatus = await fetch('/api/sync/status').then(r => r.json()).catch(() => ({}));
-                if (syncStatus.rolle === 'server' && syncStatus.instanz_id) {
-                    const bestaetigt = window.zeigeZentraleBestaetigung
-                        ? await window.zeigeZentraleBestaetigung(
-                            'Auf diesem Hallen-Server wird immer nur ein Turnier ausgetragen. Das Anlegen löscht alle Daten des bisherigen Turniers (Teilnehmer, Pools, Kämpfe). Fortfahren?',
-                            'Neues Turnier anlegen',
-                            'warning'
-                        )
-                        : confirm('Alle Daten des bisherigen Turniers auf diesem Server werden gelöscht. Fortfahren?');
-                    if (!bestaetigt) return;
-                }
-            }
-
             // Endpoint und Methode dynamisch anpassen (PUT bei Update, POST bei Neuanlage)
             const url = turnierId ? `/api/turniere/${turnierId}` : '/api/turniere';
             const method = turnierId ? 'PUT' : 'POST';
@@ -786,6 +770,20 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (veroeffentlichenBtn && !istOffline && status === 'entwurf') {
                 veroeffentlichenBtn.style.display = 'inline-flex';
+            }
+            // Hallen-Server: mehrere Turniere nebeneinander, eines aktiv (Aktivieren nur am Wettkampftag)
+            const aktivierenBtn = document.getElementById('aktivierenBtn');
+            const duplizierenBtn = document.getElementById('duplizierenBtn');
+            if (istOffline && duplizierenBtn) {
+                duplizierenBtn.style.display = 'inline-flex';
+                duplizierenBtn.onclick = () => window.TurnierDuplizieren.oeffne(
+                    { id: turnier.id, bezeichnung: turnier.bezeichnung },
+                    (neueId) => { window.location.href = `/turnier.html?id=${neueId}`; }
+                );
+            }
+            if (istOffline && aktivierenBtn && turnier.aktivierbar) {
+                aktivierenBtn.style.display = 'inline-flex';
+                aktivierenBtn.onclick = () => fuehreLebenszyklusAktionAus('aktivieren', 'Turnier aktiviert.');
             }
             if (durchfuehrungBeendenBtn && statusEffektiv === 'in_durchfuehrung' && wettkampftagErreicht) {
                 durchfuehrungBeendenBtn.style.display = 'inline-flex';

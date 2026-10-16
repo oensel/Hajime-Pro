@@ -133,8 +133,8 @@ test('Alters- und Mannschaftsklassen auswählen und mit dem Turnier speichern', 
     const antwort = await page.request.post(`/api/turniere/${turnierIdAusUrl}/veroeffentlichen`);
     expect(antwort.ok()).toBeTruthy();
 
-    // --- turniere.html: Status ist jetzt von "Entwurf" auf "Anmeldung läuft" gewechselt ---
+    // --- turniere.html: Status ist jetzt von "Entwurf" auf "Geplant" gewechselt (Hallen-Server-Bezeichnung) ---
     await page.goto('/turniere.html');
     const karteVeroeffentlicht = page.locator('.tournament-card').filter({ hasText: TURNIER_NAME_KLASSEN });
-    await expect(karteVeroeffentlicht.locator('.status-badge')).toHaveText('Anmeldung läuft');
+    await expect(karteVeroeffentlicht.locator('.status-badge')).toHaveText('Geplant');
 });

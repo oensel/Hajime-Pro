@@ -1,5 +1,5 @@
 import express from 'express';
-import { createTurnier, updateTurnier, getTurnier, getTurniere, deleteTurnier, exportTurnier, importTurnier, importTurnierErgebnisse, veroeffentlicheTurnier, sageTurnierAb, beendeDurchfuehrung, ladeAusschreibung, leseLiveFreigabe, setzeLiveFreigabe } from '../controllers/turnierController.js';
+import { createTurnier, updateTurnier, getTurnier, getTurniere, deleteTurnier, exportTurnier, importTurnier, importTurnierErgebnisse, veroeffentlicheTurnier, sageTurnierAb, beendeDurchfuehrung, ladeAusschreibung, leseLiveFreigabe, setzeLiveFreigabe, aktiviereTurnierRoute, dupliziereTurnier } from '../controllers/turnierController.js';
 import { requireAuth, requireTournamentEditAccess, requireVereinFreigabe } from '../middleware/auth.js';
 
 export function getTurnierRoutes(knex) {
@@ -28,6 +28,8 @@ export function getTurnierRoutes(knex) {
     router.post('/:id/veroeffentlichen', requireTournamentEditAccess(knex), requireVereinFreigabe(knex), (req, res) => veroeffentlicheTurnier(knex, req, res));
     router.post('/:id/absagen', requireTournamentEditAccess(knex), requireVereinFreigabe(knex), (req, res) => sageTurnierAb(knex, req, res));
     router.post('/:id/durchfuehrung-beenden', requireTournamentEditAccess(knex), requireVereinFreigabe(knex), (req, res) => beendeDurchfuehrung(knex, req, res));
+    router.post('/:id/aktivieren', requireTournamentEditAccess(knex), requireVereinFreigabe(knex), (req, res) => aktiviereTurnierRoute(knex, req, res));
+    router.post('/:id/duplizieren', requireTournamentEditAccess(knex), requireVereinFreigabe(knex), (req, res) => dupliziereTurnier(knex, req, res));
 
     // Live-Freigabe für die Teilnehmer-App (Hallen-Server, Opt-in des Veranstalters)
     router.get('/:id/live-freigabe', (req, res) => leseLiveFreigabe(knex, req, res));

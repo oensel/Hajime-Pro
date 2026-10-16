@@ -175,6 +175,41 @@
             border: 1px dashed var(--border);
             color: var(--text-muted);
         }
+        .tournament-card.aktiv {
+            border: 2px solid var(--primary);
+        }
+        .status-badge.status-aktiv {
+            background: rgba(21, 101, 192, 0.1);
+            color: #1565c0;
+            border: 1px solid rgba(21, 101, 192, 0.3);
+        }
+        .status-badge.status-geplant {
+            background: rgba(239, 108, 0, 0.1);
+            color: #ef6c00;
+            border: 1px solid rgba(239, 108, 0, 0.3);
+        }
+        .btn-aktivieren {
+            background: rgba(46, 125, 50, 0.12);
+            color: #2e7d32;
+            border: 1px solid rgba(46, 125, 50, 0.4);
+        }
+        .abgeschlossen-liste { display: flex; flex-direction: column; gap: 5px; margin-top: 12px; }
+        .abgeschlossen-zeile {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 6px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            background: rgba(0, 0, 0, 0.02);
+            color: var(--text-muted);
+            font-size: 12px;
+            opacity: 0.8;
+            filter: grayscale(0.5);
+        }
+        .abgeschlossen-zeile .material-icons { font-size: 16px; }
+        .abgeschlossen-zeile .az-name { flex: 1; font-weight: 700; }
+        .abgeschlossen-zeile .btn { padding: 2px 10px; font-size: 11px; margin: 0; }
         .card-actions {
             display: flex;
             gap: 10px;
@@ -366,6 +401,7 @@
 </div>
 
 <script src="/js/ausschreibung-viewer.js"></script>
+<script src="/js/turnierDuplizieren.js"></script>
 <script>
     async function ladeBenutzerStatus() {
         const meResp = await fetch('/api/auth/me');
@@ -507,9 +543,10 @@
 
         // Turnier-Import (aus einer zuvor exportierten JSON-Datei) gibt es nur offline —
         // online werden Turniere über die Vereinszugehörigkeit verwaltet, nicht per Datei.
+        let istOffline = false;
         try {
             const configResp = await fetch('/api/config');
-            const istOffline = configResp.ok && !!(await configResp.json()).isOffline;
+            istOffline = configResp.ok && !!(await configResp.json()).isOffline;
 
             const importTurnierBtn = document.getElementById('importTurnierBtn');
             if (importTurnierBtn) importTurnierBtn.style.display = istOffline ? 'inline-flex' : 'none';
@@ -527,9 +564,9 @@
             // Timeout) — bei Ablehnung/Timeout/fehlender Unterstützung bleibt "Entfernung"
             // einfach aus, ohne den Rest der Seite zu blockieren.
             const standort = await ermittleStandort();
-            const zukuenftigUrl = standort
-                ? `/api/turniere?zukuenftig=true&lat=${standort.lat}&lon=${standort.lon}`
-                : '/api/turniere?zukuenftig=true';
+            // Hallen-Server: alle Turniere (auch abgeschlossene, kompakt am Ende der Liste)
+            const abfrage = [istOffline ? '' : 'zukuenftig=true', standort ? `lat=${standort.lat}&lon=${standort.lon}` : ''].filter(Boolean);
+            const zukuenftigUrl = '/api/turniere' + (abfrage.length ? '?' + abfrage.join('&') : '');
 
             const response = await fetch(zukuenftigUrl);
             if (!response.ok) {
@@ -588,10 +625,28 @@
                 abgesagt: 'Abgesagt'
             };
 
+            // Hallen-Server: aktiv / geplant (Entwurf bleibt Entwurf) statt der Anmelde-Zustände
+            function hallenStatus(t) {
+                if (t.aktiv) return { klasse: 'aktiv', label: 'Aktiv' };
+                if (t.status === 'abgeschlossen') return { klasse: 'abgeschlossen', label: 'Abgeschlossen' };
+                if (t.status === 'abgesagt') return { klasse: 'abgesagt', label: 'Abgesagt' };
+                if (t.status === 'entwurf') return { klasse: 'entwurf', label: 'Entwurf' };
+                return { klasse: 'geplant', label: 'Geplant' };
+            }
+
+            function hallenAktionen(t) {
+                const aktivieren = t.aktivierbar
+                    ? `<button type="button" class="btn btn-aktivieren" data-aktion="aktivieren" data-id="${t.id}">Aktivieren</button>` : '';
+                const duplizieren = `<button type="button" class="btn btn-outlined" data-aktion="duplizieren" data-id="${t.id}">Duplizieren</button>`;
+                return aktivieren + duplizieren;
+            }
+
             function renderCard(t, isEditable) {
                 let deadlineExpired = false;
                 let deadlineStr = 'Keine Frist';
-                const statusLabel = STATUS_LABELS[t.status_effektiv] || t.status_effektiv || '';
+                const hallen = istOffline ? hallenStatus(t) : null;
+                const statusLabel = hallen ? hallen.label : (STATUS_LABELS[t.status_effektiv] || t.status_effektiv || '');
+                const statusKlasse = hallen ? hallen.klasse : t.status_effektiv;
 
                 if (t.anmeldeschluss) {
                     // Anmeldeschluss gilt bis einschließlich 24:00 Uhr Ortszeit dieses Tages
@@ -625,9 +680,9 @@
                 }
 
                 return `
-                    <div class="tournament-card ${deadlineExpired ? 'expired' : ''}">
+                    <div class="tournament-card ${!istOffline && deadlineExpired ? 'expired' : ''} ${t.aktiv ? 'aktiv' : ''}">
                         <div>
-                            <h2 class="tournament-name">${t.bezeichnung}<span class="status-badge status-${t.status_effektiv}">${statusLabel}</span></h2>
+                            <h2 class="tournament-name">${t.bezeichnung}<span class="status-badge status-${statusKlasse}">${statusLabel}</span></h2>
                             <div class="tournament-details">
                                 <div class="detail-item">
                                     <span class="material-icons">calendar_today</span>
@@ -702,12 +757,63 @@
                                  des EIGENEN Turniers braucht die Freigabe. -->
                             ${(istFreigegeben || !isEditable) ? `<button type="button" class="btn btn-raised" onclick="window.location.href='/teilnehmer.html?turnierId=${t.id}'">Auswählen</button>` : ''}
                             ${isEditable && istFreigegeben ? `<button type="button" class="btn btn-outlined" onclick="window.location.href='/turnier.html?id=${t.id}'">Bearbeiten</button>` : ''}
+                            ${istOffline ? hallenAktionen(t) : ''}
                         </div>
                     </div>
                 `;
             }
 
             let htmlContent = '';
+
+            if (istOffline) {
+                const aktives = turniere.filter(t => t.aktiv);
+                const geplant = turniere.filter(t => !t.aktiv && !['abgeschlossen', 'abgesagt'].includes(t.status))
+                    .sort((a, b) => String(a.datum).localeCompare(String(b.datum)));
+                const fertig = turniere.filter(t => !t.aktiv && ['abgeschlossen', 'abgesagt'].includes(t.status));
+                const datumKurz = (d) => { const o = new Date(d); return `${String(o.getDate()).padStart(2, '0')}.${String(o.getMonth() + 1).padStart(2, '0')}.${o.getFullYear()}`; };
+
+                if (aktives.length) {
+                    htmlContent += `<h2 class="section-title"><span class="material-icons" style="font-size:20px;">play_arrow</span> Aktives Turnier</h2>
+                        <div class="tournaments-grid">${aktives.map(t => renderCard(t, true)).join('')}</div>`;
+                }
+                if (geplant.length) {
+                    htmlContent += `<h2 class="section-title"><span class="material-icons" style="font-size:20px;">schedule</span> Geplant und Entwürfe</h2>
+                        <div class="tournaments-grid">${geplant.map(t => renderCard(t, true)).join('')}</div>`;
+                }
+                if (fertig.length) {
+                    htmlContent += `<h2 class="section-title"><span class="material-icons" style="font-size:20px;">inventory_2</span> Abgeschlossen</h2>
+                        <div class="abgeschlossen-liste">${fertig.map(t => `
+                            <div class="abgeschlossen-zeile" data-turnier-id="${t.id}">
+                                <span class="material-icons">${t.status === 'abgesagt' ? 'cancel' : 'check'}</span>
+                                <span class="az-name">${t.bezeichnung}</span>
+                                <span>${datumKurz(t.datum)}</span>
+                                <span>${t.ort}</span>
+                                <span>${t.teilnehmer_anzahl || 0} Teilnehmer</span>
+                                <button type="button" class="btn btn-outlined" data-aktion="duplizieren" data-id="${t.id}">Duplizieren</button>
+                            </div>`).join('')}</div>`;
+                }
+                container.innerHTML = htmlContent;
+
+                container.addEventListener('click', async (e) => {
+                    const knopf = e.target.closest('button[data-aktion]');
+                    if (!knopf) return;
+                    const turnier = turniere.find(t => String(t.id) === knopf.dataset.id);
+                    if (knopf.dataset.aktion === 'duplizieren') {
+                        window.TurnierDuplizieren.oeffne(turnier, () => window.location.reload());
+                    } else if (knopf.dataset.aktion === 'aktivieren') {
+                        knopf.disabled = true;
+                        const resp = await fetch(`/api/turniere/${knopf.dataset.id}/aktivieren`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+                        const daten = await resp.json().catch(() => ({}));
+                        if (!resp.ok) {
+                            knopf.disabled = false;
+                            if (window.zeigeNotification) window.zeigeNotification(daten.error || 'Aktivieren fehlgeschlagen.', 'error');
+                            return;
+                        }
+                        window.location.reload();
+                    }
+                });
+                return;
+            }
 
             // Section 1: Eigene Turniere (Only if exists)
             if (eigeneTurniere.length > 0) {
@@ -757,15 +863,6 @@
             const file = importTurnierFileInput.files[0];
             importTurnierFileInput.value = '';
             if (!file) return;
-
-            const bestaetigt = window.zeigeZentraleBestaetigung
-                ? await window.zeigeZentraleBestaetigung(
-                    'Der Import löscht alle bestehenden Turniere auf diesem Gerät (inkl. Pools, Kämpfe und Teilnehmer) und ersetzt sie durch das importierte Turnier. Fortfahren?',
-                    'Turnier importieren',
-                    'warning'
-                )
-                : confirm('Der Import löscht alle bestehenden Turniere auf diesem Gerät. Fortfahren?');
-            if (!bestaetigt) return;
 
             importTurnierStatus.style.display = 'block';
             importTurnierStatus.textContent = `Importiere "${file.name}" ...`;
@@ -867,15 +964,6 @@
         }
 
         async function holen(id, name) {
-            const bestaetigt = window.zeigeZentraleBestaetigung
-                ? await window.zeigeZentraleBestaetigung(
-                    `Das Turnier "${name}" wird aus der Cloud geholt. Das löscht alle bestehenden Turniere auf diesem Gerät (inkl. Pools, Kämpfe und Teilnehmer). Fortfahren?`,
-                    'Turnier aus der Cloud holen',
-                    'warning'
-                )
-                : confirm('Das Holen löscht alle bestehenden Turniere auf diesem Gerät. Fortfahren?');
-            if (!bestaetigt) return;
-
             zeigeFehler('');
             liste.querySelectorAll('.cloud-holen').forEach(b => { b.disabled = true; });
             try {

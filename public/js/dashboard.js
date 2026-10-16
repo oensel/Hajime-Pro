@@ -18,7 +18,10 @@ async function zeigeTurnierAuswahlModal() {
     try {
         const response = await fetch('/api/turniere');
         if (!response.ok) throw new Error('Fehler beim Laden der Turniere.');
-        const turniere = await response.json();
+        const alleTurniere = await response.json();
+        // Mehrere Turniere am Hallen-Server: das aktive Turnier, sonst alle noch nicht beendeten
+        const aktiveTurniere = alleTurniere.filter(t => t.aktiv);
+        const turniere = aktiveTurniere.length ? aktiveTurniere : alleTurniere.filter(t => !['abgeschlossen', 'abgesagt'].includes(t.status));
 
         if (turniere.length === 0) {
             alert('Keine aktiven Turniere in der Datenbank vorhanden.');
