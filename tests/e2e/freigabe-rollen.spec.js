@@ -1,7 +1,8 @@
 // End-to-End: Freigabe offener Beitrittsanfragen mit Rollenwahl (turniere.html, profil.html) und die
 // Mitgliederverwaltung in profil.html (Helferverwaltung, Spec 3/4). Läuft als offline_user, der
 // freigegebener Admin von "Offline Club" ist (requireAuth-Bootstrap im Einzelbenutzerbetrieb); die
-// Antragsteller werden direkt in der Test-DB angelegt (siehe registrierung.spec.js).
+// Antragsteller werden direkt in der Test-DB angelegt (siehe registrierung.spec.js). Rollen und
+// Mitgliederverwaltung zeigt profil.html nur in der Cloud: dafür wird /api/config per page.route ersetzt.
 import { test, expect } from '@playwright/test';
 import knexLib from 'knex';
 import { testDbVerbindung } from './test-env.js';
@@ -16,6 +17,8 @@ async function mitTestDb(fn) {
 }
 
 const lauf = Date.now();
+const alsCloud = (page) => page.route('**/api/config',
+    (route) => route.fulfill({ json: { isOffline: false, syncRolle: null, betriebsmodus: 'cloud' } }));
 
 async function legeAntragstellerAn(request, kennung, angefragtUeber) {
     // "Offline Club" entsteht beim ersten angemeldeten Aufruf
@@ -50,6 +53,7 @@ test('turniere.html: Freigabe sendet die gewählte Rolle, Vorbelegung Helfer bei
 
 test('profil.html: Freigabe mit Rollenwahl, Rolle ändern und Mitglied entfernen', async ({ page }) => {
     const { id, vereinId } = await legeAntragstellerAn(page.request, 'profil', 'verwaltung');
+    await alsCloud(page);
     await page.goto('/profil.html');
 
     // Rolle je Verein in "Meine Vereine"
@@ -88,6 +92,7 @@ test('profil.html: Herabstufen des letzten Admins zeigt die Meldung des Servers'
         return vid;
     });
     try {
+        await alsCloud(page);
         await page.goto('/profil.html');
         const eigene = page.locator(`#mitgliederBereich [data-verein-id="${vereinId}"] tr[data-user-id="offline_user"]`);
         await expect(eigene.locator('select')).toHaveValue('admin');
@@ -102,4 +107,14 @@ test('profil.html: Herabstufen des letzten Admins zeigt die Meldung des Servers'
             await db('vereine').where({ id: vereinId }).del();
         });
     }
+});
+
+test('profil.html im Einzelbenutzerbetrieb: keine Mitgliederverwaltung, Status ohne Rolle', async ({ page }) => {
+    expect((await page.request.get('/api/auth/me')).ok()).toBeTruthy();
+    const vereinId = await mitTestDb(async (db) => (await db('vereine').where({ name: 'Offline Club' }).first()).id);
+    await page.goto('/profil.html');
+    await expect(page.locator(`#meineVereineListe [data-verein-id="${vereinId}"] .verein-mitglied-status`))
+        .toHaveText('Freigegeben');
+    await expect(page.locator('#mitgliederCard')).toBeHidden();
+    await expect(page.locator('#mitgliederBereich section')).toHaveCount(0);
 });

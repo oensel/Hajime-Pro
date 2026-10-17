@@ -404,8 +404,10 @@
             return antwort;
         }
 
+        // Im Einzelbenutzerbetrieb (Hallen-Server) gibt es keine Rollen: Anzeige wie vor der Helferverwaltung.
         function statusText(v) {
             if (!v.freigegeben) return 'Freigabe ausstehend';
+            if (einzelbenutzer) return 'Freigegeben';
             return v.rolle ? `Freigegeben als ${ROLLEN_TEXT[v.rolle] || v.rolle}` : 'Freigegeben';
         }
 
@@ -571,10 +573,11 @@
             ladeUndRendereErstregistrierungen();
         }
 
-        // --- MITGLIEDERVERWALTUNG (Admins des Vereins, Super-Admins) ---
+        // --- MITGLIEDERVERWALTUNG (Admins des Vereins, Super-Admins; nur in der Cloud) ---
         // Rolle ändern (/api/vereine/rolle) und Entfernen (/api/vereine/entfernen); der Server lehnt z. B. das
         // Herabstufen oder Entfernen des letzten Admins ab, die Meldung erscheint als Snackbar.
         function verwalteteVereine() {
+            if (einzelbenutzer) return [];
             if (!aktuellerNutzer || !Array.isArray(aktuellerNutzer.vereine)) return [];
             return aktuellerNutzer.vereine.filter(v =>
                 aktuellerNutzer.ist_super_admin || (v.freigegeben && rolleReicht(v.rolle, 'admin')));
