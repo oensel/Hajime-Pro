@@ -1930,7 +1930,10 @@ export async function getZeitprognose(knex, req, res) {
 // ungefähr fertig ist. Beginn und Kampfzeit je Altersklasse gibt der Benutzer vor; nichts wird gespeichert.
 export async function simuliereZeitplanEndpunkt(knex, req, res) {
     try {
-        const { turnierId, beginn, kampfzeitJeAltersklasse } = req.body || {};
+        const { beginn, kampfzeitJeAltersklasse } = req.body || {};
+        // Das Turnier, für das requireTournamentEditAccess die Berechtigung geprüft hat (nicht blind der Body);
+        // im Einzelbenutzerbetrieb gibt es keine Prüfung, dort gilt der Body.
+        const turnierId = req.tournament?.id ?? req.body?.turnierId;
         if (!turnierId) {
             return res.status(400).json({ success: false, error: 'turnierId ist erforderlich' });
         }

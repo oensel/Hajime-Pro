@@ -39,6 +39,12 @@ const HINWEIS = {
     nicht_erschienen: 'nicht erschienen'
 };
 
+// Voraussichtliche Uhrzeit (ms seit Epoch) als "ca. HH:MM"; ohne Wert leer.
+export function prognoseUhrzeit(ms) {
+    if (ms == null || !Number.isFinite(Number(ms))) return '';
+    return 'ca. ' + new Date(Number(ms)).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+}
+
 function kampfText(t) {
     switch (t.zustand) {
         case 'laeuft': return { text: 'läuft jetzt', art: 'laeuft' };
@@ -58,7 +64,10 @@ export function kachelZeilen(t) {
         return { titel, zeile1, zeile2: null, zeile3: `Abgeschlossen${platz}`, art: 'fertig' };
     }
     const kampf = kampfText(t);
-    if (kampf) return { titel, zeile1, zeile2: `nächster Kampf: ${kampf.text}`, zeile3: null, art: kampf.art };
+    if (kampf) {
+        const uhrzeit = prognoseUhrzeit(t.voraussichtlichUm);
+        return { titel, zeile1, zeile2: `nächster Kampf: ${kampf.text}${uhrzeit ? ` (${uhrzeit})` : ''}`, zeile3: null, art: kampf.art };
+    }
     return { titel, zeile1, zeile2: HINWEIS[t.zustand] ?? null, zeile3: null, art: 'info' };
 }
 

@@ -1,6 +1,7 @@
 // Lesende Abfragen der öffentlichen App-API (Spec 6.1). Alle Antworten sind auf die Felder der Kachel beschränkt;
 // Aufzählungen ohne Suchbegriff gibt es nur je Pool oder je Verein.
 import { suchbegriffe, suchtextFuer } from './suchtext.js';
+import { startNachAbstand } from '../shared/zeitPrognose.js';
 
 export const MAX_TREFFER = 20;
 export const MAX_SCHLUESSEL = 200;
@@ -279,9 +280,15 @@ export async function poolStarts(knex, turnierKey) {
 async function mitPoolStart(knex, turnierKey, dtos) {
     if (!dtos.length) return dtos;
     const starts = await poolStarts(knex, turnierKey);
+    const kopf = await knex('live_turniere').where({ turnier_key: turnierKey }).first('stand', 'matten');
+    const standMs = kopf && kopf.stand ? new Date(kopf.stand).getTime() : NaN;
+    const dauerJeMatte = new Map((kopf && Array.isArray(kopf.matten) ? kopf.matten : []).map(m => [m.id, m.dauerSekunden]));
     return dtos.map(d => {
         const info = d.poolId != null ? starts.get(d.poolId) : null;
-        return { ...d, poolBegonnen: info ? info.begonnen : false, poolStartetIn: info ? info.startetIn : null };
+        // Voraussichtlicher Beginn des nächsten Kampfes (ms): nur, solange er noch aussteht.
+        const wartet = d.zustand === 'in_n' || d.zustand === 'als_naechstes';
+        const voraussichtlichUm = wartet ? startNachAbstand(standMs, d.zustand === 'als_naechstes' ? 0 : d.abstand, dauerJeMatte.get(d.matteId)) : null;
+        return { ...d, voraussichtlichUm, poolBegonnen: info ? info.begonnen : false, poolStartetIn: info ? info.startetIn : null };
     });
 }
 

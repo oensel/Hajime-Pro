@@ -100,3 +100,9 @@ export function simuliereZeitplan({ matten, beginnMs, kampfzeitJeAltersklasse = 
 export function formatUhrzeit(ms) {
     return new Date(ms).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 }
+
+/** Voraussichtlicher Beginn eines Kampfes, vor dem `abstand` Kämpfe offen sind (Teilnehmer-App). */
+export function startNachAbstand(standMs, abstand, dauerSekunden) {
+    if (!Number.isFinite(standMs) || !Number.isInteger(abstand) || !(Number(dauerSekunden) > 0)) return null;
+    return standMs + abstand * Number(dauerSekunden) * 1000;
+}
