@@ -63,6 +63,35 @@ export async function requireAuth(req, res, next) {
 }
 
 /**
+ * Turnier-ID zu einer Tätigkeit, einem Slot oder einem Einsatz des Helferplans (genau eine Angabe).
+ * @returns {Promise<number|null>} null, wenn der Datensatz nicht existiert
+ */
+export async function ermittleHelferplanTurnierId(knex, { taetigkeitId, slotId, einsatzId }) {
+    const ganzzahl = (w) => (/^\d+$/.test(String(w)) ? parseInt(w, 10) : null);
+    let abfrage;
+    if (taetigkeitId != null) {
+        const tid = ganzzahl(taetigkeitId);
+        if (tid == null) return null;
+        abfrage = knex('helfer_taetigkeiten as t').where('t.id', tid);
+    } else if (slotId != null) {
+        const sid = ganzzahl(slotId);
+        if (sid == null) return null;
+        abfrage = knex('helfer_slots as s').join('helfer_taetigkeiten as t', 't.id', 's.taetigkeit_id').where('s.id', sid);
+    } else if (einsatzId != null) {
+        const eid = ganzzahl(einsatzId);
+        if (eid == null) return null;
+        abfrage = knex('helfer_einsaetze as e')
+            .join('helfer_slots as s', 's.id', 'e.slot_id')
+            .join('helfer_taetigkeiten as t', 't.id', 's.taetigkeit_id')
+            .where('e.id', eid);
+    } else {
+        return null;
+    }
+    const zeile = await abfrage.first('t.turnier_id');
+    return zeile ? zeile.turnier_id : null;
+}
+
+/**
  * Resolves the turnierId a request refers to, from path parameters, query params,
  * request body, or by looking up the referenced pool/teilnehmer/kampfflaeche/kampf.
  * Used by requireTournamentEditAccess.
@@ -71,6 +100,16 @@ export async function requireAuth(req, res, next) {
  * @returns {Promise<string|number|null>}
  */
 async function resolveTurnierId(knex, req) {
+    // Helferplan (/api/helfer-plan): Tätigkeits-, Slot- und Einsatz-IDs im Pfad bestimmen das Turnier allein —
+    // eine turnierId in Body/Query darf sie nicht überstimmen (sonst autorisiert das Gate ein anderes Turnier
+    // als das, zu dem der Datensatz gehört). Unbekannte ID → null (die Routen melden vorher 404).
+    if (req.baseUrl === '/api/helfer-plan') {
+        const { taetigkeitId, slotId, einsatzId } = req.params || {};
+        if (taetigkeitId || slotId || einsatzId) {
+            return ermittleHelferplanTurnierId(knex, { taetigkeitId, slotId, einsatzId });
+        }
+    }
+
     // Extract turnierId from path parameters, query params, or request body.
     let turnierId = req.params.turnierId || req.query.turnierId || req.body.turnierId || req.body.turnier_id;
 

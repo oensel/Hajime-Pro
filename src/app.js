@@ -27,6 +27,8 @@ import { getKampfRoutes } from './routes/kampfRoutes.js';
 import { getMannschaftRoutes, getMannschaftskampfRoutes } from './routes/mannschaftRoutes.js';
 import { getUrkundenRoutes } from './routes/urkundenRoutes.js';
 import { getLiveRoutes } from './routes/liveRoutes.js';
+import { getHelferRoutes } from './routes/helferRoutes.js';
+import { getHelferPlanRoutes } from './routes/helferPlanRoutes.js';
 import { starteAufbewahrung } from './liveCloud/aufbewahrung.js';
 import { liesPushKonfig } from './liveCloud/pushKonfig.js';
 import { erzeugeSender } from './liveCloud/pushSender.js';
@@ -312,6 +314,12 @@ if (syncKonfig.istClient) {
     app.use('/api/mannschaften', requireWriteAuth, getMannschaftRoutes(knex));
     app.use('/api/mannschaftskaempfe', requireWriteAuth, getMannschaftskampfRoutes(knex));
     app.use('/api/urkunden', requireWriteAuth, getUrkundenRoutes(knex));
+    // Helferplan der Orga (Spec Helferverwaltung 6): überall, im Hallenbetrieb hinter dem Turnierleitungs-Passwort.
+    app.use('/api/helfer-plan', requireWriteAuth, getHelferPlanRoutes(knex));
+    // Helfer-App (Spec 5): nur in der Cloud; HELFER_APP_AKTIV=true schaltet sie für Tests im Modus server ein.
+    if (bm.istCloud || process.env.HELFER_APP_AKTIV === 'true') {
+        app.use('/api/helfer', getHelferRoutes(knex));
+    }
     app.use('/api/cloud', requireWriteAuth, getCloudRoutes(knex, { cloud: erzeugeCloudZugriff(), holeCluster: () => app.get('cluster') }));
     app.use('/api/sync', getSyncRoutes(() => app.get('sync')));
 

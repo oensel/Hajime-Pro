@@ -93,6 +93,34 @@ function validiereZahlungsdaten(startgeld, iban, kontoinhaber, verwendungszweck)
     return null;
 }
 
+// Turnierzeit für den Helferplan (Spec Helferverwaltung 7): beginn_min/ende_min als ganze Minuten seit
+// Mitternacht (0..1440, optional, ende > beginn), waagen_anzahl 1..10. `bisher` = gespeicherte Werte (Update):
+// nicht mitgesendete Felder bleiben unverändert, leer ('' / null) entfernt die Uhrzeit.
+function leseTurnierzeit(body, bisher = null) {
+    const fragment = {};
+    const minuten = (wert, name) => {
+        if (wert === null || wert === '') return null;
+        const n = Number(wert);
+        if (!Number.isInteger(n) || n < 0 || n > 1440) {
+            throw new FachFehler(400, `${name} muss eine Uhrzeit zwischen 00:00 und 24:00 in ganzen Minuten sein.`);
+        }
+        return n;
+    };
+    if (body.beginn_min !== undefined) fragment.beginn_min = minuten(body.beginn_min, 'Der Turnierbeginn');
+    if (body.ende_min !== undefined) fragment.ende_min = minuten(body.ende_min, 'Das Turnierende');
+    if (body.waagen_anzahl !== undefined) {
+        const n = Number(body.waagen_anzahl);
+        if (!Number.isInteger(n) || n < 1 || n > 10) throw new FachFehler(400, 'Die Anzahl der Waagen muss zwischen 1 und 10 liegen.');
+        fragment.waagen_anzahl = n;
+    }
+    const beginn = 'beginn_min' in fragment ? fragment.beginn_min : bisher?.beginn_min ?? null;
+    const ende = 'ende_min' in fragment ? fragment.ende_min : bisher?.ende_min ?? null;
+    if (beginn != null && ende != null && ende <= beginn) {
+        throw new FachFehler(400, 'Das Turnierende muss nach dem Turnierbeginn liegen.');
+    }
+    return fragment;
+}
+
 // Ein Turnier pro Tag (Spec mehrere Turniere): nur am Hallen-Server mit Sync, also dort, wo mehrere
 // Turniere nacheinander ausgetragen werden. Die Cloud kennt parallele Turniere verschiedener Vereine.
 async function pruefeTerminFrei(knex, sync, datum, ausserId = null) {
@@ -118,6 +146,7 @@ export async function createTurnier(knex, req, res) {
         if (ausschreibungFehler) {
             return res.status(400).json({ success: false, error: ausschreibungFehler });
         }
+        const turnierzeit = leseTurnierzeit(req.body);
 
         // Turnier wird an den Verein des anlegenden Benutzers gekoppelt (nicht mehr an
         // den Benutzer selbst), und zwar an seinen aktiven Verein. requireVereinFreigabe lässt den
@@ -158,6 +187,7 @@ export async function createTurnier(knex, req, res) {
             kontoinhaber: kontoinhaber || null,
             verwendungszweck: verwendungszweck || null,
             farbe_kaempfer2: gueltigeFarbe(farbe_kaempfer2) || 'blau',
+            ...turnierzeit,
             ...ausschreibungFragment
         }).returning('id');
 
@@ -193,6 +223,7 @@ export async function updateTurnier(knex, req, res) {
         if (bestehendesTurnier.status === 'abgeschlossen') {
             return res.status(403).json({ success: false, error: 'Ein abgeschlossenes Turnier befindet sich im schreibgeschützten Archiv-Zustand.' });
         }
+        const turnierzeit = leseTurnierzeit(req.body, bestehendesTurnier);
 
         if (datum) await pruefeTerminFrei(knex, req.app.get('sync'), datum, id);
 
@@ -224,6 +255,7 @@ export async function updateTurnier(knex, req, res) {
             verwendungszweck: verwendungszweck || null,
             // Nicht mitgesendet -> unverändert lassen
             ...(gueltigeFarbe(farbe_kaempfer2) ? { farbe_kaempfer2 } : {}),
+            ...turnierzeit,
             ...ausschreibungFragment,
             updated_at: knex.fn.now()
         });

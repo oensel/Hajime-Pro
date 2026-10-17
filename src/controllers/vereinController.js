@@ -61,9 +61,11 @@ Bitte prüfen Sie die Anfrage in Hajime Pro, wählen Sie eine Rolle (Admin, Benu
  * POST /api/vereine/join — Beitrittsanfrage (Erstbeitritt oder weiterer Verein im Profil). Verlangt eine
  * bestätigte E-Mail-Adresse. Die Entscheider bekommen eine Mail mit einmaligem Freischaltungs-Link
  * (<basisUrl>/freigabe.html?token=…); ohne sichere Basis-URL (Cloud ohne PUBLIC_BASE_URL) ohne Link.
- * Die Quelle der Anfrage (Vorbelegung der Rolle) übernimmt die jüngste bestehende Mitgliedschaft, sonst 'verwaltung'.
+ * Die Quelle der Anfrage (Vorbelegung der Rolle) übernimmt die jüngste bestehende Mitgliedschaft, sonst 'verwaltung';
+ * die Helfer-App gibt sie ausdrücklich vor (`angefragtUeber: 'helfer-app'`). Mit `aktivSetzen: false` (Helfer-App)
+ * wird der neue Verein nur aktiver Verein, wenn noch keiner gewählt ist.
  */
-export async function joinVerein(knex, req, res, { sende = sendeMail } = {}) {
+export async function joinVerein(knex, req, res, { sende = sendeMail, angefragtUeber: quelle = null, aktivSetzen = true } = {}) {
     try {
         const userId = req.user.id;
         const { vereinId, newVereinName } = req.body || {};
@@ -119,7 +121,7 @@ export async function joinVerein(knex, req, res, { sende = sendeMail } = {}) {
             .whereNotNull('angefragt_ueber')
             .orderBy('id', 'desc')
             .first();
-        const angefragtUeber = letzteMitgliedschaft ? letzteMitgliedschaft.angefragt_ueber : 'verwaltung';
+        const angefragtUeber = quelle || (letzteMitgliedschaft ? letzteMitgliedschaft.angefragt_ueber : 'verwaltung');
 
         await knex('benutzer_vereine').insert({
             benutzer_id: userId,
@@ -130,10 +132,12 @@ export async function joinVerein(knex, req, res, { sende = sendeMail } = {}) {
 
         // Der neu beigetretene Verein wird direkt zum aktiven Verein — der Nutzer wollte
         // gerade dorthin wechseln (Erstbeitritt oder bewusster Beitritt zu einem weiteren Verein).
-        await knex('benutzer').where({ id: userId }).update({
-            aktiver_verein_id: targetVereinId,
-            updated_at: knex.fn.now()
-        });
+        if (aktivSetzen || !konto.aktiver_verein_id) {
+            await knex('benutzer').where({ id: userId }).update({
+                aktiver_verein_id: targetVereinId,
+                updated_at: knex.fn.now()
+            });
+        }
 
         try {
             let freischaltLink;
