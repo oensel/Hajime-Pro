@@ -54,8 +54,9 @@ export function gruppiereNachBezeichnung(slots) {
 }
 
 /**
- * Hinweis „Deine Registrierung muss noch freigeschaltet werden.“: das Konto hat keine freigeschaltete
- * Mitgliedschaft. Ohne geladenes Profil (null/undefined) keine Aussage → false.
+ * Reiter Turniere (leere Liste): „Deine Registrierung muss noch freigeschaltet werden.“, wenn das Konto keine
+ * freigeschaltete Mitgliedschaft hat, auch ohne jede Mitgliedschaft. Ohne geladenes Profil (null/undefined)
+ * keine Aussage → false. Für das Profil gilt zeigeWartehinweisImProfil.
  * @param {Array<{freigegeben:boolean}>|null|undefined} vereine
  */
 export function wartetAufFreischaltung(vereine) {
@@ -63,7 +64,16 @@ export function wartetAufFreischaltung(vereine) {
     return !vereine.some(v => v && v.freigegeben);
 }
 
-const WOCHENTAGE =['So.', 'Mo.', 'Di.', 'Mi.', 'Do.', 'Fr.', 'Sa.'];
+/**
+ * Wartehinweis im Profil: nur, wenn Mitgliedschaften beantragt sind und keine davon freigeschaltet ist.
+ * Ohne jede Mitgliedschaft wurde nichts beantragt (Profil zeigt „Noch kein Verein.“), daher false.
+ * @param {Array<{freigegeben:boolean}>|null|undefined} vereine
+ */
+export function zeigeWartehinweisImProfil(vereine) {
+    return Array.isArray(vereine) && vereine.length > 0 && wartetAufFreischaltung(vereine);
+}
+
+const WOCHENTAGE = ['So.', 'Mo.', 'Di.', 'Mi.', 'Do.', 'Fr.', 'Sa.'];
 
 /** 'YYYY-MM-DD' → 'Sa., 14.11.2026' (ohne Zeitzonenabhängigkeit). */
 export function datumText(datum) {

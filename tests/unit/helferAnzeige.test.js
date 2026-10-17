@@ -1,7 +1,7 @@
 // Anzeigelogik der Helfer-App (src/shared/helferAnzeige.js): Vereinssuche, Platztext, Gruppierung, Datum.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { filtereVereine, platzText, gruppiereNachBezeichnung, datumText, wartetAufFreischaltung } from '../../src/shared/helferAnzeige.js';
+import { filtereVereine, platzText, gruppiereNachBezeichnung, datumText, wartetAufFreischaltung, zeigeWartehinweisImProfil } from '../../src/shared/helferAnzeige.js';
 
 const VEREINE = ['Judo Club Senden', 'JC Musterstadt', 'SV Sendenhorst Judo', 'Budokan Münster'];
 
@@ -58,6 +58,15 @@ test('wartetAufFreischaltung: kein freigeschalteter Verein', () => {
     // Profil nicht geladen: keine Aussage, kein Hinweis
     assert.equal(wartetAufFreischaltung(null), false);
     assert.equal(wartetAufFreischaltung(undefined), false);
+});
+
+test('zeigeWartehinweisImProfil: nur bei beantragten, aber nicht freigeschalteten Mitgliedschaften', () => {
+    // Ohne jede Mitgliedschaft: nichts beantragt, kein Wartehinweis (im Reiter Turniere dagegen schon)
+    assert.equal(zeigeWartehinweisImProfil([]), false);
+    assert.equal(wartetAufFreischaltung([]), true);
+    assert.equal(zeigeWartehinweisImProfil([{ verein_id: 1, freigegeben: false }]), true);
+    assert.equal(zeigeWartehinweisImProfil([{ verein_id: 1, freigegeben: false }, { verein_id: 2, freigegeben: true }]), false);
+    assert.equal(zeigeWartehinweisImProfil(null), false);
 });
 
 test('datumText: Wochentag kurz und Datum', () => {

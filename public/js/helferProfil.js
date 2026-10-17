@@ -1,7 +1,7 @@
 // Reiter „Profil“ der Helfer-App (Spec Helferverwaltung 4.1): Name, E-Mail, Meine Vereine mit Rolle und
 // Status, Verein hinzufügen (Autovervollständigung, nur Auswahl aus der Liste), Passwort ändern, Abmelden.
 // Die Hilfsfunktionen (apiFetch, el, …) reicht helfer.js herein.
-import { filtereVereine, wartetAufFreischaltung } from '/js/shared/helferAnzeige.js';
+import { filtereVereine, zeigeWartehinweisImProfil } from '/js/shared/helferAnzeige.js';
 
 const ROLLEN_TEXT = { helfer: 'Helfer', benutzer: 'Benutzer', admin: 'Admin' };
 const MIN_PASSWORT = 8;
@@ -115,7 +115,8 @@ function vereinSuche(w, eigeneVereine) {
         treffer = filtereVereine(vereinsListe, eingabe.value).slice(0, 20);
         liste.replaceChildren(...treffer.map((verein, i) => {
             const option = w.el('li', { id: `hfVerein-${verein.id}`, role: 'option', 'aria-selected': 'false', text: verein.name });
-            // Fokus bleibt im Feld (Maus und Touch), die Liste bleibt offen, bis der Klick ankommt
+            // Verhindert bei der Maus den Fokuswechsel aus dem Feld; dass die Liste bis zum click offen bleibt
+            // (auch bei Touch, wo der Fokus trotzdem wechseln kann), sichert das verzögerte Schließen im blur.
             option.addEventListener('pointerdown', (e) => e.preventDefault());
             option.addEventListener('mousedown', (e) => e.preventDefault());
             option.addEventListener('click', () => waehle(treffer[i]));
@@ -223,7 +224,7 @@ export async function ansichtProfil(w) {
         w.el('p', { class: 'hf-profil-name', text: name || profil.email || '' }),
         profil.email ? w.el('p', { class: 'hf-meta hf-profil-email', text: profil.email }) : null));
 
-    if (wartetAufFreischaltung(vereine)) {
+    if (zeigeWartehinweisImProfil(vereine)) {
         inhalt.append(w.el('p', { class: 'hf-hinweis', text: 'Deine Registrierung muss noch freigeschaltet werden.' }));
     }
     inhalt.append(abschnitt(w, 'Meine Vereine',

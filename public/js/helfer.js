@@ -297,6 +297,8 @@ export async function zeige({ fokus } = {}) {
         if (e instanceof AbmeldungFehler) return;
         knoten = fehlerAnzeige(e.message || 'Laden fehlgeschlagen.', false);
     }
+    // Nur für genau dieses Neuzeichnen gedacht: nicht verbraucht (Fehler beim Laden, andere Ansicht) → verwerfen
+    slotMeldung = null;
     if (nummer !== aufrufNummer) return;
     bereich.replaceChildren(knoten);
     bereich.removeAttribute('aria-busy');
@@ -306,6 +308,7 @@ export async function zeige({ fokus } = {}) {
 window.addEventListener('hashchange', () => {
     document.getElementById('hfInhalt').replaceChildren();
     window.scrollTo(0, 0);
+    slotMeldung = null;
     zeige({ fokus: 'h1' });
 });
 zeige();
