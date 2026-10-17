@@ -336,6 +336,14 @@
         .pending-request-actions .btn {
             margin: 0;
         }
+        .pending-request-actions .rollen-auswahl {
+            padding: 6px 8px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: var(--bg-card);
+            color: var(--text-main);
+            font-size: 12px;
+        }
         .cloud-trenner {
             display: flex;
             align-items: center;
@@ -473,11 +481,11 @@
             if (createBtn) createBtn.style.display = 'none';
             const wartetText = user.verein_wartet_auf_super_admin
                 ? 'wartet noch auf Prüfung durch den Super-Admin (Erstregistrierung dieses Vereins)'
-                : 'wartet noch auf Freigabe durch ein bestehendes Mitglied';
+                : 'wartet noch auf Freigabe durch einen Admin des Vereins';
             banner.innerHTML = `
                 <div class="status-banner pending">
                     <span class="material-icons">hourglass_top</span>
-                    <span>Ihr Beitritt zum Verein "${user.verein_name || ''}" ${wartetText}. Bis zur Freigabe können Sie nur die Turnierliste ansehen, aber keine Turniere anlegen, bearbeiten oder auswählen.</span>
+                    <span>Ihr Beitritt zum Verein "${escHtml(user.verein_name)}" ${wartetText}. Bis zur Freigabe können Sie nur die Turnierliste ansehen, aber keine Turniere anlegen, bearbeiten oder auswählen.</span>
                 </div>
             `;
             return false;
@@ -488,6 +496,9 @@
         return true;
     }
 
+    // Offene Beitrittsanfragen der Vereine, in denen das Konto Admin ist (/api/vereine/pending, sonst 403).
+    // Freigeben nur mit Rolle: vorbelegt Helfer (Anfrage aus der Helfer-App) bzw. Benutzer, der Admin entscheidet.
+    // Namen und Adressen stammen von anderen Konten: nur per textContent einsetzen.
     async function ladeUndRenderePendingRequests() {
         const pendingContainer = document.getElementById('pendingRequestsContainer');
         try {
@@ -495,40 +506,57 @@
             if (!resp.ok) return;
             const pending = await resp.json();
             if (!Array.isArray(pending) || pending.length === 0) {
-                pendingContainer.innerHTML = '';
+                pendingContainer.replaceChildren();
                 return;
             }
+            const { ROLLEN_TEXT, vorbelegteFreigabeRolle } = await import('/js/shared/menueRechte.js');
 
-            pendingContainer.innerHTML = `
-                <div class="pending-requests-card">
-                    <h3>Ausstehende Beitrittsanfragen</h3>
-                    ${pending.map(p => `
-                        <div class="pending-request-row" data-user-id="${p.id}" data-verein-id="${p.verein_id}">
-                            <div>
-                                <div class="req-name">${p.vorname} ${p.nachname}</div>
-                                <div class="req-email">${p.email} &middot; ${p.verein_name}</div>
-                            </div>
-                            <div class="pending-request-actions">
-                                <button type="button" class="btn btn-raised" data-action="approve" data-user-id="${p.id}" data-verein-id="${p.verein_id}">Freigeben</button>
-                                <button type="button" class="btn btn-outlined" data-action="reject" data-user-id="${p.id}" data-verein-id="${p.verein_id}">Ablehnen</button>
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>
-            `;
+            const el = (tag, klasse, text) => {
+                const e = document.createElement(tag);
+                if (klasse) e.className = klasse;
+                if (text != null) e.textContent = text;
+                return e;
+            };
 
-            pendingContainer.querySelectorAll('button[data-action]').forEach(btn => {
-                btn.addEventListener('click', async () => {
-                    const userId = btn.getAttribute('data-user-id');
-                    const vereinId = btn.getAttribute('data-verein-id');
-                    const action = btn.getAttribute('data-action');
+            const karte = el('div', 'pending-requests-card');
+            karte.append(el('h3', null, 'Ausstehende Beitrittsanfragen'));
+            for (const p of pending) {
+                const name = `${p.vorname || ''} ${p.nachname || ''}`.trim();
+                const zeile = el('div', 'pending-request-row');
+                zeile.dataset.userId = p.id;
+                zeile.dataset.vereinId = p.verein_id;
+
+                const angaben = el('div');
+                angaben.append(el('div', 'req-name', name), el('div', 'req-email', `${p.email} · ${p.verein_name}`));
+
+                const auswahl = el('select', 'rollen-auswahl');
+                auswahl.setAttribute('aria-label', `Rolle für ${name}`);
+                const vorbelegt = vorbelegteFreigabeRolle(p.angefragt_ueber);
+                for (const rolle of ['helfer', 'benutzer', 'admin']) {
+                    const option = el('option', null, ROLLEN_TEXT[rolle]);
+                    option.value = rolle;
+                    option.selected = rolle === vorbelegt;
+                    auswahl.append(option);
+                }
+
+                const freigeben = el('button', 'btn btn-raised', 'Freigeben');
+                freigeben.type = 'button';
+                freigeben.dataset.action = 'approve';
+                const ablehnen = el('button', 'btn btn-outlined', 'Ablehnen');
+                ablehnen.type = 'button';
+                ablehnen.dataset.action = 'reject';
+
+                const entscheide = async (action) => {
+                    freigeben.disabled = ablehnen.disabled = true;
                     try {
+                        const daten = { userId: p.id, vereinId: p.verein_id };
+                        if (action === 'approve') daten.rolle = auswahl.value;
                         const resp = await fetch(`/api/vereine/${action}`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ userId, vereinId })
+                            body: JSON.stringify(daten)
                         });
-                        const data = await resp.json();
+                        const data = await resp.json().catch(() => ({}));
                         if (!resp.ok) throw new Error(data.error || 'Aktion fehlgeschlagen');
                         if (window.zeigeNotification) {
                             window.zeigeNotification(action === 'approve' ? 'Mitglied freigegeben.' : 'Anfrage abgelehnt.');
@@ -536,11 +564,20 @@
                         ladeUndRenderePendingRequests();
                         if (window.hajimeAktualisiereGenehmigungsHinweis) window.hajimeAktualisiereGenehmigungsHinweis();
                     } catch (err) {
+                        freigeben.disabled = ablehnen.disabled = false;
                         if (window.zeigeNotification) window.zeigeNotification(err.message, 'error');
                         else alert(err.message);
                     }
-                });
-            });
+                };
+                freigeben.addEventListener('click', () => entscheide('approve'));
+                ablehnen.addEventListener('click', () => entscheide('reject'));
+
+                const aktionen = el('div', 'pending-request-actions');
+                aktionen.append(auswahl, freigeben, ablehnen);
+                zeile.append(angaben, aktionen);
+                karte.append(zeile);
+            }
+            pendingContainer.replaceChildren(karte);
         } catch (err) {
             console.error('Fehler beim Laden der Beitrittsanfragen:', err);
         }
