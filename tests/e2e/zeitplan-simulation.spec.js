@@ -79,3 +79,36 @@ test('Der Zeitplan hängt als Button an den Matten, nicht mehr im Menü', async 
     await expect(page.locator('#nav-matten')).toHaveClass(/active/);
 });
 
+
+test('API: Pool-Start und -Ende folgen der tatsächlichen Kampfreihenfolge der Matte (verschränkte Pools)', async ({ request }) => {
+    const turnierId = await legeTurnierAn(request, { name: 'Zeitplan Reihenfolge' });
+    await legeKlasseAn(request, turnierId, { altersklasse: 'U18', geschlecht: 'männlich', gewichtsklasse: '-73kg', anzahl: 4, gewichtStart: 66 });
+    await legeKlasseAn(request, turnierId, { altersklasse: 'U18', geschlecht: 'weiblich', gewichtsklasse: '-63kg', anzahl: 4, gewichtStart: 56, namenszusatz: 'W' });
+    await loseAus(request, turnierId, ['U18']);
+    await verteileAufMatten(request, turnierId);
+    const [matte] = await (await request.get(`/api/kampfflaechen?turnierId=${turnierId}`)).json();
+    const kaempfe = (await (await request.get(`/api/kaempfe?kampfflaecheId=${matte.id}`)).json()).filter(k => k.status !== 'freilos');
+    expect(kaempfe.length).toBeGreaterThan(8);
+
+    const beginn = Date.parse('2026-10-17T09:00:00Z');
+    const antwort = await (await request.post('/api/pools/zeitplan-simulation', {
+        data: { turnierId, beginn: new Date(beginn).toISOString(), kampfzeitJeAltersklasse: { U18: 120 } }
+    })).json();
+    const sim = antwort.matten.find(m => m.matteId === matte.id);
+    const kampfMs = (120 + 90) * 1000;
+    // erwartet: die Liste der Matte (bereits in Planungsreihenfolge) nacheinander
+    const erwartet = new Map();
+    kaempfe.forEach((k, i) => {
+        const e = erwartet.get(k.pool_id) || { start: beginn + i * kampfMs };
+        e.ende = beginn + (i + 1) * kampfMs;
+        erwartet.set(k.pool_id, e);
+    });
+    expect(sim.pools.length).toBe(erwartet.size);
+    for (const p of sim.pools) {
+        expect(p.startMs).toBe(erwartet.get(p.poolId).start);
+        expect(p.endeMs).toBe(erwartet.get(p.poolId).ende);
+    }
+    expect(sim.pools.map(p => p.startMs)).toEqual([...sim.pools.map(p => p.startMs)].sort((a, b) => a - b));
+    expect(sim.endeMs).toBe(beginn + kaempfe.length * kampfMs);
+});
+

@@ -75,38 +75,54 @@ test('berechneRueckstand: unter 10 Minuten, einzelne Matte und null-Enden ergebe
     assert.equal(berechneRueckstand([{ id: 1, endeMs: T10 }, { id: 2, endeMs: null }]).size, 0);
 });
 
-test('simuliereZeitplan: Poolenden nacheinander je Matte', () => {
-    const matten = [
-        { id: 1, bezeichnung: 'Matte 1', pools: [
-            { id: 1, bezeichnung: 'A', altersklasse: 'U13', gesamt_kaempfe: 10, kampfzeit_sekunden: 240 },
-            { id: 2, bezeichnung: 'B', altersklasse: 'U13', gesamt_kaempfe: 10, kampfzeit_sekunden: 240 }] },
-        { id: 2, bezeichnung: 'Matte 2', pools: [] }
-    ];
-    const beginn = Date.parse('2026-10-17T09:00:00Z');
-    const r = simuliereZeitplan({ matten, beginnMs: beginn, kampfzeitJeAltersklasse: { U13: 120 } });
-    assert.equal(r[0].pools[0].endeMs, beginn + 35 * 60000);
-    assert.equal(r[0].pools[1].endeMs, beginn + 70 * 60000);
-    assert.equal(r[0].endeMs, beginn + 70 * 60000);
-    assert.equal(r[1].endeMs, beginn);
-});
-
-test('simuliereZeitplan: fehlende Altersklasse nutzt die Pool-Kampfzeit', () => {
-    const matten = [{ id: 1, bezeichnung: 'M', pools: [{ id: 1, bezeichnung: 'A', altersklasse: 'U18', gesamt_kaempfe: 2, kampfzeit_sekunden: 240 }] }];
-    const r = simuliereZeitplan({ matten, beginnMs: 0, kampfzeitJeAltersklasse: {} });
-    assert.equal(r[0].endeMs, 2 * 330000);
-});
-
 test('formatUhrzeit: HH:MM in lokaler Zeit', () => {
     assert.equal(formatUhrzeit(new Date(2026, 9, 17, 11, 5).getTime()), '11:05');
 });
 
-test('simuliereZeitplan: Start je Pool, neueKlasse bei Wechsel von Altersklasse oder Geschlecht auf der Matte', () => {
-    const pool = (id, altersklasse, geschlecht) => ({ id, bezeichnung: `P${id}`, altersklasse, geschlecht, gesamt_kaempfe: 2, kampfzeit_sekunden: 120 });
-    const matten = [{ id: 1, bezeichnung: 'M1', pools: [pool(1, 'U15', 'männlich'), pool(2, 'U15', 'männlich'), pool(3, 'U15', 'weiblich'), pool(4, 'U18', 'weiblich')] }];
-    const beginn = Date.parse('2026-10-17T09:00:00Z');
-    const [m] = simuliereZeitplan({ matten, beginnMs: beginn, kampfzeitJeAltersklasse: {} });
+const spool = (id, altersklasse, geschlecht, kampfzeit = 120) => ({ id, bezeichnung: `P${id}`, altersklasse, geschlecht, kampfzeit_sekunden: kampfzeit });
+const sk = (id, poolId, pos, status = 'bereit') => ({ id, pool_id: poolId, matten_reihenfolge: pos, status });
+const BEGINN = Date.parse('2026-10-17T09:00:00Z');
+
+test('simuliereZeitplan: die Kampfreihenfolge der Matte zählt, verschränkte Pools enden gemeinsam spät', () => {
+    // Pool 1 und 2 sind verschränkt (1,2,1,2), Pool 3 folgt danach
+    const matte = { id: 1, bezeichnung: 'M1', pools: [spool(1, 'U15', 'männlich'), spool(2, 'U15', 'männlich'), spool(3, 'U18', 'weiblich')],
+        kaempfe: [sk(1, 1, 1), sk(2, 2, 2), sk(3, 1, 3), sk(4, 2, 4), sk(5, 3, 5), sk(6, 3, 6)] };
+    const [m] = simuliereZeitplan({ matten: [matte], beginnMs: BEGINN, kampfzeitJeAltersklasse: {} });
+    const kampf = (120 + PUFFER_SEKUNDEN) * 1000;
+    const nach = Object.fromEntries(m.pools.map(p => [p.poolId, p]));
+    assert.equal(nach[1].startMs, BEGINN);
+    assert.equal(nach[1].endeMs, BEGINN + 3 * kampf);
+    assert.equal(nach[2].startMs, BEGINN + kampf);
+    assert.equal(nach[2].endeMs, BEGINN + 4 * kampf);
+    assert.equal(nach[3].startMs, BEGINN + 4 * kampf);
+    assert.equal(nach[3].endeMs, BEGINN + 6 * kampf);
+    assert.equal(m.endeMs, BEGINN + 6 * kampf);
+    assert.deepEqual(m.pools.map(p => p.poolId), [1, 2, 3]);
+    assert.deepEqual(m.pools.map(p => p.kaempfe), [2, 2, 2]);
+});
+
+test('simuliereZeitplan: Kämpfe ohne Position kommen zuletzt, Freilose zählen nicht, Matte ohne Kämpfe endet am Beginn', () => {
+    const matte = { id: 1, bezeichnung: 'M1', pools: [spool(1, 'U15', 'männlich')],
+        kaempfe: [sk(1, 1, null, 'angelegt'), sk(2, 1, 1), sk(3, 1, 2, 'freilos')] };
+    const leer = { id: 2, bezeichnung: 'M2', pools: [], kaempfe: [] };
+    const [m, l] = simuliereZeitplan({ matten: [matte, leer], beginnMs: BEGINN });
+    assert.equal(m.pools[0].kaempfe, 2);
+    assert.equal(m.endeMs, BEGINN + 2 * (120 + PUFFER_SEKUNDEN) * 1000);
+    assert.equal(l.endeMs, BEGINN);
+});
+
+test('simuliereZeitplan: Kampfzeit je Altersklasse überschreibt die Pool-Kampfzeit', () => {
+    const matte = { id: 1, bezeichnung: 'M1', pools: [spool(1, 'U15', 'männlich', 240)], kaempfe: [sk(1, 1, 1), sk(2, 1, 2)] };
+    const [eigen] = simuliereZeitplan({ matten: [matte], beginnMs: BEGINN, kampfzeitJeAltersklasse: { U15: 60 } });
+    assert.equal(eigen.endeMs, BEGINN + 2 * (60 + PUFFER_SEKUNDEN) * 1000);
+    const [pool] = simuliereZeitplan({ matten: [matte], beginnMs: BEGINN, kampfzeitJeAltersklasse: {} });
+    assert.equal(pool.endeMs, BEGINN + 2 * (240 + PUFFER_SEKUNDEN) * 1000);
+});
+
+test('simuliereZeitplan: neueKlasse nur beim ersten Auftreten einer Alters-/Geschlechtsklasse auf der Matte', () => {
+    const matte = { id: 1, bezeichnung: 'M1',
+        pools: [spool(1, 'U15', 'männlich'), spool(2, 'U15', 'männlich'), spool(3, 'U15', 'weiblich'), spool(4, 'U18', 'weiblich')],
+        kaempfe: [sk(1, 1, 1), sk(2, 2, 2), sk(3, 3, 3), sk(4, 4, 4)] };
+    const [m] = simuliereZeitplan({ matten: [matte], beginnMs: BEGINN });
     assert.deepEqual(m.pools.map(p => p.neueKlasse), [true, false, true, true]);
-    assert.equal(m.pools[0].startMs, beginn);
-    assert.equal(m.pools[1].startMs, m.pools[0].endeMs);
-    assert.equal(m.pools[2].startMs, m.pools[1].endeMs);
 });

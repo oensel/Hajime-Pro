@@ -1947,17 +1947,26 @@ export async function simuliereZeitplanEndpunkt(knex, req, res) {
         }
         const kampfflaechen = await knex('kampfflaechen').where({ turnier_id: turnierId }).orderBy('id');
         const pools = await knex('pools')
-            .select('pools.*', knex.raw('(SELECT COUNT(*) FROM kaempfe WHERE kaempfe.pool_id = pools.id) as gesamt_kaempfe'))
-            .where('pools.turnier_id', turnierId)
-            .andWhere('pools.verspaetet', false)
-            .whereNotNull('pools.kampfflaeche_id')
-            .orderBy('pools.matte_reihenfolge');
-        const matten = kampfflaechen.map(kf => ({
-            id: kf.id,
-            bezeichnung: kf.bezeichnung,
-            pools: pools.filter(p => p.kampfflaeche_id === kf.id)
-                .map(p => ({ id: p.id, bezeichnung: p.bezeichnung, altersklasse: p.altersklasse, geschlecht: p.geschlecht, gesamt_kaempfe: Number(p.gesamt_kaempfe), kampfzeit_sekunden: p.kampfzeit_sekunden }))
-        }));
+            .where({ turnier_id: turnierId })
+            .andWhere('verspaetet', false)
+            .whereNotNull('kampfflaeche_id');
+        const poolIds = pools.map(p => p.id);
+        const kaempfe = poolIds.length
+            ? await knex('kaempfe').whereIn('pool_id', poolIds).select('id', 'pool_id', 'status', 'matten_reihenfolge', 'kampfflaeche_id')
+            : [];
+        const poolHauptmatte = new Map(pools.map(p => [p.id, p.kampfflaeche_id]));
+        const matten = kampfflaechen.map(kf => {
+            // Kämpfe der Matte: eigene Zuordnung (Mannschaftsbegegnung), sonst die Matte des Pools
+            const dieser = kaempfe.filter(k => (k.kampfflaeche_id != null ? k.kampfflaeche_id : poolHauptmatte.get(k.pool_id)) === kf.id);
+            const idsHier = new Set(dieser.map(k => k.pool_id));
+            return {
+                id: kf.id,
+                bezeichnung: kf.bezeichnung,
+                pools: pools.filter(p => idsHier.has(p.id))
+                    .map(p => ({ id: p.id, bezeichnung: p.bezeichnung, altersklasse: p.altersklasse, geschlecht: p.geschlecht, kampfzeit_sekunden: p.kampfzeit_sekunden })),
+                kaempfe: dieser
+            };
+        });
         return res.json({ matten: simuliereZeitplan({ matten, beginnMs, kampfzeitJeAltersklasse: kampfzeitJeAltersklasse || {} }) });
     } catch (error) {
         return res.status(500).json({ success: false, error: error.message });

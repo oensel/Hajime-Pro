@@ -83,21 +83,46 @@ export function berechneRueckstand(matten) {
     return ergebnis;
 }
 
-/** Zeitplan-Simulation: Pools je Matte nacheinander, jeder Kampf = Kampfzeit + Puffer. */
+/**
+ * Zeitplan-Simulation: die Kämpfe jeder Matte in ihrer tatsächlichen Reihenfolge (matten_reihenfolge, Kämpfe ohne
+ * Position zuletzt, dann id — wie baueMattenAnsicht) nacheinander, jeder Kampf = Kampfzeit + Puffer. Die Planung
+ * verschränkt die Pools einer Matte, daher beginnt ein Pool mit seinem ersten und endet mit seinem letzten Kampf.
+ * `matten`: [{ id, bezeichnung, pools: [{ id, bezeichnung, altersklasse, geschlecht, kampfzeit_sekunden }],
+ * kaempfe: [{ id, pool_id, status, matten_reihenfolge }] }]. Freilose zählen nicht.
+ */
 export function simuliereZeitplan({ matten, beginnMs, kampfzeitJeAltersklasse = {} }) {
     return (matten || []).map(matte => {
+        const poolById = new Map((matte.pools || []).map(p => [p.id, p]));
+        const reihe = [...(matte.kaempfe || [])]
+            .filter(k => k.status !== 'freilos' && poolById.has(k.pool_id))
+            .sort((a, b) => {
+                const ra = a.matten_reihenfolge == null ? Infinity : Number(a.matten_reihenfolge);
+                const rb = b.matten_reihenfolge == null ? Infinity : Number(b.matten_reihenfolge);
+                return ra !== rb ? ra - rb : Number(a.id) - Number(b.id);
+            });
         let cursor = beginnMs;
-        let vorherigeKlasse = null;
-        const pools = (matte.pools || []).map(pool => {
-            const startMs = cursor;
-            const klasse = `${pool.altersklasse}|${pool.geschlecht}`;
-            const neueKlasse = klasse !== vorherigeKlasse;
-            vorherigeKlasse = klasse;
+        const jePool = new Map();
+        for (const kampf of reihe) {
+            const pool = poolById.get(kampf.pool_id);
             const eingabe = Number(kampfzeitJeAltersklasse[pool.altersklasse]);
             const kampfzeit = eingabe > 0 ? eingabe : (Number(pool.kampfzeit_sekunden) || STANDARD_KAMPFZEIT_SEKUNDEN);
-            cursor += (Number(pool.gesamt_kaempfe) || 0) * (kampfzeit + PUFFER_SEKUNDEN) * 1000;
-            return { poolId: pool.id, bezeichnung: pool.bezeichnung, altersklasse: pool.altersklasse, geschlecht: pool.geschlecht, neueKlasse, startMs, kaempfe: Number(pool.gesamt_kaempfe) || 0, endeMs: cursor };
-        });
+            const startMs = cursor;
+            cursor += (kampfzeit + PUFFER_SEKUNDEN) * 1000;
+            if (!jePool.has(pool.id)) {
+                jePool.set(pool.id, { poolId: pool.id, bezeichnung: pool.bezeichnung, altersklasse: pool.altersklasse, geschlecht: pool.geschlecht, neueKlasse: false, startMs, kaempfe: 0, endeMs: cursor });
+            }
+            const eintrag = jePool.get(pool.id);
+            eintrag.kaempfe++;
+            eintrag.endeMs = cursor;
+        }
+        // Pools in der Reihenfolge ihres Beginns; neue Klasse = erster Pool einer Alters-/Geschlechtsklasse.
+        const pools = [...jePool.values()];
+        const gesehen = new Set();
+        for (const pool of pools) {
+            const klasse = `${pool.altersklasse}|${pool.geschlecht}`;
+            pool.neueKlasse = !gesehen.has(klasse);
+            gesehen.add(klasse);
+        }
         return { matteId: matte.id, bezeichnung: matte.bezeichnung, pools, endeMs: cursor };
     });
 }
