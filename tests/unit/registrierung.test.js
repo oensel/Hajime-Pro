@@ -38,6 +38,9 @@ test('Registrierung: unbestätigt anlegen, bestätigen, Anfrage an den Verein', 
     const { knex } = db;
     const gesendet = [];
     const sende = async (mail) => { gesendet.push(mail); };
+    // macht die Bestätigungs-Tokens eines Kontos 3 Minuten alt (Drosselung der Bestätigungsmail: 2 Minuten)
+    const altereEmailTokens = (benutzerId) => knex('token_einmal').where({ benutzer_id: benutzerId, zweck: 'email' })
+        .update({ created_at: knex.raw("now() - interval '3 minutes'") });
     try {
         const mitAdmin = id((await knex('vereine').insert({ name: 'JC Mit Admin' }).returning('id'))[0]);
         const ohneAdmin = id((await knex('vereine').insert({ name: 'JC Ohne Admin' }).returning('id'))[0]);
@@ -72,6 +75,17 @@ test('Registrierung: unbestätigt anlegen, bestätigen, Anfrage an den Verein', 
         const resFalsch = fakeRes();
         await login(knex, { body: { email: 'erika@example.de', password: 'falsch12345' } }, resFalsch);
         assert.equal(resFalsch.statusCode, 401);
+
+        // --- Drosselung: ist der letzte Bestätigungs-Token jünger als 2 Minuten, geht keine weitere Mail raus
+        // (gleiche Antwort, der bisherige Link bleibt gültig)
+        const gedrosselt = await registriere(knex, {
+            email: 'erika@example.de', password: 'geheim123', vorname: 'Erika', nachname: 'Muster', basisUrl: BASIS
+        }, { sende });
+        assert.deepEqual(gedrosselt, r1);
+        assert.deepEqual(await sendeBestaetigungNeu(knex, 'erika@example.de', BASIS, { sende }), { ok: true });
+        assert.equal(gesendet.length, 1, 'keine zweite Mail innerhalb von 2 Minuten');
+        assert.ok(await pruefeToken(knex, emailToken1, 'email'), 'bisheriger Link bleibt gültig');
+        await altereEmailTokens(erika.id);
 
         // --- gleiche E-Mail in Großschreibung → kein zweites Konto, erneute Bestätigungsmail; das bestehende
         // unbestätigte Konto bleibt unverändert (anderes Passwort, anderer Verein, andere Quelle werden ignoriert),
@@ -181,6 +195,7 @@ test('Registrierung: unbestätigt anlegen, bestätigen, Anfrage an den Verein', 
             vereinId: mitAdmin, quelle: 'verwaltung', basisUrl: BASIS
         }, { sende });
         const neuAlt = tokenAusLink(gesendet[6].text, 'bestaetigen.html');
+        await altereEmailTokens((await knex('benutzer').where({ email: 'neu@example.de' }).first()).id);
         assert.deepEqual(await sendeBestaetigungNeu(knex, ' NEU@example.de', BASIS, { sende }), { ok: true });
         assert.equal(gesendet.length, 8);
         const neuToken = tokenAusLink(gesendet[7].text, 'bestaetigen.html');

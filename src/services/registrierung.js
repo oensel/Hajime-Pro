@@ -178,13 +178,19 @@ export async function sendeBestaetigungNeu(knex, email, basisUrl, { sende = send
     return { ok: true };
 }
 
+// Mindestabstand zwischen zwei Bestätigungsmails an dasselbe Konto (gegen Mail-Bombing über Registrierung bzw.
+// "erneut senden"); die Antwort an den Aufrufer bleibt dieselbe.
+const MINDESTABSTAND_BESTAETIGUNGSMAIL_SEKUNDEN = 120;
+
 // Neuer Bestätigungslink für ein unbestätigtes Konto; ältere verfallen, Verein und Quelle stammen vom letzten Token.
+// Ist der letzte Token jünger als der Mindestabstand, geschieht nichts (der bisherige Link bleibt gültig).
 async function sendeNeuenBestaetigungslink(knex, konto, basisUrl, sende) {
     // Verein und Quelle der Registrierung stehen am letzten Bestätigungs-Token (auch wenn er abgelaufen ist).
     const letzter = await knex('token_einmal')
         .where({ benutzer_id: konto.id, zweck: 'email' })
         .orderBy('id', 'desc')
-        .first();
+        .first(['*', knex.raw("created_at > now() - (? * interval '1 second') as zu_frisch", [MINDESTABSTAND_BESTAETIGUNGSMAIL_SEKUNDEN])]);
+    if (letzter && letzter.zu_frisch) return;
     await entwerteTokens(knex, konto.id, 'email');
     const token = await erzeugeToken(knex, {
         benutzerId: konto.id,
