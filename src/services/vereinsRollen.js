@@ -8,15 +8,10 @@
 //   - Wer noch offene Helferdienste im Verein hat, kann nicht entfernt werden bzw. austreten.
 // Alle Funktionen liefern { ok: true, ... } oder { ok: false, status, error } statt zu werfen.
 import { istGueltigeRolle, rolleReicht } from '../shared/rollen.js';
+// Offene Helferdienste (Dienste in noch nicht vergangenen Turnieren des Vereins) prüft der Helferplan-Service.
+import { hatOffeneDienste } from './helferPlan.js';
 
-/**
- * STUB bis Task 7 (Helferplan-Service): hat das Konto im Verein noch offene Helferdienste?
- * Task 7 ersetzt diesen Export durch `export { hatOffeneDienste } from './helferPlan.js';`.
- * @returns {Promise<boolean>}
- */
-export async function hatOffeneDienste(_knex, _benutzerId, _vereinId) {
-    return false;
-}
+export { hatOffeneDienste };
 
 const fehler = (status, error) => ({ ok: false, status, error });
 
