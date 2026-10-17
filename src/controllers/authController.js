@@ -2,7 +2,7 @@ import jwt from 'jsonwebtoken';
 import { hashPassword, verifyPassword } from '../utils/password.js';
 import { ladeBenutzerMitAktivemVerein, ladeVereineFuerBenutzer } from '../utils/vereinHelper.js';
 import * as steuerungPasswort from '../utils/steuerungPasswort.js';
-import { registriere, bestaetige, sendeBestaetigungNeu, findeKontoPerEmail } from '../services/registrierung.js';
+import { registriere, bestaetige, sendeBestaetigungNeu, findeKontoPerEmail, normalisiereEmail, MIN_PASSWORT_LAENGE } from '../services/registrierung.js';
 import { ermittleBasisUrl, HINWEIS_FEHLENDE_BASIS_URL } from '../utils/basisUrl.js';
 import { hatVereinAdmin } from '../services/vereinsRollen.js';
 import dotenv from 'dotenv';
@@ -180,7 +180,10 @@ export async function getMe(knex, req, res) {
 export async function updateProfile(knex, req, res) {
     try {
         const userId = req.user.id;
-        const { vorname, nachname, email, currentPassword, newPassword } = req.body;
+        const { vorname, nachname, currentPassword, newPassword } = req.body;
+        // Wie bei der Registrierung getrimmt und kleingeschrieben. Eine geänderte Adresse wird (noch) nicht erneut
+        // bestätigt.
+        const email = normalisiereEmail(req.body.email);
 
         if (!vorname || !nachname || !email) {
             return res.status(400).json({ success: false, error: 'Vorname, Nachname und E-Mail sind erforderlich.' });
@@ -199,8 +202,12 @@ export async function updateProfile(knex, req, res) {
         }
 
         if (email !== user.email) {
-            const existing = await knex('benutzer').where({ email }).whereNot({ id: userId }).first();
-            if (existing) {
+            // Dubletten ohne Beachtung der Schreibweise (Bestandskonten können noch Großbuchstaben enthalten).
+            const existing = await findeKontoPerEmail(knex, email);
+            const fremd = existing && existing.id !== userId
+                ? existing
+                : await knex('benutzer').whereRaw('lower(trim(email)) = ?', [email]).whereNot({ id: userId }).first();
+            if (fremd) {
                 return res.status(409).json({ success: false, error: 'Diese E-Mail-Adresse wird bereits von einem anderen Konto verwendet.' });
             }
         }
@@ -213,8 +220,8 @@ export async function updateProfile(knex, req, res) {
         };
 
         if (newPassword) {
-            if (newPassword.length < 6) {
-                return res.status(400).json({ success: false, error: 'Das neue Passwort muss mindestens 6 Zeichen lang sein.' });
+            if (typeof newPassword !== 'string' || newPassword.length < MIN_PASSWORT_LAENGE) {
+                return res.status(400).json({ success: false, error: `Das neue Passwort muss mindestens ${MIN_PASSWORT_LAENGE} Zeichen lang sein.` });
             }
             updateData.password_hash = hashPassword(newPassword);
         }
