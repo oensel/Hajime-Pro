@@ -129,6 +129,32 @@ test('Helfer per Freitext zuteilen und wieder entfernen', async ({ page, request
     expect(slots[0].einsaetze).toEqual([]);
 });
 
+test('Knopf „Helferausweise drucken“: ohne Einsätze Fehlermeldung, mit Einsatz öffnet sich ein Tab mit blob-PDF', async ({ page, request, context }) => {
+    await page.goto(`/helfer-plan.html?turnierId=${turnierId}`);
+    await expect(zeile(page, 'Waage 1')).toBeVisible();
+
+    await page.locator('#hpAusweise').click();
+    await expect(page.locator('#snackbarText')).toContainText('Helfer');
+
+    const slotId = taetigkeit(await ladePlan(request), 'Waage 1').slots[0].id;
+    const ein = await request.post(`/api/helfer-plan/slots/${slotId}/einsaetze`, { data: { name: 'Ausweis Tester' } });
+    expect(ein.ok(), await ein.text()).toBeTruthy();
+
+    const neuerTab = context.waitForEvent('page');
+    await page.locator('#hpAusweise').click();
+    const tab = await neuerTab;
+    // Headless-Chromium hat keinen PDF-Betrachter: dann wird die blob:-Adresse als Download behandelt
+    const download = await Promise.race([
+        tab.waitForEvent('download', { timeout: 10000 }).then(d => d.url()),
+        expect.poll(() => tab.url(), { timeout: 10000 }).toMatch(/^blob:/).then(() => 'blob:')
+    ]);
+    expect(download).toMatch(/^blob:/);
+
+    const loesch = await ladePlan(request);
+    const id = taetigkeit(loesch, 'Waage 1').slots[0].einsaetze[0].id;
+    expect((await request.delete(`/api/helfer-plan/einsaetze/${id}`)).ok()).toBeTruthy();
+});
+
 test('ohne Beginn/Ende erscheint ein Hinweis mit Link zur Turnierverwaltung', async ({ page, request }) => {
     const resp = await request.post('/api/turniere', {
         data: { bezeichnung: `Helferplan ohne Zeit ${Date.now()}`, ort: 'Halle', datum: '2031-10-05', ausrichter: 'JC Helfer', anzahl_kampfflaechen: 1 }

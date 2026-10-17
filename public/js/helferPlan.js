@@ -206,6 +206,26 @@ async function legeSlotPerDoppelklickAn(e, taetigkeit, spur) {
     await neuLaden();
 }
 
+// Helferausweise als PDF: per fetch (Auth-Header kommt aus dem fetch-Wrapper in menu.js), Anzeige im neuen Tab.
+async function oeffneAusweise() {
+    // Tab sofort öffnen (Popup-Blocker), danach mit der blob:-URL füllen
+    const tab = window.open('about:blank', '_blank');
+    try {
+        const res = await fetch(`/api/helfer-plan/${encodeURIComponent(turnierId)}/ausweise`);
+        if (!res.ok) {
+            const daten = await res.json().catch(() => ({}));
+            if (tab) tab.close();
+            melde(daten.error || 'Die Helferausweise konnten nicht erzeugt werden.');
+            return;
+        }
+        const url = URL.createObjectURL(await res.blob());
+        if (tab) tab.location.href = url; else window.open(url, '_blank');
+    } catch {
+        if (tab) tab.close();
+        melde('Server nicht erreichbar.');
+    }
+}
+
 // ---------------------------------------------------------------- Start
 
 initDialoge({ turnierId, neuLaden, schliesseAuswahl });
@@ -214,7 +234,5 @@ if (!turnierId) {
 } else {
     neuLaden();
     initCloudAktualisierung();
-    document.getElementById('hpAusweise')?.addEventListener('click', () => {
-        window.open(`/api/helfer-plan/${encodeURIComponent(turnierId)}/ausweise`, '_blank');
-    });
+    document.getElementById('hpAusweise')?.addEventListener('click', oeffneAusweise);
 }

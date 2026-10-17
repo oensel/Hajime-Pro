@@ -15,7 +15,7 @@ const AUSWEIS = { b: 255, h: 380 };
 const RAND = 12;
 const KOPF_H = 64;
 const QR_GROESSE = 96;
-const PALETTE = ['#1565c0', '#2e7d32', '#c62828', '#6a1b9a', '#ef6c00', '#00838f', '#ad1457', '#37474f'];
+export const PALETTE = ['#1565c0', '#2e7d32', '#c62828', '#6a1b9a', '#ef6c00', '#00838f', '#ad1457', '#37474f'];
 
 const hexZuRgb = (hex) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255);
 
@@ -25,9 +25,36 @@ function kopfFarbe(bezeichnung) {
     return PALETTE[h % PALETTE.length];
 }
 
-function textFarbeFuer(hex) {
+const DUNKEL_HEX = '#1a1a1a';
+
+function luminanz(hex) {
     const [r, g, b] = hexZuRgb(hex).map(v => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.45 ? rgb(0.1, 0.1, 0.1) : rgb(1, 1, 1);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/** WCAG-Kontrastverhältnis zweier Farben (#rrggbb). */
+export function kontrastVerhaeltnis(hexA, hexB) {
+    const [hell, dunkel] = [luminanz(hexA), luminanz(hexB)].sort((x, y) => y - x);
+    return (hell + 0.05) / (dunkel + 0.05);
+}
+
+/** Textfarbe (weiß oder dunkel) mit dem höheren Kontrast auf dem Hintergrund. */
+export function waehleTextFarbe(hintergrundHex) {
+    return kontrastVerhaeltnis('#ffffff', hintergrundHex) >= kontrastVerhaeltnis(DUNKEL_HEX, hintergrundHex) ? '#ffffff' : DUNKEL_HEX;
+}
+
+/** Steuerzeichen/Zeilenumbrüche -> Leerzeichen; Zeichen, die die Schrift nicht kennt, -> '?'. */
+export function bereinigeText(text, zeichenSatz) {
+    const roh = String(text ?? '').replace(/[\x00-\x1f\x7f-\x9f]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!zeichenSatz) return roh;
+    return [...roh].map(c => (zeichenSatz.has(c.codePointAt(0)) ? c : '?')).join('');
+}
+
+/** Bei zu vielen Einsätzen: letzte Zeile wird „… und n weitere“. */
+export const MAX_ZEILEN = 11;
+export function planeZeilen(einsaetze, maxZeilen = MAX_ZEILEN) {
+    if (einsaetze.length <= maxZeilen) return { anzeige: einsaetze, rest: 0 };
+    return { anzeige: einsaetze.slice(0, maxZeilen - 1), rest: einsaetze.length - (maxZeilen - 1) };
 }
 
 function datumDeutsch(text) {
@@ -37,11 +64,20 @@ function datumDeutsch(text) {
 
 // Größte Schriftgröße (<= max, >= min), bei der der Text in die Breite passt; sonst gekürzt mit „…“.
 function passeAn(font, text, max, min, breite) {
+    const satz = zeichenSatzVon(font);
+    const sauber = bereinigeText(text, satz);
     let groesse = max;
-    while (groesse > min && font.widthOfTextAtSize(text, groesse) > breite) groesse -= 0.5;
-    let t = text;
-    while (t.length > 1 && font.widthOfTextAtSize(t, groesse) > breite) t = t.slice(0, -1).trimEnd();
-    return { text: t === text ? text : `${t}…`, groesse };
+    while (groesse > min && font.widthOfTextAtSize(sauber, groesse) > breite) groesse -= 0.5;
+    if (font.widthOfTextAtSize(sauber, groesse) <= breite) return { text: sauber, groesse };
+    let t = [...sauber];
+    while (t.length > 1 && font.widthOfTextAtSize(`${t.join('')}…`, groesse) > breite) t.pop();
+    return { text: `${t.join('').trimEnd()}…`, groesse };
+}
+
+const zeichenSaetze = new WeakMap();
+function zeichenSatzVon(font) {
+    if (!zeichenSaetze.has(font)) zeichenSaetze.set(font, new Set(font.getCharacterSet()));
+    return zeichenSaetze.get(font);
 }
 
 function zeichneQr(seite, inhalt, x, y, groesse) {
@@ -60,7 +96,11 @@ function zeichneQr(seite, inhalt, x, y, groesse) {
     }
 }
 
-async function ladePersonen(knex, turnierId, benutzerIds) {
+/**
+ * Personen mit Einsätzen für die Ausweise (sortiert nach Name). Filter betrifft nur Konten.
+ * @returns {Promise<{kennung:string, istKonto:boolean, name:string, einsaetze:{von:number,bis:number,taetigkeit:string}[]}[]>}
+ */
+export async function baueAusweisDaten(knex, turnierId, { benutzerIds } = {}) {
     const zeilen = await knex('helfer_einsaetze as e')
         .join('helfer_slots as s', 's.id', 'e.slot_id')
         .join('helfer_taetigkeiten as t', 't.id', 's.taetigkeit_id')
@@ -78,14 +118,14 @@ async function ladePersonen(knex, turnierId, benutzerIds) {
             personen.set(schluessel, {
                 kennung: istKonto ? z.benutzer_id : `m${++manuell}`,
                 istKonto,
-                name: istKonto ? [z.vorname, z.nachname].filter(Boolean).join(' ').trim() : String(z.name_manuell || '').trim(),
+                name: (istKonto ? [z.vorname, z.nachname].filter(Boolean).join(' ').trim() : String(z.name_manuell || '').trim()) || 'Helfer',
                 einsaetze: []
             });
         }
         personen.get(schluessel).einsaetze.push({ von: z.von_min, bis: z.bis_min, taetigkeit: z.bezeichnung });
     }
     let liste = [...personen.values()];
-    if (benutzerIds) {
+    if (benutzerIds?.length) {
         const erlaubt = new Set(benutzerIds);
         liste = liste.filter(p => p.istKonto && erlaubt.has(p.kennung));
     }
@@ -102,7 +142,7 @@ async function ladePersonen(knex, turnierId, benutzerIds) {
 export async function erzeugeAusweisPdf(knex, turnierId, { benutzerIds } = {}) {
     const turnier = await knex('turniere').where({ id: turnierId }).first('bezeichnung', 'datum', 'ort');
     if (!turnier) throw new FachFehler(404, 'Turnier nicht gefunden.');
-    const personen = await ladePersonen(knex, turnierId, benutzerIds?.length ? benutzerIds : null);
+    const personen = await baueAusweisDaten(knex, turnierId, { benutzerIds });
     if (personen.length === 0) throw new FachFehler(404, 'Es gibt keine Helfer mit Einsätzen für Ausweise.');
 
     const pdf = await PDFDocument.create();
@@ -125,7 +165,8 @@ export async function erzeugeAusweisPdf(knex, turnierId, { benutzerIds } = {}) {
         seite.drawRectangle({ x: x0, y: y0, width: AUSWEIS.b, height: AUSWEIS.h, borderColor: rgb(0.55, 0.55, 0.55), borderWidth: 0.75, borderDashArray: [4, 3] });
         const farbeHex = kopfFarbe(person.einsaetze[0].taetigkeit);
         seite.drawRectangle({ x: x0, y: yOben - KOPF_H, width: AUSWEIS.b, height: KOPF_H, color: rgb(...hexZuRgb(farbeHex)) });
-        const kopfText = textFarbeFuer(farbeHex);
+        const kopfHex = waehleTextFarbe(farbeHex);
+        const kopfText = rgb(...hexZuRgb(kopfHex));
 
         const tn = passeAn(fett, turnier.bezeichnung || '', 15, 8, innen);
         seite.drawText(tn.text, { x: x0 + RAND, y: yOben - 28, size: tn.groesse, font: fett, color: kopfText });
@@ -139,13 +180,7 @@ export async function erzeugeAusweisPdf(knex, turnierId, { benutzerIds } = {}) {
         const listeOben = yOben - KOPF_H - 56;
         const listeUnten = y0 + RAND + QR_GROESSE + 10;
         const verfuegbar = listeOben - listeUnten;
-        const maxZeilen = Math.max(1, Math.floor(verfuegbar / 12));
-        let anzeige = person.einsaetze;
-        let rest = 0;
-        if (anzeige.length > maxZeilen) {
-            rest = anzeige.length - (maxZeilen - 1);
-            anzeige = anzeige.slice(0, maxZeilen - 1);
-        }
+        const { anzeige, rest } = planeZeilen(person.einsaetze, Math.min(MAX_ZEILEN, Math.max(1, Math.floor(verfuegbar / 12))));
         const zeilen = anzeige.length + (rest ? 1 : 0);
         const hoeheZeile = Math.min(18, verfuegbar / zeilen);
         const groesse = Math.min(11, hoeheZeile * 0.72);
