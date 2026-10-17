@@ -111,6 +111,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     setInterval(aktualisiereImHintergrund, AUTO_AKTUALISIERUNG_MS);
 
+    const zeitplanBtn = document.getElementById('zeitplanBtn');
+    if (zeitplanBtn) {
+        zeitplanBtn.addEventListener('click', () => {
+            window.location.href = `/zeitplan.html?turnierId=${encodeURIComponent(turnierId)}`;
+        });
+    }
+
     if (aktualisierenBtn) {
         aktualisierenBtn.addEventListener('click', async () => {
             aktualisierenBtn.setAttribute('disabled', 'true');

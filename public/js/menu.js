@@ -240,10 +240,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <span class="material-icons">layers</span>
                     <span class="menu-text">Matten</span>
                 </a>
-                <a href="/zeitplan.html" class="menu-item" id="nav-zeitplan">
-                    <span class="material-icons">schedule</span>
-                    <span class="menu-text">Zeitplan</span>
-                </a>
                 <a href="/kampf.html" class="menu-item" id="nav-kampf">
                     <span class="material-icons">sports_kabaddi</span>
                     <span class="menu-text">Kampf</span>
@@ -765,8 +761,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (currentPath.includes('client.html')) document.getElementById('nav-geraet').classList.add('active');
         }
         if (currentPath.includes('teilnehmer.html')) document.getElementById('nav-teilnehmer')?.classList.add('active');
-        if (currentPath.includes('zeitplan.html')) document.getElementById('nav-zeitplan')?.classList.add('active');
-    if (currentPath.includes('kampf.html')) document.getElementById('nav-kampf')?.classList.add('active');
+        if (currentPath.includes('kampf.html')) document.getElementById('nav-kampf')?.classList.add('active');
         document.getElementById('sidebarNavPrimary')?.style.removeProperty('visibility');
         document.getElementById('sidebarNavSecondary')?.style.removeProperty('visibility');
         return;
@@ -919,7 +914,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const wartetAufFreigabe = !!(currentUser && currentUser.verein_id && !currentUser.verein_freigegeben);
 
     if (wartetAufFreigabe) {
-        versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-zeitplan', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
+        versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
 
         const istErlaubteSeite = currentPath.includes('turniere.html') || currentPath.includes('profil.html') || currentPath.includes('teilnehmer.html');
         if (!istErlaubteSeite) {
@@ -1026,7 +1021,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (currentPath.includes('teilnehmer.html')) document.getElementById('nav-teilnehmer')?.classList.add('active');
     if (currentPath.includes('pools.html')) document.getElementById('nav-pools')?.classList.add('active');
     if (currentPath.includes('mannschaften.html')) document.getElementById('nav-mannschaften')?.classList.add('active');
-    if (currentPath.includes('matten.html')) document.getElementById('nav-matten')?.classList.add('active');
+    // Die Zeitplan-Simulation gehört zu den Matten (Button auf matten.html).
+    if (currentPath.includes('matten.html') || currentPath.includes('zeitplan.html')) document.getElementById('nav-matten')?.classList.add('active');
     if (currentPath.includes('kampf.html')) document.getElementById('nav-kampf')?.classList.add('active');
     if (currentPath.includes('siegerliste.html')) document.getElementById('nav-siegerliste')?.classList.add('active');
     if (currentPath.includes('urkunden.html')) document.getElementById('nav-urkunden')?.classList.add('active');

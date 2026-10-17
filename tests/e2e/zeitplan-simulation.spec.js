@@ -68,3 +68,14 @@ test('Der Start einer neuen Alters-/Geschlechtsklasse ist mit Uhrzeit hervorgeho
     await expect(page.locator('.zeitplan-klassenstart').first()).toBeVisible();
 });
 
+
+test('Der Zeitplan hängt als Button an den Matten, nicht mehr im Menü', async ({ page, request }) => {
+    const turnierId = await legeTurnierAn(request, { name: 'Zeitplan Button' });
+    await page.goto(`/matten.html?turnierId=${turnierId}`);
+    await expect(page.locator('#nav-zeitplan')).toHaveCount(0);
+    await page.locator('#zeitplanBtn').click();
+    await expect(page).toHaveURL(u => u.pathname === '/zeitplan.html' && u.searchParams.get('turnierId') === String(turnierId));
+    await expect(page.getByRole('heading', { name: 'Zeitplan-Simulation' })).toBeVisible();
+    await expect(page.locator('#nav-matten')).toHaveClass(/active/);
+});
+
