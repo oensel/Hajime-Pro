@@ -28,6 +28,10 @@
 .helfer-plan-card [hidden], .hp-modal[hidden] { display: none !important; }
 
 .hp-hinweis { margin: 0 0 12px 0; color: var(--text-muted); font-size: 14px; }
+.hp-werkzeuge { display: flex; justify-content: flex-end; gap: 10px; margin-bottom: 12px; }
+.hp-werkzeuge [hidden] { display: none !important; }
+.hp-werkzeuge:not(:has(button:not([hidden]))) { display: none; }
+.hp-werkzeuge .btn .material-icons { font-size: 18px; vertical-align: middle; }
 .hp-meldung:empty { display: none; }
 .hp-meldung { margin-bottom: 12px; padding: 10px 12px; border: 2px solid var(--border); border-radius: 4px; }
 .hp-meldung a { color: var(--primary); font-weight: 700; }

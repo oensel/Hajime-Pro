@@ -7,7 +7,7 @@ import {
     minutenZuProzent, pixelZuMinuten, ziehe, slotZustand, freiePositionFuerNeuenSlot
 } from '/js/shared/helferZeitstrahl.js';
 import {
-    initDialoge, zeigeDetail, sendeMitBestaetigung, api, melde, el, baueLabelMenue
+    initDialoge, zeigeDetail, sendeMitBestaetigung, api, melde, el, baueLabelMenue, initCloudAktualisierung
 } from './helferPlanDialoge.js';
 
 const parameter = new URLSearchParams(window.location.search);
@@ -213,4 +213,5 @@ if (!turnierId) {
     zeigeMeldung('Kein Turnier gewählt.');
 } else {
     neuLaden();
+    initCloudAktualisierung();
 }

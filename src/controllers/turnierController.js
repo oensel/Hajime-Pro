@@ -1,6 +1,7 @@
 import { hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
 import { gueltigeFarbe } from '../shared/kampfFarbe.js';
 import { exportiereVorlagen, importiereVorlagen } from '../services/urkundenVorlagenTransfer.js';
+import { exportiereHelferplan, ersetzeHelferplan } from '../services/helferTransfer.js';
 import { entfernungZuPlzInKm } from '../utils/entfernungHelper.js';
 import { turnierHatEchteKaempfe } from './poolController.js';
 import { FachFehler } from '../utils/fachFehler.js';
@@ -51,7 +52,8 @@ export const TURNIER_SPALTEN_OHNE_PDF = [
     'id', 'bezeichnung', 'ort', 'plz', 'bundesland', 'datum', 'ausrichter',
     'nutze_gewichtsklassen', 'anzahl_kampfflaechen', 'verein_id', 'altersklassen',
     'mannschafts_altersklassen', 'status', 'anmeldeschluss', 'startgeld', 'iban',
-    'kontoinhaber', 'verwendungszweck', 'ausschreibung_dateiname', 'farbe_kaempfer2', 'created_at', 'updated_at'
+    'kontoinhaber', 'verwendungszweck', 'ausschreibung_dateiname', 'farbe_kaempfer2',
+    'beginn_min', 'ende_min', 'waagen_anzahl', 'created_at', 'updated_at'
 ];
 
 const AUSSCHREIBUNG_MAX_MB = 10;
@@ -119,6 +121,19 @@ function leseTurnierzeit(body, bisher = null) {
         throw new FachFehler(400, 'Das Turnierende muss nach dem Turnierbeginn liegen.');
     }
     return fragment;
+}
+
+// Turnierzeit aus einer Exportdatei, nachsichtig: ungültige oder fehlende Werte (ältere Dateien) werden
+// leer (Beginn/Ende) bzw. 1 (Waagen), statt den Import abzubrechen.
+function importTurnierzeit(t) {
+    const ganz = (w) => (w === null || w === undefined || w === '' || !Number.isInteger(Number(w)) ? null : Number(w));
+    let beginn = ganz(t.beginn_min);
+    let ende = ganz(t.ende_min);
+    if (beginn != null && (beginn < 0 || beginn > 1440)) beginn = null;
+    if (ende != null && (ende < 0 || ende > 1440)) ende = null;
+    if (beginn != null && ende != null && ende <= beginn) { beginn = null; ende = null; }
+    const waagen = ganz(t.waagen_anzahl);
+    return { beginn_min: beginn, ende_min: ende, waagen_anzahl: waagen != null && waagen >= 1 && waagen <= 10 ? waagen : 1 };
 }
 
 // Ein Turnier pro Tag (Spec mehrere Turniere): nur am Hallen-Server mit Sync, also dort, wo mehrere
@@ -814,6 +829,8 @@ export async function importiereTurnierDaten(knex, sync, daten) {
                 kontoinhaber: t.kontoinhaber || null,
                 verwendungszweck: t.verwendungszweck || null,
                 farbe_kaempfer2: gueltigeFarbe(t.farbe_kaempfer2) || 'blau',
+                // Turnierzeit und Waagenanzahl (Helferplan); ältere Dateien ohne diese Felder: leer bzw. 1
+                ...importTurnierzeit(t),
                 verein_id: verein.id,
                 // Hält die ID des Quell-Turniers fest, damit ein späterer Online-Reimport
                 // (importTurnierErgebnisse) dieses (neu angelegte, lokal andere) Offline-Turnier
@@ -827,6 +844,8 @@ export async function importiereTurnierDaten(knex, sync, daten) {
 
             await importWettkampfdaten(trx, turnierId, { kampfflaechen, pools, teilnehmer, kaempfe, mannschaften, mannschaftMitglieder });
             await importiereVorlagen(trx, verein.id, daten.urkunden_vorlagen);
+            // Helferplan gehört zum neu angelegten Turnier (Einsätze als name_manuell); fehlt er, bleibt er leer
+            if (daten.helferplan) await ersetzeHelferplan(trx, turnierId, daten.helferplan);
 
             return turnierId;
         });
@@ -965,6 +984,26 @@ export async function exportTurnier(knex, req, res) {
             return res.status(403).json({ success: false, error: 'Nur freigegebene Mitglieder des ausrichtenden Vereins dürfen das Turnier exportieren.' });
         }
 
+        const exportData = await baueTurnierExport(knex, turnierId, turnier);
+
+        const dateiname = `turnier_${turnierId}_export_${new Date().toISOString().slice(0, 10)}.json`;
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Disposition', `attachment; filename="${dateiname}"`);
+        res.send(JSON.stringify(exportData, null, 2));
+    } catch (error) {
+        console.error('[Turnier-Export-Fehler]:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+/**
+ * Inhalt der Turnier-Exportdatei (ohne Zugriffs- und Statusprüfung, die macht exportTurnier).
+ * Enthält seit der Helferverwaltung auch `helferplan` (nur Anzeigenamen, siehe services/helferTransfer.js).
+ */
+export async function baueTurnierExport(knex, turnierId, turnierZeile = null) {
+        const turnier = turnierZeile || await knex('turniere').where({ id: turnierId }).first();
+        if (!turnier) throw new FachFehler(404, 'Turnier nicht gefunden.');
+
         const kampfflaechen = await knex('kampfflaechen').where({ turnier_id: turnierId }).orderBy('id', 'asc');
         const pools = await knex('pools').where({ turnier_id: turnierId }).orderBy('id', 'asc');
         const teilnehmer = await knex('turnier_teilnehmer').where({ turnier_id: turnierId }).orderBy('id', 'asc');
@@ -1023,17 +1062,10 @@ export async function exportTurnier(knex, req, res) {
             kaempfe,
             mannschaften,
             mannschaft_mitglieder: mannschaftMitglieder,
-            urkunden_vorlagen: await exportiereVorlagen(knex, turnier.verein_id)
+            urkunden_vorlagen: await exportiereVorlagen(knex, turnier.verein_id),
+            helferplan: await exportiereHelferplan(knex, turnierId, kampfflaechen)
         };
-
-        const dateiname = `turnier_${turnierId}_export_${new Date().toISOString().slice(0, 10)}.json`;
-        res.setHeader('Content-Type', 'application/json');
-        res.setHeader('Content-Disposition', `attachment; filename="${dateiname}"`);
-        res.send(JSON.stringify(exportData, null, 2));
-    } catch (error) {
-        console.error('[Turnier-Export-Fehler]:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
+        return exportData;
 }
 
 async function synchronisiereKampfflaechen(knex, turnierId, anzahl) {

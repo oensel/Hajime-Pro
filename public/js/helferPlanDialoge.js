@@ -257,6 +257,69 @@ async function bestaetigeTaetigkeitDialog() {
     await kontext.neuLaden();
 }
 
+// ---------------------------------------------------------------- Aktualisierung aus der Cloud
+
+/**
+ * Knopf „Helferplan aus der Cloud aktualisieren“ (nur Hallen-Server, Spec Abschnitt 8): sichtbar, wenn
+ * /api/cloud/status die Cloud als verfügbar meldet und das Turnier aus der Cloud stammt (urspruengliche_id).
+ * Anmeldung wie auf turniere.html: Benutzer/Passwort, das Token lebt nur bis zum Ende des Vorgangs.
+ */
+export async function initCloudAktualisierung() {
+    const knopf = document.getElementById('hpCloudAktualisieren');
+    const modal = document.getElementById('hpCloudModal');
+    if (!knopf || !modal || !kontext.turnierId) return;
+
+    const status = await api('GET', '/api/cloud/status');
+    if (!status.ok || status.daten.verfuegbar !== true) return;
+    const turnier = await api('GET', `/api/turniere/${encodeURIComponent(kontext.turnierId)}`);
+    const cloudId = turnier.ok ? turnier.daten.urspruengliche_id : null;
+    if (cloudId == null) return;
+
+    const email = document.getElementById('hpCloudEmail');
+    const passwort = document.getElementById('hpCloudPasswort');
+    const fehler = document.getElementById('hpCloudFehler');
+    const ok = document.getElementById('hpCloudOk');
+    const schliessen = () => { modal.hidden = true; passwort.value = ''; };
+
+    knopf.hidden = false;
+    knopf.addEventListener('click', () => {
+        fehler.textContent = '';
+        passwort.value = '';
+        modal.hidden = false;
+        (email.value ? passwort : email).focus();
+    });
+    document.getElementById('hpCloudAbbrechen').addEventListener('click', schliessen);
+    modal.addEventListener('click', (e) => { if (e.target === modal) schliessen(); });
+    modal.addEventListener('keydown', (e) => { if (e.key === 'Escape') schliessen(); });
+    document.getElementById('hpCloudForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!email.value.trim() || !passwort.value) {
+            fehler.textContent = 'Benutzer und Passwort eingeben';
+            return;
+        }
+        fehler.textContent = '';
+        ok.disabled = true;
+        try {
+            const anmeldung = await api('POST', '/api/cloud/turniere', { email: email.value.trim(), password: passwort.value });
+            if (!anmeldung.ok || !anmeldung.daten.token) {
+                fehler.textContent = anmeldung.daten.error || 'Anmeldung an der Cloud fehlgeschlagen.';
+                return;
+            }
+            const r = await api('POST', `/api/cloud/turniere/${encodeURIComponent(cloudId)}/helferplan`, { token: anmeldung.daten.token });
+            if (!r.ok) {
+                fehler.textContent = r.daten.error || 'Der Helferplan konnte nicht aktualisiert werden.';
+                return;
+            }
+            schliessen();
+            melde('Helferplan aus der Cloud aktualisiert.', 'success');
+            kontext.schliesseAuswahl();
+            await kontext.neuLaden();
+        } finally {
+            ok.disabled = false;
+        }
+    });
+}
+
 // ---------------------------------------------------------------- Menü eigener Tätigkeiten
 
 function schliesseMenues() {

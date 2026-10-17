@@ -19,6 +19,12 @@
         <h1>Helferplan</h1>
     </div>
 
+    <div class="hp-werkzeuge">
+        <button type="button" class="btn btn-outlined" id="hpCloudAktualisieren" hidden>
+            <span class="material-icons">cloud_download</span> Helferplan aus der Cloud aktualisieren
+        </button>
+    </div>
+
     <p class="hp-hinweis">
         Ränder eines Slots ziehen ändert die Dauer, die Mitte verschiebt ihn (Raster 15 Minuten).
         Doppelklick auf eine freie Fläche legt einen Slot an, Klick auf einen Slot zeigt die Helfer.
@@ -60,6 +66,32 @@
             <div class="hp-modal-aktionen">
                 <button type="button" class="btn btn-outlined" id="hpTaetigkeitAbbrechen">Abbrechen</button>
                 <button type="submit" class="btn btn-raised" id="hpTaetigkeitOk">Hinzufügen</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="hpCloudModal" class="hp-modal" hidden>
+    <div class="hp-modal-karte" role="dialog" aria-modal="true" aria-labelledby="hpCloudTitel">
+        <h2 id="hpCloudTitel">Helferplan aus der Cloud aktualisieren</h2>
+        <p class="hp-hinweis">
+            Der Helferplan dieses Turniers wird durch den Stand der Cloud ersetzt, auch alle Eintragungen.
+            Hier gemachte Änderungen am Helferplan gehen dabei verloren. Turnier, Teilnehmer und Pools bleiben unverändert.
+            Die Zugangsdaten werden nicht gespeichert.
+        </p>
+        <form id="hpCloudForm" novalidate>
+            <div class="form-group">
+                <label for="hpCloudEmail">Benutzer (E-Mail) in der Cloud</label>
+                <input type="email" id="hpCloudEmail" autocomplete="username">
+            </div>
+            <div class="form-group">
+                <label for="hpCloudPasswort">Passwort</label>
+                <input type="password" id="hpCloudPasswort" autocomplete="current-password">
+            </div>
+            <div class="hp-fehler" id="hpCloudFehler" role="alert"></div>
+            <div class="hp-modal-aktionen">
+                <button type="button" class="btn btn-outlined" id="hpCloudAbbrechen">Abbrechen</button>
+                <button type="submit" class="btn btn-raised" id="hpCloudOk">Aktualisieren</button>
             </div>
         </form>
     </div>
