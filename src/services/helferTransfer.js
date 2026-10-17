@@ -86,7 +86,8 @@ export async function ersetzeHelferplan(trx, turnierId, helferplan) {
     const flaechen = await trx('kampfflaechen').where({ turnier_id: turnierId }).orderBy('id').select('id');
 
     for (const t of liste) {
-        const bezeichnung = String(t?.bezeichnung || '').trim();
+        // gekappt statt abgelehnt: eine präparierte Datei soll nicht den ganzen Turnier-Import abbrechen
+        const bezeichnung = String(t?.bezeichnung || '').trim().slice(0, 255);
         if (!bezeichnung) continue;
         const art = ARTEN.includes(t.art) ? t.art : 'frei';
         const ref = ganzzahl(t.kampfflaeche_ref);

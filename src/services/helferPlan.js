@@ -34,6 +34,16 @@ function fehler(status, nachricht, { code = null, daten = null } = {}) {
     return e;
 }
 
+// Bezeichnungen und Namen passen in varchar(255).
+const MAX_TEXT_LAENGE = 255;
+
+function pruefeBezeichnung(bezeichnung) {
+    const name = String(bezeichnung || '').trim();
+    if (!name) throw fehler(400, 'Bitte eine Bezeichnung angeben.');
+    if (name.length > MAX_TEXT_LAENGE) throw fehler(400, `Die Bezeichnung ist zu lang (höchstens ${MAX_TEXT_LAENGE} Zeichen).`);
+    return name;
+}
+
 function bestaetigungNoetig(nachricht, anzahl) {
     return fehler(409, nachricht, { code: FEHLER_CODES.BESTAETIGUNG_NOETIG, daten: { anzahl } });
 }
@@ -187,8 +197,7 @@ export async function synchronisiereStandardTaetigkeiten(knex, turnierId) {
 
 /** Eigene Tätigkeit (art 'frei') mit 2-Stunden-Slots über die Turnierzeit. */
 export async function legeTaetigkeitAn(knex, turnierId, { bezeichnung, bedarf } = {}) {
-    const name = String(bezeichnung || '').trim();
-    if (!name) throw fehler(400, 'Bitte eine Bezeichnung angeben.');
+    const name = pruefeBezeichnung(bezeichnung);
     const n = pruefeBedarf(bedarf);
     return transaktion(knex, async (trx) => {
         const turnier = await ladeTurnier(trx, turnierId);
@@ -214,8 +223,7 @@ export async function aendereTaetigkeit(knex, id, { bezeichnung, bedarf, bestaet
         const aenderung = {};
         let betroffeneBenutzerIds = [];
         if (bezeichnung !== undefined) {
-            const name = String(bezeichnung || '').trim();
-            if (!name) throw fehler(400, 'Bitte eine Bezeichnung angeben.');
+            const name = pruefeBezeichnung(bezeichnung);
             if (name !== t.bezeichnung) {
                 if (t.art !== 'frei') throw fehler(409, 'Matten- und Waagenzeilen lassen sich nicht umbenennen.');
                 aenderung.bezeichnung = name;
@@ -420,6 +428,7 @@ export async function traegeAus(knex, { einsatzId, durchId, jetzt = new Date(), 
 export async function traegeManuellEin(knex, { slotId, name, durchId }) {
     const anzeigename = String(name || '').trim();
     if (!anzeigename) throw fehler(400, 'Bitte einen Namen angeben.');
+    if (anzeigename.length > MAX_TEXT_LAENGE) throw fehler(400, `Der Name ist zu lang (höchstens ${MAX_TEXT_LAENGE} Zeichen).`);
     return transaktion(knex, async (trx) => {
         const slot = await sperreSlotMitTurnier(trx, slotId);
         if (await belegtePlaetze(trx, slotId) >= slot.bedarf) throw fehler(409, 'Gerade vergeben.', { code: FEHLER_CODES.VOLL });
