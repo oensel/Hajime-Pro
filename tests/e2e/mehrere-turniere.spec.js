@@ -129,10 +129,16 @@ test('turniere.html: Aktivieren und Duplizieren erscheinen, abgeschlossene Turni
     const karte = page.locator('.tournament-card').filter({ hasText: bez });
     await expect(karte.getByRole('button', { name: 'Aktivieren' })).toBeVisible();
     await expect(karte.getByRole('button', { name: 'Duplizieren' })).toBeVisible();
+    // nur das Kopieren-Icon, die Beschriftung steht als Tooltip
+    const dupKnopf = karte.getByRole('button', { name: 'Duplizieren' });
+    await expect(dupKnopf).toHaveAttribute('data-tooltip', 'Duplizieren');
+    await expect(dupKnopf.locator('.material-icons')).toHaveText('content_copy');
+    await expect(dupKnopf).toHaveText('content_copy');
     await expect(karte.locator('.status-badge')).toHaveText('Entwurf');
 
     const zeile = page.locator('.abgeschlossen-zeile').filter({ hasText: fertigName });
     await expect(zeile).toBeVisible();
+    await expect(zeile.locator('[data-aktion="duplizieren"]')).toHaveAttribute('data-tooltip', 'Duplizieren');
 
     // Duplizieren-Dialog
     await karte.getByRole('button', { name: 'Duplizieren' }).click();

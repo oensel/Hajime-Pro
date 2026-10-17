@@ -210,6 +210,8 @@
         .abgeschlossen-zeile .material-icons { font-size: 16px; }
         .abgeschlossen-zeile .az-name { flex: 1; font-weight: 700; }
         .abgeschlossen-zeile .btn { padding: 2px 10px; font-size: 11px; margin: 0; }
+        .abgeschlossen-zeile .btn.btn-icon-aktion { padding: 0; width: 30px; height: 30px; flex: 0 0 30px; }
+        .abgeschlossen-zeile .btn.btn-icon-aktion .material-icons { font-size: 18px; }
         .card-actions {
             display: flex;
             gap: 10px;
@@ -220,6 +222,7 @@
             flex: 1;
             margin: 0;
         }
+        .card-actions .btn.btn-icon-aktion { flex: 0 0 38px; }
         .no-data-msg {
             text-align: center;
             padding: 48px;
@@ -637,7 +640,7 @@
             function hallenAktionen(t) {
                 const aktivieren = t.aktivierbar
                     ? `<button type="button" class="btn btn-aktivieren" data-aktion="aktivieren" data-id="${t.id}">Aktivieren</button>` : '';
-                const duplizieren = `<button type="button" class="btn btn-outlined" data-aktion="duplizieren" data-id="${t.id}">Duplizieren</button>`;
+                const duplizieren = `<button type="button" class="btn btn-outlined btn-icon-aktion" data-aktion="duplizieren" data-id="${t.id}" aria-label="Duplizieren" data-tooltip="Duplizieren"><span class="material-icons">content_copy</span></button>`;
                 return aktivieren + duplizieren;
             }
 
@@ -789,7 +792,7 @@
                                 <span>${datumKurz(t.datum)}</span>
                                 <span>${t.ort}</span>
                                 <span>${t.teilnehmer_anzahl || 0} Teilnehmer</span>
-                                <button type="button" class="btn btn-outlined" data-aktion="duplizieren" data-id="${t.id}">Duplizieren</button>
+                                <button type="button" class="btn btn-outlined btn-icon-aktion" data-aktion="duplizieren" data-id="${t.id}" aria-label="Duplizieren" data-tooltip="Duplizieren"><span class="material-icons">content_copy</span></button>
                             </div>`).join('')}</div>`;
                 }
                 container.innerHTML = htmlContent;
