@@ -477,6 +477,9 @@
         const banner = document.getElementById('statusBanner');
         const createBtn = document.getElementById('createBtn');
 
+        // Nicht freigegeben: in der Cloud erreicht diese Seite so nur noch ein Super-Admin (andere wartende
+        // Konten leitet menu.js zur Helfer-App, Helferverwaltung); im Einzelbenutzerbetrieb ist der Verein
+        // immer freigegeben.
         if (!user.verein_freigegeben) {
             if (createBtn) createBtn.style.display = 'none';
             const wartetText = user.verein_wartet_auf_super_admin

@@ -991,10 +991,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Verein gewählt, aber Beitritt noch nicht freigegeben: Vereinsverwaltung (eigenes Turnier
-    // anlegen/bearbeiten, Pools, Matten, ...) bleibt gesperrt. teilnehmer.html ist trotzdem
-    // erreichbar — das deckt den Gastverein-Fall ab (eigene Athlet:innen bei EINEM FREMDEN,
-    // bereits veröffentlichten Turnier anmelden; serverseitig ohnehin auf den eigenen Verein
-    // beschränkt, siehe teilnehmerController.js), ohne auf die eigene Freigabe warten zu müssen.
+    // anlegen/bearbeiten, Pools, Matten, ...) bleibt gesperrt. Seit der Helferverwaltung landen solche
+    // Cloud-Konten oben schon in der Helfer-App (rechte.verwaltung ist ohne freigegebene Rolle false);
+    // hier kommen nur noch an: Super-Admins, deren aktiver Verein noch nicht freigegeben ist (sie behalten
+    // die Verwaltung), und wartende Konten auf helfer-freien Seiten mit menu.js (profil.html), denen die
+    // Turnier-Menüpunkte ausgeblendet werden.
     const wartetAufFreigabe = !!(currentUser && currentUser.verein_id && !currentUser.verein_freigegeben);
 
     if (wartetAufFreigabe) {
