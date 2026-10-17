@@ -3,6 +3,8 @@ import { sendeMail } from '../utils/mailer.js';
 import {
     entscheideAnfrage, aendereRolle, entferneMitglied, ladeEmpfaengerFuerAnfrage, hatVereinAdmin, darfVereinVerwalten
 } from '../services/vereinsRollen.js';
+import { erzeugeToken } from '../services/einmalToken.js';
+import { ermittleBasisUrl, HINWEIS_FEHLENDE_BASIS_URL } from '../utils/basisUrl.js';
 
 export async function listVereine(knex, req, res) {
     try {
@@ -55,13 +57,31 @@ Bitte prüfen Sie die Anfrage in Hajime Pro, wählen Sie eine Rolle (Admin, Benu
     });
 }
 
-export async function joinVerein(knex, req, res) {
+/**
+ * POST /api/vereine/join — Beitrittsanfrage (Erstbeitritt oder weiterer Verein im Profil). Verlangt eine
+ * bestätigte E-Mail-Adresse. Die Entscheider bekommen eine Mail mit einmaligem Freischaltungs-Link
+ * (<basisUrl>/freigabe.html?token=…); ohne sichere Basis-URL (Cloud ohne PUBLIC_BASE_URL) ohne Link.
+ * Die Quelle der Anfrage (Vorbelegung der Rolle) übernimmt die jüngste bestehende Mitgliedschaft, sonst 'verwaltung'.
+ */
+export async function joinVerein(knex, req, res, { sende = sendeMail } = {}) {
     try {
         const userId = req.user.id;
-        const { vereinId, newVereinName } = req.body;
+        const { vereinId, newVereinName } = req.body || {};
 
         if (!vereinId && !newVereinName) {
             return res.status(400).json({ success: false, error: 'Verein-ID oder Name eines neuen Vereins ist erforderlich.' });
+        }
+
+        const konto = await knex('benutzer').where({ id: userId }).first();
+        if (!konto) {
+            return res.status(404).json({ success: false, error: 'Konto nicht gefunden.' });
+        }
+        if (!konto.email_bestaetigt_am) {
+            return res.status(403).json({
+                success: false,
+                code: 'email_unbestaetigt',
+                error: 'Bitte bestätigen Sie zuerst Ihre E-Mail-Adresse.'
+            });
         }
 
         let targetVereinId;
@@ -94,10 +114,18 @@ export async function joinVerein(knex, req, res) {
 
         // Jeder Beitritt startet als "wartet auf Prüfung" — ob der Super-Admin (Verein ohne Admin) oder
         // ein Admin des Vereins prüft, entscheidet sich allein daran, ob der Verein schon einen Admin hat.
+        const letzteMitgliedschaft = await knex('benutzer_vereine')
+            .where({ benutzer_id: userId })
+            .whereNotNull('angefragt_ueber')
+            .orderBy('id', 'desc')
+            .first();
+        const angefragtUeber = letzteMitgliedschaft ? letzteMitgliedschaft.angefragt_ueber : 'verwaltung';
+
         await knex('benutzer_vereine').insert({
             benutzer_id: userId,
             verein_id: targetVereinId,
-            freigegeben: 0
+            freigegeben: 0,
+            angefragt_ueber: angefragtUeber
         });
 
         // Der neu beigetretene Verein wird direkt zum aktiven Verein — der Nutzer wollte
@@ -107,9 +135,22 @@ export async function joinVerein(knex, req, res) {
             updated_at: knex.fn.now()
         });
 
-        const antragsteller = await knex('benutzer').where({ id: userId }).first();
-        benachrichtigeUeberBeitrittsanfrage(knex, antragsteller, targetVereinId, targetVereinName)
-            .catch(err => console.error('[Verein-Join-Benachrichtigung-Fehler]:', err));
+        try {
+            let freischaltLink;
+            const basisUrl = ermittleBasisUrl(req);
+            if (basisUrl) {
+                const token = await erzeugeToken(knex, {
+                    benutzerId: userId, zweck: 'freischaltung', vereinId: targetVereinId, angefragtUeber
+                });
+                freischaltLink = `${basisUrl}/freigabe.html?token=${encodeURIComponent(token)}`;
+            } else {
+                console.error(`[Verein-Join] ${HINWEIS_FEHLENDE_BASIS_URL} Freischaltungs-Mail ohne Link.`);
+            }
+            await benachrichtigeUeberBeitrittsanfrage(knex, konto, targetVereinId, targetVereinName, sende, { freischaltLink });
+        } catch (err) {
+            // Ohne Mail bleibt die Anfrage in der Liste offener Anfragen (Spec 4).
+            console.error('[Verein-Join-Benachrichtigung-Fehler]:', err);
+        }
 
         res.json({
             success: true,

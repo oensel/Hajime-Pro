@@ -127,6 +127,7 @@ export async function entscheideAnfrage(knex, { vereinId, benutzerId, entscheide
 
     if (entscheidung === 'ablehnen') {
         await loescheMitgliedschaft(knex, benutzerId, vereinId);
+        await entwerteFreischaltLinks(knex, benutzerId, vereinId);
         return { ok: true };
     }
 
@@ -144,7 +145,17 @@ export async function entscheideAnfrage(knex, { vereinId, benutzerId, entscheide
             updated_at: knex.fn.now()
         });
     if (!geaendert) return fehler(409, 'Diese Mitgliedschaft ist bereits freigegeben.');
+    await entwerteFreischaltLinks(knex, benutzerId, vereinId);
     return { ok: true };
+}
+
+// Nach einer Entscheidung (per Link oder über die Liste) gelten die übrigen Freischaltungs-Links dieser Anfrage
+// nicht mehr; sonst träfe ein alter Link nach Ablehnung und erneuter Anfrage die neue Anfrage.
+async function entwerteFreischaltLinks(knex, benutzerId, vereinId) {
+    await knex('token_einmal')
+        .where({ benutzer_id: benutzerId, verein_id: vereinId, zweck: 'freischaltung' })
+        .whereNull('benutzt_am')
+        .update({ benutzt_am: knex.fn.now() });
 }
 
 /**

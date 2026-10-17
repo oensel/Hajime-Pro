@@ -15,6 +15,8 @@ pg.types.setTypeParser(1082, (val) => val);
 import { getAuthRoutes } from './routes/authRoutes.js';
 import { initialisiere as initialisiereSteuerungPasswort } from './utils/steuerungPasswort.js';
 import { getVereinRoutes } from './routes/vereinRoutes.js';
+import { getFreigabeRoutes } from './routes/freigabeRoutes.js';
+import { getNutzerRoutes } from './routes/nutzerRoutes.js';
 import { getTurnierRoutes } from './routes/turnierRoutes.js';
 import { getCloudRoutes } from './routes/cloudRoutes.js';
 import { erzeugeCloudZugriff } from './services/cloudZugriff.js';
@@ -299,6 +301,9 @@ if (syncKonfig.istClient) {
     initialisiereSteuerungPasswort(knex);
     app.use('/api/auth', getAuthRoutes(knex));
     app.use('/api/vereine', getVereinRoutes(knex));
+    // Freischaltung per Mail-Link (Token trägt die Berechtigung, daher ohne Anmeldung) und Super-Admin-Verwaltung.
+    app.use('/api/freigabe', getFreigabeRoutes(knex));
+    app.use('/api/nutzer', getNutzerRoutes(knex));
     app.use('/api/turniere', requireWriteAuth, getTurnierRoutes(knex));
     app.use('/api/teilnehmer', requireWriteAuth, getTeilnehmerRoutes(knex));
     app.use('/api/pools', requireWriteAuth, getPoolRoutes(knex));

@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hajime Pro - Freischaltung</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <style>
+        body {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            min-height: 100vh !important;
+            margin: 0 !important;
+            padding: 0 16px !important;
+            background: #111827 !important;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+            box-sizing: border-box;
+        }
+        .login-card {
+            background: #1f2937;
+            border: 2px solid #374151;
+            border-radius: 8px;
+            padding: 40px;
+            width: 100%;
+            max-width: 440px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            color: #f3f4f6;
+            box-sizing: border-box;
+            text-align: center;
+        }
+        .login-title {
+            font-size: 24px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #3b82f6;
+            margin: 0 0 8px 0;
+        }
+        .login-subtitle {
+            font-size: 13px;
+            color: #9ca3af;
+            font-weight: 600;
+            margin: 0 0 24px 0;
+        }
+        .anfrage {
+            text-align: left;
+            background: #111827;
+            border: 1px solid #374151;
+            border-radius: 6px;
+            padding: 14px 16px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            line-height: 1.6;
+            display: none;
+        }
+        .anfrage .wert { font-weight: 700; color: #f3f4f6; }
+        .anfrage .feld { color: #9ca3af; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .form-group { text-align: left; margin-bottom: 20px; display: none; }
+        .form-label {
+            display: block;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: #9ca3af;
+            margin-bottom: 6px;
+            letter-spacing: 0.5px;
+        }
+        .form-input {
+            width: 100%;
+            background: #111827;
+            border: 1px solid #4b5563;
+            border-radius: 4px;
+            padding: 12px;
+            color: #ffffff;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        .knoepfe { display: none; gap: 12px; }
+        .btn-login {
+            flex: 1;
+            background: #3b82f6;
+            color: #ffffff;
+            border: none;
+            padding: 14px;
+            font-size: 14px;
+            font-weight: 700;
+            border-radius: 4px;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            transition: background 0.2s;
+        }
+        .btn-login:hover { background: #2563eb; }
+        .btn-ablehnen { background: #4b5563; }
+        .btn-ablehnen:hover { background: #b91c1c; }
+        .btn-login:disabled { background: #374151; cursor: default; }
+        .meldung {
+            font-size: 15px;
+            font-weight: 700;
+            line-height: 1.5;
+            color: #f3f4f6;
+            display: none;
+        }
+        .error-message {
+            margin-top: 16px;
+            color: #ef4444;
+            font-size: 13px;
+            font-weight: 700;
+            display: none;
+        }
+        .link { color: #93c5fd; font-size: 13px; display: inline-block; margin-top: 20px; }
+    </style>
+</head>
+<body>
+
+<div class="login-card">
+    <div style="font-size: 48px; margin-bottom: 16px;">🥋</div>
+    <h1 class="login-title">Hajime Pro</h1>
+    <p class="login-subtitle">Beitrittsanfrage entscheiden</p>
+
+    <div id="anfrage" class="anfrage">
+        <div class="feld">Name</div>
+        <div class="wert" id="anfrageName"></div>
+        <div class="feld">E-Mail</div>
+        <div class="wert" id="anfrageEmail"></div>
+        <div class="feld">Verein</div>
+        <div class="wert" id="anfrageVerein"></div>
+    </div>
+
+    <!-- Ein bloßer Aufruf des Links ändert nichts (Mail-Programme rufen Links vorab ab); entschieden wird per Knopf (POST). -->
+    <div class="form-group" id="rolleGruppe">
+        <label class="form-label" for="rolle">Rolle</label>
+        <select id="rolle" class="form-input">
+            <option value="admin">Admin</option>
+            <option value="benutzer">Benutzer</option>
+            <option value="helfer">Helfer</option>
+        </select>
+    </div>
+    <div class="knoepfe" id="knoepfe">
+        <button type="button" id="freischaltenKnopf" class="btn-login">Freischalten</button>
+        <button type="button" id="ablehnenKnopf" class="btn-login btn-ablehnen">Ablehnen</button>
+    </div>
+
+    <p id="ergebnis" class="meldung" role="status"></p>
+    <div id="errorMessage" class="error-message" role="alert"></div>
+    <a href="/login.html" class="link">Zur Anmeldung</a>
+</div>
+
+<script>
+    const token = new URLSearchParams(window.location.search).get('token') || '';
+    const anfrageDiv = document.getElementById('anfrage');
+    const rolleGruppe = document.getElementById('rolleGruppe');
+    const rolleSelect = document.getElementById('rolle');
+    const knoepfe = document.getElementById('knoepfe');
+    const freischaltenKnopf = document.getElementById('freischaltenKnopf');
+    const ablehnenKnopf = document.getElementById('ablehnenKnopf');
+    const ergebnis = document.getElementById('ergebnis');
+    const errDiv = document.getElementById('errorMessage');
+
+    function zeigeFehler(text) {
+        errDiv.textContent = text;
+        errDiv.style.display = 'block';
+    }
+
+    function setzeBedienbar(an) {
+        freischaltenKnopf.disabled = !an;
+        ablehnenKnopf.disabled = !an;
+        rolleSelect.disabled = !an;
+    }
+
+    function zeigeErgebnis(text) {
+        anfrageDiv.style.display = 'none';
+        rolleGruppe.style.display = 'none';
+        knoepfe.style.display = 'none';
+        ergebnis.textContent = text;
+        ergebnis.style.display = 'block';
+    }
+
+    async function lade() {
+        if (!token) {
+            zeigeFehler('Der Freischaltungs-Link ist unvollständig. Bitte öffnen Sie den Link aus der E-Mail erneut.');
+            return;
+        }
+        try {
+            const response = await fetch(`/api/freigabe/${encodeURIComponent(token)}`);
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Die Anfrage konnte nicht geladen werden.');
+            document.getElementById('anfrageName').textContent = `${data.benutzer.vorname} ${data.benutzer.nachname}`;
+            document.getElementById('anfrageEmail').textContent = data.benutzer.email;
+            document.getElementById('anfrageVerein').textContent = data.verein.name;
+            rolleSelect.value = data.vorbelegteRolle;
+            anfrageDiv.style.display = 'block';
+            rolleGruppe.style.display = 'block';
+            knoepfe.style.display = 'flex';
+        } catch (err) {
+            zeigeFehler(err.message);
+        }
+    }
+
+    async function entscheide(entscheidung) {
+        errDiv.style.display = 'none';
+        setzeBedienbar(false);
+        try {
+            const body = entscheidung === 'freigeben' ? { entscheidung, rolle: rolleSelect.value } : { entscheidung };
+            const response = await fetch(`/api/freigabe/${encodeURIComponent(token)}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            const data = await response.json();
+            if (response.status === 410) {
+                zeigeErgebnis(data.error);
+                return;
+            }
+            if (!response.ok) throw new Error(data.error || 'Die Entscheidung ist fehlgeschlagen.');
+            zeigeErgebnis(data.message);
+        } catch (err) {
+            setzeBedienbar(true);
+            zeigeFehler(err.message);
+        }
+    }
+
+    freischaltenKnopf.addEventListener('click', () => entscheide('freigeben'));
+    ablehnenKnopf.addEventListener('click', () => {
+        if (confirm('Anfrage wirklich ablehnen?')) entscheide('ablehnen');
+    });
+
+    lade();
+</script>
+</body>
+</html>

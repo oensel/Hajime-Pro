@@ -70,6 +70,16 @@ export async function verbrauchePruefe(knex, token, zweck) {
 }
 
 /**
+ * Gab es diesen Token je (auch verbraucht oder abgelaufen)? Unterscheidet „ungültiger Link“ (404) von
+ * „bereits entschieden oder abgelaufen“ (410).
+ * @returns {Promise<boolean>}
+ */
+export async function tokenBekannt(knex, token, zweck) {
+    if (!istTokenText(token) || !ZWECKE.has(zweck)) return false;
+    return !!(await knex('token_einmal').where({ token_hash: hashToken(token), zweck }).first('id'));
+}
+
+/**
  * Macht alle noch offenen Tokens eines Kontos für einen Zweck ungültig (z.B. ältere Bestätigungslinks).
  * @returns {Promise<number>} Anzahl entwerteter Tokens
  */
