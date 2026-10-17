@@ -18,6 +18,7 @@ import { FachFehler } from '../utils/fachFehler.js';
 import { berechneVorschlag, listeOffenePools } from '../services/nachzuegler.js';
 import { bewerteEinfuegen, ordneNachzueglerKaempfe } from '../shared/nachzueglerEinfuegen.js';
 import { fuegeInFreilosPlatzEin } from '../services/doppelKoEinfuegen.js';
+import { baueZeitprognoseAntwort } from '../shared/zeitprognoseAntwort.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1901,6 +1902,24 @@ export async function getKampfflaechenMitPools(knex, req, res) {
             pools: poolsMitDauer,
             begegnungen
         });
+    } catch (error) {
+        return res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+// Voraussichtliches Ende je Matte und Rückstand der Matten untereinander (Scoreboard, matten.html).
+export async function getZeitprognose(knex, req, res) {
+    try {
+        const { turnierId } = req.query;
+        if (!turnierId) {
+            return res.status(400).json({ success: false, error: 'turnierId ist erforderlich' });
+        }
+        const kampfflaechen = await knex('kampfflaechen').where({ turnier_id: turnierId }).orderBy('id');
+        const pools = await knex('pools').where({ turnier_id: turnierId }).andWhere('verspaetet', false);
+        const poolIds = pools.map(p => p.id);
+        const kaempfe = poolIds.length ? await knex('kaempfe').whereIn('pool_id', poolIds) : [];
+        const mannschaftskaempfe = poolIds.length ? await knex('mannschaftskaempfe').whereIn('pool_id', poolIds) : [];
+        return res.json(baueZeitprognoseAntwort({ kampfflaechen, pools, kaempfe, mannschaftskaempfe }, Date.now()));
     } catch (error) {
         return res.status(500).json({ success: false, error: error.message });
     }

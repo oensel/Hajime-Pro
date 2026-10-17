@@ -2561,6 +2561,26 @@ function pruefePoolAenderung(kaempfe) {
 // Kämpfe zusätzlich mit einer "Korrigieren"-Aktion (analog zu kampf.html). Wird an denselben
 // Stellen aufgerufen wie pruefeUndZeigePausenwarnung(), da dieselben Ereignisse (Kampf geladen,
 // Ergebnis gesendet, Matte gewechselt, periodisch) die Matten-Warteschlange verändern.
+// Zeigt das voraussichtliche Ende der gewählten Matte und ihren Rückstand gegenüber der frühesten Matte
+// (nur Information, kein Eingriff; src/shared/zeitPrognose.js).
+async function zeigeVerspaetungHinweis() {
+    const el = document.getElementById('verspaetungHinweis');
+    if (!el) return;
+    const turnierId = localStorage.getItem('aktiveTurnierId');
+    try {
+        const antwort = selectedMatId && turnierId ? await window.Datenzugriff.ladeZeitprognose(turnierId) : null;
+        const matte = antwort && antwort.matten.find(m => Number(m.id) === Number(selectedMatId));
+        if (!matte || matte.endeMs == null) { el.style.display = 'none'; return; }
+        const ende = window.ZeitAnzeige.format(matte.endeMs);
+        el.textContent = matte.rueckstand
+            ? `Diese Matte endet ${ende}, ca. ${matte.rueckstand.minuten} Min. nach ${matte.rueckstand.bezugBezeichnung}.`
+            : `Diese Matte endet ${ende}.`;
+        el.style.display = 'block';
+    } catch (err) {
+        el.style.display = 'none';
+    }
+}
+
 async function ladeMattenUebersicht() {
     const upcomingList = document.getElementById('steuerungUpcomingList');
     const finishedList = document.getElementById('steuerungFinishedList');
@@ -2581,6 +2601,7 @@ async function ladeMattenUebersicht() {
         }
 
         renderePoolAnsichtSteuerung(kaempfe);
+        zeigeVerspaetungHinweis();
 
         pruefePoolAenderung(kaempfe);
 
