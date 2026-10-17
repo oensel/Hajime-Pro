@@ -4,6 +4,7 @@ import { ladeBenutzerMitAktivemVerein, ladeVereineFuerBenutzer } from '../utils/
 import * as steuerungPasswort from '../utils/steuerungPasswort.js';
 import { registriere, bestaetige, sendeBestaetigungNeu, findeKontoPerEmail } from '../services/registrierung.js';
 import { ermittleBasisUrl, HINWEIS_FEHLENDE_BASIS_URL } from '../utils/basisUrl.js';
+import { hatVereinAdmin } from '../services/vereinsRollen.js';
 import dotenv from 'dotenv';
 dotenv.config({ quiet: true });
 
@@ -114,6 +115,9 @@ export async function login(knex, req, res) {
                 nachname: user.nachname,
                 verein_id: aktuellerBenutzer.verein_id,
                 verein_freigegeben: !!aktuellerBenutzer.verein_freigegeben,
+                // Rolle im aktiven Verein (login.html leitet reine Helfer direkt zur Helfer-App)
+                verein_rolle: aktuellerBenutzer.verein_rolle,
+                ist_super_admin: !!user.ist_super_admin,
                 vereine
             }
         });
@@ -141,11 +145,10 @@ export async function getMe(knex, req, res) {
             const countRow = await knex('benutzer_vereine').where({ verein_id: user.verein_id }).count('* as anzahl').first();
             vereinMitgliederAnzahl = parseInt(countRow.anzahl, 10);
 
+            // Ohne freigegebenen Admin entscheidet der Super-Admin über die Anfrage (Spec 4), auch wenn
+            // andere Mitglieder (Benutzer/Helfer) schon freigegeben sind.
             if (!user.verein_freigegeben) {
-                const approvedMember = await knex('benutzer_vereine')
-                    .where({ verein_id: user.verein_id, freigegeben: 1 })
-                    .first();
-                vereinWartetAufSuperAdmin = !approvedMember;
+                vereinWartetAufSuperAdmin = !(await hatVereinAdmin(knex, user.verein_id));
             }
         }
 
@@ -161,6 +164,7 @@ export async function getMe(knex, req, res) {
                 verein_id: user.verein_id,
                 verein_name: vereinName,
                 verein_freigegeben: !!user.verein_freigegeben,
+                verein_rolle: user.verein_rolle,
                 verein_wartet_auf_super_admin: vereinWartetAufSuperAdmin,
                 verein_mitglieder_anzahl: vereinMitgliederAnzahl,
                 ist_super_admin: !!user.ist_super_admin,
@@ -241,6 +245,7 @@ export async function updateProfile(knex, req, res) {
                 verein_id: aktuellerBenutzer.verein_id,
                 verein_name: vereinName,
                 verein_freigegeben: !!aktuellerBenutzer.verein_freigegeben,
+                verein_rolle: aktuellerBenutzer.verein_rolle,
                 vereine
             }
         });
