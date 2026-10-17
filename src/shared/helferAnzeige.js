@@ -53,7 +53,17 @@ export function gruppiereNachBezeichnung(slots) {
         }));
 }
 
-const WOCHENTAGE = ['So.', 'Mo.', 'Di.', 'Mi.', 'Do.', 'Fr.', 'Sa.'];
+/**
+ * Hinweis „Deine Registrierung muss noch freigeschaltet werden.“: das Konto hat keine freigeschaltete
+ * Mitgliedschaft. Ohne geladenes Profil (null/undefined) keine Aussage → false.
+ * @param {Array<{freigegeben:boolean}>|null|undefined} vereine
+ */
+export function wartetAufFreischaltung(vereine) {
+    if (!Array.isArray(vereine)) return false;
+    return !vereine.some(v => v && v.freigegeben);
+}
+
+const WOCHENTAGE =['So.', 'Mo.', 'Di.', 'Mi.', 'Do.', 'Fr.', 'Sa.'];
 
 /** 'YYYY-MM-DD' → 'Sa., 14.11.2026' (ohne Zeitzonenabhängigkeit). */
 export function datumText(datum) {

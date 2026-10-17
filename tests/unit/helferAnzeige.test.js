@@ -1,7 +1,7 @@
 // Anzeigelogik der Helfer-App (src/shared/helferAnzeige.js): Vereinssuche, Platztext, Gruppierung, Datum.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { filtereVereine, platzText, gruppiereNachBezeichnung, datumText } from '../../src/shared/helferAnzeige.js';
+import { filtereVereine, platzText, gruppiereNachBezeichnung, datumText, wartetAufFreischaltung } from '../../src/shared/helferAnzeige.js';
 
 const VEREINE = ['Judo Club Senden', 'JC Musterstadt', 'SV Sendenhorst Judo', 'Budokan Münster'];
 
@@ -49,6 +49,15 @@ test('gruppiereNachBezeichnung: Tätigkeiten alphabetisch (numerisch), Slots nac
     assert.deepEqual(gruppen[0].slots.map(s => s.slotId), [4, 3]);
     assert.deepEqual(gruppen[2].slots.map(s => s.slotId), [5, 2]);
     assert.deepEqual(gruppiereNachBezeichnung([]), []);
+});
+
+test('wartetAufFreischaltung: kein freigeschalteter Verein', () => {
+    assert.equal(wartetAufFreischaltung([{ verein_id: 1, freigegeben: false }]), true);
+    assert.equal(wartetAufFreischaltung([]), true);
+    assert.equal(wartetAufFreischaltung([{ verein_id: 1, freigegeben: false }, { verein_id: 2, freigegeben: true }]), false);
+    // Profil nicht geladen: keine Aussage, kein Hinweis
+    assert.equal(wartetAufFreischaltung(null), false);
+    assert.equal(wartetAufFreischaltung(undefined), false);
 });
 
 test('datumText: Wochentag kurz und Datum', () => {

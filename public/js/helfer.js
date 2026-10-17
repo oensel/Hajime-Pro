@@ -3,7 +3,7 @@
 // apiFetch übernimmt dessen Verhalten (Bearer-Token, bei 401 zur Anmeldung). Navigation über den Hash
 // (#turniere, #turnier=<id>, #dienste, #profil), damit die Zurück-Taste funktioniert.
 // Alle Daten werden per textContent/createElement eingesetzt, nie per innerHTML.
-import { platzText, gruppiereNachBezeichnung, datumText } from '/js/shared/helferAnzeige.js';
+import { platzText, gruppiereNachBezeichnung, datumText, wartetAufFreischaltung } from '/js/shared/helferAnzeige.js';
 import { formatiereMinuten } from '/js/shared/helferZeit.js';
 import { ansichtProfil } from '/js/helferProfil.js';
 
@@ -108,10 +108,9 @@ async function ansichtTurniere() {
     ]);
     const inhalt = el('div', {}, el('h1', { class: 'hf-titel hf-titel-seite', text: 'Turniere' }));
     if (turniere.length === 0) {
-        const freigeschaltet = !profil || (profil.vereine || []).some(v => v.freigegeben);
-        inhalt.append(freigeschaltet
-            ? leer('Keine Turniere', 'Sobald einer deiner Vereine ein Turnier veröffentlicht, erscheint es hier.')
-            : leer('Noch nicht freigeschaltet', 'Deine Registrierung muss noch freigeschaltet werden.'));
+        inhalt.append(wartetAufFreischaltung(profil && profil.vereine)
+            ? leer('Noch nicht freigeschaltet', 'Deine Registrierung muss noch freigeschaltet werden.')
+            : leer('Keine Turniere', 'Sobald einer deiner Vereine ein Turnier veröffentlicht, erscheint es hier.'));
         return inhalt;
     }
     const liste = el('ul', { class: 'hf-karten' });
@@ -131,19 +130,29 @@ async function ansichtTurniere() {
 
 // ---------- Offene Dienste eines Turniers ----------
 
+// Meldung zu einem Slot, die nach dem Neuladen der Dienste-Liste wieder erscheint ({ slotId, text }).
+let slotMeldung = null;
+
+const slotSelektor = (slotId) => `[data-slot-id="${Number(slotId)}"]`;
+
 async function eintragen(slot, knopf, fehlerZeile) {
     knopf.disabled = true;
     fehlerZeile.textContent = '';
     const { ok, daten } = await apiFetch('/api/helfer/einsaetze', { method: 'POST', body: { slotId: slot.slotId } });
-    if (ok) return zeige();
+    if (ok) return zeige({ fokus: slotSelektor(slot.slotId) });
     const code = daten && daten.code;
-    fehlerZeile.textContent = FEHLER_TEXTE[code] || (daten && daten.error) || 'Eintragen fehlgeschlagen.';
-    // Voller Slot bleibt gesperrt, sonst erneut versuchbar
-    knopf.disabled = code === 'voll' || code === 'frist';
+    // Der Stand kann sich geändert haben (Slot voll, Frist, eigener Dienst woanders): Liste neu laden,
+    // die Meldung bleibt am Slot bzw. oben stehen, falls der Slot nicht mehr angeboten wird.
+    slotMeldung = { slotId: slot.slotId, text: FEHLER_TEXTE[code] || (daten && daten.error) || 'Eintragen fehlgeschlagen.' };
+    return zeige({ fokus: `${slotSelektor(slot.slotId)} .hf-fehler, .hf-slot-meldung` });
 }
 
 function slotZeile(slot, fristAbgelaufen) {
-    const fehlerZeile = el('p', { class: 'hf-fehler', role: 'alert' });
+    const fehlerZeile = el('p', { class: 'hf-fehler', role: 'alert', tabindex: '-1' });
+    if (slotMeldung && slotMeldung.slotId === slot.slotId) {
+        fehlerZeile.textContent = slotMeldung.text;
+        slotMeldung = null;
+    }
     let aktion;
     if (slot.eingetragen) {
         aktion = el('span', { class: 'hf-badge hf-badge-erfolg', text: 'Eingetragen' });
@@ -152,7 +161,7 @@ function slotZeile(slot, fristAbgelaufen) {
         aktion.addEventListener('click', () => eintragen(slot, aktion, fehlerZeile)
             .catch(e => { if (!(e instanceof AbmeldungFehler)) { fehlerZeile.textContent = e.message; aktion.disabled = false; } }));
     }
-    return el('li', { class: 'hf-slot' + (slot.eingetragen ? ' hf-slot-eigen' : '') },
+    return el('li', { class: 'hf-slot' + (slot.eingetragen ? ' hf-slot-eigen' : ''), 'data-slot-id': slot.slotId, tabindex: '-1' },
         el('div', { class: 'hf-slot-text' },
             el('span', { class: 'hf-slot-zeit', text: zeitraum(slot.von_min, slot.bis_min) }),
             el('span', { class: 'hf-slot-info', text: slot.eingetragen ? 'Du bist eingetragen' : platzText(slot.frei) })),
@@ -170,15 +179,16 @@ async function ansichtDienste(turnierId) {
         inhalt.append(el('p', { class: 'hf-hinweis', text: `Eintragen ist nicht mehr möglich. ${FRIST_TEXT}` }));
     }
     const gruppen = gruppiereNachBezeichnung(dienste);
-    if (gruppen.length === 0) {
-        inhalt.append(leer('Keine offenen Dienste', 'Alle Dienste dieses Turniers sind besetzt.'));
-        return inhalt;
+    const abschnitte = gruppen.map(gruppe => el('section', { class: 'hf-gruppe' },
+        el('h2', { class: 'hf-gruppe-titel', text: gruppe.bezeichnung }),
+        el('ul', { class: 'hf-liste' }, gruppe.slots.map(s => slotZeile(s, fristAbgelaufen)))));
+    // Meldung zu einem Slot, der nach dem Neuladen nicht mehr angeboten wird (z. B. inzwischen voll)
+    if (slotMeldung) {
+        inhalt.append(el('p', { class: 'hf-hinweis hf-hinweis-fehler hf-slot-meldung', role: 'alert', tabindex: '-1', text: slotMeldung.text }));
+        slotMeldung = null;
     }
-    for (const gruppe of gruppen) {
-        inhalt.append(el('section', { class: 'hf-gruppe' },
-            el('h2', { class: 'hf-gruppe-titel', text: gruppe.bezeichnung }),
-            el('ul', { class: 'hf-liste' }, gruppe.slots.map(s => slotZeile(s, fristAbgelaufen)))));
-    }
+    if (gruppen.length === 0) inhalt.append(leer('Keine offenen Dienste', 'Alle Dienste dieses Turniers sind besetzt.'));
+    else inhalt.append(...abschnitte);
     return inhalt;
 }
 
@@ -188,7 +198,7 @@ async function austragen(dienst, knopf, fehlerZeile) {
     knopf.disabled = true;
     fehlerZeile.textContent = '';
     const { ok, daten } = await apiFetch(`/api/helfer/einsaetze/${dienst.einsatzId}`, { method: 'DELETE' });
-    if (ok) return zeige();
+    if (ok) return zeige({ fokus: 'h1' });
     const code = daten && daten.code;
     fehlerZeile.textContent = code === 'frist' ? FRIST_TEXT : ((daten && daten.error) || 'Austragen fehlgeschlagen.');
     knopf.disabled = code === 'frist';
@@ -222,7 +232,7 @@ async function ansichtMeine() {
     }
     // Server liefert aufsteigend nach Datum und Uhrzeit; gruppiert je Tag und Turnier (Reihenfolge bleibt)
     const sortiert = dienste.slice().sort((a, b) =>
-        a.turnier.datum.localeCompare(b.turnier.datum) || a.von_min - b.von_min || a.einsatzId - b.einsatzId);
+        String(a.turnier.datum || '').localeCompare(String(b.turnier.datum || '')) || a.von_min - b.von_min || a.einsatzId - b.einsatzId);
     const gruppen = new Map();
     for (const d of sortiert) {
         const schluessel = `${d.turnier.datum}|${d.turnier.id}`;
@@ -258,8 +268,19 @@ function markiereNavigation(reiter) {
 
 let aufrufNummer = 0;
 
-/** Zeigt die Ansicht zum aktuellen Hash; spätere Aufrufe verdrängen langsamere frühere. */
-export async function zeige() {
+// Fokus nach dem Zeichnen: auf das Element zum Selektor, sonst auf die Hauptüberschrift; ohne Scrollsprung.
+function setzeFokus(bereich, selektor) {
+    const ziel = (selektor && bereich.querySelector(selektor)) || bereich.querySelector('h1');
+    if (!ziel) return;
+    if (!ziel.hasAttribute('tabindex') && !ziel.matches('a[href], button, input, select, textarea')) ziel.setAttribute('tabindex', '-1');
+    ziel.focus({ preventScroll: true });
+}
+
+/**
+ * Zeigt die Ansicht zum aktuellen Hash; spätere Aufrufe verdrängen langsamere frühere.
+ * @param {{ fokus?: string }} [optionen] - Selektor für den Fokus danach ('h1' = Hauptüberschrift); ohne: Fokus bleibt
+ */
+export async function zeige({ fokus } = {}) {
     const nummer = ++aufrufNummer;
     const route = liesRoute();
     markiereNavigation(route.reiter);
@@ -279,11 +300,12 @@ export async function zeige() {
     if (nummer !== aufrufNummer) return;
     bereich.replaceChildren(knoten);
     bereich.removeAttribute('aria-busy');
+    if (fokus) setzeFokus(bereich, fokus);
 }
 
 window.addEventListener('hashchange', () => {
     document.getElementById('hfInhalt').replaceChildren();
     window.scrollTo(0, 0);
-    zeige();
+    zeige({ fokus: 'h1' });
 });
 zeige();

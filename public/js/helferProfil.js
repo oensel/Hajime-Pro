@@ -1,14 +1,21 @@
 // Reiter „Profil“ der Helfer-App (Spec Helferverwaltung 4.1): Name, E-Mail, Meine Vereine mit Rolle und
 // Status, Verein hinzufügen (Autovervollständigung, nur Auswahl aus der Liste), Passwort ändern, Abmelden.
 // Die Hilfsfunktionen (apiFetch, el, …) reicht helfer.js herein.
-import { filtereVereine } from '/js/shared/helferAnzeige.js';
+import { filtereVereine, wartetAufFreischaltung } from '/js/shared/helferAnzeige.js';
 
 const ROLLEN_TEXT = { helfer: 'Helfer', benutzer: 'Benutzer', admin: 'Admin' };
 const MIN_PASSWORT = 8;
 
 // Meldung, die eine neu gezeichnete Profilansicht übernimmt (z. B. nach dem Hinzufügen eines Vereins)
 let ausstehendeMeldung = null;
-let vereinsListe = null;
+// Vereinsliste einmal laden; parallele Erstaufrufe teilen sich dasselbe Promise (kein doppelter Fetch).
+let vereineLaden = null;
+function ladeVereinsListe(w) {
+    if (!vereineLaden) {
+        vereineLaden = w.ladeJson('/api/vereine').catch((e) => { vereineLaden = null; throw e; });
+    }
+    return vereineLaden;
+}
 
 function statusText(verein) {
     if (!verein.freigegeben) return 'Wartet auf Freischaltung';
@@ -32,7 +39,7 @@ function vereinZeile(w, verein) {
             const { ok, daten } = await w.apiFetch(`/api/helfer/profil/verein/${verein.verein_id}`, { method: 'DELETE' });
             if (ok) {
                 ausstehendeMeldung = `„${verein.name}“ wurde entfernt.`;
-                return w.zeige();
+                return w.zeige({ fokus: '.hf-profil-meldung' });
             }
             fehler.textContent = (daten && daten.error) || 'Entfernen fehlgeschlagen.';
         } catch (e) {
@@ -61,6 +68,7 @@ function vereinSuche(w, eigeneVereine) {
     let treffer = [];
     let aktiv = -1;
     let gewaehlt = null;
+    let suchNummer = 0;
 
     const schliessen = () => {
         liste.hidden = true;
@@ -89,22 +97,26 @@ function vereinSuche(w, eigeneVereine) {
         senden.disabled = !gewaehlt;
     };
     const zeigeTreffer = async () => {
+        const nummer = ++suchNummer;
         gewaehlt = null;
         senden.disabled = true;
         meldung.textContent = '';
         if (eingabe.value.trim().length < 2) return schliessen();
-        if (!vereinsListe) {
-            try {
-                vereinsListe = await w.ladeJson('/api/vereine');
-            } catch (e) {
-                meldung.textContent = e.message;
-                return schliessen();
-            }
+        let vereinsListe;
+        try {
+            vereinsListe = await ladeVereinsListe(w);
+        } catch (e) {
+            if (nummer !== suchNummer) return;
+            meldung.textContent = e.message;
+            return schliessen();
         }
+        // Inzwischen weitergetippt: nur das Ergebnis der neuesten Eingabe zeichnen
+        if (nummer !== suchNummer) return;
         treffer = filtereVereine(vereinsListe, eingabe.value).slice(0, 20);
         liste.replaceChildren(...treffer.map((verein, i) => {
             const option = w.el('li', { id: `hfVerein-${verein.id}`, role: 'option', 'aria-selected': 'false', text: verein.name });
-            // mousedown statt blur: die Liste bleibt offen, bis der Klick ankommt
+            // Fokus bleibt im Feld (Maus und Touch), die Liste bleibt offen, bis der Klick ankommt
+            option.addEventListener('pointerdown', (e) => e.preventDefault());
             option.addEventListener('mousedown', (e) => e.preventDefault());
             option.addEventListener('click', () => waehle(treffer[i]));
             return option;
@@ -133,7 +145,10 @@ function vereinSuche(w, eigeneVereine) {
             schliessen();
         }
     });
-    eingabe.addEventListener('blur', schliessen);
+    // Verzögert schließen: auf Touch-Geräten kann der Fokus vor dem click der Option wechseln
+    eingabe.addEventListener('blur', () => setTimeout(() => {
+        if (document.activeElement !== eingabe) schliessen();
+    }, 200));
 
     senden.addEventListener('click', async () => {
         if (!gewaehlt || eingabe.value !== gewaehlt.name) return;
@@ -142,7 +157,7 @@ function vereinSuche(w, eigeneVereine) {
             const { ok, daten } = await w.apiFetch('/api/helfer/profil/verein', { method: 'POST', body: { vereinId: gewaehlt.id } });
             if (ok) {
                 ausstehendeMeldung = `Anfrage an „${gewaehlt.name}“ gesendet. Der Verein muss dich noch freischalten.`;
-                return w.zeige();
+                return w.zeige({ fokus: '.hf-profil-meldung' });
             }
             meldung.textContent = (daten && daten.error) || 'Anfrage fehlgeschlagen.';
         } catch (e) {
@@ -201,14 +216,14 @@ export async function ansichtProfil(w) {
     const inhalt = w.el('div', {}, w.el('h1', { class: 'hf-titel hf-titel-seite', text: 'Profil' }));
 
     if (ausstehendeMeldung) {
-        inhalt.append(w.el('p', { class: 'hf-hinweis', role: 'status', text: ausstehendeMeldung }));
+        inhalt.append(w.el('p', { class: 'hf-hinweis hf-profil-meldung', role: 'status', tabindex: '-1', text: ausstehendeMeldung }));
         ausstehendeMeldung = null;
     }
     inhalt.append(w.el('section', { class: 'hf-abschnitt' },
         w.el('p', { class: 'hf-profil-name', text: name || profil.email || '' }),
         profil.email ? w.el('p', { class: 'hf-meta hf-profil-email', text: profil.email }) : null));
 
-    if (vereine.length > 0 && !vereine.some(v => v.freigegeben)) {
+    if (wartetAufFreischaltung(vereine)) {
         inhalt.append(w.el('p', { class: 'hf-hinweis', text: 'Deine Registrierung muss noch freigeschaltet werden.' }));
     }
     inhalt.append(abschnitt(w, 'Meine Vereine',

@@ -59,14 +59,18 @@ test('Eintragen, Überschneidung, Meine Dienste und Austragen', async ({ page })
     await waageSlot.getByRole('button', { name: 'Eintragen' }).click();
     await expect(waageSlot).toContainText('Du bist eingetragen');
     await expect(waageSlot.locator('.hf-badge')).toHaveText('Eingetragen');
+    // Fokus bleibt nach dem Neuladen beim Slot der Aktion
+    await expect(waageSlot).toBeFocused();
 
     // Gleiche Zeit in einer anderen Tätigkeit: Hinweis inline
     const matteSlot = gruppe(page, 'Kampfgericht Matte 1').locator('.hf-slot').first();
     await matteSlot.getByRole('button', { name: 'Eintragen' }).click();
     await expect(matteSlot.locator('.hf-fehler')).toHaveText('Das überschneidet sich mit einem deiner Dienste.');
+    await expect(matteSlot.locator('.hf-fehler')).toBeFocused();
 
     await page.locator('.hf-nav a[href="#dienste"]').click();
     await expect(page).toHaveURL(/#dienste$/);
+    await expect(page.locator('h1')).toBeFocused();
     const tag = page.locator('.hf-tag').filter({ hasText: NAME });
     await expect(tag).toContainText('Sa., 15.11.2031');
     const dienst = tag.locator('.hf-dienst');
@@ -97,6 +101,27 @@ test('Profil zeigt den Verein, Autovervollständigung findet „Offline Club“'
     await expect(page.locator('#hfVereinListe [aria-selected="true"]')).toHaveCount(1);
     await option.click();
     await expect(page.locator('#hfVereinMeldung')).toContainText('bereits');
+});
+
+test('Vereinssuche: Freitext lässt „Anfrage senden“ gesperrt, Enter wählt den markierten Treffer', async ({ page }) => {
+    await page.goto('/helfer.html#profil');
+    const feld = page.locator('#hfVereinSuche');
+    const senden = page.getByRole('button', { name: 'Anfrage senden' });
+    await feld.fill('Offline Clu');
+    await expect(page.locator('#hfVereinListe [role="option"]').first()).toBeVisible();
+    await expect(senden).toBeDisabled();
+    await feld.fill('Gibt es nicht');
+    await expect(page.locator('#hfVereinMeldung')).toHaveText('Kein Verein gefunden.');
+    await expect(senden).toBeDisabled();
+
+    await feld.fill('Offline Clu');
+    await expect(page.locator('#hfVereinListe [role="option"]').first()).toBeVisible();
+    await feld.press('ArrowDown');
+    await feld.press('Enter');
+    await expect(feld).toHaveValue('Offline Club');
+    await expect(page.locator('#hfVereinListe')).toBeHidden();
+    await expect(page.locator('#hfVereinMeldung')).toContainText('bereits');
+    await expect(senden).toBeDisabled();
 });
 
 test('Mobil 375×812: kein horizontales Scrollen, Navigation unten', async ({ page }) => {
