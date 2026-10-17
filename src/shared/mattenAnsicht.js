@@ -7,6 +7,7 @@
 import { bestimmeFarbeKaempfer2 } from './kampfFarbe.js';
 import { letztesKampfEndeProTeilnehmer, pruefeKampfPause } from './pausenRegel.js';
 import { kampfMatteId } from './kampfMatte.js';
+import { prognoseMatte } from './zeitPrognose.js';
 
 function nachId(liste) {
     const map = new Map();
@@ -82,9 +83,12 @@ export function baueMattenAnsicht({ kaempfe, pools, teilnehmer, mannschaftskaemp
     // Pausenwarnung mit ECHTEN Zeitstempeln (nicht der Schätzung der Matten-Planung), siehe
     // pausenRegel.js — Grundlage für die Warnanzeige und den Tausch-Button in der Steuerung.
     const letztesEnde = letztesKampfEndeProTeilnehmer(kaempfeDerMatte);
+    // Voraussichtlicher Beginn je offenem Kampf (Schnitt der letzten Kämpfe + Puffer, zeitPrognose.js).
+    const { zeiten } = prognoseMatte(kaempfeDerMatte, jetzt);
     return kaempfeDerMatte.map(kampf => {
-        if (kampf.status !== 'bereit') return { ...kampf, pausenwarnung: null };
+        const voraussichtlich_um = zeiten.get(kampf.id) ?? null;
+        if (kampf.status !== 'bereit') return { ...kampf, voraussichtlich_um, pausenwarnung: null };
         const pruefung = pruefeKampfPause(kampf, kampf.pool_altersklasse, letztesEnde, jetzt);
-        return { ...kampf, pausenwarnung: pruefung.ok ? null : pruefung };
+        return { ...kampf, voraussichtlich_um, pausenwarnung: pruefung.ok ? null : pruefung };
     });
 }
