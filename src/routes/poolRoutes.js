@@ -14,6 +14,7 @@ import {
     aendereWettkampfsystem,
     getKampfflaechenMitPools,
     getZeitprognose,
+    simuliereZeitplanEndpunkt,
     ordnePoolZuKampfflaeche,
     entferneAlleMattenzuordnungen,
     setzeKampfflaecheReihenfolge,
@@ -60,6 +61,7 @@ export function getPoolRoutes(knex) {
 
     // Kampfflächen (formerly Matten) pool assignments
     router.get('/kampfflaechen', requireTournamentEditAccess(knex), (req, res) => getKampfflaechenMitPools(knex, req, res));
+    router.post('/zeitplan-simulation', requireTournamentEditAccess(knex), (req, res) => simuliereZeitplanEndpunkt(knex, req, res));
     router.get('/zeitprognose', requireTournamentEditAccess(knex), (req, res) => getZeitprognose(knex, req, res));
     router.put('/kampfflaeche-zuordnen', requireTournamentEditAccess(knex), aktiv, (req, res) => ordnePoolZuKampfflaeche(knex, req, res));
     router.put('/kampfflaeche-reihenfolge', requireTournamentEditAccess(knex), aktiv, (req, res) => setzeKampfflaecheReihenfolge(knex, req, res));

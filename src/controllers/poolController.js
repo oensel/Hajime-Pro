@@ -19,6 +19,7 @@ import { berechneVorschlag, listeOffenePools } from '../services/nachzuegler.js'
 import { bewerteEinfuegen, ordneNachzueglerKaempfe } from '../shared/nachzueglerEinfuegen.js';
 import { fuegeInFreilosPlatzEin } from '../services/doppelKoEinfuegen.js';
 import { baueZeitprognoseAntwort } from '../shared/zeitprognoseAntwort.js';
+import { simuliereZeitplan } from '../shared/zeitPrognose.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1920,6 +1921,37 @@ export async function getZeitprognose(knex, req, res) {
         const kaempfe = poolIds.length ? await knex('kaempfe').whereIn('pool_id', poolIds) : [];
         const mannschaftskaempfe = poolIds.length ? await knex('mannschaftskaempfe').whereIn('pool_id', poolIds) : [];
         return res.json(baueZeitprognoseAntwort({ kampfflaechen, pools, kaempfe, mannschaftskaempfe }, Date.now()));
+    } catch (error) {
+        return res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+// Zeitplan-Simulation (rein lesend): rechnet für die auf Matten verteilten Pools aus, wann jeder Pool
+// ungefähr fertig ist. Beginn und Kampfzeit je Altersklasse gibt der Benutzer vor; nichts wird gespeichert.
+export async function simuliereZeitplanEndpunkt(knex, req, res) {
+    try {
+        const { turnierId, beginn, kampfzeitJeAltersklasse } = req.body || {};
+        if (!turnierId) {
+            return res.status(400).json({ success: false, error: 'turnierId ist erforderlich' });
+        }
+        const beginnMs = Date.parse(beginn);
+        if (Number.isNaN(beginnMs)) {
+            return res.status(400).json({ success: false, error: 'Bitte einen gültigen Beginn angeben.' });
+        }
+        const kampfflaechen = await knex('kampfflaechen').where({ turnier_id: turnierId }).orderBy('id');
+        const pools = await knex('pools')
+            .select('pools.*', knex.raw('(SELECT COUNT(*) FROM kaempfe WHERE kaempfe.pool_id = pools.id) as gesamt_kaempfe'))
+            .where('pools.turnier_id', turnierId)
+            .andWhere('pools.verspaetet', false)
+            .whereNotNull('pools.kampfflaeche_id')
+            .orderBy('pools.matte_reihenfolge');
+        const matten = kampfflaechen.map(kf => ({
+            id: kf.id,
+            bezeichnung: kf.bezeichnung,
+            pools: pools.filter(p => p.kampfflaeche_id === kf.id)
+                .map(p => ({ id: p.id, bezeichnung: p.bezeichnung, altersklasse: p.altersklasse, gesamt_kaempfe: Number(p.gesamt_kaempfe), kampfzeit_sekunden: p.kampfzeit_sekunden }))
+        }));
+        return res.json({ matten: simuliereZeitplan({ matten, beginnMs, kampfzeitJeAltersklasse: kampfzeitJeAltersklasse || {} }) });
     } catch (error) {
         return res.status(500).json({ success: false, error: error.message });
     }

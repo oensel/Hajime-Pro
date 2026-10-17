@@ -240,6 +240,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <span class="material-icons">layers</span>
                     <span class="menu-text">Matten</span>
                 </a>
+                <a href="/zeitplan.html" class="menu-item" id="nav-zeitplan">
+                    <span class="material-icons">schedule</span>
+                    <span class="menu-text">Zeitplan</span>
+                </a>
                 <a href="/kampf.html" class="menu-item" id="nav-kampf">
                     <span class="material-icons">sports_kabaddi</span>
                     <span class="menu-text">Kampf</span>
@@ -761,7 +765,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (currentPath.includes('client.html')) document.getElementById('nav-geraet').classList.add('active');
         }
         if (currentPath.includes('teilnehmer.html')) document.getElementById('nav-teilnehmer')?.classList.add('active');
-        if (currentPath.includes('kampf.html')) document.getElementById('nav-kampf')?.classList.add('active');
+        if (currentPath.includes('zeitplan.html')) document.getElementById('nav-zeitplan')?.classList.add('active');
+    if (currentPath.includes('kampf.html')) document.getElementById('nav-kampf')?.classList.add('active');
         document.getElementById('sidebarNavPrimary')?.style.removeProperty('visibility');
         document.getElementById('sidebarNavSecondary')?.style.removeProperty('visibility');
         return;
@@ -914,7 +919,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const wartetAufFreigabe = !!(currentUser && currentUser.verein_id && !currentUser.verein_freigegeben);
 
     if (wartetAufFreigabe) {
-        versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
+        versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-zeitplan', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
 
         const istErlaubteSeite = currentPath.includes('turniere.html') || currentPath.includes('profil.html') || currentPath.includes('teilnehmer.html');
         if (!istErlaubteSeite) {
@@ -995,7 +1000,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                             // in teilnehmerController.js verhindert.
                             versteckeMenuePunkte(['nav-turnier', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
 
-                            const eingeschraenkteSeiten = ['turnier.html', 'pools.html', 'matten.html', 'kampf.html', 'siegerliste.html', 'urkunden.html', 'urkunden-designer.html', 'dashboard.html', 'uebersicht.html'];
+                            const eingeschraenkteSeiten = ['turnier.html', 'pools.html', 'matten.html', 'zeitplan.html', 'kampf.html', 'siegerliste.html', 'urkunden.html', 'urkunden-designer.html', 'dashboard.html', 'uebersicht.html'];
                             if (eingeschraenkteSeiten.some(seite => currentPath.includes(seite))) {
                                 window.location.href = `/teilnehmer.html?turnierId=${turnierId}`;
                                 return;

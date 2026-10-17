@@ -1,0 +1,12 @@
+.zeitplan-hinweis { margin: 0 0 16px 0; opacity: 0.85; }
+.zeitplan-eingaben { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px; margin-bottom: 16px; }
+.zeitplan-feld { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.zeitplan-feld input { padding: 6px 8px; width: 110px; }
+.zeitplan-klassen { display: flex; flex-wrap: wrap; gap: 16px; }
+.zeitplan-meldung { margin-bottom: 12px; color: #b45309; }
+.zeitplan-matte { margin-bottom: 20px; }
+.zeitplan-matte h2 { font-size: 16px; margin: 0 0 6px 0; }
+.zeitplan-tabelle { border-collapse: collapse; width: 100%; max-width: 640px; }
+.zeitplan-tabelle td, .zeitplan-tabelle th { padding: 6px 10px; border-bottom: 1px solid rgba(128, 128, 128, 0.25); text-align: left; }
+.zeitplan-tabelle .zeitplan-ende { text-align: right; font-weight: 700; white-space: nowrap; }
+.zeitplan-gesamt td { font-weight: 700; }
