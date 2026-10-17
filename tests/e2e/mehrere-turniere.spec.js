@@ -134,6 +134,9 @@ test('turniere.html: Aktivieren und Duplizieren erscheinen, abgeschlossene Turni
     await expect(dupKnopf).toHaveAttribute('data-tooltip', 'Duplizieren');
     await expect(dupKnopf.locator('.material-icons')).toHaveText('content_copy');
     await expect(dupKnopf).toHaveText('content_copy');
+    // gleiche Höhe wie die übrigen Knöpfe der Karte
+    const hoehen = await karte.locator('.card-actions .btn').evaluateAll(els => els.map(e => Math.round(e.getBoundingClientRect().height)));
+    expect(new Set(hoehen).size).toBe(1);
     await expect(karte.locator('.status-badge')).toHaveText('Entwurf');
 
     const zeile = page.locator('.abgeschlossen-zeile').filter({ hasText: fertigName });
