@@ -63,10 +63,10 @@ body { padding-bottom: 96px; }
     position: relative;
     display: inline-grid;
     grid-template-columns: 1fr 1fr;
-    width: 220px;
-    height: 40px;
-    padding: 3px;
-    border-radius: 20px;
+    width: 120px;
+    height: 26px;
+    padding: 2px;
+    border-radius: 13px;
     border: 1px solid #c9ccd1;
     background: #f1f2f4;
     cursor: pointer;
@@ -75,11 +75,11 @@ body { padding-bottom: 96px; }
 }
 .farb-schalter-knopf {
     position: absolute;
-    top: 3px;
-    left: 3px;
-    width: calc(50% - 3px);
-    height: calc(100% - 6px);
-    border-radius: 17px;
+    top: 2px;
+    left: 2px;
+    width: calc(50% - 2px);
+    height: calc(100% - 4px);
+    border-radius: 11px;
     background: #185FA5;
     transition: transform .2s, background .2s;
 }
@@ -90,14 +90,14 @@ body { padding-bottom: 96px; }
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
-    font-size: 14px;
+    gap: 4px;
+    font-size: 12px;
     font-weight: 700;
     color: #5f6368;
     transition: color .2s;
 }
 .farb-schalter span.aktiv { color: #fff; }
-.farb-schalter-punkt { width: 10px; height: 10px; border-radius: 50%; background: #fff; }
+.farb-schalter-punkt { width: 7px; height: 7px; border-radius: 50%; background: #fff; }
 
 .turnier-header-btn-danger {
     color: #c62828;
