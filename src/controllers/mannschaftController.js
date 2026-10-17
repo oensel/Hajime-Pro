@@ -1,7 +1,7 @@
 import { readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { resolveUserVereinName, hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
+import { ladeVerwaltendenVereinsnamen, hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
 import { mannschaftsPoolsHabenEchteKaempfe, poolHatBereitsEchteKaempfe, regeneriereMannschaftsPool, ermittleGoldenScoreEinstellungen, verteileMannschaftsPoolAufMatten, setzeBegegnungMatte } from './poolController.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 const { istEinzelbenutzerBetrieb } = betriebsmodus;
@@ -86,7 +86,7 @@ export async function createMannschaft(knex, req, res) {
         }
 
         const istGastgeberVerein = istEinzelbenutzerBetrieb() || hatVereinsZugriffAufTurnier(user, turnier);
-        const userVereinName = await resolveUserVereinName(knex, user);
+        const userVereinName = await ladeVerwaltendenVereinsnamen(knex, user);
 
         if (!turnier_id || !bezeichnung || (!istGastgeberVerein && !verein)) {
             return res.status(400).json({ success: false, error: 'Fehlende Pflichtfelder (Turnier-ID, Bezeichnung, Verein).' });
@@ -189,7 +189,7 @@ async function pruefeMannschaftZugriff(knex, req, mannschaft) {
     const turnier = await knex('turniere').where({ id: mannschaft.turnier_id }).first();
     if (hatVereinsZugriffAufTurnier(user, turnier)) return { erlaubt: true };
 
-    const userVereinName = await resolveUserVereinName(knex, user);
+    const userVereinName = await ladeVerwaltendenVereinsnamen(knex, user);
     if (userVereinName && userVereinName === mannschaft.verein) return { erlaubt: true };
 
     return { erlaubt: false, status: 403, error: 'Kein Zugriff auf diese Mannschaft.' };

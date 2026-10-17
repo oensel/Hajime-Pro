@@ -149,3 +149,76 @@ test('Rollen: Turnierzugriff, Middlewares und Vereinslisten', async () => {
         await db.stoppe();
     }
 });
+
+// Fix Runde 1: Der Vereinsnamen-Pfad (Teilnehmer/Mannschaften eines Fremdvereins) gilt nur für Admin/Benutzer.
+// Ein reiner Helfer ist dort wie ein Konto ohne Verein. Und createTurnier verlangt einen aktiven Verein.
+test('Rollen: Fremdvereins-Pfad für Teilnehmer/Mannschaften und Turnier anlegen', async () => {
+    const { createTeilnehmer } = await import('../../src/controllers/teilnehmerController.js');
+    const { updateMannschaft } = await import('../../src/controllers/mannschaftController.js');
+    const { createTurnier } = await import('../../src/controllers/turnierController.js');
+    const db = await starteTestPostgres();
+    const { knex } = db;
+    try {
+        const vereinA = id((await knex('vereine').insert({ name: 'JC Gast' }).returning('id'))[0]);
+        const vereinC = id((await knex('vereine').insert({ name: 'JC Host' }).returning('id'))[0]);
+        for (const b of ['admin', 'benutzer', 'helfer', 'super']) {
+            await knex('benutzer').insert({ id: `g-${b}`, email: `g-${b}@test.de`, vorname: b, nachname: 'Gast' });
+        }
+        await knex('benutzer').where({ id: 'g-super' }).update({ ist_super_admin: true });
+        await knex('benutzer_vereine').insert(['admin', 'benutzer', 'helfer'].map(r => (
+            { benutzer_id: `g-${r}`, verein_id: vereinA, freigegeben: 1, rolle: r })));
+        for (const b of ['admin', 'benutzer', 'helfer']) await setzeAktivenVerein(knex, `g-${b}`, vereinA);
+
+        const turnierId = id((await knex('turniere').insert({
+            bezeichnung: 'Offen', ort: 'Halle', datum: '2099-12-01', ausrichter: 'JC Host', verein_id: vereinC,
+            status: 'veroeffentlicht'
+        }).returning('id'))[0]);
+
+        // Teilnehmer für den eigenen Verein bei einem fremden Turnier anmelden
+        const melde = async (userId, vorname) => {
+            const res = fakeRes();
+            await createTeilnehmer(knex, { user: { id: userId }, body: {
+                turnier_id: turnierId, vorname, nachname: 'Test', geburtsjahr: 2010, geschlecht: 'm', gewicht: 40, altersklasse: 'U18', gewichtsklasse: '-40', verein: 'JC Gast'
+            } }, res);
+            return res;
+        };
+        for (const u of ['g-admin', 'g-benutzer']) {
+            const r = await melde(u, u);
+            assert.equal(r.statusCode, 201, `${u}: ${JSON.stringify(r.body)}`);
+        }
+        const helferMeldung = await melde('g-helfer', 'Helfer');
+        assert.notEqual(helferMeldung.statusCode, 201);
+        assert.ok([400, 403].includes(helferMeldung.statusCode), JSON.stringify(helferMeldung.body));
+        assert.equal(await knex('turnier_teilnehmer').where({ vorname: 'Helfer' }).first(), undefined);
+
+        // Mannschaft des eigenen Vereins ändern
+        const mannschaftId = id((await knex('mannschaften').insert({
+            turnier_id: turnierId, verein: 'JC Gast', bezeichnung: 'Team 1'
+        }).returning('id'))[0]);
+        const aendere = async (userId, bezeichnung) => {
+            const res = fakeRes();
+            await updateMannschaft(knex, { user: { id: userId }, params: { id: String(mannschaftId) }, body: { bezeichnung } }, res);
+            return res;
+        };
+        const helferMannschaft = await aendere('g-helfer', 'Helfer-Team');
+        assert.equal(helferMannschaft.statusCode, 403);
+        assert.equal((await knex('mannschaften').where({ id: mannschaftId }).first()).bezeichnung, 'Team 1');
+        for (const u of ['g-admin', 'g-benutzer']) {
+            const r = await aendere(u, `Team ${u}`);
+            assert.notEqual(r.statusCode, 403, `${u}: ${JSON.stringify(r.body)}`);
+            assert.equal((await knex('mannschaften').where({ id: mannschaftId }).first()).bezeichnung, `Team ${u}`);
+        }
+
+        // Super-Admin ohne aktiven Verein kann kein Turnier ohne Verein anlegen
+        const anzahlVorher = (await knex('turniere')).length;
+        const res = fakeRes();
+        await createTurnier(knex, { user: { id: 'g-super' }, app: { get: () => null }, body: {
+            bezeichnung: 'Ohne Verein', ort: 'Halle', datum: '2099-12-02', ausrichter: 'X'
+        } }, res);
+        assert.equal(res.statusCode, 400);
+        assert.equal(res.body.error, 'Bitte zuerst einen aktiven Verein wählen.');
+        assert.equal((await knex('turniere')).length, anzahlVorher);
+    } finally {
+        await db.stoppe();
+    }
+});

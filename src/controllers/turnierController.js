@@ -120,9 +120,13 @@ export async function createTurnier(knex, req, res) {
         }
 
         // Turnier wird an den Verein des anlegenden Benutzers gekoppelt (nicht mehr an
-        // den Benutzer selbst) — requireVereinFreigabe stellt sicher, dass verein_id gesetzt ist.
+        // den Benutzer selbst), und zwar an seinen aktiven Verein. requireVereinFreigabe lässt den
+        // Super-Admin auch ohne aktiven Verein durch, daher hier die Prüfung, dass einer gewählt ist.
         const user = await ladeBenutzerMitAktivemVerein(knex, userId);
         const vereinId = user ? user.verein_id : null;
+        if (!vereinId) {
+            return res.status(400).json({ success: false, error: 'Bitte zuerst einen aktiven Verein wählen.' });
+        }
 
         // Sicherer Check: Akzeptiert die Zahl 1, den String "1" oder das Boolean true
         const wertFuerDB = (nutze_gewichtsklassen === 1 || nutze_gewichtsklassen === true || nutze_gewichtsklassen === '1' || nutze_gewichtsklassen === 'true') ? 1 : 0;

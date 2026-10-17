@@ -14,6 +14,20 @@ export async function resolveUserVereinName(knex, user) {
 }
 
 /**
+ * Vereinsname des aktiven Vereins, aber nur, wenn der Benutzer dort Verwaltungsrechte hat (freigegeben,
+ * Rolle mindestens 'benutzer'). Für alle Rechte-Pfade "eigener Verein" (Teilnehmer/Mannschaften eines
+ * Fremdvereins anmelden, ändern, zurückziehen): ein reiner Helfer oder ein noch nicht freigegebenes
+ * Mitglied gilt dort wie ein Konto ohne Verein.
+ * @param {Object} knex - Knex instance
+ * @param {Object} user - Ergebnis von ladeBenutzerMitAktivemVerein
+ * @returns {Promise<string|null>}
+ */
+export async function ladeVerwaltendenVereinsnamen(knex, user) {
+    if (!user || !rolleReicht(user.verein_rolle, 'benutzer')) return null;
+    return resolveUserVereinName(knex, user);
+}
+
+/**
  * Lädt einen Benutzer inkl. seines aktiven Vereins (benutzer.aktiver_verein_id) und liefert
  * ihn in der historischen Form { ...benutzer, verein_id, verein_freigegeben } zurück, damit
  * resolveUserVereinName/hatVereinsZugriffAufTurnier sowie alle direkten user.verein_id-

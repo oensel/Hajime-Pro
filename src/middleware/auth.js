@@ -226,7 +226,7 @@ export function requireVereinFreigabe(knex) {
             if (!rolleReicht(user.verein_rolle, 'benutzer')) {
                 return res.status(403).json({
                     success: false,
-                    error: 'Als Helfer haben Sie in diesem Verein keine Verwaltungsrechte.'
+                    error: 'Mit Ihrer Rolle in diesem Verein dürfen Sie das nicht.'
                 });
             }
             next();
