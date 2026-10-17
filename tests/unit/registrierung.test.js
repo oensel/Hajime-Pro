@@ -15,6 +15,7 @@ const { registriere, bestaetige, sendeBestaetigungNeu } = await import('../../sr
 const { pruefeToken } = await import('../../src/services/einmalToken.js');
 const { login, register, emailBestaetigungErneut } = await import('../../src/controllers/authController.js');
 const { hashPassword } = await import('../../src/utils/password.js');
+const { setzeTestVersand } = await import('../../src/utils/mailer.js');
 const { ensureSuperAdmin, SUPER_ADMIN_EMAIL } = await import('../../src/utils/superAdmin.js');
 
 const id = (r) => (typeof r === 'object' ? r.id : r);
@@ -208,8 +209,8 @@ test('Registrierung: unbestätigt anlegen, bestätigen, Anfrage an den Verein', 
         const neu = await knex('benutzer').where({ email: 'neu@example.de' }).first();
         assert.equal((await knex('benutzer_vereine').where({ benutzer_id: neu.id }).first()).angefragt_ueber, 'verwaltung');
 
-        // --- Controller: Basis-URL der Mail-Links (Host-Header-Injection). Ohne SMTP loggt sendeMail die Mail
-        // per console.log; daran wird der Link abgelesen.
+        // --- Controller: Basis-URL der Mail-Links (Host-Header-Injection). Der Controller versendet über sendeMail;
+        // setzeTestVersand fängt die Mail ab, daran wird der Link abgelesen (die Cloud loggt den Mailtext nicht).
         const gefaelscht = (body) => ({
             body, protocol: 'http', get: (h) => (h.toLowerCase() === 'host' ? 'boese.example' : undefined)
         });
@@ -217,7 +218,9 @@ test('Registrierung: unbestätigt anlegen, bestätigen, Anfrage an den Verein', 
             const zeilen = [];
             const m = mock.method(console, 'log', (...a) => { zeilen.push(a.join(' ')); });
             const me = mock.method(console, 'error', (...a) => { zeilen.push(a.join(' ')); });
-            try { await fn(); } finally { m.mock.restore(); me.mock.restore(); }
+            setzeTestVersand((mail) => { zeilen.push(`An: ${mail.to}
+${mail.text}`); });
+            try { await fn(); } finally { m.mock.restore(); me.mock.restore(); setzeTestVersand(null); }
             return zeilen.join('\n');
         };
         const vorherModus = process.env.BETRIEBSMODUS;
