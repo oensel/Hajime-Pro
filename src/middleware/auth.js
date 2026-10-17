@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import { hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
+import { rolleReicht } from '../shared/rollen.js';
 import * as steuerungPasswort from '../utils/steuerungPasswort.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 const { istEinzelbenutzerBetrieb } = betriebsmodus;
@@ -33,7 +34,8 @@ export async function requireAuth(req, res, next) {
                     await knex('benutzer_vereine').insert({
                         benutzer_id: 'offline_user',
                         verein_id: offlineVerein.id,
-                        freigegeben: 1
+                        freigegeben: 1,
+                        rolle: 'admin'
                     });
                     console.log('[DB] Offline-Mock-User "offline_user" wurde angelegt.');
                 }
@@ -119,11 +121,11 @@ async function resolveTurnierId(knex, req) {
 }
 
 /**
- * Middleware factory to check that the authenticated user is an approved (freigegeben)
- * member of the club hosting the tournament (turnier.verein_id). This is the single access
- * rule for managing a tournament and its content (editing the tournament itself, pools/
- * Auslosung, Kampfflächen, Kämpfe) — there is no separate "owner"
- * concept; club membership alone governs access.
+ * Middleware factory to check that the authenticated user may manage the tournament: Super-Admin,
+ * or an approved (freigegeben) member of the hosting club (turnier.verein_id) with at least the role
+ * 'benutzer' (hatVereinsZugriffAufTurnier). Reine Helfer bekommen 403, auch wenn der Verein ihr
+ * aktiver Verein ist. Gilt für das Turnier selbst und seinen Inhalt (Pools/Auslosung, Kampfflächen,
+ * Kämpfe) — es gibt keinen separaten "Besitzer".
  * @param {Object} knex - Knex instance
  */
 export function requireTournamentEditAccess(knex) {
@@ -150,7 +152,7 @@ export function requireTournamentEditAccess(knex) {
             if (!hatVereinsZugriffAufTurnier(user, turnier)) {
                 return res.status(403).json({
                     success: false,
-                    error: 'Kein Zugriff auf dieses Turnier. Sie sind kein freigegebenes Mitglied des ausrichtenden Vereins.'
+                    error: 'Kein Zugriff auf dieses Turnier. Verwalten dürfen nur freigegebene Admins und Benutzer des ausrichtenden Vereins.'
                 });
             }
 
@@ -201,8 +203,9 @@ export function requireTurnierAktiv(knex) {
 }
 
 /**
- * Middleware factory to check that the authenticated user's club membership
- * has been approved before allowing write access to tournaments.
+ * Middleware factory to check that the authenticated user's club membership in the active club
+ * has been approved with at least the role 'benutzer' before allowing write access to tournaments
+ * (Turnier anlegen, veröffentlichen, absagen, …). Super-Admin immer erlaubt.
  * @param {Object} knex - Knex instance
  */
 export function requireVereinFreigabe(knex) {
@@ -213,16 +216,56 @@ export function requireVereinFreigabe(knex) {
 
         try {
             const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
+            if (user && user.ist_super_admin) return next();
             if (!user || !user.verein_freigegeben) {
                 return res.status(403).json({
                     success: false,
                     error: 'Ihr Vereinsbeitritt wurde noch nicht freigegeben.'
                 });
             }
+            if (!rolleReicht(user.verein_rolle, 'benutzer')) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Als Helfer haben Sie in diesem Verein keine Verwaltungsrechte.'
+                });
+            }
             next();
         } catch (error) {
             console.error('[Verein-Freigabe-Check-Fehler]:', error);
             return res.status(500).json({ success: false, error: 'Interner Server-Fehler bei der Freigabe-Prüfung.' });
+        }
+    };
+}
+
+const ROLLEN_BEZEICHNUNG = { admin: 'Admin', benutzer: 'Benutzer', helfer: 'Helfer' };
+
+/**
+ * Middleware factory: verlangt im aktiven Verein mindestens die angegebene Rolle (freigegebene
+ * Mitgliedschaft). Super-Admin und Einzelbenutzerbetrieb sind immer erlaubt.
+ * Setzt req.vereinRolle (null beim Super-Admin ohne passende Mitgliedschaft und im Einzelbenutzerbetrieb).
+ * @param {Object} knex - Knex instance
+ * @param {'helfer'|'benutzer'|'admin'} mindestens
+ */
+export function requireRolle(knex, mindestens) {
+    return async (req, res, next) => {
+        if (istEinzelbenutzerBetrieb()) {
+            req.vereinRolle = null;
+            return next();
+        }
+
+        try {
+            const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
+            req.vereinRolle = user ? user.verein_rolle : null;
+            if (user && (user.ist_super_admin || rolleReicht(user.verein_rolle, mindestens))) {
+                return next();
+            }
+            return res.status(403).json({
+                success: false,
+                error: `Dafür ist im aktiven Verein mindestens die Rolle ${ROLLEN_BEZEICHNUNG[mindestens] || mindestens} nötig.`
+            });
+        } catch (error) {
+            console.error('[Rollen-Check-Fehler]:', error);
+            return res.status(500).json({ success: false, error: 'Interner Server-Fehler bei der Berechtigungsprüfung.' });
         }
     };
 }
