@@ -59,10 +59,11 @@ export async function ensureSuperAdmin(knex) {
             .where({ benutzer_id: benutzer.id, verein_id: verein.id })
             .first();
 
+        // Im eigenen Verein "Administration" ist der Super-Admin freigegebener Admin (Helferverwaltung: Rollen).
         if (!mitgliedschaft) {
-            await knex('benutzer_vereine').insert({ benutzer_id: benutzer.id, verein_id: verein.id, freigegeben: 1 });
-        } else if (!mitgliedschaft.freigegeben) {
-            await knex('benutzer_vereine').where({ id: mitgliedschaft.id }).update({ freigegeben: 1, updated_at: knex.fn.now() });
+            await knex('benutzer_vereine').insert({ benutzer_id: benutzer.id, verein_id: verein.id, freigegeben: 1, rolle: 'admin' });
+        } else if (!mitgliedschaft.freigegeben || mitgliedschaft.rolle !== 'admin') {
+            await knex('benutzer_vereine').where({ id: mitgliedschaft.id }).update({ freigegeben: 1, rolle: 'admin', updated_at: knex.fn.now() });
         }
     } catch (error) {
         console.error('[Super-Admin-Bootstrap-Fehler]:', error.message);

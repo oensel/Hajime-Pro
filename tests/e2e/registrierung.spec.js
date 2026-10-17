@@ -142,7 +142,7 @@ test('Beitritt zu einem Verein mit bereits freigegebenem Mitglied landet in dess
     });
 
     // Kein Authorization-Header nötig (siehe Datei-Kommentar) — die Anfrage läuft als offline_user,
-    // der bereits freigegebenes Mitglied von "Offline Club" ist und damit Genehmigungsrechte hat.
+    // der freigegebener Admin von "Offline Club" ist und damit Genehmigungsrechte hat.
     const pendingResp = await request.get('/api/vereine/pending');
     expect(pendingResp.ok()).toBeTruthy();
     const pending = await pendingResp.json();
@@ -150,16 +150,21 @@ test('Beitritt zu einem Verein mit bereits freigegebenem Mitglied landet in dess
         expect.objectContaining({ id: bewerberId, verein_id: offlineClubId, verein_name: 'Offline Club' })
     ]));
 
-    const approveResp = await request.post('/api/vereine/approve', {
+    // Ohne Rolle wird nicht freigegeben (Helferverwaltung: Freigabe nur mit Rollenwahl).
+    const ohneRolle = await request.post('/api/vereine/approve', {
         data: { userId: bewerberId, vereinId: offlineClubId }
+    });
+    expect(ohneRolle.status()).toBe(400);
+
+    const approveResp = await request.post('/api/vereine/approve', {
+        data: { userId: bewerberId, vereinId: offlineClubId, rolle: 'benutzer' }
     });
     expect(approveResp.ok()).toBeTruthy();
 
-    const istFreigegeben = await mitTestDb(async (db) => {
-        const row = await db('benutzer_vereine').where({ benutzer_id: bewerberId, verein_id: offlineClubId }).first();
-        return !!row.freigegeben;
-    });
-    expect(istFreigegeben).toBe(true);
+    const mitgliedschaft = await mitTestDb((db) =>
+        db('benutzer_vereine').where({ benutzer_id: bewerberId, verein_id: offlineClubId }).first());
+    expect(!!mitgliedschaft.freigegeben).toBe(true);
+    expect(mitgliedschaft.rolle).toBe('benutzer');
 });
 
 test('Beitritt zu einem brandneuen Verein wartet auf den Super-Admin statt auf ein Vereinsmitglied', async ({ request }) => {
@@ -206,6 +211,10 @@ test('Super-Admin sieht eine Erstregistrierung in der Warteschlange und kann sie
             data: { userId: 'offline_user', vereinId }
         });
         expect(approveResp.ok()).toBeTruthy();
+        // Ohne Rollenangabe wird die erste Person eines Vereins ohne Admin dessen Admin.
+        const rolle = await mitTestDb(async (db) =>
+            (await db('benutzer_vereine').where({ benutzer_id: 'offline_user', verein_id: vereinId }).first()).rolle);
+        expect(rolle).toBe('admin');
     } finally {
         // Zurücksetzen, damit spätere Tests wieder mit einem normalen offline_user laufen — die
         // gesamte Suite teilt sich dieselbe Test-DB und denselben Server-Prozess (workers: 1).
