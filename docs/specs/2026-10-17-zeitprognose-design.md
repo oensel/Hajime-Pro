@@ -1,6 +1,6 @@
 # Zeitprognose, Zeitplan-Simulation und Verspätungsanzeige
 
-Stand: 2026-10-17 · Status: Entwurf zur Freigabe
+Stand: 2026-10-17 · Status: umgesetzt (Abweichung: die App bekommt `voraussichtlichUm` fertig aus der Cloud; Beginn = Stand + Abstand × Dauer)
 
 ## Zweck
 
