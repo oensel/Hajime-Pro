@@ -10,3 +10,6 @@
 .zeitplan-tabelle td, .zeitplan-tabelle th { padding: 6px 10px; border-bottom: 1px solid rgba(128, 128, 128, 0.25); text-align: left; }
 .zeitplan-tabelle .zeitplan-ende { text-align: right; font-weight: 700; white-space: nowrap; }
 .zeitplan-gesamt td { font-weight: 700; }
+
+.zeitplan-klassenstart td { border-top: 2px solid #ffc107; background: rgba(255, 193, 7, 0.12); }
+.zeitplan-start { display: inline-block; margin-right: 8px; padding: 1px 8px; border-radius: 8px; background: #ffc107; color: #212529; font-weight: 700; white-space: nowrap; }

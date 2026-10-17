@@ -48,3 +48,23 @@ test('Ohne Pools auf Matten erscheint ein Hinweis statt einer Tabelle', async ({
     await expect(page.locator('#zeitplanMeldung')).toContainText('noch keine Pools auf Matten', { timeout: 15_000 });
     await expect(page.locator('#zeitplanSimulieren')).toBeDisabled();
 });
+
+test('Der Start einer neuen Alters-/Geschlechtsklasse ist mit Uhrzeit hervorgehoben', async ({ page, request }) => {
+    const turnierId = await legeTurnierAn(request, { name: 'Zeitplan Klassenstart' });
+    await legeKlasseAn(request, turnierId, { altersklasse: 'U18', geschlecht: 'männlich', gewichtsklasse: '-73kg', anzahl: 3, gewichtStart: 66 });
+    await legeKlasseAn(request, turnierId, { altersklasse: 'U18', geschlecht: 'weiblich', gewichtsklasse: '-63kg', anzahl: 3, gewichtStart: 56, namenszusatz: 'W' });
+    await loseAus(request, turnierId, ['U18']);
+    await verteileAufMatten(request, turnierId);
+
+    await page.goto(`/zeitplan.html?turnierId=${turnierId}`);
+    await expect(page.locator('input[data-altersklasse="U18"]')).toBeVisible({ timeout: 15_000 });
+    await page.locator('#zeitplanSimulieren').click();
+    const starts = page.locator('.zeitplan-start');
+    await expect(starts.first()).toHaveText(/^Start ca\. \d{2}:\d{2}$/);
+    // ein Start je Alters-/Geschlechtsklasse, die auf einer Matte beginnt (mindestens eine, höchstens zwei)
+    const anzahl = await starts.count();
+    expect(anzahl).toBeGreaterThanOrEqual(1);
+    expect(anzahl).toBeLessThanOrEqual(2);
+    await expect(page.locator('.zeitplan-klassenstart').first()).toBeVisible();
+});
+

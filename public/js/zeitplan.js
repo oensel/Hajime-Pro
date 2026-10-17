@@ -63,7 +63,7 @@
                 <h2>${escapeHtml(matte.bezeichnung)}</h2>
                 <table class="zeitplan-tabelle">
                     <tbody>
-                        ${matte.pools.map(p => `<tr class="zeitplan-pool"><td>${escapeHtml(p.bezeichnung)}</td><td>${p.kaempfe} Kämpfe</td><td class="zeitplan-ende">ca. ${uhrzeit(p.endeMs, beginnMs)}</td></tr>`).join('')}
+                        ${matte.pools.map(p => `<tr class="zeitplan-pool${p.neueKlasse ? ' zeitplan-klassenstart' : ''}"><td>${p.neueKlasse ? `<span class="zeitplan-start" title="Beginn einer neuen Alters-/Geschlechtsklasse">Start ca. ${uhrzeit(p.startMs, beginnMs)}</span> ` : ''}${escapeHtml(p.bezeichnung)}</td><td>${p.kaempfe} Kämpfe</td><td class="zeitplan-ende">ca. ${uhrzeit(p.endeMs, beginnMs)}</td></tr>`).join('')}
                         <tr class="zeitplan-gesamt"><td colspan="2">Ende der Matte</td><td class="zeitplan-ende zeitplan-matten-ende">ca. ${uhrzeit(matte.endeMs, beginnMs)}</td></tr>
                     </tbody>
                 </table>

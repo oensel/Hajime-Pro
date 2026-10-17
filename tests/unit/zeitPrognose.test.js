@@ -99,3 +99,14 @@ test('simuliereZeitplan: fehlende Altersklasse nutzt die Pool-Kampfzeit', () => 
 test('formatUhrzeit: HH:MM in lokaler Zeit', () => {
     assert.equal(formatUhrzeit(new Date(2026, 9, 17, 11, 5).getTime()), '11:05');
 });
+
+test('simuliereZeitplan: Start je Pool, neueKlasse bei Wechsel von Altersklasse oder Geschlecht auf der Matte', () => {
+    const pool = (id, altersklasse, geschlecht) => ({ id, bezeichnung: `P${id}`, altersklasse, geschlecht, gesamt_kaempfe: 2, kampfzeit_sekunden: 120 });
+    const matten = [{ id: 1, bezeichnung: 'M1', pools: [pool(1, 'U15', 'männlich'), pool(2, 'U15', 'männlich'), pool(3, 'U15', 'weiblich'), pool(4, 'U18', 'weiblich')] }];
+    const beginn = Date.parse('2026-10-17T09:00:00Z');
+    const [m] = simuliereZeitplan({ matten, beginnMs: beginn, kampfzeitJeAltersklasse: {} });
+    assert.deepEqual(m.pools.map(p => p.neueKlasse), [true, false, true, true]);
+    assert.equal(m.pools[0].startMs, beginn);
+    assert.equal(m.pools[1].startMs, m.pools[0].endeMs);
+    assert.equal(m.pools[2].startMs, m.pools[1].endeMs);
+});

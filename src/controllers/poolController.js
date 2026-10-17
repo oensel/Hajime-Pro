@@ -1956,7 +1956,7 @@ export async function simuliereZeitplanEndpunkt(knex, req, res) {
             id: kf.id,
             bezeichnung: kf.bezeichnung,
             pools: pools.filter(p => p.kampfflaeche_id === kf.id)
-                .map(p => ({ id: p.id, bezeichnung: p.bezeichnung, altersklasse: p.altersklasse, gesamt_kaempfe: Number(p.gesamt_kaempfe), kampfzeit_sekunden: p.kampfzeit_sekunden }))
+                .map(p => ({ id: p.id, bezeichnung: p.bezeichnung, altersklasse: p.altersklasse, geschlecht: p.geschlecht, gesamt_kaempfe: Number(p.gesamt_kaempfe), kampfzeit_sekunden: p.kampfzeit_sekunden }))
         }));
         return res.json({ matten: simuliereZeitplan({ matten, beginnMs, kampfzeitJeAltersklasse: kampfzeitJeAltersklasse || {} }) });
     } catch (error) {

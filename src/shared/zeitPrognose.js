@@ -87,11 +87,16 @@ export function berechneRueckstand(matten) {
 export function simuliereZeitplan({ matten, beginnMs, kampfzeitJeAltersklasse = {} }) {
     return (matten || []).map(matte => {
         let cursor = beginnMs;
+        let vorherigeKlasse = null;
         const pools = (matte.pools || []).map(pool => {
+            const startMs = cursor;
+            const klasse = `${pool.altersklasse}|${pool.geschlecht}`;
+            const neueKlasse = klasse !== vorherigeKlasse;
+            vorherigeKlasse = klasse;
             const eingabe = Number(kampfzeitJeAltersklasse[pool.altersklasse]);
             const kampfzeit = eingabe > 0 ? eingabe : (Number(pool.kampfzeit_sekunden) || STANDARD_KAMPFZEIT_SEKUNDEN);
             cursor += (Number(pool.gesamt_kaempfe) || 0) * (kampfzeit + PUFFER_SEKUNDEN) * 1000;
-            return { poolId: pool.id, bezeichnung: pool.bezeichnung, altersklasse: pool.altersklasse, kaempfe: Number(pool.gesamt_kaempfe) || 0, endeMs: cursor };
+            return { poolId: pool.id, bezeichnung: pool.bezeichnung, altersklasse: pool.altersklasse, geschlecht: pool.geschlecht, neueKlasse, startMs, kaempfe: Number(pool.gesamt_kaempfe) || 0, endeMs: cursor };
         });
         return { matteId: matte.id, bezeichnung: matte.bezeichnung, pools, endeMs: cursor };
     });
