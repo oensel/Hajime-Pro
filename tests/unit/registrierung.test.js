@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { starteTestPostgres } from '../helpers/testPostgres.js';
 
@@ -7,10 +7,13 @@ import { starteTestPostgres } from '../helpers/testPostgres.js';
 process.env.BETRIEBSMODUS = 'cloud';
 delete process.env.IS_OFFLINE;
 delete process.env.SYNC_ROLLE;
+// Mails nur loggen (der Test liest die Links aus dem Log). Leerer Wert statt delete: dotenv ergänzt
+// fehlende Variablen aus der .env und würde sonst echtes SMTP aktivieren.
+process.env.SMTP_HOST = '';
 
 const { registriere, bestaetige, sendeBestaetigungNeu } = await import('../../src/services/registrierung.js');
 const { pruefeToken } = await import('../../src/services/einmalToken.js');
-const { login, register } = await import('../../src/controllers/authController.js');
+const { login, register, emailBestaetigungErneut } = await import('../../src/controllers/authController.js');
 const { hashPassword } = await import('../../src/utils/password.js');
 const { ensureSuperAdmin, SUPER_ADMIN_EMAIL } = await import('../../src/utils/superAdmin.js');
 
@@ -70,13 +73,17 @@ test('Registrierung: unbestätigt anlegen, bestätigen, Anfrage an den Verein', 
         await login(knex, { body: { email: 'erika@example.de', password: 'falsch12345' } }, resFalsch);
         assert.equal(resFalsch.statusCode, 401);
 
-        // --- gleiche E-Mail in Großschreibung → kein zweites Konto, erneute Bestätigungsmail
+        // --- gleiche E-Mail in Großschreibung → kein zweites Konto, erneute Bestätigungsmail; das bestehende
+        // unbestätigte Konto bleibt unverändert (anderes Passwort, anderer Verein, andere Quelle werden ignoriert),
+        // die Antwort ist dieselbe wie bei einer neuen Adresse.
         const r2 = await registriere(knex, {
-            email: 'ERIKA@EXAMPLE.DE', password: 'geheim123', vorname: 'Erika', nachname: 'Muster',
-            vereinId: mitAdmin, quelle: 'helfer-app', basisUrl: BASIS
+            email: 'ERIKA@EXAMPLE.DE', password: 'uebernahme9', vorname: 'Mallory', nachname: 'Boese',
+            vereinId: ohneAdmin, quelle: 'verwaltung', basisUrl: BASIS
         }, { sende });
-        assert.equal(r2.status, 200);
-        assert.equal(r2.body.token, undefined);
+        assert.deepEqual(r2, r1);
+        const erikaDanach = await knex('benutzer').where({ id: erika.id }).first();
+        assert.deepEqual([erikaDanach.vorname, erikaDanach.nachname, erikaDanach.password_hash],
+            [erika.vorname, erika.nachname, erika.password_hash]);
         const anzahl = await knex('benutzer').whereRaw('lower(email) = ?', ['erika@example.de']).count('* as n').first();
         assert.equal(Number(anzahl.n), 1);
         assert.equal(gesendet.length, 2);
@@ -110,6 +117,10 @@ test('Registrierung: unbestätigt anlegen, bestätigen, Anfrage an den Verein', 
         await login(knex, { body: { email: ' Erika@Example.de', password: 'geheim123' } }, resOk);
         assert.equal(resOk.statusCode, 200);
         assert.ok(resOk.body.token);
+        const resUebernahme = fakeRes();
+        await login(knex, { body: { email: 'erika@example.de', password: 'uebernahme9' } }, resUebernahme);
+        assert.equal(resUebernahme.statusCode, 401, 'Passwort der zweiten Registrierung gilt nicht');
+        assert.equal(await knex('benutzer_vereine').where({ benutzer_id: erika.id, verein_id: ohneAdmin }).first(), undefined);
 
         // --- bestätigte Adresse bereits vergeben → 409 (auch in anderer Schreibweise), keine Mail
         const r409 = await registriere(knex, {
@@ -182,16 +193,63 @@ test('Registrierung: unbestätigt anlegen, bestätigen, Anfrage an den Verein', 
         const neu = await knex('benutzer').where({ email: 'neu@example.de' }).first();
         assert.equal((await knex('benutzer_vereine').where({ benutzer_id: neu.id }).first()).angefragt_ueber, 'verwaltung');
 
-        // --- Controller register: kein Token, Basis-URL aus dem Request
-        delete process.env.PUBLIC_BASE_URL;
-        const resReg = fakeRes();
-        await register(knex, {
-            body: { email: 'ctrl@example.de', password: 'geheim123', vorname: 'C', nachname: 'Trl' },
-            protocol: 'http', get: (h) => (h.toLowerCase() === 'host' ? 'turnier.local' : undefined)
-        }, resReg);
-        assert.equal(resReg.statusCode, 201);
-        assert.equal(resReg.body.success, true);
-        assert.equal(resReg.body.token, undefined);
+        // --- Controller: Basis-URL der Mail-Links (Host-Header-Injection). Ohne SMTP loggt sendeMail die Mail
+        // per console.log; daran wird der Link abgelesen.
+        const gefaelscht = (body) => ({
+            body, protocol: 'http', get: (h) => (h.toLowerCase() === 'host' ? 'boese.example' : undefined)
+        });
+        const mitLog = async (fn) => {
+            const zeilen = [];
+            const m = mock.method(console, 'log', (...a) => { zeilen.push(a.join(' ')); });
+            const me = mock.method(console, 'error', (...a) => { zeilen.push(a.join(' ')); });
+            try { await fn(); } finally { m.mock.restore(); me.mock.restore(); }
+            return zeilen.join('\n');
+        };
+        const vorherModus = process.env.BETRIEBSMODUS;
+        const vorherBasis = process.env.PUBLIC_BASE_URL;
+        try {
+            // Cloud ohne PUBLIC_BASE_URL → 503, kein Konto, keine Mail; erneut senden → 200 ohne Mail
+            process.env.BETRIEBSMODUS = 'cloud';
+            for (const wert of [undefined, '', 'ftp://x.example', 'kein url']) {
+                if (wert === undefined) delete process.env.PUBLIC_BASE_URL; else process.env.PUBLIC_BASE_URL = wert;
+                const res503 = fakeRes();
+                const log = await mitLog(() => register(knex, gefaelscht(
+                    { email: 'ctrl@example.de', password: 'geheim123', vorname: 'C', nachname: 'Trl' }), res503));
+                assert.equal(res503.statusCode, 503, `PUBLIC_BASE_URL=${wert}`);
+                assert.equal(res503.body.error, 'Die Registrierung ist derzeit nicht verfügbar.');
+                assert.match(log, /PUBLIC_BASE_URL/);
+                assert.doesNotMatch(log, /bestaetigen\.html/);
+                assert.equal(await knex('benutzer').where({ email: 'ctrl@example.de' }).first(), undefined);
+            }
+            delete process.env.PUBLIC_BASE_URL;
+            const resErneut = fakeRes();
+            const logErneut = await mitLog(() => emailBestaetigungErneut(knex, gefaelscht({ email: 'neu@example.de' }), resErneut));
+            assert.equal(resErneut.statusCode, 200);
+            assert.doesNotMatch(logErneut, /bestaetigen\.html/);
+            assert.match(logErneut, /PUBLIC_BASE_URL/);
+
+            // Cloud mit PUBLIC_BASE_URL (mit Pfad und Slash) → Link nutzt nur deren Origin, nie den Host-Header
+            process.env.PUBLIC_BASE_URL = ' https://hajime.example/irgendwas/ ';
+            const res201 = fakeRes();
+            const log201 = await mitLog(() => register(knex, gefaelscht(
+                { email: 'ctrl@example.de', password: 'geheim123', vorname: 'C', nachname: 'Trl' }), res201));
+            assert.equal(res201.statusCode, 201);
+            assert.equal(res201.body.token, undefined);
+            assert.match(log201, /https:\/\/hajime\.example\/bestaetigen\.html\?token=/);
+            assert.doesNotMatch(log201, /boese\.example/);
+
+            // außerhalb der Cloud ohne Variable: Rückfall auf den Request-Host
+            delete process.env.PUBLIC_BASE_URL;
+            process.env.BETRIEBSMODUS = 'server';
+            const resServer = fakeRes();
+            const logServer = await mitLog(() => register(knex, gefaelscht(
+                { email: 'ctrl2@example.de', password: 'geheim123', vorname: 'C', nachname: 'Zwei' }), resServer));
+            assert.equal(resServer.statusCode, 201);
+            assert.match(logServer, /http:\/\/boese\.example\/bestaetigen\.html\?token=/);
+        } finally {
+            process.env.BETRIEBSMODUS = vorherModus;
+            if (vorherBasis === undefined) delete process.env.PUBLIC_BASE_URL; else process.env.PUBLIC_BASE_URL = vorherBasis;
+        }
 
         // --- Bestandskonto in Großschreibung: Login per kleingeschriebener Adresse, Registrierung → 409
         await knex('benutzer').insert({

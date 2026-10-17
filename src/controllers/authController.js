@@ -3,26 +3,26 @@ import { hashPassword, verifyPassword } from '../utils/password.js';
 import { ladeBenutzerMitAktivemVerein, ladeVereineFuerBenutzer } from '../utils/vereinHelper.js';
 import * as steuerungPasswort from '../utils/steuerungPasswort.js';
 import { registriere, bestaetige, sendeBestaetigungNeu, findeKontoPerEmail } from '../services/registrierung.js';
+import { ermittleBasisUrl, HINWEIS_FEHLENDE_BASIS_URL } from '../utils/basisUrl.js';
 import dotenv from 'dotenv';
 dotenv.config({ quiet: true });
 
 const JWT_SECRET = process.env.JWT_SECRET || 'hajime_pro_secret_key_123456!';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
 
-/** Basis-URL für Links in Mails: PUBLIC_BASE_URL, sonst aus dem Request (Protokoll + Host). */
-export function ermittleBasisUrl(req) {
-    const konfiguriert = (process.env.PUBLIC_BASE_URL || '').trim();
-    if (konfiguriert) return konfiguriert.replace(/\/+$/, '');
-    return `${req.protocol}://${req.get('host')}`;
-}
-
 // Registrierung mit E-Mail-Bestätigung (src/services/registrierung.js): das Konto ist erst nach der
-// Bestätigung nutzbar, deshalb gibt es hier nie ein Token zurück.
+// Bestätigung nutzbar, deshalb gibt es hier nie ein Token zurück. Links in Mails nur mit sicherer Basis-URL
+// (src/utils/basisUrl.js): in der Cloud ohne PUBLIC_BASE_URL keine Registrierung.
 export async function register(knex, req, res) {
     try {
+        const basisUrl = ermittleBasisUrl(req);
+        if (!basisUrl) {
+            console.error(`[Register] ${HINWEIS_FEHLENDE_BASIS_URL}`);
+            return res.status(503).json({ success: false, error: 'Die Registrierung ist derzeit nicht verfügbar.' });
+        }
         const { email, password, vorname, nachname, vereinId, quelle } = req.body || {};
         const ergebnis = await registriere(knex, {
-            email, password, vorname, nachname, vereinId, quelle, basisUrl: ermittleBasisUrl(req)
+            email, password, vorname, nachname, vereinId, quelle, basisUrl
         });
         return res.status(ergebnis.status).json(ergebnis.body);
     } catch (error) {
@@ -36,7 +36,9 @@ export async function register(knex, req, res) {
 export async function emailBestaetigen(knex, req, res) {
     try {
         const token = req.body && req.body.token;
-        const ergebnis = await bestaetige(knex, typeof token === 'string' ? token : '', ermittleBasisUrl(req));
+        const basisUrl = ermittleBasisUrl(req);
+        if (!basisUrl) console.error(`[E-Mail-Bestätigung] ${HINWEIS_FEHLENDE_BASIS_URL} Freischaltungs-Mail ohne Link.`);
+        const ergebnis = await bestaetige(knex, typeof token === 'string' ? token : '', basisUrl);
         if (!ergebnis.ok) {
             return res.status(ergebnis.status).json({ success: false, error: ergebnis.error });
         }
@@ -57,7 +59,12 @@ export async function emailBestaetigen(knex, req, res) {
 // ob eine Adresse registriert ist.
 export async function emailBestaetigungErneut(knex, req, res) {
     try {
-        await sendeBestaetigungNeu(knex, req.body && req.body.email, ermittleBasisUrl(req));
+        const basisUrl = ermittleBasisUrl(req);
+        if (!basisUrl) {
+            console.error(`[E-Mail-Bestätigung-erneut] ${HINWEIS_FEHLENDE_BASIS_URL}`);
+        } else {
+            await sendeBestaetigungNeu(knex, req.body && req.body.email, basisUrl);
+        }
     } catch (error) {
         console.error('[E-Mail-Bestätigung-erneut-Fehler]:', error);
     }

@@ -55,11 +55,12 @@ Falls Sie sich nicht registriert haben, können Sie diese Mail ignorieren.`
 
 /**
  * Registriert ein Konto (unbestätigt) und verschickt die Bestätigungsmail.
- * Ein noch unbestätigtes Konto mit derselben Adresse wird übernommen (Name, Passwort, Verein der neuen Eingabe;
- * ältere Bestätigungslinks verfallen) und bekommt eine neue Mail (200). Eine bestätigte Adresse → 409.
+ * Ein noch unbestätigtes Konto mit derselben Adresse bleibt unverändert (kein Überschreiben von Passwort, Name
+ * oder Verein durch Dritte); es bekommt nur einen neuen Bestätigungslink wie bei sendeBestaetigungNeu. Die Antwort
+ * ist dann dieselbe wie bei einer neuen Adresse (201), nur eine bestätigte Adresse verrät sich (409).
  * @param {{ email, password, vorname, nachname, vereinId?, quelle?: 'helfer-app'|'verwaltung', basisUrl: string }} daten
  * @param {{ sende?: Function }} [optionen]
- * @returns {Promise<{ status: 201|200|400|409, body: object }>}
+ * @returns {Promise<{ status: 201|400|409, body: object }>}
  */
 export async function registriere(knex, { email, password, vorname, nachname, vereinId, quelle, basisUrl }, { sende = sendeMail } = {}) {
     const norm = normalisiereEmail(email);
@@ -90,19 +91,8 @@ export async function registriere(knex, { email, password, vorname, nachname, ve
         return antwort(409, { error: 'Diese E-Mail-Adresse ist bereits registriert.' });
     }
 
-    let konto;
-    let status;
     if (vorhanden) {
-        await knex('benutzer').where({ id: vorhanden.id }).update({
-            email: norm,
-            vorname: vor,
-            nachname: nach,
-            password_hash: hashPassword(password),
-            updated_at: knex.fn.now()
-        });
-        await entwerteTokens(knex, vorhanden.id, 'email');
-        konto = { id: vorhanden.id, email: norm, vorname: vor };
-        status = 200;
+        await sendeNeuenBestaetigungslink(knex, vorhanden, basisUrl, sende);
     } else {
         const id = crypto.randomUUID();
         await knex('benutzer').insert({
@@ -115,16 +105,13 @@ export async function registriere(knex, { email, password, vorname, nachname, ve
             created_at: knex.fn.now(),
             updated_at: knex.fn.now()
         });
-        konto = { id, email: norm, vorname: vor };
-        status = 201;
+        const token = await erzeugeToken(knex, {
+            benutzerId: id, zweck: 'email', vereinId: verein ? verein.id : null, angefragtUeber: herkunft
+        });
+        await sendeBestaetigungsMail(sende, { id, email: norm, vorname: vor }, basisUrl, token);
     }
 
-    const token = await erzeugeToken(knex, {
-        benutzerId: konto.id, zweck: 'email', vereinId: verein ? verein.id : null, angefragtUeber: herkunft
-    });
-    await sendeBestaetigungsMail(sende, konto, basisUrl, token);
-
-    return antwort(status, {
+    return antwort(201, {
         bestaetigungAusstehend: true,
         message: 'Wir haben Ihnen eine E-Mail geschickt. Bitte bestätigen Sie Ihre Adresse über den Link darin.'
     });
@@ -164,8 +151,12 @@ export async function bestaetige(knex, token, basisUrl, { sende = sendeMail } = 
             .update({ aktiver_verein_id: vereinId, updated_at: knex.fn.now() });
 
         try {
-            const freiToken = await erzeugeToken(knex, { benutzerId, zweck: 'freischaltung', vereinId });
-            const freischaltLink = `${String(basisUrl || '').replace(/\/+$/, '')}/freigabe.html?token=${encodeURIComponent(freiToken)}`;
+            // Ohne sichere Basis-URL (Cloud ohne PUBLIC_BASE_URL) kein Link; die Anfrage bleibt in der Liste offener Anfragen.
+            let freischaltLink;
+            if (basisUrl) {
+                const freiToken = await erzeugeToken(knex, { benutzerId, zweck: 'freischaltung', vereinId });
+                freischaltLink = `${String(basisUrl).replace(/\/+$/, '')}/freigabe.html?token=${encodeURIComponent(freiToken)}`;
+            }
             const antragsteller = await knex('benutzer').where({ id: benutzerId }).first();
             await benachrichtigeUeberBeitrittsanfrage(knex, antragsteller, vereinId, verein.name, sende, { freischaltLink });
         } catch (err) {
@@ -183,7 +174,12 @@ export async function bestaetige(knex, token, basisUrl, { sende = sendeMail } = 
 export async function sendeBestaetigungNeu(knex, email, basisUrl, { sende = sendeMail } = {}) {
     const konto = await findeKontoPerEmail(knex, email);
     if (!konto || konto.email_bestaetigt_am) return { ok: true };
+    await sendeNeuenBestaetigungslink(knex, konto, basisUrl, sende);
+    return { ok: true };
+}
 
+// Neuer Bestätigungslink für ein unbestätigtes Konto; ältere verfallen, Verein und Quelle stammen vom letzten Token.
+async function sendeNeuenBestaetigungslink(knex, konto, basisUrl, sende) {
     // Verein und Quelle der Registrierung stehen am letzten Bestätigungs-Token (auch wenn er abgelaufen ist).
     const letzter = await knex('token_einmal')
         .where({ benutzer_id: konto.id, zweck: 'email' })
@@ -197,5 +193,4 @@ export async function sendeBestaetigungNeu(knex, email, basisUrl, { sende = send
         angefragtUeber: letzter ? letzter.angefragt_ueber : null
     });
     await sendeBestaetigungsMail(sende, konto, basisUrl, token);
-    return { ok: true };
 }
