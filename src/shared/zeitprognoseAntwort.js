@@ -15,7 +15,15 @@ export function baueZeitprognoseAntwort({ kampfflaechen, pools, kaempfe, mannsch
             { kaempfe, pools: echtePools, teilnehmer: [], mannschaftskaempfe, mannschaften, turnier: null },
             matte.id, jetztMs);
         const p = prognoseMatte(liste, jetztMs);
-        return { id: matte.id, bezeichnung: matte.bezeichnung, endeMs: p.endeMs, offeneKaempfe: p.offeneKaempfe, dauerSekunden: p.dauerSekunden, rueckstand: null };
+        // Voraussichtlicher Start je Pool, der auf dieser Matte noch keinen Kampf begonnen hat (Dashboard).
+        const begonnen = new Set(liste.filter(k => k.status === 'gestartet' || k.status === 'beendet').map(k => k.pool_id));
+        const startJePool = new Map();
+        for (const k of liste) {
+            if (k.voraussichtlich_um == null || begonnen.has(k.pool_id)) continue;
+            if (!startJePool.has(k.pool_id) || k.voraussichtlich_um < startJePool.get(k.pool_id)) startJePool.set(k.pool_id, k.voraussichtlich_um);
+        }
+        const poolStarts = [...startJePool].map(([poolId, startMs]) => ({ poolId, startMs }));
+        return { id: matte.id, bezeichnung: matte.bezeichnung, endeMs: p.endeMs, offeneKaempfe: p.offeneKaempfe, dauerSekunden: p.dauerSekunden, poolStarts, rueckstand: null };
     });
     const rueckstand = berechneRueckstand(matten);
     const nachId = new Map(matten.map(m => [m.id, m]));

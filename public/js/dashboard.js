@@ -224,6 +224,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     const remaining = p.gesamt_kaempfe - p.beendete_kaempfe;
                     let statusText = `noch ${remaining} Kämpfe`;
+                    if (p.start_in_minuten != null) {
+                        statusText += p.start_in_minuten < 2 ? ' · Start gleich' : ` · Start in ca. ${p.start_in_minuten} Min.`;
+                    }
                     if (p.status_pool === 'abgeschlossen') statusText = 'abgeschlossen';
                     else if (p.status_pool === 'kaempfe_beendet') statusText = 'in Prüfung';
                     return `

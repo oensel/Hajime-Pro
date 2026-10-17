@@ -26,3 +26,21 @@ test('Matte 2 liegt hinter Matte 1, Matte ohne offene Kämpfe hat kein Ende, Sam
     assert.equal(m2.rueckstand.bezugBezeichnung, 'Matte 1');
     assert.equal(m3.endeMs, null);
 });
+
+test('poolStarts: voraussichtlicher Start je noch nicht begonnenem Pool, begonnene Pools fehlen', () => {
+    const zweiPools = [
+        { id: 21, kampfflaeche_id: 1, kampfzeit_sekunden: 240, altersklasse: 'U18', typ: 'einzel', status: 'gestartet' },
+        { id: 22, kampfflaeche_id: 1, kampfzeit_sekunden: 240, altersklasse: 'U18', typ: 'einzel', status: 'matte_zugewiesen' }
+    ];
+    const k = [
+        { id: 1, pool_id: 21, status: 'beendet', matten_reihenfolge: 1, kampfzeit_in_sekunden: 100 },
+        { id: 2, pool_id: 21, status: 'bereit', matten_reihenfolge: 2 },
+        { id: 3, pool_id: 22, status: 'bereit', matten_reihenfolge: 3 },
+        { id: 4, pool_id: 22, status: 'bereit', matten_reihenfolge: 4 }
+    ];
+    const antwort = baueZeitprognoseAntwort({ kampfflaechen: [kampfflaechen[0]], pools: zweiPools, kaempfe: k }, JETZT);
+    const starts = antwort.matten[0].poolStarts;
+    assert.deepEqual(starts.map(s => s.poolId), [22]);
+    // zwei offene Kämpfe davor? nur Kampf 2 (330 s: Vorgabe 240 s + 90 s Puffer bei < 3 Messwerten)
+    assert.equal(starts[0].startMs, JETZT + 330000);
+});

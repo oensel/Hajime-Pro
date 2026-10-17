@@ -1909,18 +1909,22 @@ export async function getKampfflaechenMitPools(knex, req, res) {
 }
 
 // Voraussichtliches Ende je Matte und Rückstand der Matten untereinander (Scoreboard, matten.html).
+async function ladeZeitprognose(knex, turnierId) {
+    const kampfflaechen = await knex('kampfflaechen').where({ turnier_id: turnierId }).orderBy('id');
+    const pools = await knex('pools').where({ turnier_id: turnierId }).andWhere('verspaetet', false);
+    const poolIds = pools.map(p => p.id);
+    const kaempfe = poolIds.length ? await knex('kaempfe').whereIn('pool_id', poolIds) : [];
+    const mannschaftskaempfe = poolIds.length ? await knex('mannschaftskaempfe').whereIn('pool_id', poolIds) : [];
+    return baueZeitprognoseAntwort({ kampfflaechen, pools, kaempfe, mannschaftskaempfe }, Date.now());
+}
+
 export async function getZeitprognose(knex, req, res) {
     try {
         const { turnierId } = req.query;
         if (!turnierId) {
             return res.status(400).json({ success: false, error: 'turnierId ist erforderlich' });
         }
-        const kampfflaechen = await knex('kampfflaechen').where({ turnier_id: turnierId }).orderBy('id');
-        const pools = await knex('pools').where({ turnier_id: turnierId }).andWhere('verspaetet', false);
-        const poolIds = pools.map(p => p.id);
-        const kaempfe = poolIds.length ? await knex('kaempfe').whereIn('pool_id', poolIds) : [];
-        const mannschaftskaempfe = poolIds.length ? await knex('mannschaftskaempfe').whereIn('pool_id', poolIds) : [];
-        return res.json(baueZeitprognoseAntwort({ kampfflaechen, pools, kaempfe, mannschaftskaempfe }, Date.now()));
+        return res.json(await ladeZeitprognose(knex, turnierId));
     } catch (error) {
         return res.status(500).json({ success: false, error: error.message });
     }
@@ -2713,6 +2717,8 @@ export async function getDashboardData(knex, req, res) {
             .andWhere('pools.verspaetet', false);
 
         const resultMats = [];
+        // Voraussichtlicher Start noch nicht begonnener Pools (src/shared/zeitPrognose.js).
+        const zeitprognose = await ladeZeitprognose(knex, parseInt(turnierId));
 
         // Einzelkämpfe der Mannschafts-Pools mit ihrer wirksamen Matte (Begegnung > Pool).
         const mannschaftsPoolIdsAlle = pools.filter(p => p.typ === 'mannschaft').map(p => p.id);
@@ -2821,9 +2827,15 @@ export async function getDashboardData(knex, req, res) {
                     poolStatus = 'aktiv';
                 }
 
+                const poolStart = ((zeitprognose.matten.find(m => m.id === kf.id) || {}).poolStarts || []).find(s => s.poolId === p.id);
+                const startInMinuten = poolStart && poolStatus === 'bereit'
+                    ? Math.max(0, Math.round((poolStart.startMs - zeitprognose.jetzt) / 60000))
+                    : null;
+
                 return {
                     id: p.id,
                     bezeichnung: p.bezeichnung,
+                    start_in_minuten: startInMinuten,
                     progress,
                     gesamt_kaempfe: gesamt,
                     beendete_kaempfe: beendet,
