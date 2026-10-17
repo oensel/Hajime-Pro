@@ -2,7 +2,7 @@ import express from 'express';
 import { requireAuth, requireTournamentEditAccess, requireTurnierAktiv } from '../middleware/auth.js';
 import {
     pruefeVorhanden, ladePlanRoute, legeTaetigkeitAnRoute, aendereTaetigkeitRoute, loescheTaetigkeitRoute,
-    legeSlotAnRoute, aendereSlotRoute, loescheSlotRoute, traegeEinRoute, traegeAusRoute, ladeMitgliederRoute
+    legeSlotAnRoute, aendereSlotRoute, loescheSlotRoute, traegeEinRoute, traegeAusRoute, ladeMitgliederRoute, ladeAusweiseRoute
 } from '../controllers/helferPlanController.js';
 
 /**
@@ -30,6 +30,7 @@ export function getHelferPlanRoutes(knex, { jetzt = () => new Date(), sende } = 
 
     router.get('/:turnierId', ...lesen, (req, res) => ladePlanRoute(knex, req, res));
     router.get('/:turnierId/mitglieder', ...lesen, (req, res) => ladeMitgliederRoute(knex, req, res));
+    router.get('/:turnierId/ausweise', ...lesen, (req, res) => ladeAusweiseRoute(knex, req, res));
     router.post('/:turnierId/taetigkeiten', ...schreiben, (req, res) => legeTaetigkeitAnRoute(knex, req, res));
 
     return router;

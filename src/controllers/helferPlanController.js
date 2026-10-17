@@ -5,6 +5,7 @@ import { FachFehler } from '../utils/fachFehler.js';
 import { sendeMail } from '../utils/mailer.js';
 import { ermittleHelferplanTurnierId } from '../middleware/auth.js';
 import * as plan from '../services/helferPlan.js';
+import { erzeugeAusweisPdf } from '../services/helferAusweis.js';
 
 /** Antwort für Fehler aus Service-Funktionen: FachFehler mit Status, Meldung, code und daten; sonst 500. */
 export function sendeFehler(res, error, kontext) {
@@ -252,5 +253,19 @@ export async function ladeMitgliederRoute(knex, req, res) {
         })));
     } catch (error) {
         sendeFehler(res, error, 'Helferplan-Mitglieder');
+    }
+}
+
+/** GET /:turnierId/ausweise?ids=a,b — druckbare Helferausweise (PDF); ohne ids alle Helfer mit Einsatz. */
+export async function ladeAusweiseRoute(knex, req, res) {
+    try {
+        const turnierId = await autorisiertesTurnierId(knex, req);
+        const ids = String(req.query?.ids || '').split(',').map(x => x.trim()).filter(Boolean);
+        const bytes = await erzeugeAusweisPdf(knex, turnierId, ids.length ? { benutzerIds: ids } : {});
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'inline; filename="helferausweise.pdf"');
+        res.send(Buffer.from(bytes));
+    } catch (error) {
+        sendeFehler(res, error, 'Helferausweise');
     }
 }

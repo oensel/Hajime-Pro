@@ -214,4 +214,7 @@ if (!turnierId) {
 } else {
     neuLaden();
     initCloudAktualisierung();
+    document.getElementById('hpAusweise')?.addEventListener('click', () => {
+        window.open(`/api/helfer-plan/${encodeURIComponent(turnierId)}/ausweise`, '_blank');
+    });
 }
