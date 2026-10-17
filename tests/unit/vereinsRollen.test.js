@@ -12,7 +12,7 @@ const {
     entscheideAnfrage, aendereRolle, entferneMitglied, ladeEmpfaengerFuerAnfrage, istLetzterAdmin
 } = await import('../../src/services/vereinsRollen.js');
 const {
-    leaveVerein, approveMember, getMitglieder, benachrichtigeUeberBeitrittsanfrage
+    leaveVerein, approveMember, getMitglieder, benachrichtigeUeberBeitrittsanfrage, removeMember
 } = await import('../../src/controllers/vereinController.js');
 const { ensureSuperAdmin, SUPER_ADMIN_EMAIL } = await import('../../src/utils/superAdmin.js');
 
@@ -163,6 +163,37 @@ test('Vereinsrollen: Freigabe, Empfänger, letzter Admin, Austritt', async () =>
         const einziger = fakeRes();
         await leaveVerein(knex, { user: { id: 'u-neu3' }, body: { vereinId: verein } }, einziger);
         assert.equal(einziger.statusCode, 409);
+
+        // Selbstentfernung über den Service/die Route: einziger Verein → 409 (Invariante wie leaveVerein)
+        const nurEiner = await entferneMitglied(knex, { vereinId: verein, benutzerId: 'u-neu3', durchId: 'u-neu3' });
+        assert.deepEqual([nurEiner.ok, nurEiner.status], [false, 409]);
+        assert.match(nurEiner.error, /einzigen Verein/);
+        assert.ok(await mitglied('u-neu3'));
+        // aus einem von zwei Vereinen → ok, aktiver Verein springt auf den verbleibenden
+        const zweiter = id((await knex('vereine').insert({ name: 'JC Zweit' }).returning('id'))[0]);
+        await knex('benutzer_vereine').insert({ benutzer_id: 'u-neu3', verein_id: zweiter, freigegeben: 1, rolle: 'helfer' });
+        await knex('benutzer_vereine').insert({ benutzer_id: 'u-admin', verein_id: zweiter, freigegeben: 1, rolle: 'admin' });
+        await knex('benutzer').where({ id: 'u-neu3' }).update({ aktiver_verein_id: zweiter });
+        const routeRes = fakeRes();
+        await removeMember(knex, { user: { id: 'u-neu3' }, body: { userId: 'u-neu3', vereinId: zweiter } }, routeRes);
+        assert.equal(routeRes.statusCode, 200, JSON.stringify(routeRes.body));
+        assert.equal(await knex('benutzer_vereine').where({ benutzer_id: 'u-neu3', verein_id: zweiter }).first(), undefined);
+        assert.equal((await knex('benutzer').where({ id: 'u-neu3' }).first()).aktiver_verein_id, verein);
+
+        // entscheideAnfrage ohne entscheiderId nur mit ausdrücklichem perToken
+        await legeBenutzerAn(knex, ['token1']);
+        await knex('benutzer_vereine').insert({ benutzer_id: 'u-token1', verein_id: verein, freigegeben: 0 });
+        for (const entscheiderId of [null, undefined]) {
+            const r = await entscheideAnfrage(knex, {
+                vereinId: verein, benutzerId: 'u-token1', entscheiderId, entscheidung: 'freigeben', rolle: 'helfer'
+            });
+            assert.deepEqual([r.ok, r.status], [false, 403], `entscheiderId ${entscheiderId}`);
+        }
+        assert.deepEqual(await entscheideAnfrage(knex, {
+            vereinId: verein, benutzerId: 'u-token1', entscheiderId: null, perToken: true, entscheidung: 'freigeben', rolle: 'helfer'
+        }), { ok: true });
+        const token1 = await mitglied('u-token1');
+        assert.deepEqual([token1.freigegeben, token1.rolle, token1.entschieden_von], [1, 'helfer', null]);
 
         // Benachrichtigung geht an ladeEmpfaengerFuerAnfrage (Admins bzw. Super-Admins)
         const gesendet = [];

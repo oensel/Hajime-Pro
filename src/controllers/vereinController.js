@@ -123,19 +123,8 @@ export async function leaveVerein(knex, req, res) {
             return res.status(400).json({ success: false, error: 'vereinId ist erforderlich.' });
         }
 
-        const eigeneMitgliedschaften = await knex('benutzer_vereine').where({ benutzer_id: userId });
-        const zuVerlassen = eigeneMitgliedschaften.find(m => m.verein_id === vereinId);
-        if (!zuVerlassen) {
-            return res.status(404).json({ success: false, error: 'Sie sind kein Mitglied dieses Vereins.' });
-        }
-        if (eigeneMitgliedschaften.length <= 1) {
-            return res.status(409).json({
-                success: false,
-                error: 'Sie können Ihren einzigen Verein nicht verlassen — ein Benutzer muss immer mindestens einem Verein angehören. Treten Sie zuerst einem anderen Verein bei.'
-            });
-        }
-
-        // Letzter Admin, offene Helferdienste und das Aufräumen (aktiver Verein, verwaister Verein) regelt der Service.
+        // Nicht-Mitglied (404), einziger Verein (409), letzter Admin, offene Helferdienste und das Aufräumen
+        // (aktiver Verein, verwaister Verein) regelt der Service — derselbe Weg wie POST /entfernen.
         const ergebnis = await entferneMitglied(knex, { vereinId, benutzerId: userId, durchId: userId });
         if (!ergebnis.ok) {
             return res.status(ergebnis.status).json({ success: false, error: ergebnis.error });

@@ -20,6 +20,8 @@ export async function hatOffeneDienste(_knex, _benutzerId, _vereinId) {
 
 const fehler = (status, error) => ({ ok: false, status, error });
 
+const EINZIGER_VEREIN_FEHLER = 'Sie können Ihren einzigen Verein nicht verlassen — ein Benutzer muss immer mindestens einem Verein angehören. Treten Sie zuerst einem anderen Verein bei.';
+
 async function istSuperAdmin(knex, benutzerId) {
     if (!benutzerId) return false;
     const benutzer = await knex('benutzer').where({ id: benutzerId }).first();
@@ -106,15 +108,16 @@ async function loescheMitgliedschaft(knex, benutzerId, vereinId) {
 
 /**
  * Entscheidet eine Beitrittsanfrage (freigeben mit Rolle oder ablehnen).
- * entscheiderId === null bedeutet: die Berechtigung ist bereits anderweitig nachgewiesen (Freischaltungs-
- * Token aus der Mail, Task 5); dann bleibt entschieden_von leer. Jeder andere Wert wird geprüft.
- * @param {{ vereinId: number, benutzerId: string, entscheiderId: string|null, entscheidung: 'freigeben'|'ablehnen', rolle?: string }} p
+ * perToken: true bedeutet, die Berechtigung ist bereits per Freischaltungs-Token aus der Mail nachgewiesen
+ * (Task 5, mit entscheiderId: null); dann bleibt entschieden_von leer. Ohne perToken wird entscheiderId
+ * immer geprüft (fehlt er, 403).
+ * @param {{ vereinId: number, benutzerId: string, entscheiderId: string|null, perToken?: boolean, entscheidung: 'freigeben'|'ablehnen', rolle?: string }} p
  */
-export async function entscheideAnfrage(knex, { vereinId, benutzerId, entscheiderId, entscheidung, rolle }) {
+export async function entscheideAnfrage(knex, { vereinId, benutzerId, entscheiderId, perToken = false, entscheidung, rolle }) {
     if (entscheidung !== 'freigeben' && entscheidung !== 'ablehnen') {
         return fehler(400, 'Ungültige Entscheidung.');
     }
-    if (entscheiderId !== null && !(await darfVereinVerwalten(knex, entscheiderId, vereinId))) {
+    if (perToken !== true && !(await darfVereinVerwalten(knex, entscheiderId, vereinId))) {
         return fehler(403, 'Nur Admins dieses Vereins dürfen Beitrittsanfragen entscheiden.');
     }
 
@@ -136,7 +139,7 @@ export async function entscheideAnfrage(knex, { vereinId, benutzerId, entscheide
         .update({
             freigegeben: 1,
             rolle,
-            entschieden_von: entscheiderId,
+            entschieden_von: perToken === true ? null : entscheiderId,
             entschieden_am: knex.fn.now(),
             updated_at: knex.fn.now()
         });
@@ -188,6 +191,14 @@ export async function entferneMitglied(knex, { vereinId, benutzerId, durchId }) 
         await trx('benutzer_vereine').where({ verein_id: vereinId, rolle: 'admin' }).forUpdate().select('id');
         const mitgliedschaft = await trx('benutzer_vereine').where({ benutzer_id: benutzerId, verein_id: vereinId }).first();
         if (!mitgliedschaft) return fehler(404, selbst ? 'Sie sind kein Mitglied dieses Vereins.' : 'Mitglied nicht gefunden.');
+
+        // Invariante (einzige Stelle, auch für leaveVerein): ein Konto gehört immer mindestens einem Verein an.
+        if (selbst) {
+            const eigene = await trx('benutzer_vereine').where({ benutzer_id: benutzerId }).count('* as anzahl').first();
+            if (parseInt(eigene.anzahl, 10) <= 1) {
+                return fehler(409, EINZIGER_VEREIN_FEHLER);
+            }
+        }
 
         if (!durchSuperAdmin && await istLetzterAdmin(trx, vereinId, benutzerId)) {
             const andere = await trx('benutzer_vereine')
