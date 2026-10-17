@@ -14,6 +14,9 @@ import { erzeugeToken, verbrauchePruefe, entwerteTokens } from './einmalToken.js
 import { benachrichtigeUeberBeitrittsanfrage } from '../controllers/vereinController.js';
 
 export const MIN_PASSWORT_LAENGE = 8;
+// Längste zulässige E-Mail-Adresse (RFC 5321); längere lehnen Registrierung, Login und Profil mit 400 ab.
+export const MAX_EMAIL_LAENGE = 254;
+export const MELDUNG_EMAIL_ZU_LANG = `Die E-Mail-Adresse ist zu lang (höchstens ${MAX_EMAIL_LAENGE} Zeichen).`;
 const QUELLEN = new Set(['helfer-app', 'verwaltung']);
 
 export function normalisiereEmail(email) {
@@ -23,7 +26,7 @@ export function normalisiereEmail(email) {
 /** Konto zu einer E-Mail-Adresse, unabhängig von der Schreibweise. */
 export async function findeKontoPerEmail(knex, email) {
     const norm = normalisiereEmail(email);
-    if (!norm) return null;
+    if (!norm || norm.length > MAX_EMAIL_LAENGE) return null;
     const exakt = await knex('benutzer').where({ email: norm }).first();
     if (exakt) return exakt;
     return (await knex('benutzer').whereRaw('lower(trim(email)) = ?', [norm]).orderBy('created_at').first()) || null;
@@ -69,6 +72,7 @@ export async function registriere(knex, { email, password, vorname, nachname, ve
     if (!norm || !password || !vor || !nach) {
         return antwort(400, { error: 'E-Mail, Passwort, Vorname und Nachname sind erforderlich.' });
     }
+    if (norm.length > MAX_EMAIL_LAENGE) return antwort(400, { error: MELDUNG_EMAIL_ZU_LANG });
     if (typeof password !== 'string' || password.length < MIN_PASSWORT_LAENGE) {
         return antwort(400, { error: `Das Passwort muss mindestens ${MIN_PASSWORT_LAENGE} Zeichen lang sein.` });
     }

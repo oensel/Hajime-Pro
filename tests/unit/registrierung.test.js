@@ -185,6 +185,11 @@ test('Registrierung: unbestätigt anlegen, bestätigen, Anfrage an den Verein', 
             email: 'q@example.de', password: 'geheim123', vorname: 'Q', nachname: 'U', quelle: 'irgendwo', basisUrl: BASIS
         }, { sende });
         assert.equal(quelle.status, 400);
+        const zuLang = await registriere(knex, {
+            email: `${'l'.repeat(250)}@x.de`, password: 'geheim123', vorname: 'L', nachname: 'Ang', basisUrl: BASIS
+        }, { sende });
+        assert.equal(zuLang.status, 400);
+        assert.deepEqual(await sendeBestaetigungNeu(knex, `${'l'.repeat(250)}@x.de`, BASIS, { sende }), { ok: true });
         assert.equal(gesendet.length, 6);
         for (const e of ['kurz@example.de', 'unb@example.de', 'f@example.de', 'q@example.de']) {
             assert.equal(await knex('benutzer').where({ email: e }).first(), undefined);

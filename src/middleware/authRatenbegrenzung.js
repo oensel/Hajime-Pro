@@ -4,9 +4,10 @@
 //     zusammengefasst je /64 (ratenSchluessel);
 //   - 'email': je E-Mail-Adresse aus dem Body (Bestätigungsmail erneut: bremst nur den Mailversand an diese Adresse);
 //   - 'email+ip': je Adresse UND Absender (Login: ein Angreifer drosselt so nur seinen eigenen Zugang, nicht den des
-//     Kontoinhabers).
-// Schlüssel aus dem Body sind immer ein SHA-256 über Endpunkt, normalisierte Adresse (höchstens 254 Zeichen, sonst
-// kein Schlüssel; der Controller lehnt ab) und ggf. Absender, nie der Rohtext. Die Begrenzung gilt für jede Adresse
+//     Kontoinhabers; dazu ein weiches Konto-Limit je Adresse allein mit höherer Grenze).
+// Schlüssel aus dem Body sind immer ein SHA-256 über Endpunkt, normalisierte Adresse (gleich welcher Länge; über
+// 254 Zeichen lehnt der Controller ab, den Body begrenzt das JSON-Limit von /api/auth) und ggf. Absender, nie der
+// Rohtext. Ohne Adresse im Body zählt nur die IP-Grenze (der Controller antwortet dann 400 bzw. sendet nichts). Die Begrenzung gilt für jede Adresse
 // gleich, ob es ein Konto gibt oder nicht. Bei voller Tabelle wird verdrängt (Standard der Ratenbegrenzung), damit
 // neue Clients nie pauschal gesperrt werden.
 // Aktiv im Betriebsmodus cloud; AUTH_RATENLIMIT_AKTIV=true|false überschreibt das. Im Hallen-Server und in den
@@ -60,22 +61,20 @@ export function ratenSchluessel(ip) {
     return `${g.slice(0, 4).map((x) => x.toString(16)).join(':')}::/64`;
 }
 
-const MAX_EMAIL_LAENGE = 254;
-
 /**
  * Schlüssel für die Begrenzung je E-Mail-Adresse: SHA-256 (hex) über `endpunkt|adresse` bzw. mit Absender
- * `endpunkt|adresse|ratenSchluessel(ip)`. null ohne gültige Adresse (leer oder länger als 254 Zeichen).
+ * `endpunkt|adresse|ratenSchluessel(ip)`. null nur ohne Adresse.
  */
 export function emailRatenSchluessel(endpunkt, email, ip) {
     const adresse = normalisiereEmail(email);
-    if (!adresse || adresse.length > MAX_EMAIL_LAENGE) return null;
+    if (!adresse) return null;
     const teile = ip === undefined ? [endpunkt, adresse] : [endpunkt, adresse, ratenSchluessel(ip)];
     return crypto.createHash('sha256').update(teile.join('|')).digest('hex');
 }
 
 /**
  * Express-Middleware: höchstens `max` Anfragen je Schlüssel und Fenster, darüber 429. Für 'email'/'email+ip' muss der
- * Body bereits gelesen sein (express.json vor dem Router); Anfragen ohne gültige Adresse zählen dort nicht.
+ * Body bereits gelesen sein (express.json vor dem Router); Anfragen ohne Adresse zählen dort nicht.
  * @param {{ max: number, schluessel?: 'ip'|'email'|'email+ip', endpunkt?: string, fensterMs?: number,
  *           maxEintraege?: number, aktiv?: boolean, jetzt?: () => number, env?: object }} optionen
  */

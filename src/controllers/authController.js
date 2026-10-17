@@ -2,7 +2,7 @@ import jwt from 'jsonwebtoken';
 import { hashPassword, verifyPassword } from '../utils/password.js';
 import { ladeBenutzerMitAktivemVerein, ladeVereineFuerBenutzer } from '../utils/vereinHelper.js';
 import * as steuerungPasswort from '../utils/steuerungPasswort.js';
-import { registriere, bestaetige, sendeBestaetigungNeu, findeKontoPerEmail, normalisiereEmail, MIN_PASSWORT_LAENGE } from '../services/registrierung.js';
+import { registriere, bestaetige, sendeBestaetigungNeu, findeKontoPerEmail, normalisiereEmail, MIN_PASSWORT_LAENGE, MAX_EMAIL_LAENGE, MELDUNG_EMAIL_ZU_LANG } from '../services/registrierung.js';
 import { ermittleBasisUrl, HINWEIS_FEHLENDE_BASIS_URL } from '../utils/basisUrl.js';
 import { hatVereinAdmin } from '../services/vereinsRollen.js';
 import dotenv from 'dotenv';
@@ -81,6 +81,9 @@ export async function login(knex, req, res) {
 
         if (!email || !password) {
             return res.status(400).json({ success: false, error: 'Email und Passwort sind erforderlich.' });
+        }
+        if (normalisiereEmail(email).length > MAX_EMAIL_LAENGE) {
+            return res.status(400).json({ success: false, error: MELDUNG_EMAIL_ZU_LANG });
         }
 
         const user = await findeKontoPerEmail(knex, email);
@@ -187,6 +190,9 @@ export async function updateProfile(knex, req, res) {
 
         if (!vorname || !nachname || !email) {
             return res.status(400).json({ success: false, error: 'Vorname, Nachname und E-Mail sind erforderlich.' });
+        }
+        if (email.length > MAX_EMAIL_LAENGE) {
+            return res.status(400).json({ success: false, error: MELDUNG_EMAIL_ZU_LANG });
         }
         if (!currentPassword) {
             return res.status(400).json({ success: false, error: 'Bitte geben Sie Ihr aktuelles Passwort zur Bestätigung ein.' });

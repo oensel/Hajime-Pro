@@ -103,17 +103,17 @@ test('Auth-Ratenbegrenzung: volle Tabelle verdrängt, neue Clients werden nicht 
     assert.equal(await anfrage('198.51.100.4'), 200);
 });
 
-test('emailRatenSchluessel: Hash statt Rohtext, zu lange Adressen ohne Schlüssel', async () => {
+test('emailRatenSchluessel: immer Hash statt Rohtext, auch für überlange Adressen', async () => {
     const { emailRatenSchluessel } = await import('../../src/middleware/authRatenbegrenzung.js');
     const k = emailRatenSchluessel('login', ' Opfer@Example.de ', '2001:db8:1:2::1');
     assert.match(k, /^[0-9a-f]{64}$/);
     assert.equal(k, emailRatenSchluessel('login', 'opfer@example.de', '2001:db8:1:2::ffff'), 'gleiches /64');
     assert.notEqual(k, emailRatenSchluessel('login', 'opfer@example.de', '2001:db8:1:3::1'));
     assert.notEqual(emailRatenSchluessel('a', 'x@y.de'), emailRatenSchluessel('b', 'x@y.de'), 'je Endpunkt getrennt');
-    const lang = `${'a'.repeat(250)}@x.de`;
-    assert.equal(emailRatenSchluessel('login', lang, '198.51.100.1'), null);
-    assert.equal(emailRatenSchluessel('login', '', '198.51.100.1'), null);
-    assert.equal(emailRatenSchluessel('login', 'a'.repeat(242) + '@example.de', '198.51.100.1').length, 64, '254 Zeichen gehen noch');
+    const lang = `${'a'.repeat(300)}@x.de`;
+    assert.match(emailRatenSchluessel('login', lang, '198.51.100.1'), /^[0-9a-f]{64}$/);
+    assert.equal(emailRatenSchluessel('login', lang.toUpperCase()), emailRatenSchluessel('login', lang));
+    assert.equal(emailRatenSchluessel('login', ''), null, 'ohne Adresse nichts zu zählen (Controller: 400)');
 });
 
 test('Auth-Ratenbegrenzung: Login je Adresse und Absender, Bestätigungsmail je Adresse', async () => {
@@ -134,10 +134,16 @@ test('Auth-Ratenbegrenzung: Login je Adresse und Absender, Bestätigungsmail je 
             // ein anderer Absender (z.B. der Kontoinhaber) ist davon nicht betroffen
             assert.notEqual((await postMit('/login', { email: 'opfer@example.de' }, '203.0.113.50')).status, 429,
                 'Kontoinhaber von anderer Adresse nicht ausgesperrt');
-            // überlange Adresse: kein Schlüssel aus dem Rohtext, nur die IP-Grenze zählt
-            for (let i = 1; i <= 12; i++) {
-                assert.notEqual((await postMit('/login', { email: `${'b'.repeat(300)}@x.de` }, '198.51.100.8')).status, 429);
+            // weiches Konto-Limit: 60 Versuche je Adresse insgesamt, auch von wechselnden Absendern; der 61. → 429
+            for (let i = 1; i <= 60 - 11; i++) {
+                const r = await postMit('/login', { email: 'opfer@example.de' }, `10.0.${Math.floor(i / 200)}.${i % 200}`);
+                assert.notEqual(r.status, 429, `Konto-Versuch ${i + 11}`);
             }
+            assert.equal((await postMit('/login', { email: 'opfer@example.de' }, '10.9.9.9')).status, 429, '61. Versuch');
+            assert.notEqual((await postMit('/login', { email: 'jemand@example.de' }, '10.9.9.9')).status, 429);
+            // überlange Adresse: der Controller lehnt ab (400), gezählt wird über den Hash
+            const lang = await postMit('/login', { email: `${'b'.repeat(300)}@x.de`, password: 'geheim123' }, '198.51.100.8');
+            assert.equal(lang.status, 400);
 
             // Bestätigungsmail: 3 je Adresse (gleich, ob es sie gibt), die 4. → 429, auch von anderen Absendern
             for (const adresse of ['opfer@example.de', 'gibt-es-nicht@example.de']) {
