@@ -237,6 +237,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         <span class="fight-row-vs">VS</span>
                         <span>${escapeHtml(name2)}</span>
                     </span>
+                    <span class="fight-row-zeit">${escapeHtml(window.ZeitAnzeige.format(k.voraussichtlich_um))}</span>
                     <span class="fight-row-status"><span class="badge wartet">Bereit</span></span>
                 `;
                 upcomingFightsList.appendChild(row);
