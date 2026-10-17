@@ -14,10 +14,56 @@ import { RASTER_MIN, MIN_LAENGE, darfHelferAendern, ueberlappt, erzeugeStandardS
 const STANDARD_BEDARF = 2;
 const FRIST_MELDUNG = 'Die Frist ist abgelaufen (Turniertag 08:00 Uhr). Bitte melde dich bei der Turnierleitung.';
 
-function fehler(status, nachricht, daten = null) {
-    const e = new FachFehler(status, nachricht, { daten });
+// Maschinenlesbare Fehlerarten (FachFehler.code) für die Routen/Oberfläche.
+export const FEHLER_CODES = Object.freeze({
+    BESTAETIGUNG_NOETIG: 'bestaetigung_noetig', // daten.anzahl = Zahl der Eingetragenen
+    UEBERLAPPUNG: 'ueberlappung',
+    VOLL: 'voll',
+    FRIST: 'frist',
+    TURNIER_NICHT_AKTIV: 'turnier_nicht_aktiv',
+    KONFLIKT: 'konflikt'
+});
+
+// Turnierstatus, in denen Helfer sich selbst eintragen können (gespeicherte Werte laut turnierController:
+// 'entwurf' | 'veroeffentlicht' | 'abgeschlossen' | 'abgesagt').
+const AKTIVE_TURNIER_STATUS = ['entwurf', 'veroeffentlicht'];
+
+function fehler(status, nachricht, { code = null, daten = null } = {}) {
+    const e = new FachFehler(status, nachricht, { code, daten });
     e.status = status;
     return e;
+}
+
+function bestaetigungNoetig(nachricht, anzahl) {
+    return fehler(409, nachricht, { code: FEHLER_CODES.BESTAETIGUNG_NOETIG, daten: { anzahl } });
+}
+
+// Transaktion; Deadlock (40P01) und Serialisierungsfehler (40001) werden zu einem 409 „Bitte erneut versuchen.“
+async function transaktion(knex, fn) {
+    try {
+        return await knex.transaction(fn);
+    } catch (e) {
+        if (!(e instanceof FachFehler) && (e?.code === '40P01' || e?.code === '40001')) {
+            throw fehler(409, 'Bitte erneut versuchen.', { code: FEHLER_CODES.KONFLIKT });
+        }
+        throw e;
+    }
+}
+
+// Lock-Reihenfolge überall: Turnier → Tätigkeit → Slot (Löschen per CASCADE folgt derselben Richtung).
+async function sperreTaetigkeit(trx, taetigkeitId) {
+    const t = await trx('helfer_taetigkeiten').where({ id: taetigkeitId }).forUpdate().first();
+    if (!t) throw fehler(404, 'Tätigkeit nicht gefunden.');
+    return t;
+}
+
+async function sperreSlotUeberTaetigkeit(trx, slotId) {
+    const kopf = await trx('helfer_slots').where({ id: slotId }).first('taetigkeit_id');
+    if (!kopf) throw fehler(404, 'Slot nicht gefunden.');
+    const taetigkeit = await sperreTaetigkeit(trx, kopf.taetigkeit_id);
+    const slot = await trx('helfer_slots').where({ id: slotId }).forUpdate().first();
+    if (!slot) throw fehler(404, 'Slot nicht gefunden.');
+    return { slot, taetigkeit };
 }
 
 const idAus = (r) => (typeof r === 'object' ? r.id : r);
@@ -57,7 +103,7 @@ async function pruefeKeineUeberlappung(knex, taetigkeitId, zeitraum, ohneSlotId 
     if (ohneSlotId != null) abfrage = abfrage.whereNot({ id: ohneSlotId });
     const andere = await abfrage.select('von_min', 'bis_min');
     if (andere.some(s => ueberlappt(s, zeitraum))) {
-        throw fehler(409, 'Der Slot überschneidet sich mit einem anderen Slot dieser Tätigkeit.');
+        throw fehler(409, 'Der Slot überschneidet sich mit einem anderen Slot dieser Tätigkeit.', { code: FEHLER_CODES.UEBERLAPPUNG });
     }
 }
 
@@ -67,11 +113,6 @@ async function ladeTurnier(knex, turnierId) {
     return turnier;
 }
 
-async function ladeTaetigkeit(knex, taetigkeitId) {
-    const t = await knex('helfer_taetigkeiten').where({ id: taetigkeitId }).first();
-    if (!t) throw fehler(404, 'Tätigkeit nicht gefunden.');
-    return t;
-}
 
 async function anzahlEinsaetze(knex, slotIds) {
     if (slotIds.length === 0) return 0;
@@ -107,7 +148,7 @@ function mattenBezeichnung(kampfflaeche, nummer) {
  * Vorhandene bleiben unverändert; überzählige werden nur ohne Einsätze gelöscht.
  */
 export async function synchronisiereStandardTaetigkeiten(knex, turnierId) {
-    await knex.transaction(async (trx) => {
+    await transaktion(knex, async (trx) => {
         // Turnier sperren: gleichzeitige Läufe legen nichts doppelt an.
         const turnier = await trx('turniere').where({ id: turnierId }).forUpdate().first();
         if (!turnier) throw fehler(404, 'Turnier nicht gefunden.');
@@ -149,7 +190,7 @@ export async function legeTaetigkeitAn(knex, turnierId, { bezeichnung, bedarf } 
     const name = String(bezeichnung || '').trim();
     if (!name) throw fehler(400, 'Bitte eine Bezeichnung angeben.');
     const n = pruefeBedarf(bedarf);
-    return knex.transaction(async (trx) => {
+    return transaktion(knex, async (trx) => {
         const turnier = await ladeTurnier(trx, turnierId);
         const max = await trx('helfer_taetigkeiten').where({ turnier_id: turnierId, art: 'frei' }).max('reihenfolge as m').first();
         const id = await legeTaetigkeitMitSlotsAn(trx, turnier, {
@@ -162,12 +203,16 @@ export async function legeTaetigkeitAn(knex, turnierId, { bezeichnung, bedarf } 
 
 /**
  * Ändert Bezeichnung (nur eigene Tätigkeiten) und/oder Bedarf. Ein neuer Bedarf gilt auch für die Slots, die
- * bisher den Bedarf der Tätigkeit hatten (abweichende Slot-Werte bleiben).
+ * bisher den Bedarf der Tätigkeit hatten (abweichende Slot-Werte bleiben). Fällt dabei der Bedarf eines Slots
+ * unter die Zahl seiner Eingetragenen, ist `bestaetigt: true` nötig, sonst 409 (code 'bestaetigung_noetig',
+ * daten.anzahl = höchste Belegung der betroffenen Slots).
+ * @returns {Promise<{ betroffeneBenutzerIds: string[] }>} Eingetragene der Slots, die nun überbucht sind
  */
-export async function aendereTaetigkeit(knex, id, { bezeichnung, bedarf } = {}) {
-    await knex.transaction(async (trx) => {
-        const t = await ladeTaetigkeit(trx, id);
+export async function aendereTaetigkeit(knex, id, { bezeichnung, bedarf, bestaetigt } = {}) {
+    return transaktion(knex, async (trx) => {
+        const t = await sperreTaetigkeit(trx, id);
         const aenderung = {};
+        let betroffeneBenutzerIds = [];
         if (bezeichnung !== undefined) {
             const name = String(bezeichnung || '').trim();
             if (!name) throw fehler(400, 'Bitte eine Bezeichnung angeben.');
@@ -180,22 +225,39 @@ export async function aendereTaetigkeit(knex, id, { bezeichnung, bedarf } = {}) 
             const n = pruefeBedarf(bedarf);
             if (n !== t.bedarf) {
                 aenderung.bedarf = n;
-                await trx('helfer_slots').where({ taetigkeit_id: id, bedarf: t.bedarf }).update({ bedarf: n });
+                const slots = await trx('helfer_slots').where({ taetigkeit_id: id, bedarf: t.bedarf })
+                    .orderBy('id').forUpdate().select('id');
+                const slotIds = slots.map(s => s.id);
+                const einsaetze = slotIds.length
+                    ? await trx('helfer_einsaetze').whereIn('slot_id', slotIds).select('slot_id', 'benutzer_id')
+                    : [];
+                const proSlot = new Map();
+                for (const e of einsaetze) proSlot.set(e.slot_id, [...(proSlot.get(e.slot_id) || []), e]);
+                const ueberbucht = [...proSlot.values()].filter(liste => liste.length > n);
+                if (ueberbucht.length > 0) {
+                    const anzahl = Math.max(...ueberbucht.map(l => l.length));
+                    if (bestaetigt !== true) {
+                        throw bestaetigungNoetig(`${anzahl} Helfer sind in einem Slot eingetragen, mehr als die neue Anzahl. Trotzdem ändern?`, anzahl);
+                    }
+                    betroffeneBenutzerIds = [...new Set(ueberbucht.flat().map(e => e.benutzer_id).filter(Boolean))];
+                }
+                if (slotIds.length) await trx('helfer_slots').whereIn('id', slotIds).update({ bedarf: n });
             }
         }
         if (Object.keys(aenderung).length) await trx('helfer_taetigkeiten').where({ id }).update(aenderung);
+        return { betroffeneBenutzerIds };
     });
 }
 
 /** Löscht eine eigene Tätigkeit; mit Einsätzen nur bei `bestaetigt === true`. */
 export async function loescheTaetigkeit(knex, id, { bestaetigt } = {}) {
-    return knex.transaction(async (trx) => {
-        const t = await ladeTaetigkeit(trx, id);
+    return transaktion(knex, async (trx) => {
+        const t = await sperreTaetigkeit(trx, id);
         if (t.art !== 'frei') throw fehler(409, 'Matten- und Waagenzeilen lassen sich nicht löschen.');
-        const slots = await trx('helfer_slots').where({ taetigkeit_id: id }).select('id');
+        const slots = await trx('helfer_slots').where({ taetigkeit_id: id }).orderBy('id').forUpdate().select('id');
         const einsaetze = await trx('helfer_einsaetze').whereIn('slot_id', slots.map(s => s.id)).select('benutzer_id');
         if (einsaetze.length > 0 && bestaetigt !== true) {
-            throw fehler(409, `${einsaetze.length} Helfer sind eingetragen. Trotzdem löschen?`, { anzahl: einsaetze.length });
+            throw bestaetigungNoetig(`${einsaetze.length} Helfer sind eingetragen. Trotzdem löschen?`, einsaetze.length);
         }
         await trx('helfer_taetigkeiten').where({ id }).del();
         return { betroffeneBenutzerIds: einsaetze.map(e => e.benutzer_id).filter(Boolean) };
@@ -206,10 +268,9 @@ export async function loescheTaetigkeit(knex, id, { bestaetigt } = {}) {
 export async function legeSlotAn(knex, taetigkeitId, { von_min, bis_min } = {}) {
     const zeitraum = { von_min: Number(von_min), bis_min: Number(bis_min) };
     pruefeZeitraum(zeitraum.von_min, zeitraum.bis_min);
-    return knex.transaction(async (trx) => {
+    return transaktion(knex, async (trx) => {
         // Tätigkeit sperren: zwei gleichzeitig angelegte Slots können sich nicht überlappen.
-        const t = await trx('helfer_taetigkeiten').where({ id: taetigkeitId }).forUpdate().first();
-        if (!t) throw fehler(404, 'Tätigkeit nicht gefunden.');
+        const t = await sperreTaetigkeit(trx, taetigkeitId);
         await pruefeKeineUeberlappung(trx, taetigkeitId, zeitraum);
         const id = idAus((await trx('helfer_slots').insert({ taetigkeit_id: taetigkeitId, ...zeitraum, bedarf: t.bedarf }).returning('id'))[0]);
         return { id };
@@ -222,10 +283,8 @@ export async function legeSlotAn(knex, taetigkeitId, { von_min, bis_min } = {}) 
  * @returns {Promise<{ betroffeneBenutzerIds: string[] }>} Konten, deren Dienstzeit sich geändert hat
  */
 export async function aendereSlot(knex, slotId, { von_min, bis_min, bedarf, bestaetigt } = {}) {
-    return knex.transaction(async (trx) => {
-        const slot = await trx('helfer_slots').where({ id: slotId }).forUpdate().first();
-        if (!slot) throw fehler(404, 'Slot nicht gefunden.');
-        await trx('helfer_taetigkeiten').where({ id: slot.taetigkeit_id }).forUpdate().first();
+    return transaktion(knex, async (trx) => {
+        const { slot } = await sperreSlotUeberTaetigkeit(trx, slotId);
 
         const neu = {
             von_min: von_min === undefined ? slot.von_min : Number(von_min),
@@ -243,10 +302,10 @@ export async function aendereSlot(knex, slotId, { von_min, bis_min, bedarf, best
         if (anzahl > 0 && bestaetigt !== true) {
             const verkuerztOderVerschoben = neu.von_min > slot.von_min || neu.bis_min < slot.bis_min;
             if (verkuerztOderVerschoben) {
-                throw fehler(409, `${anzahl} Helfer sind eingetragen. Trotzdem ändern?`, { anzahl });
+                throw bestaetigungNoetig(`${anzahl} Helfer sind eingetragen. Trotzdem ändern?`, anzahl);
             }
             if (neuerBedarf < anzahl) {
-                throw fehler(409, `${anzahl} Helfer sind eingetragen, mehr als die neue Anzahl. Trotzdem ändern?`, { anzahl });
+                throw bestaetigungNoetig(`${anzahl} Helfer sind eingetragen, mehr als die neue Anzahl. Trotzdem ändern?`, anzahl);
             }
         }
 
@@ -257,12 +316,11 @@ export async function aendereSlot(knex, slotId, { von_min, bis_min, bedarf, best
 
 /** Löscht einen Slot; mit Einsätzen nur bei `bestaetigt === true`. */
 export async function loescheSlot(knex, slotId, { bestaetigt } = {}) {
-    return knex.transaction(async (trx) => {
-        const slot = await trx('helfer_slots').where({ id: slotId }).forUpdate().first();
-        if (!slot) throw fehler(404, 'Slot nicht gefunden.');
+    return transaktion(knex, async (trx) => {
+        await sperreSlotUeberTaetigkeit(trx, slotId);
         const einsaetze = await trx('helfer_einsaetze').where({ slot_id: slotId }).select('benutzer_id');
         if (einsaetze.length > 0 && bestaetigt !== true) {
-            throw fehler(409, `${einsaetze.length} Helfer sind eingetragen. Trotzdem löschen?`, { anzahl: einsaetze.length });
+            throw bestaetigungNoetig(`${einsaetze.length} Helfer sind eingetragen. Trotzdem löschen?`, einsaetze.length);
         }
         await trx('helfer_slots').where({ id: slotId }).del();
         return { betroffeneBenutzerIds: einsaetze.map(e => e.benutzer_id).filter(Boolean) };
@@ -275,7 +333,7 @@ async function sperreSlotMitTurnier(trx, slotId) {
         .join('helfer_taetigkeiten as t', 't.id', 's.taetigkeit_id')
         .join('turniere as tu', 'tu.id', 't.turnier_id')
         .where('s.id', slotId)
-        .select('s.id', 's.von_min', 's.bis_min', 's.bedarf', 't.turnier_id', 'tu.verein_id', 'tu.datum')
+        .select('s.id', 's.von_min', 's.bis_min', 's.bedarf', 't.turnier_id', 'tu.verein_id', 'tu.datum', 'tu.status')
         .forUpdate('s')
         .first();
     if (!zeile) throw fehler(404, 'Slot nicht gefunden.');
@@ -294,7 +352,7 @@ async function belegtePlaetze(trx, slotId) {
 export async function traegeEin(knex, { slotId, benutzerId, durchId, jetzt = new Date(), alsOrga = false }) {
     if (!benutzerId) throw fehler(400, 'Kein Helfer angegeben.');
     if (!alsOrga && benutzerId !== durchId) throw fehler(403, 'Du kannst nur dich selbst eintragen.');
-    return knex.transaction(async (trx) => {
+    return transaktion(knex, async (trx) => {
         const slotKopf = await trx('helfer_slots as s')
             .join('helfer_taetigkeiten as t', 't.id', 's.taetigkeit_id')
             .where('s.id', slotId).select('t.turnier_id').first();
@@ -307,7 +365,13 @@ export async function traegeEin(knex, { slotId, benutzerId, durchId, jetzt = new
         if (!(await hatHelferZugriffAufVerein(trx, benutzerId, slot.verein_id))) {
             throw fehler(403, 'Eintragen nur mit freigegebener Mitgliedschaft im ausrichtenden Verein.');
         }
-        if (!alsOrga && !darfHelferAendern(datumAlsText(slot.datum), jetzt)) throw fehler(403, FRIST_MELDUNG);
+        if (!alsOrga && !AKTIVE_TURNIER_STATUS.includes(slot.status)) {
+            throw fehler(409, 'Für dieses Turnier ist keine Eintragung mehr möglich (abgesagt oder abgeschlossen).',
+                { code: FEHLER_CODES.TURNIER_NICHT_AKTIV });
+        }
+        if (!alsOrga && !darfHelferAendern(datumAlsText(slot.datum), jetzt)) {
+            throw fehler(403, FRIST_MELDUNG, { code: FEHLER_CODES.FRIST });
+        }
 
         if (await trx('helfer_einsaetze').where({ slot_id: slotId, benutzer_id: benutzerId }).first()) {
             throw fehler(409, 'Bereits für diesen Slot eingetragen.');
@@ -318,9 +382,9 @@ export async function traegeEin(knex, { slotId, benutzerId, durchId, jetzt = new
             .where({ 'e.benutzer_id': benutzerId, 't.turnier_id': slot.turnier_id })
             .select('s.von_min', 's.bis_min');
         if (eigene.some(d => ueberlappt(d, slot))) {
-            throw fehler(409, 'Du bist zu dieser Zeit schon für einen anderen Dienst eingetragen.');
+            throw fehler(409, 'Du bist zu dieser Zeit schon für einen anderen Dienst eingetragen.', { code: FEHLER_CODES.UEBERLAPPUNG });
         }
-        if (await belegtePlaetze(trx, slotId) >= slot.bedarf) throw fehler(409, 'Gerade vergeben.');
+        if (await belegtePlaetze(trx, slotId) >= slot.bedarf) throw fehler(409, 'Gerade vergeben.', { code: FEHLER_CODES.VOLL });
 
         const id = idAus((await trx('helfer_einsaetze').insert({
             slot_id: slotId, benutzer_id: benutzerId, eingetragen_von: durchId || null
@@ -331,7 +395,7 @@ export async function traegeEin(knex, { slotId, benutzerId, durchId, jetzt = new
 
 /** Entfernt einen Einsatz. Ohne `alsOrga` nur den eigenen und nur bis zur Frist. */
 export async function traegeAus(knex, { einsatzId, durchId, jetzt = new Date(), alsOrga = false }) {
-    await knex.transaction(async (trx) => {
+    await transaktion(knex, async (trx) => {
         const einsatz = await trx('helfer_einsaetze as e')
             .join('helfer_slots as s', 's.id', 'e.slot_id')
             .join('helfer_taetigkeiten as t', 't.id', 's.taetigkeit_id')
@@ -344,7 +408,9 @@ export async function traegeAus(knex, { einsatzId, durchId, jetzt = new Date(), 
             if (!einsatz.benutzer_id || einsatz.benutzer_id !== durchId) {
                 throw fehler(403, 'Du kannst nur dich selbst austragen.');
             }
-            if (!darfHelferAendern(datumAlsText(einsatz.datum), jetzt)) throw fehler(403, FRIST_MELDUNG);
+            if (!darfHelferAendern(datumAlsText(einsatz.datum), jetzt)) {
+                throw fehler(403, FRIST_MELDUNG, { code: FEHLER_CODES.FRIST });
+            }
         }
         await trx('helfer_einsaetze').where({ id: einsatzId }).del();
     });
@@ -354,9 +420,9 @@ export async function traegeAus(knex, { einsatzId, durchId, jetzt = new Date(), 
 export async function traegeManuellEin(knex, { slotId, name, durchId }) {
     const anzeigename = String(name || '').trim();
     if (!anzeigename) throw fehler(400, 'Bitte einen Namen angeben.');
-    return knex.transaction(async (trx) => {
+    return transaktion(knex, async (trx) => {
         const slot = await sperreSlotMitTurnier(trx, slotId);
-        if (await belegtePlaetze(trx, slotId) >= slot.bedarf) throw fehler(409, 'Gerade vergeben.');
+        if (await belegtePlaetze(trx, slotId) >= slot.bedarf) throw fehler(409, 'Gerade vergeben.', { code: FEHLER_CODES.VOLL });
         const id = idAus((await trx('helfer_einsaetze').insert({
             slot_id: slotId, benutzer_id: null, name_manuell: anzeigename, eingetragen_von: durchId || null
         }).returning('id'))[0]);
@@ -461,7 +527,10 @@ export async function ladeMeineDienste(knex, benutzerId) {
     }));
 }
 
-/** Hat das Konto Dienste in noch nicht vergangenen Turnieren (Datum ≥ heute, Berlin) dieses Vereins? */
+/**
+ * Hat das Konto Dienste in noch nicht vergangenen Turnieren (Datum ≥ heute, Berlin) dieses Vereins?
+ * Abgesagte und abgeschlossene Turniere zählen nicht.
+ */
 export async function hatOffeneDienste(knex, benutzerId, vereinId) {
     const treffer = await knex('helfer_einsaetze as e')
         .join('helfer_slots as s', 's.id', 'e.slot_id')
@@ -469,6 +538,7 @@ export async function hatOffeneDienste(knex, benutzerId, vereinId) {
         .join('turniere as tu', 'tu.id', 't.turnier_id')
         .where({ 'e.benutzer_id': benutzerId, 'tu.verein_id': vereinId })
         .where('tu.datum', '>=', heuteBerlin())
+        .whereNotIn('tu.status', ['abgesagt', 'abgeschlossen'])
         .first('e.id');
     return !!treffer;
 }

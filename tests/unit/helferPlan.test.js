@@ -15,10 +15,11 @@ const id = (r) => (typeof r === 'object' ? r.id : r);
 const VOR_FRIST = new Date('2026-10-20T12:00:00Z');
 const NACH_FRIST = new Date('2026-11-01T07:30:00Z'); // 08:30 Berlin (MEZ) am Turniertag
 
-async function erwarteFehler(versprechen, status, muster) {
+async function erwarteFehler(versprechen, status, muster, code) {
     await assert.rejects(versprechen, (e) => {
         assert.equal(e.statusCode, status, `${e.statusCode} ${e.message}`);
         if (muster) assert.match(e.message, muster);
+        if (code !== undefined) assert.equal(e.code, code, `code bei: ${e.message}`);
         return true;
     });
 }
@@ -96,10 +97,10 @@ test('Helferplan: Standard-Tätigkeiten, Slots, Eintragen und Austragen', async 
         await plan.loescheSlot(knex, aufbau.slots[4].id, {});
         await erwarteFehler(plan.legeSlotAn(knex, frei.id, { von_min: 1020, bis_min: 1070 }), 400);   // Raster
         await erwarteFehler(plan.legeSlotAn(knex, frei.id, { von_min: 1020, bis_min: 1035 }), 400);   // zu kurz
-        await erwarteFehler(plan.legeSlotAn(knex, frei.id, { von_min: 1005, bis_min: 1080 }), 409);   // überlappt
+        await erwarteFehler(plan.legeSlotAn(knex, frei.id, { von_min: 1005, bis_min: 1080 }), 409, null, "ueberlappung");   // überlappt
         const neuerSlot = await plan.legeSlotAn(knex, frei.id, { von_min: 1020, bis_min: 1050 });
         assert.ok(neuerSlot.id);
-        await erwarteFehler(plan.aendereSlot(knex, neuerSlot.id, { von_min: 1005 }), 409);              // Verschieben in Nachbarn
+        await erwarteFehler(plan.aendereSlot(knex, neuerSlot.id, { von_min: 1005 }), 409, null, "ueberlappung");              // Verschieben in Nachbarn
 
         // --- Eintragen: Rechte, Frist, Überlappung
         const matte1 = await finde(knex, turnier, 'Kampfgericht Matte 1');
@@ -108,13 +109,13 @@ test('Helferplan: Standard-Tätigkeiten, Slots, Eintragen und Austragen', async 
         await erwarteFehler(plan.traegeEin(knex, { slotId: m1s1, benutzerId: 'u-ext', durchId: 'u-ext', jetzt: VOR_FRIST }), 403);
         await erwarteFehler(plan.traegeEin(knex, { slotId: m1s1, benutzerId: 'u-dora', durchId: 'u-dora', jetzt: VOR_FRIST }), 403);
         await erwarteFehler(plan.traegeEin(knex, { slotId: m1s1, benutzerId: 'u-anna', durchId: 'u-anna', jetzt: NACH_FRIST }), 403,
-            /Turnierleitung/);
+            /Turnierleitung/, "frist");
         const annaM1 = await plan.traegeEin(knex, { slotId: m1s1, benutzerId: 'u-anna', durchId: 'u-anna', jetzt: VOR_FRIST });
         assert.ok(annaM1.id);
         await erwarteFehler(plan.traegeEin(knex, { slotId: m1s1, benutzerId: 'u-anna', durchId: 'u-anna', jetzt: VOR_FRIST }), 409);
         // Überlappung mit eigenem Dienst in anderer Tätigkeit (Waage 1, 10:00 liegt in 09:00–11:00)
         const waage1 = await finde(knex, turnier, 'Waage 1');
-        await erwarteFehler(plan.traegeEin(knex, { slotId: waage1.slots[0].id, benutzerId: 'u-anna', durchId: 'u-anna', jetzt: VOR_FRIST }), 409);
+        await erwarteFehler(plan.traegeEin(knex, { slotId: waage1.slots[0].id, benutzerId: 'u-anna', durchId: 'u-anna', jetzt: VOR_FRIST }), 409, null, "ueberlappung");
         // angrenzend ist erlaubt
         await plan.traegeEin(knex, { slotId: waage1.slots[1].id, benutzerId: 'u-anna', durchId: 'u-anna', jetzt: VOR_FRIST });
         // Helfer trägt niemand anderen ein
@@ -123,7 +124,7 @@ test('Helferplan: Standard-Tätigkeiten, Slots, Eintragen und Austragen', async 
         const bertM1 = await plan.traegeEin(knex, { slotId: m1s1, benutzerId: 'u-bert', durchId: 'u-carl', jetzt: NACH_FRIST, alsOrga: true });
         // jetzt voll
         await erwarteFehler(plan.traegeEin(knex, { slotId: m1s1, benutzerId: 'u-carl', durchId: 'u-carl', jetzt: VOR_FRIST }), 409,
-            /Gerade vergeben/);
+            /Gerade vergeben/, "voll");
 
         // --- Parallelbuchung des letzten Platzes (Bedarf 1)
         aufbau = await finde(knex, turnier, 'Aufbau');
@@ -137,6 +138,7 @@ test('Helferplan: Standard-Tätigkeiten, Slots, Eintragen und Austragen', async 
         assert.equal(abgelehnt.length, 1);
         assert.equal(abgelehnt[0].reason.statusCode, 409);
         assert.match(abgelehnt[0].reason.message, /Gerade vergeben/);
+        assert.equal(abgelehnt[0].reason.code, "voll");
         assert.equal((await knex('helfer_einsaetze').where({ slot_id: letzter })).length, 1);
         // Mehr Druck: je Slot fünf gleichzeitige Buchungen verschiedener Konten, immer genau ein Gewinner
         const parallel = await plan.legeTaetigkeitAn(knex, turnier, { bezeichnung: 'Zz Parallel', bedarf: 1 });
@@ -159,8 +161,8 @@ test('Helferplan: Standard-Tätigkeiten, Slots, Eintragen und Austragen', async 
         await plan.loescheTaetigkeit(knex, parallel.id, { bestaetigt: true });
 
         // --- Austragen: nur eigene, Frist
-        await erwarteFehler(plan.traegeAus(knex, { einsatzId: bertM1.id, durchId: 'u-anna', jetzt: VOR_FRIST }), 403);
-        await erwarteFehler(plan.traegeAus(knex, { einsatzId: annaM1.id, durchId: 'u-anna', jetzt: NACH_FRIST }), 403, /Turnierleitung/);
+        await erwarteFehler(plan.traegeAus(knex, { einsatzId: bertM1.id, durchId: 'u-anna', jetzt: VOR_FRIST }), 403, null, null);
+        await erwarteFehler(plan.traegeAus(knex, { einsatzId: annaM1.id, durchId: 'u-anna', jetzt: NACH_FRIST }), 403, /Turnierleitung/, "frist");
 
         // --- ladeOffeneSlots: volle fehlen, eigene bleiben, Sortierung Bezeichnung → Zeit
         const offen = await plan.ladeOffeneSlots(knex, turnier, 'u-anna');
@@ -177,9 +179,10 @@ test('Helferplan: Standard-Tätigkeiten, Slots, Eintragen und Austragen', async 
 
         // --- aendereSlot mit Eingetragenen: Verkürzung/Bedarf nur mit Bestätigung
         const verkuerzt = plan.aendereSlot(knex, m1s1, { bis_min: 630 });
-        await assert.rejects(verkuerzt, (e) => e.statusCode === 409 && /2/.test(e.message) && e.daten.anzahl === 2);
-        await erwarteFehler(plan.aendereSlot(knex, m1s1, { von_min: 555, bis_min: 675 }), 409);           // Verschieben
-        await erwarteFehler(plan.aendereSlot(knex, m1s1, { bedarf: 1 }), 409);                            // Bedarf < Anzahl
+        await assert.rejects(verkuerzt, (e) => e.statusCode === 409 && /2/.test(e.message) && e.daten.anzahl === 2 && e.code === "bestaetigung_noetig");
+        await erwarteFehler(plan.aendereSlot(knex, m1s1, { von_min: 525, bis_min: 645 }), 409, null, "bestaetigung_noetig");           // Verschieben (frei davor)
+        await erwarteFehler(plan.aendereSlot(knex, m1s1, { von_min: 555, bis_min: 675 }), 409, null, "ueberlappung");  // in den Nachbarn
+        await erwarteFehler(plan.aendereSlot(knex, m1s1, { bedarf: 1 }), 409, null, "bestaetigung_noetig");                            // Bedarf < Anzahl
         // Verlängern nach vorn ohne Bestätigung ok (kein Nachbar davor)
         const verlaengert = await plan.aendereSlot(knex, m1s1, { von_min: 510 });
         assert.deepEqual(verlaengert.betroffeneBenutzerIds.sort(), ['u-anna', 'u-bert']);
@@ -204,10 +207,24 @@ test('Helferplan: Standard-Tätigkeiten, Slots, Eintragen und Austragen', async 
         await plan.aendereTaetigkeit(knex, frei.id, { bezeichnung: 'Auf- und Abbau', bedarf: 2 });
         aufbau = await finde(knex, turnier, 'Auf- und Abbau');
         assert.equal(aufbau.bedarf, 2);
-        await erwarteFehler(plan.loescheTaetigkeit(knex, frei.id, {}), 409);
+        // Bedarf senken: ohne Überbuchung ohne Bestätigung, mit Überbuchung nur bestätigt
+        const matte2 = await finde(knex, turnier, 'Kampfgericht Matte 2');
+        assert.deepEqual(await plan.aendereTaetigkeit(knex, matte2.id, { bedarf: 1 }), { betroffeneBenutzerIds: [] });
+        assert.ok((await finde(knex, turnier, 'Kampfgericht Matte 2')).slots.every(s => s.bedarf === 1));
+        await plan.traegeManuellEin(knex, { slotId: letzter, name: 'Opa Hans', durchId: 'u-carl' });
+        await erwarteFehler(plan.aendereTaetigkeit(knex, frei.id, { bedarf: 1 }), 409, /2 Helfer/, 'bestaetigung_noetig');
+        await assert.rejects(plan.aendereTaetigkeit(knex, frei.id, { bedarf: 1 }), (e) => e.daten.anzahl === 2);
+        assert.equal((await finde(knex, turnier, 'Auf- und Abbau')).bedarf, 2, 'ohne Bestätigung unverändert');
+        const gesenkt = await plan.aendereTaetigkeit(knex, frei.id, { bedarf: 1, bestaetigt: true });
+        const gewinnerAufbau = (await knex('helfer_einsaetze').where({ slot_id: letzter }).whereNotNull('benutzer_id').first()).benutzer_id;
+        assert.deepEqual(gesenkt.betroffeneBenutzerIds, [gewinnerAufbau]);
+        aufbau = await finde(knex, turnier, 'Auf- und Abbau');
+        assert.equal(aufbau.bedarf, 1);
+        assert.ok(aufbau.slots.every(s => s.bedarf === 1));
+        await erwarteFehler(plan.loescheTaetigkeit(knex, frei.id, {}), 409, null, "bestaetigung_noetig");
 
         // --- Slot mit Einsätzen löschen nur mit Bestätigung
-        await erwarteFehler(plan.loescheSlot(knex, letzter, {}), 409);
+        await erwarteFehler(plan.loescheSlot(knex, letzter, {}), 409, null, "bestaetigung_noetig");
 
         // --- ladeMeineDienste über zwei Turniere, hatOffeneDienste
         const frueher = await legeTurnierAn(knex, { vereinId: verein, datum: '2026-10-25', matten: 1, name: 'Frühpokal' });
@@ -234,6 +251,27 @@ test('Helferplan: Standard-Tätigkeiten, Slots, Eintragen und Austragen', async 
         const altSlot = (await finde(knex, alt, 'Kampfgericht Matte 1')).slots[0].id;
         await knex('helfer_einsaetze').insert({ slot_id: altSlot, benutzer_id: 'u-dora', eingetragen_von: 'u-carl' });
         assert.equal(await plan.hatOffeneDienste(knex, 'u-dora', verein), false);
+        // abgesagtes Turnier: Helfer können sich nicht eintragen, Orga schon; zählt nicht als offener Dienst
+        await knex('benutzer').insert({ id: 'u-frank', email: 'frank@test.de', vorname: 'frank', nachname: 'Test' });
+        await knex('benutzer_vereine').insert({ benutzer_id: 'u-frank', verein_id: verein, freigegeben: 1, rolle: 'helfer' });
+        const abgesagt = await legeTurnierAn(knex, { vereinId: verein, datum: '2026-11-08', matten: 1, name: 'Abgesagt' });
+        await knex('turniere').where({ id: abgesagt }).update({ status: 'abgesagt' });
+        await plan.synchronisiereStandardTaetigkeiten(knex, abgesagt);
+        const abgesagtSlot = (await finde(knex, abgesagt, 'Kampfgericht Matte 1')).slots[0].id;
+        await erwarteFehler(plan.traegeEin(knex, { slotId: abgesagtSlot, benutzerId: 'u-frank', durchId: 'u-frank', jetzt: VOR_FRIST }),
+            409, null, 'turnier_nicht_aktiv');
+        await knex('turniere').where({ id: abgesagt }).update({ status: 'abgeschlossen' });
+        await erwarteFehler(plan.traegeEin(knex, { slotId: abgesagtSlot, benutzerId: 'u-frank', durchId: 'u-frank', jetzt: VOR_FRIST }),
+            409, null, 'turnier_nicht_aktiv');
+        await knex('turniere').where({ id: abgesagt }).update({ status: 'abgesagt' });
+        await plan.traegeEin(knex, { slotId: abgesagtSlot, benutzerId: 'u-frank', durchId: 'u-carl', jetzt: VOR_FRIST, alsOrga: true });
+        assert.equal(await plan.hatOffeneDienste(knex, 'u-frank', verein), false);
+        await knex('turniere').where({ id: abgesagt }).update({ status: 'veroeffentlicht' });
+        assert.equal(await plan.hatOffeneDienste(knex, 'u-frank', verein), true);
+        // Status 'entwurf' (Standard) und 'veroeffentlicht' erlauben das Eintragen
+        await plan.traegeEin(knex, { slotId: (await finde(knex, abgesagt, 'Kampfgericht Matte 1')).slots[1].id,
+            benutzerId: 'u-frank', durchId: 'u-frank', jetzt: VOR_FRIST });
+
         // vereinsRollen nutzt die echte Prüfung: Austritt mit offenem Dienst → 409
         await knex('benutzer_vereine').insert({ benutzer_id: 'u-anna', verein_id: fremd, freigegeben: 1, rolle: 'helfer' });
         const austritt = await entferneMitglied(knex, { vereinId: verein, benutzerId: 'u-anna', durchId: 'u-anna' });
