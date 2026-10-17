@@ -157,6 +157,21 @@ function mattenBezeichnung(kampfflaeche, nummer) {
  * Legt je Kampffläche „Kampfgericht Matte n“ und je Waage „Waage n“ an (Bedarf 2, Standard-Slots).
  * Vorhandene bleiben unverändert; überzählige werden nur ohne Einsätze gelöscht.
  */
+/**
+ * Gleicht die Standard-Tätigkeiten nur für laufende bzw. künftige Turniere ab (gespeicherter Status entwurf oder
+ * veroeffentlicht und Datum ab heute, Europe/Berlin). Für lesende Routen (GET): abgeschlossene, abgesagte oder
+ * vergangene Turniere werden nicht mehr verändert.
+ * @returns {Promise<boolean>} ob abgeglichen wurde
+ */
+export async function synchronisiereWennAktiv(knex, turnierId, { jetzt = new Date() } = {}) {
+    const turnier = await knex('turniere').where({ id: turnierId }).first('status', 'datum');
+    if (!turnier || !AKTIVE_TURNIER_STATUS.includes(turnier.status)) return false;
+    const datum = datumAlsText(turnier.datum);
+    if (!datum || datum < heuteBerlin(jetzt)) return false;
+    await synchronisiereStandardTaetigkeiten(knex, turnierId);
+    return true;
+}
+
 export async function synchronisiereStandardTaetigkeiten(knex, turnierId) {
     await transaktion(knex, async (trx) => {
         // Turnier sperren: gleichzeitige Läufe legen nichts doppelt an.

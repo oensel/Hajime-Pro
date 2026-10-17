@@ -107,12 +107,12 @@ Wenn du zu dieser Zeit nicht kannst, melde dich bitte bei der Turnierleitung.`
     }
 }
 
-/** GET /:turnierId — Plan, vorher Standard-Tätigkeiten (Matten, Waagen) abgleichen. */
+/** GET /:turnierId — Plan, vorher Standard-Tätigkeiten (Matten, Waagen) abgleichen (nur aktive, künftige Turniere). */
 export async function ladePlanRoute(knex, req, res) {
     try {
         const turnierId = await autorisiertesTurnierId(knex, req);
         try {
-            await plan.synchronisiereStandardTaetigkeiten(knex, turnierId);
+            await plan.synchronisiereWennAktiv(knex, turnierId);
         } catch (err) {
             // z. B. Secondary im Cluster (Standby nur lesend): Plan trotzdem anzeigen.
             if (err instanceof FachFehler) throw err;

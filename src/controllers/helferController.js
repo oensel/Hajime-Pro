@@ -107,8 +107,9 @@ export async function ladeDienste(knex, req, res, { jetzt = () => new Date() } =
     try {
         const turnier = await ladeSichtbaresTurnier(knex, req.params.id, req.user.id);
         try {
-            // Matten/Waagen-Zeilen existieren sonst erst, wenn die Orga den Plan einmal geöffnet hat.
-            await plan.synchronisiereStandardTaetigkeiten(knex, turnier.id);
+            // Matten/Waagen-Zeilen existieren sonst erst, wenn die Orga den Plan einmal geöffnet hat
+            // (nur für aktive, künftige Turniere; sonst wird nur gelesen).
+            await plan.synchronisiereWennAktiv(knex, turnier.id, { jetzt: jetzt() });
         } catch (err) {
             console.error('[Helfer-Dienste-Synchronisieren]:', err.message);
         }
