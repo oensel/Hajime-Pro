@@ -121,6 +121,25 @@
             text-align: center;
             display: none;
         }
+        .info-message {
+            margin-top: 16px;
+            color: #f3f4f6;
+            font-size: 13px;
+            font-weight: 700;
+            text-align: center;
+            line-height: 1.5;
+            display: none;
+        }
+        .btn-link {
+            background: none;
+            border: none;
+            color: #93c5fd;
+            font-size: 13px;
+            text-decoration: underline;
+            cursor: pointer;
+            margin-top: 8px;
+            display: none;
+        }
         .auth-form {
             display: none;
         }
@@ -171,12 +190,14 @@
         </div>
         <div class="form-group">
             <label for="registerPassword">Passwort</label>
-            <input type="password" id="registerPassword" required placeholder="••••••••" minlength="6">
+            <input type="password" id="registerPassword" required placeholder="mindestens 8 Zeichen" minlength="8">
         </div>
         <button type="submit" class="btn-login">Konto erstellen</button>
     </form>
 
     <div id="errorMessage" class="error-message"></div>
+    <div id="infoMessage" class="info-message" role="status"></div>
+    <button type="button" id="bestaetigungErneut" class="btn-link">Bestätigungsmail erneut senden</button>
 </div>
 
 <script>
@@ -185,9 +206,42 @@
     const loginForm = document.getElementById('loginForm');
     const registerForm = document.getElementById('registerForm');
     const errDiv = document.getElementById('errorMessage');
+    const infoDiv = document.getElementById('infoMessage');
+    const erneutKnopf = document.getElementById('bestaetigungErneut');
+    // Adresse, an die "Bestätigungsmail erneut senden" geht (nach Registrierung bzw. Login eines unbestätigten Kontos).
+    let unbestaetigteEmail = '';
+
+    function zeigeInfo(text, mitErneutKnopf) {
+        infoDiv.textContent = text;
+        infoDiv.style.display = 'block';
+        erneutKnopf.style.display = mitErneutKnopf ? 'inline-block' : 'none';
+    }
+
+    function versteckeMeldungen() {
+        errDiv.style.display = 'none';
+        infoDiv.style.display = 'none';
+        erneutKnopf.style.display = 'none';
+    }
+
+    erneutKnopf.addEventListener('click', async () => {
+        if (!unbestaetigteEmail) return;
+        erneutKnopf.disabled = true;
+        try {
+            const response = await fetch('/api/auth/email-bestaetigung-erneut', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: unbestaetigteEmail })
+            });
+            const data = await response.json();
+            errDiv.style.display = 'none';
+            zeigeInfo(data.message || 'Bestätigungsmail wurde erneut gesendet.', false);
+        } finally {
+            erneutKnopf.disabled = false;
+        }
+    });
 
     function showTab(tab) {
-        errDiv.style.display = 'none';
+        versteckeMeldungen();
         if (tab === 'login') {
             tabLogin.classList.add('active');
             tabRegister.classList.remove('active');
@@ -217,7 +271,7 @@
 
     loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        errDiv.style.display = 'none';
+        versteckeMeldungen();
 
         const email = document.getElementById('loginEmail').value;
         const password = document.getElementById('loginPassword').value;
@@ -230,6 +284,11 @@
             });
 
             const data = await response.json();
+            if (response.status === 403 && data.code === 'email_unbestaetigt') {
+                unbestaetigteEmail = email;
+                zeigeInfo(data.error, true);
+                return;
+            }
             if (!response.ok) {
                 throw new Error(data.error || 'Login fehlgeschlagen');
             }
@@ -243,7 +302,7 @@
 
     registerForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        errDiv.style.display = 'none';
+        versteckeMeldungen();
 
         const vorname = document.getElementById('registerVorname').value;
         const nachname = document.getElementById('registerNachname').value;
@@ -262,7 +321,11 @@
                 throw new Error(data.error || 'Registrierung fehlgeschlagen');
             }
 
-            handleAuthSuccess(data);
+            // Das Konto ist erst nach der E-Mail-Bestätigung nutzbar (kein Token); danach anmelden und
+            // über die Vereinsauswahl einem Verein beitreten.
+            unbestaetigteEmail = email;
+            registerForm.reset();
+            zeigeInfo(data.message || 'Bitte bestätigen Sie Ihre E-Mail-Adresse über den Link in der E-Mail.', true);
         } catch (err) {
             errDiv.textContent = err.message;
             errDiv.style.display = 'block';

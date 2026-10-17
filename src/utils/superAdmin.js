@@ -38,6 +38,7 @@ export async function ensureSuperAdmin(knex) {
                 nachname: SUPER_ADMIN_NACHNAME,
                 password_hash: hashPassword(initialPassword),
                 ist_super_admin: true,
+                email_bestaetigt_am: knex.fn.now(),
                 aktiver_verein_id: verein.id,
                 created_at: knex.fn.now(),
                 updated_at: knex.fn.now()

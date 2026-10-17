@@ -58,8 +58,10 @@ test('Helfer-Migrationen: Bestandsdaten, Tabellen und Eindeutigkeit', async () =
         await knex('helfer_einsaetze').insert([{ slot_id: slotId, name_manuell: 'A' }, { slot_id: slotId, name_manuell: 'B' }]);
 
         // Rückwärts-Migration läuft
-        await knex.migrate.down();
-        await knex.migrate.down();
+        // alle Helferverwaltungs-Migrationen (ab 20261018100000) zurücknehmen, auch später hinzugekommene
+        for (let i = 0; i < 10 && await knex.schema.hasColumn('benutzer_vereine', 'rolle'); i++) {
+            await knex.migrate.down();
+        }
         assert.equal(await knex.schema.hasTable('helfer_slots'), false);
         assert.equal(await knex.schema.hasColumn('benutzer_vereine', 'rolle'), false);
     } finally {

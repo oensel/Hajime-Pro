@@ -22,11 +22,18 @@ export async function listVereine(knex, req, res) {
  * @param {number} vereinId
  * @param {string} vereinName
  * @param {Function} [sende] - Mailversand (Standard sendeMail, in Tests ersetzbar)
+ * @param {{ freischaltLink?: string }} [optionen] - einmaliger Link auf die Freischaltungs-Seite (Registrierung)
  */
-export async function benachrichtigeUeberBeitrittsanfrage(knex, antragsteller, vereinId, vereinName, sende = sendeMail) {
+export async function benachrichtigeUeberBeitrittsanfrage(knex, antragsteller, vereinId, vereinName, sende = sendeMail, { freischaltLink } = {}) {
     const antragstellerName = `${antragsteller.vorname} ${antragsteller.nachname}`;
     const empfaenger = await ladeEmpfaengerFuerAnfrage(knex, vereinId);
     if (empfaenger.length === 0) return;
+    const linkAbsatz = freischaltLink
+        ? `
+
+Direkt entscheiden (Rolle wählen, freischalten oder ablehnen; der Link gilt einmal):
+${freischaltLink}`
+        : '';
 
     if (!(await hatVereinAdmin(knex, vereinId))) {
         await sende({
@@ -34,7 +41,7 @@ export async function benachrichtigeUeberBeitrittsanfrage(knex, antragsteller, v
             subject: `Hajime Pro: Anfrage für Verein "${vereinName}" ohne Admin wartet auf Prüfung`,
             text: `${antragstellerName} (${antragsteller.email}) möchte dem Verein "${vereinName}" beitreten. Der Verein hat noch keinen Admin, daher entscheiden Sie als Super-Admin.
 
-Bitte prüfen Sie kurz, ob die Person berechtigt ist (z.B. Vorstand/Trainer laut Vereins-Website/Impressum), und schalten Sie den Account anschließend in Hajime Pro unter "Mein Profil" frei.`
+Bitte prüfen Sie kurz, ob die Person berechtigt ist (z.B. Vorstand/Trainer laut Vereins-Website/Impressum), und schalten Sie den Account anschließend in Hajime Pro unter "Mein Profil" frei.${linkAbsatz}`
         });
         return;
     }
@@ -44,7 +51,7 @@ Bitte prüfen Sie kurz, ob die Person berechtigt ist (z.B. Vorstand/Trainer laut
         subject: `Hajime Pro: Neue Freischaltungsanfrage für "${vereinName}"`,
         text: `${antragstellerName} (${antragsteller.email}) möchte sich für Ihren Verein "${vereinName}" freischalten.
 
-Bitte prüfen Sie die Anfrage in Hajime Pro, wählen Sie eine Rolle (Admin, Benutzer oder Helfer) und schalten Sie sie frei.`
+Bitte prüfen Sie die Anfrage in Hajime Pro, wählen Sie eine Rolle (Admin, Benutzer oder Helfer) und schalten Sie sie frei.${linkAbsatz}`
     });
 }
 

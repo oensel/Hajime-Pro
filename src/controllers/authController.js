@@ -1,51 +1,70 @@
 import jwt from 'jsonwebtoken';
-import crypto from 'crypto';
 import { hashPassword, verifyPassword } from '../utils/password.js';
 import { ladeBenutzerMitAktivemVerein, ladeVereineFuerBenutzer } from '../utils/vereinHelper.js';
 import * as steuerungPasswort from '../utils/steuerungPasswort.js';
+import { registriere, bestaetige, sendeBestaetigungNeu, findeKontoPerEmail } from '../services/registrierung.js';
 import dotenv from 'dotenv';
 dotenv.config({ quiet: true });
 
 const JWT_SECRET = process.env.JWT_SECRET || 'hajime_pro_secret_key_123456!';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
 
+/** Basis-URL für Links in Mails: PUBLIC_BASE_URL, sonst aus dem Request (Protokoll + Host). */
+export function ermittleBasisUrl(req) {
+    const konfiguriert = (process.env.PUBLIC_BASE_URL || '').trim();
+    if (konfiguriert) return konfiguriert.replace(/\/+$/, '');
+    return `${req.protocol}://${req.get('host')}`;
+}
+
+// Registrierung mit E-Mail-Bestätigung (src/services/registrierung.js): das Konto ist erst nach der
+// Bestätigung nutzbar, deshalb gibt es hier nie ein Token zurück.
 export async function register(knex, req, res) {
     try {
-        const { email, password, vorname, nachname } = req.body;
-
-        if (!email || !password || !vorname || !nachname) {
-            return res.status(400).json({ success: false, error: 'E-Mail, Passwort, Vorname und Nachname sind erforderlich.' });
-        }
-
-        const existing = await knex('benutzer').where({ email }).first();
-        if (existing) {
-            return res.status(409).json({ success: false, error: 'Diese E-Mail-Adresse ist bereits registriert.' });
-        }
-
-        const id = crypto.randomUUID();
-        const password_hash = hashPassword(password);
-
-        await knex('benutzer').insert({
-            id,
-            email,
-            vorname,
-            nachname,
-            password_hash,
-            created_at: knex.fn.now(),
-            updated_at: knex.fn.now()
+        const { email, password, vorname, nachname, vereinId, quelle } = req.body || {};
+        const ergebnis = await registriere(knex, {
+            email, password, vorname, nachname, vereinId, quelle, basisUrl: ermittleBasisUrl(req)
         });
-
-        const token = jwt.sign({ id, email }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
-
-        return res.status(201).json({
-            success: true,
-            token,
-            user: { id, email, vorname, nachname, verein_id: null, verein_freigegeben: false, vereine: [] }
-        });
+        return res.status(ergebnis.status).json(ergebnis.body);
     } catch (error) {
         console.error('[Register-Fehler]:', error);
         return res.status(500).json({ success: false, error: 'Interner Server-Fehler bei der Registrierung.' });
     }
+}
+
+// POST /api/auth/email-bestaetigen { token } — bewusst POST (Knopf auf bestaetigen.html), damit
+// Mail-Scanner, die Links vorab abrufen, nichts bestätigen.
+export async function emailBestaetigen(knex, req, res) {
+    try {
+        const token = req.body && req.body.token;
+        const ergebnis = await bestaetige(knex, typeof token === 'string' ? token : '', ermittleBasisUrl(req));
+        if (!ergebnis.ok) {
+            return res.status(ergebnis.status).json({ success: false, error: ergebnis.error });
+        }
+        return res.json({
+            success: true,
+            vereinId: ergebnis.vereinId ?? null,
+            message: ergebnis.vereinId
+                ? 'Deine Registrierung muss noch freigeschaltet werden.'
+                : 'Deine E-Mail-Adresse ist bestätigt. Du kannst dich jetzt anmelden.'
+        });
+    } catch (error) {
+        console.error('[E-Mail-Bestätigung-Fehler]:', error);
+        return res.status(500).json({ success: false, error: 'Interner Server-Fehler bei der Bestätigung.' });
+    }
+}
+
+// POST /api/auth/email-bestaetigung-erneut { email } — antwortet immer gleich, damit sich nicht prüfen lässt,
+// ob eine Adresse registriert ist.
+export async function emailBestaetigungErneut(knex, req, res) {
+    try {
+        await sendeBestaetigungNeu(knex, req.body && req.body.email, ermittleBasisUrl(req));
+    } catch (error) {
+        console.error('[E-Mail-Bestätigung-erneut-Fehler]:', error);
+    }
+    return res.json({
+        success: true,
+        message: 'Falls zu dieser Adresse ein unbestätigtes Konto gehört, haben wir eine neue Bestätigungsmail geschickt.'
+    });
 }
 
 export async function login(knex, req, res) {
@@ -56,9 +75,17 @@ export async function login(knex, req, res) {
             return res.status(400).json({ success: false, error: 'Email und Passwort sind erforderlich.' });
         }
 
-        const user = await knex('benutzer').where({ email }).first();
+        const user = await findeKontoPerEmail(knex, email);
         if (!user || !user.password_hash || !verifyPassword(password, user.password_hash)) {
             return res.status(401).json({ success: false, error: 'Ungültige Anmeldedaten.' });
+        }
+        // Erst nach dem Passwort prüfen, damit der Zustand eines Kontos nur mit gültigen Zugangsdaten sichtbar wird.
+        if (!user.email_bestaetigt_am) {
+            return res.status(403).json({
+                success: false,
+                code: 'email_unbestaetigt',
+                error: 'Bitte bestätigen Sie zuerst Ihre E-Mail-Adresse über den Link in der Bestätigungsmail.'
+            });
         }
 
         const token = jwt.sign(

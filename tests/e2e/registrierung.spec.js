@@ -11,6 +11,7 @@
 // die "andere Seite" (Antragsteller bzw. Super-Admin-Rolle) direkt in der Test-PostgreSQL-Datenbank
 // vorbereitet (siehe mitTestDb unten) — die eigentliche Aktion läuft dann ganz normal per HTTP.
 import { test, expect } from '@playwright/test';
+import crypto from 'crypto';
 import knexLib from 'knex';
 import { testDbVerbindung } from './test-env.js';
 
@@ -42,41 +43,88 @@ async function oeffneRegisterTab(page) {
     await expect(page.locator('#registerForm')).toBeVisible();
 }
 
-test('Registrierung mit neuen Zugangsdaten legt das Konto an und leitet zur Vereinsauswahl weiter', async ({ page }) => {
+// Der Bestätigungslink steht nur in der Mail (ohne SMTP nur im Server-Log); in der DB liegt allein der
+// SHA-256 des Tokens. Der Test ersetzt deshalb den Hash des offenen Bestätigungs-Tokens durch den eines
+// bekannten Tokens — Verein und Quelle der Registrierung bleiben an der echten Token-Zeile.
+async function setzeBekanntenBestaetigungsToken(email) {
+    const token = crypto.randomBytes(24).toString('base64url');
+    const hash = crypto.createHash('sha256').update(token).digest('hex');
+    const geaendert = await mitTestDb(async (db) => {
+        const konto = await db('benutzer').where({ email }).first();
+        return db('token_einmal')
+            .where({ benutzer_id: konto.id, zweck: 'email' })
+            .whereNull('benutzt_am')
+            .update({ token_hash: hash });
+    });
+    expect(geaendert, 'genau ein offener Bestätigungs-Token').toBe(1);
+    return token;
+}
+
+test('Registrierung legt ein unbestätigtes Konto an und zeigt den Hinweis auf die Bestätigungsmail', async ({ page }) => {
     await oeffneRegisterTab(page);
 
     await page.locator('#registerVorname').fill('Erika');
     await page.locator('#registerNachname').fill('Mustermann');
-    await page.locator('#registerEmail').fill(TEST_EMAIL);
+    await page.locator('#registerEmail').fill(TEST_EMAIL.toUpperCase());
     await page.locator('#registerPassword').fill(TEST_PASSWORD);
     await page.locator('#registerForm button[type="submit"]').click();
 
-    // Ein frisch registriertes Konto hat noch keinen Verein (verein_id: null, siehe
-    // authController.js#register) — handleAuthSuccess in login.html leitet deshalb IMMER auf die
-    // Vereinsauswahl weiter, nie direkt auf turniere.html.
-    await expect(page).toHaveURL(/\/verein_auswahl\.html$/);
+    // Kein Token, keine Weiterleitung: das Konto ist erst nach der E-Mail-Bestätigung nutzbar.
+    await expect(page.locator('#infoMessage')).toContainText('Bitte bestätigen Sie Ihre Adresse');
+    await expect(page.locator('#bestaetigungErneut')).toBeVisible();
+    await expect(page).toHaveURL(/\/login\.html$/);
+    expect(await page.evaluate(() => localStorage.getItem('dokume_token'))).toBeNull();
 
-    const token = await page.evaluate(() => localStorage.getItem('dokume_token'));
-    expect(token, 'JWT-Token muss nach erfolgreicher Registrierung im localStorage liegen').toBeTruthy();
+    const konto = await mitTestDb((db) => db('benutzer').where({ email: TEST_EMAIL }).first());
+    expect(konto, 'E-Mail wird kleingeschrieben gespeichert').toBeTruthy();
+    expect(konto.email_bestaetigt_am).toBeNull();
+    expect(await mitTestDb((db) => db('benutzer_vereine').where({ benutzer_id: konto.id }).first())).toBeUndefined();
 
-    const user = await page.evaluate(() => JSON.parse(localStorage.getItem('dokume_user')));
-    expect(user).toMatchObject({
-        vorname: 'Erika',
-        nachname: 'Mustermann',
-        email: TEST_EMAIL,
-        verein_id: null,
-        verein_freigegeben: false
-    });
+    // Bestätigungsmail erneut anfordern: gleiche Antwort wie für unbekannte Adressen.
+    await page.locator('#bestaetigungErneut').click();
+    await expect(page.locator('#infoMessage')).toContainText('Falls zu dieser Adresse ein unbestätigtes Konto gehört');
+});
+
+test('Login vor der E-Mail-Bestätigung wird mit Hinweis abgewiesen', async ({ page, request }) => {
+    const resp = await request.post('/api/auth/login', { data: { email: TEST_EMAIL, password: TEST_PASSWORD } });
+    expect(resp.status()).toBe(403);
+    expect(await resp.json()).toMatchObject({ success: false, code: 'email_unbestaetigt' });
+
+    await page.goto('/login.html');
+    await page.locator('#loginEmail').fill(TEST_EMAIL);
+    await page.locator('#loginPassword').fill(TEST_PASSWORD);
+    await page.locator('#loginForm button[type="submit"]').click();
+    await expect(page.locator('#infoMessage')).toContainText('Bitte bestätigen Sie zuerst Ihre E-Mail-Adresse');
+    await expect(page.locator('#bestaetigungErneut')).toBeVisible();
+    expect(await page.evaluate(() => localStorage.getItem('dokume_token'))).toBeNull();
+});
+
+test('Bestätigungsseite bestätigt erst per Knopf, ein zweiter Klick auf denselben Link schlägt fehl', async ({ page }) => {
+    const token = await setzeBekanntenBestaetigungsToken(TEST_EMAIL);
+
+    await page.goto(`/bestaetigen.html?token=${token}`);
+    // Ein bloßer Aufruf (z.B. durch einen Mail-Scanner) ändert nichts.
+    await expect(page.locator('#bestaetigenKnopf')).toBeVisible();
+    expect((await mitTestDb((db) => db('benutzer').where({ email: TEST_EMAIL }).first())).email_bestaetigt_am).toBeNull();
+
+    await page.locator('#bestaetigenKnopf').click();
+    // Ohne Vereinswahl (Altfluss) ist das Konto danach nutzbar; der Beitritt folgt über die Vereinsauswahl.
+    await expect(page.locator('#bestaetigtMeldung')).toHaveText('Deine E-Mail-Adresse ist bestätigt. Du kannst dich jetzt anmelden.');
+    expect((await mitTestDb((db) => db('benutzer').where({ email: TEST_EMAIL }).first())).email_bestaetigt_am).not.toBeNull();
+
+    await page.goto(`/bestaetigen.html?token=${token}`);
+    await page.locator('#bestaetigenKnopf').click();
+    await expect(page.locator('#errorMessage')).toContainText('ungültig, abgelaufen oder wurde bereits verwendet');
 });
 
 test('Registrierung mit bereits verwendeter E-Mail-Adresse schlägt fehl', async ({ page }) => {
     await oeffneRegisterTab(page);
 
-    // Dieselbe E-Mail wie im vorherigen Test — die Test-DB wird nur einmal pro gesamtem Testlauf
-    // zurückgesetzt (siehe global-setup.js), der Konflikt ist also serverseitig garantiert echt.
+    // Dieselbe (inzwischen bestätigte) E-Mail wie oben, hier in anderer Schreibweise — die Test-DB wird
+    // nur einmal pro gesamtem Testlauf zurückgesetzt, der Konflikt ist also serverseitig garantiert echt.
     await page.locator('#registerVorname').fill('Zweiter');
     await page.locator('#registerNachname').fill('Versuch');
-    await page.locator('#registerEmail').fill(TEST_EMAIL);
+    await page.locator('#registerEmail').fill(TEST_EMAIL.replace('registrierung', 'Registrierung'));
     await page.locator('#registerPassword').fill(TEST_PASSWORD);
     await page.locator('#registerForm button[type="submit"]').click();
 
@@ -98,7 +146,49 @@ test('Login mit den gerade registrierten Zugangsdaten führt zur Vereinsauswahl'
     await expect(page).toHaveURL(/\/verein_auswahl\.html$/);
 
     const user = await page.evaluate(() => JSON.parse(localStorage.getItem('dokume_user')));
-    expect(user).toMatchObject({ email: TEST_EMAIL, verein_id: null });
+    expect(user).toMatchObject({ vorname: 'Erika', nachname: 'Mustermann', email: TEST_EMAIL, verein_id: null, verein_freigegeben: false });
+});
+
+test('Registrierung mit Verein legt die Beitrittsanfrage erst nach der Bestätigung an', async ({ request }) => {
+    const email = `registrierung-verein-${Date.now()}@example.test`;
+    const vereinId = await mitTestDb(async (db) => (await db('vereine').where({ name: 'Offline Club' }).first()).id);
+
+    const unbekannt = await request.post('/api/auth/register', {
+        data: { email, password: TEST_PASSWORD, vorname: 'Vera', nachname: 'Verein', vereinId: 99999999 }
+    });
+    expect(unbekannt.status()).toBe(400);
+
+    const kurz = await request.post('/api/auth/register', {
+        data: { email, password: '1234567', vorname: 'Vera', nachname: 'Verein', vereinId }
+    });
+    expect(kurz.status()).toBe(400);
+
+    const reg = await request.post('/api/auth/register', {
+        data: { email, password: TEST_PASSWORD, vorname: 'Vera', nachname: 'Verein', vereinId, quelle: 'helfer-app' }
+    });
+    expect(reg.status()).toBe(201);
+    const regBody = await reg.json();
+    expect(regBody).toMatchObject({ success: true, bestaetigungAusstehend: true });
+    expect(regBody.token).toBeUndefined();
+
+    const konto = await mitTestDb((db) => db('benutzer').where({ email }).first());
+    expect(await mitTestDb((db) => db('benutzer_vereine').where({ benutzer_id: konto.id }).first())).toBeUndefined();
+
+    const token = await setzeBekanntenBestaetigungsToken(email);
+    const best = await request.post('/api/auth/email-bestaetigen', { data: { token } });
+    expect(best.ok()).toBeTruthy();
+    expect(await best.json()).toMatchObject({ success: true, vereinId, message: 'Deine Registrierung muss noch freigeschaltet werden.' });
+
+    const mitgliedschaft = await mitTestDb((db) => db('benutzer_vereine').where({ benutzer_id: konto.id, verein_id: vereinId }).first());
+    expect(mitgliedschaft).toMatchObject({ freigegeben: 0, rolle: null, angefragt_ueber: 'helfer-app' });
+    const freischaltung = await mitTestDb((db) => db('token_einmal').where({ benutzer_id: konto.id, zweck: 'freischaltung' }).first());
+    expect(freischaltung).toMatchObject({ verein_id: vereinId, benutzt_am: null });
+
+    // Erneut anfordern verrät nicht, ob die Adresse existiert.
+    for (const adresse of [email, `gibt-es-nicht-${Date.now()}@example.test`]) {
+        const erneut = await request.post('/api/auth/email-bestaetigung-erneut', { data: { email: adresse } });
+        expect(erneut.status()).toBe(200);
+    }
 });
 
 test('Login mit falschem Passwort zeigt eine Fehlermeldung', async ({ page }) => {

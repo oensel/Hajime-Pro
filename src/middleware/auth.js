@@ -29,6 +29,7 @@ export async function requireAuth(req, res, next) {
                         email: 'offline@hajime.os',
                         vorname: 'Offline',
                         nachname: 'User',
+                        email_bestaetigt_am: knex.fn.now(),
                         aktiver_verein_id: offlineVerein.id
                     });
                     await knex('benutzer_vereine').insert({
