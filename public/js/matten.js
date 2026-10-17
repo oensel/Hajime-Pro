@@ -57,6 +57,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         return modus || '?';
     };
 
+    // Prognose (Ende, Rückstand) je Matte aus /api/pools/zeitprognose
+    let prognoseJeMatte = new Map();
+
     // --- DRAG STATE ---
     let draggedPoolId = null;
 
@@ -84,6 +87,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Hat der Nutzer während des Ladens begonnen zu ziehen, bleibt die Ansicht unangetastet.
             if (still && (draggedPoolId !== null || aenderungenLaufen > 0)) return;
 
+            // Voraussichtliches Ende je Matte und Rückstand; fehlt die Prognose, bleibt die Ansicht wie bisher.
+            try {
+                const zp = await fetch(`/api/pools/zeitprognose?turnierId=${encodeURIComponent(turnierId)}`);
+                data.zeitprognose = zp.ok ? await zp.json() : null;
+            } catch (e) {
+                data.zeitprognose = null;
+            }
+
             renderAlles(data);
 
         } catch (error) {
@@ -99,6 +110,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         await ladeDaten(true);
     }
     setInterval(aktualisiereImHintergrund, AUTO_AKTUALISIERUNG_MS);
+
+    const zeitplanBtn = document.getElementById('zeitplanBtn');
+    if (zeitplanBtn) {
+        zeitplanBtn.addEventListener('click', () => {
+            window.location.href = `/zeitplan.html?turnierId=${encodeURIComponent(turnierId)}`;
+        });
+    }
 
     if (aktualisierenBtn) {
         aktualisierenBtn.addEventListener('click', async () => {
@@ -117,6 +135,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- KOMPLETT-RENDERING ---
     function renderAlles(data) {
         const { kampfflaechen = [] } = data;
+        prognoseJeMatte = new Map(((data.zeitprognose && data.zeitprognose.matten) || []).map(m => [m.id, m]));
         // Mannschafts-Pools mit Begegnungen werden als einzelne Begegnungs-Karten geführt.
         const begegnungen = (data.begegnungen || []).filter(b => b.status !== 'beendet');
         const poolIdsMitBegegnungen = new Set((data.begegnungen || []).map(b => b.pool_id));
@@ -344,6 +363,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     // restdauer_minuten fallen auf die Gesamtdauer zurück.
     const restDauer = (pool) => pool.restdauer_minuten ?? pool.dauer_minuten ?? 0;
 
+    // "Ende ca. HH:MM" und bei Rückstand "+N Min." (ab 10 Min. hinter der frühesten Matte)
+    function renderPrognose(matteId) {
+        const p = prognoseJeMatte.get(matteId);
+        if (!p || p.endeMs == null) return '';
+        const ende = new Date(p.endeMs).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+        const rueckstand = p.rueckstand
+            ? ` <span class="matte-rueckstand" title="Voraussichtlich später fertig als ${escapeHtml(p.rueckstand.bezugBezeichnung)}">+${p.rueckstand.minuten} Min.</span>`
+            : '';
+        return `<span class="matte-ende" title="Voraussichtliches Ende der Matte">Ende ca. ${ende}${rueckstand}</span>`;
+    }
+
     // --- EINZELNE MATTE ---
     function renderMatte(kf, pools, begegnungen = []) {
         const gesamtMinuten = pools.reduce((sum, p) => sum + restDauer(p), 0)
@@ -358,6 +388,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <span class="matte-name">${escapeHtml(kf.bezeichnung)}</span>
                     <span class="pool-status-badge ${mattenStatusKlasse}" style="margin-left: 8px;">${mattenStatusText}</span>
                     <span class="matte-total-time">${gesamtMinuten} Min.</span>
+                    ${renderPrognose(kf.id)}
                     <span class="material-icons matte-druck-icon" data-kampflaeche-id="${kf.id}" title="Pools dieser Matte drucken" style="cursor: pointer; font-size: 18px; margin-left: 8px;">print</span>
                     <span class="material-icons matte-action-icon" data-action="${istPausiert ? 'fortsetzen' : 'pausieren'}" data-kampflaeche-id="${kf.id}" title="${istPausiert ? 'Matte fortsetzen' : 'Matte pausieren'}" style="cursor: pointer; font-size: 18px; margin-left: 8px; ${istGesperrt ? 'opacity: 0.3; pointer-events: none;' : ''}">${istPausiert ? 'play_circle' : 'pause_circle'}</span>
                     <span class="material-icons matte-action-icon" data-action="${istGesperrt ? 'entsperren' : 'sperren'}" data-kampflaeche-id="${kf.id}" title="${istGesperrt ? 'Matte entsperren' : 'Matte sperren'}" style="cursor: pointer; font-size: 18px; margin-left: 4px;">${istGesperrt ? 'lock_open' : 'lock'}</span>

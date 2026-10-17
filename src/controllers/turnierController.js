@@ -5,6 +5,7 @@ import { entfernungZuPlzInKm } from '../utils/entfernungHelper.js';
 import { turnierHatEchteKaempfe } from './poolController.js';
 import { FachFehler } from '../utils/fachFehler.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
+import { findeTerminKonflikt, ermittleAktivierbarkeit, kopiereTeilnehmerFuerNeuesTurnier, datumAlsIso } from '../shared/turnierAktivierung.js';
 const { istEinzelbenutzerBetrieb } = betriebsmodus;
 
 // Anmeldeschluss wird als reines Datum (ohne Uhrzeit) gespeichert; die Frist gilt bis
@@ -92,6 +93,17 @@ function validiereZahlungsdaten(startgeld, iban, kontoinhaber, verwendungszweck)
     return null;
 }
 
+// Ein Turnier pro Tag (Spec mehrere Turniere): nur am Hallen-Server mit Sync, also dort, wo mehrere
+// Turniere nacheinander ausgetragen werden. Die Cloud kennt parallele Turniere verschiedener Vereine.
+async function pruefeTerminFrei(knex, sync, datum, ausserId = null) {
+    if (!sync) return;
+    const turniere = await knex('turniere').select('id', 'bezeichnung', 'datum', 'status');
+    const konflikt = findeTerminKonflikt(turniere, datum, ausserId);
+    if (konflikt) {
+        throw new FachFehler(409, `Am ${datumAlsIso(datum).split('-').reverse().join('.')} findet bereits das Turnier „${konflikt.bezeichnung}“ statt. Zwei Turniere dürfen sich nicht überschneiden.`);
+    }
+}
+
 export async function createTurnier(knex, req, res) {
     try {
         const { bezeichnung, ort, datum, ausrichter, anzahl_kampfflaechen, nutze_gewichtsklassen, bundesland, plz, altersklassen, mannschafts_altersklassen, anmeldeschluss, startgeld, iban, kontoinhaber, verwendungszweck, ausschreibung_pdf_base64, ausschreibung_dateiname, farbe_kaempfer2 } = req.body;
@@ -118,11 +130,10 @@ export async function createTurnier(knex, req, res) {
         const altersklassenDB = typeof altersklassen === 'string' ? altersklassen : JSON.stringify(altersklassen || {});
         const mannschaftsAltersklassenDB = typeof mannschafts_altersklassen === 'string' ? mannschafts_altersklassen : JSON.stringify(mannschafts_altersklassen || []);
 
-        // Hallen-Server mit Sync: genau ein Turnier — das Anlegen ersetzt das bisherige komplett
-        // (SQL + Dokument-DB, siehe Spec CouchDB-Umbau Abschnitt 8). Der Bestätigungsdialog sitzt
-        // im Frontend (turnier.js).
+        // Hallen-Server: weitere Turniere entstehen als Entwurf neben dem aktiven; aktiviert wird per
+        // Knopf am Wettkampftag (aktiviereTurnierRoute).
         const sync = req.app.get('sync');
-        if (sync) await sync.vorTurnierwechsel();
+        await pruefeTerminFrei(knex, sync, datum);
 
         const [idObj] = await knex('turniere').insert({
             bezeichnung,
@@ -148,9 +159,9 @@ export async function createTurnier(knex, req, res) {
 
         const turnierId = typeof idObj === 'object' ? idObj.id : idObj;
         await synchronisiereKampfflaechen(knex, turnierId, parseInt(anzahl_kampfflaechen) || 1);
-        if (sync) await sync.aktiviereTurnier(turnierId);
         res.status(201).json({ success: true, turnierId });
     } catch (error) {
+        if (error instanceof FachFehler) return res.status(error.statusCode).json({ success: false, error: error.message });
         res.status(500).json({ success: false, error: error.message });
     }
 }
@@ -178,6 +189,8 @@ export async function updateTurnier(knex, req, res) {
         if (bestehendesTurnier.status === 'abgeschlossen') {
             return res.status(403).json({ success: false, error: 'Ein abgeschlossenes Turnier befindet sich im schreibgeschützten Archiv-Zustand.' });
         }
+
+        if (datum) await pruefeTerminFrei(knex, req.app.get('sync'), datum, id);
 
         // Sicherer Check: Akzeptiert die Zahl 1, den String "1" oder das Boolean true
         const wertFuerDB = (nutze_gewichtsklassen === 1 || nutze_gewichtsklassen === true || nutze_gewichtsklassen === '1' || nutze_gewichtsklassen === 'true') ? 1 : 0;
@@ -215,6 +228,7 @@ export async function updateTurnier(knex, req, res) {
 
         res.json({ success: true, message: 'Turnier erfolgreich aktualisiert.' });
     } catch (error) {
+        if (error instanceof FachFehler) return res.status(error.statusCode).json({ success: false, error: error.message });
         res.status(500).json({ success: false, error: error.message });
     }
 }
@@ -258,6 +272,12 @@ export async function getTurnier(knex, req, res) {
         turnier.mannschafts_altersklassen = mak || [];
 
         turnier.status_effektiv = statusEffektiv;
+        if (istEinzelbenutzerBetrieb()) {
+            const aktives = (await knex('turniere').where({ aktiv: true }).first('id', 'bezeichnung')) || null;
+            const a = ermittleAktivierbarkeit({ turnier, aktivesTurnier: aktives });
+            turnier.aktivierbar = a.moeglich;
+            turnier.aktivierbar_grund = a.grund;
+        }
         turnier.teilnehmer_anzahl = await knex('turnier_teilnehmer').where({ turnier_id: turnier.id }).count('* as anzahl').first().then(r => parseInt(r.anzahl, 10));
 
         // Die PDF-Binärdaten selbst gehören nicht in die JSON-Antwort (Größe, falsches Format) —
@@ -311,7 +331,7 @@ export async function getTurniere(knex, req, res) {
         // Explizite Spaltenliste ohne die (potenziell mehrere MB große) PDF-Binärspalte — dieser
         // Endpunkt liefert oft viele Turniere auf einmal (siehe turniere.html) und soll die
         // Ausschreibungen dafür nicht unnötig aus der DB laden.
-        let query = knex('turniere').select([...TURNIER_SPALTEN_OHNE_PDF, knex.raw('(ausschreibung_pdf is not null) as hat_ausschreibung')]);
+        let query = knex('turniere').select([...TURNIER_SPALTEN_OHNE_PDF, 'aktiv', knex.raw('(ausschreibung_pdf is not null) as hat_ausschreibung')]);
 
         if (mine === 'true') {
             // "Eigene" Turniere = Turniere des eigenen Vereins
@@ -350,6 +370,8 @@ export async function getTurniere(knex, req, res) {
         }
 
         const turniere = await query.orderBy('datum', 'desc');
+        const aktivesTurnier = turniere.find(t => t.aktiv) || null;
+        const heute = datumAlsIso(new Date());
 
         const ids = turniere.map(t => t.id);
         const counts = ids.length > 0
@@ -387,6 +409,11 @@ export async function getTurniere(knex, req, res) {
                 mannschafts_altersklassen: mak || [],
                 teilnehmer_anzahl: countMap[t.id] || 0,
                 status_effektiv: ermittleEffektivenStatus(t),
+                // Hallen-Server: darf das Turnier jetzt aktiviert werden (Knopf "Aktivieren")?
+                ...(istEinzelbenutzerBetrieb() ? (() => {
+                    const a = ermittleAktivierbarkeit({ turnier: t, aktivesTurnier, heute });
+                    return { aktivierbar: a.moeglich, aktivierbar_grund: a.grund };
+                })() : {}),
                 // Nur befüllt, wenn der Browser des Nutzers einen Standort mitliefert (lat/lon
                 // per Geolocation-API, siehe turniere.html) UND das Turnier eine PLZ hinterlegt
                 // hat — sonst null (z.B. Standort-Freigabe abgelehnt oder Turnier ohne PLZ).
@@ -415,6 +442,10 @@ export async function deleteTurnier(knex, req, res) {
         const statusEffektiv = ermittleEffektivenStatus(turnier, { hatEchteKaempfe });
         if (statusEffektiv === 'in_durchfuehrung' || statusEffektiv === 'abgeschlossen') {
             return res.status(403).json({ success: false, error: 'Ein Turnier in Durchführung oder abgeschlossenes Turnier kann nicht gelöscht werden.' });
+        }
+
+        if (turnier.aktiv) {
+            return res.status(409).json({ success: false, error: 'Das aktive Turnier kann nicht gelöscht werden.' });
         }
 
         const teilnehmerAnzahl = await knex('turnier_teilnehmer').where({ turnier_id: id }).count('* as anzahl').first().then(r => parseInt(r.anzahl, 10));
@@ -460,7 +491,8 @@ export async function sageTurnierAb(knex, req, res) {
             return res.status(403).json({ success: false, error: 'Ein bereits abgeschlossenes Turnier kann nicht mehr abgesagt werden.' });
         }
 
-        await knex('turniere').where({ id }).update({ status: 'abgesagt', updated_at: knex.fn.now() });
+        if (turnier.aktiv) await deaktiviereAktivesTurnier(req);
+        await knex('turniere').where({ id }).update({ status: 'abgesagt', aktiv: false, updated_at: knex.fn.now() });
         res.json({ success: true, message: 'Turnier erfolgreich abgesagt.' });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
@@ -483,7 +515,8 @@ export async function beendeDurchfuehrung(knex, req, res) {
             return res.status(403).json({ success: false, error: 'Nur ein Turnier in Durchführung kann als beendet markiert werden.' });
         }
 
-        await knex('turniere').where({ id }).update({ status: 'abgeschlossen', updated_at: knex.fn.now() });
+        if (turnier.aktiv) await deaktiviereAktivesTurnier(req);
+        await knex('turniere').where({ id }).update({ status: 'abgeschlossen', aktiv: false, updated_at: knex.fn.now() });
         res.json({ success: true, message: 'Durchführung erfolgreich beendet.' });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
@@ -656,10 +689,8 @@ export async function importWettkampfdaten(trx, turnierId, { kampfflaechen, pool
 }
 
 // Gegenstück zu exportTurnier: importiert eine zuvor exportierte Turnier-JSON-Datei als
-// komplett NEUES Turnier mit frischen IDs. Ausschließlich im Offline-Modus verfügbar. Löscht
-// dabei ALLE bestehenden Turniere (samt Pools/Kämpfe/Teilnehmer/Kampfflächen) aus der lokalen
-// Datenbank, da der Offline-Kiosk-Betrieb von genau einem aktiven Turnier ausgeht — der
-// Aufrufer muss das vorher bestätigen lassen (siehe Bestätigungsdialog in turniere.html).
+// komplett NEUES Turnier mit frischen IDs. Ausschließlich im Offline-Modus verfügbar. Bestehende
+// Turniere bleiben unangetastet; das importierte Turnier wird nicht aktiviert.
 export async function importTurnier(knex, req, res) {
     try {
         if (!istEinzelbenutzerBetrieb()) {
@@ -691,8 +722,8 @@ export async function importTurnier(knex, req, res) {
 }
 
 // Kern des Turnier-Imports, gemeinsam für den Datei-Import (importTurnier) und das Holen aus der
-// Cloud (cloudRoutes.js). Ersetzt ALLE bestehenden Turniere des Servers; wirft FachFehler bei
-// ungültigem Format. Der Aufrufer prüft vorher den Einzelbenutzerbetrieb.
+// Cloud (cloudRoutes.js). Legt ein neues Turnier an (ohne es zu aktivieren); wirft FachFehler bei
+// ungültigem Format oder Terminüberschneidung. Der Aufrufer prüft vorher den Einzelbenutzerbetrieb.
 export async function importiereTurnierDaten(knex, sync, daten) {
         const t = daten && daten.turnier;
         const kampfflaechen = (daten && daten.kampfflaechen) || [];
@@ -716,18 +747,9 @@ export async function importiereTurnierDaten(knex, sync, daten) {
             try { mak = JSON.parse(mak); } catch (e) { mak = []; }
         }
 
-        if (sync) await sync.vorTurnierwechsel();
+        await pruefeTerminFrei(knex, sync, t.datum);
 
         const neuesTurnierId = await knex.transaction(async (trx) => {
-            // Der Offline-Kiosk-Betrieb geht von genau einem aktiven Turnier aus (siehe
-            // automatische Turnier-Auswahl in turniere.html) — vor dem Import wird die
-            // Datenbank daher komplett von alten Turnierdaten geleert.
-            await trx('kaempfe').del();
-            await trx('turnier_teilnehmer').del();
-            await trx('pools').del();
-            await trx('kampfflaechen').del();
-            await trx('turniere').del();
-
             // Verein anhand des Ausrichter-Namens wiederverwenden/anlegen (analog zur
             // rückwirkenden Verknüpfung in link_turniere_zu_vereine-Migration).
             let verein = await trx('vereine').where({ name: t.ausrichter }).first();
@@ -773,8 +795,7 @@ export async function importiereTurnierDaten(knex, sync, daten) {
             return turnierId;
         });
 
-        if (sync) await sync.aktiviereTurnier(neuesTurnierId);
-
+        // Das importierte Turnier wartet als neues Turnier auf seinen Wettkampftag; aktiviert wird per Knopf.
         return {
             turnierId: neuesTurnierId,
             imported: {
@@ -1033,6 +1054,109 @@ export async function setzeLiveFreigabe(knex, req, res) {
         await knex('turniere').where({ id: turnier.id }).update({ live_freigabe: freigegeben });
         res.json({ success: true, freigegeben });
     } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+// Beenden/Absagen des aktiven Turniers: Brücke stoppen, letzten Stand sichern, Dokument-DB verwerfen.
+async function deaktiviereAktivesTurnier(req) {
+    const sync = req.app.get('sync');
+    if (sync) await sync.deaktiviereTurnier();
+}
+
+// Hallen-Server: macht das Turnier zum aktiven (Matten, Waage, Client-Geräte hängen dann daran).
+// Nur am Wettkampftag und nur, wenn kein anderes Turnier aktiv ist (ermittleAktivierbarkeit). Ein
+// Entwurf wird dabei veröffentlicht, damit sich die Durchführung später regulär beenden lässt.
+// Nur unter NODE_ENV=test kann mit { erzwingen: true } Termin und aktives Turnier übergangen werden.
+export async function aktiviereTurnierRoute(knex, req, res) {
+    try {
+        if (!istEinzelbenutzerBetrieb()) {
+            return res.status(403).json({ success: false, error: 'Das Aktivieren gibt es nur am Hallen-Server.' });
+        }
+        const id = parseInt(req.params.id, 10);
+        const turnier = await knex('turniere').where({ id }).first();
+        if (!turnier) return res.status(404).json({ success: false, error: 'Turnier nicht gefunden.' });
+
+        const aktives = (await knex('turniere').where({ aktiv: true }).first()) || null;
+        const erzwingen = process.env.NODE_ENV === 'test' && req.body && req.body.erzwingen === true;
+        if (erzwingen && turnier.aktiv) return res.json({ success: true, message: 'Turnier ist bereits aktiv.' });
+        if (!erzwingen) {
+            const pruefung = ermittleAktivierbarkeit({ turnier, aktivesTurnier: aktives });
+            if (!pruefung.moeglich) return res.status(409).json({ success: false, error: pruefung.grund });
+        }
+
+        const sync = req.app.get('sync');
+        if (aktives && aktives.id !== id) {
+            if (sync) await sync.deaktiviereTurnier();
+            await knex('turniere').where({ id: aktives.id }).update({ aktiv: false });
+        }
+        await knex('turniere').where({ id }).update({
+            aktiv: true,
+            status: turnier.status === 'entwurf' ? 'veroeffentlicht' : turnier.status,
+            updated_at: knex.fn.now()
+        });
+        if (sync) await sync.aktiviereTurnier(id);
+        res.json({ success: true, message: 'Turnier aktiviert.' });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+// Kopiert ein Turnier als neuen Entwurf (Spec mehrere Turniere). Übernommen werden Stammdaten,
+// Ausschreibung und Matten; Pools, Mattenzuordnungen, Kämpfe und Mannschaften nie. Optional kommen
+// die Teilnehmer mit (Gewicht und Lizenz-Ablaufdatum bleiben, gewogen/Startgeld/Pool werden zurückgesetzt).
+export async function dupliziereTurnier(knex, req, res) {
+    try {
+        if (!istEinzelbenutzerBetrieb()) {
+            return res.status(403).json({ success: false, error: 'Das Duplizieren gibt es nur am Hallen-Server.' });
+        }
+        const id = parseInt(req.params.id, 10);
+        const quelle = await knex('turniere').where({ id }).first();
+        if (!quelle) return res.status(404).json({ success: false, error: 'Turnier nicht gefunden.' });
+
+        const datum = datumAlsIso(req.body && req.body.datum);
+        if (!datum) return res.status(400).json({ success: false, error: 'Bitte einen Wettkampftag für die Kopie angeben.' });
+        await pruefeTerminFrei(knex, req.app.get('sync'), datum);
+
+        const teilnehmerUebernehmen = !!(req.body && req.body.teilnehmerUebernehmen);
+        const neueId = await knex.transaction(async (trx) => {
+            const [idObj] = await trx('turniere').insert({
+                bezeichnung: quelle.bezeichnung,
+                ort: quelle.ort,
+                datum,
+                ausrichter: quelle.ausrichter,
+                anzahl_kampfflaechen: quelle.anzahl_kampfflaechen,
+                nutze_gewichtsklassen: quelle.nutze_gewichtsklassen,
+                verein_id: quelle.verein_id,
+                bundesland: quelle.bundesland,
+                plz: quelle.plz,
+                altersklassen: quelle.altersklassen,
+                mannschafts_altersklassen: quelle.mannschafts_altersklassen,
+                status: 'entwurf',
+                aktiv: false,
+                startgeld: quelle.startgeld,
+                iban: quelle.iban,
+                kontoinhaber: quelle.kontoinhaber,
+                verwendungszweck: quelle.verwendungszweck,
+                farbe_kaempfer2: quelle.farbe_kaempfer2,
+                ausschreibung_pdf: quelle.ausschreibung_pdf,
+                ausschreibung_dateiname: quelle.ausschreibung_dateiname
+            }).returning('id');
+            const neu = typeof idObj === 'object' ? idObj.id : idObj;
+            await synchronisiereKampfflaechen(trx, neu, parseInt(quelle.anzahl_kampfflaechen, 10) || 1);
+            if (teilnehmerUebernehmen) {
+                const teilnehmer = await trx('turnier_teilnehmer').where({ turnier_id: id }).orderBy('id', 'asc');
+                const zeilen = teilnehmer.map(t => kopiereTeilnehmerFuerNeuesTurnier(t, neu));
+                for (let i = 0; i < zeilen.length; i += 200) {
+                    await trx('turnier_teilnehmer').insert(zeilen.slice(i, i + 200));
+                }
+            }
+            return neu;
+        });
+        res.status(201).json({ success: true, turnierId: neueId });
+    } catch (error) {
+        if (error instanceof FachFehler) return res.status(error.statusCode).json({ success: false, error: error.message });
+        console.error('[Turnier-Duplizieren-Fehler]:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 }

@@ -18,6 +18,8 @@ import { FachFehler } from '../utils/fachFehler.js';
 import { berechneVorschlag, listeOffenePools } from '../services/nachzuegler.js';
 import { bewerteEinfuegen, ordneNachzueglerKaempfe } from '../shared/nachzueglerEinfuegen.js';
 import { fuegeInFreilosPlatzEin } from '../services/doppelKoEinfuegen.js';
+import { baueZeitprognoseAntwort } from '../shared/zeitprognoseAntwort.js';
+import { simuliereZeitplan } from '../shared/zeitPrognose.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1906,6 +1908,71 @@ export async function getKampfflaechenMitPools(knex, req, res) {
     }
 }
 
+// Voraussichtliches Ende je Matte und Rückstand der Matten untereinander (Scoreboard, matten.html).
+async function ladeZeitprognose(knex, turnierId) {
+    const kampfflaechen = await knex('kampfflaechen').where({ turnier_id: turnierId }).orderBy('id');
+    const pools = await knex('pools').where({ turnier_id: turnierId }).andWhere('verspaetet', false);
+    const poolIds = pools.map(p => p.id);
+    const kaempfe = poolIds.length ? await knex('kaempfe').whereIn('pool_id', poolIds) : [];
+    const mannschaftskaempfe = poolIds.length ? await knex('mannschaftskaempfe').whereIn('pool_id', poolIds) : [];
+    return baueZeitprognoseAntwort({ kampfflaechen, pools, kaempfe, mannschaftskaempfe }, Date.now());
+}
+
+export async function getZeitprognose(knex, req, res) {
+    try {
+        const { turnierId } = req.query;
+        if (!turnierId) {
+            return res.status(400).json({ success: false, error: 'turnierId ist erforderlich' });
+        }
+        return res.json(await ladeZeitprognose(knex, turnierId));
+    } catch (error) {
+        return res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+// Zeitplan-Simulation (rein lesend): rechnet für die auf Matten verteilten Pools aus, wann jeder Pool
+// ungefähr fertig ist. Beginn und Kampfzeit je Altersklasse gibt der Benutzer vor; nichts wird gespeichert.
+export async function simuliereZeitplanEndpunkt(knex, req, res) {
+    try {
+        const { beginn, kampfzeitJeAltersklasse } = req.body || {};
+        // Das Turnier, für das requireTournamentEditAccess die Berechtigung geprüft hat (nicht blind der Body);
+        // im Einzelbenutzerbetrieb gibt es keine Prüfung, dort gilt der Body.
+        const turnierId = req.tournament?.id ?? req.body?.turnierId;
+        if (!turnierId) {
+            return res.status(400).json({ success: false, error: 'turnierId ist erforderlich' });
+        }
+        const beginnMs = Date.parse(beginn);
+        if (Number.isNaN(beginnMs)) {
+            return res.status(400).json({ success: false, error: 'Bitte einen gültigen Beginn angeben.' });
+        }
+        const kampfflaechen = await knex('kampfflaechen').where({ turnier_id: turnierId }).orderBy('id');
+        const pools = await knex('pools')
+            .where({ turnier_id: turnierId })
+            .andWhere('verspaetet', false)
+            .whereNotNull('kampfflaeche_id');
+        const poolIds = pools.map(p => p.id);
+        const kaempfe = poolIds.length
+            ? await knex('kaempfe').whereIn('pool_id', poolIds).select('id', 'pool_id', 'status', 'matten_reihenfolge', 'kampfflaeche_id')
+            : [];
+        const poolHauptmatte = new Map(pools.map(p => [p.id, p.kampfflaeche_id]));
+        const matten = kampfflaechen.map(kf => {
+            // Kämpfe der Matte: eigene Zuordnung (Mannschaftsbegegnung), sonst die Matte des Pools
+            const dieser = kaempfe.filter(k => (k.kampfflaeche_id != null ? k.kampfflaeche_id : poolHauptmatte.get(k.pool_id)) === kf.id);
+            const idsHier = new Set(dieser.map(k => k.pool_id));
+            return {
+                id: kf.id,
+                bezeichnung: kf.bezeichnung,
+                pools: pools.filter(p => idsHier.has(p.id))
+                    .map(p => ({ id: p.id, bezeichnung: p.bezeichnung, altersklasse: p.altersklasse, geschlecht: p.geschlecht, kampfzeit_sekunden: p.kampfzeit_sekunden })),
+                kaempfe: dieser
+            };
+        });
+        return res.json({ matten: simuliereZeitplan({ matten, beginnMs, kampfzeitJeAltersklasse: kampfzeitJeAltersklasse || {} }) });
+    } catch (error) {
+        return res.status(500).json({ success: false, error: error.message });
+    }
+}
+
 // Nimmt die Einzelzuordnung von Begegnungen/Kämpfen zu Matten zurück (Pool wird als Ganzes bewegt).
 async function loescheMattenUeberschreibungen(knex, poolIds) {
     if (!poolIds.length) return;
@@ -2659,6 +2726,8 @@ export async function getDashboardData(knex, req, res) {
             .andWhere('pools.verspaetet', false);
 
         const resultMats = [];
+        // Voraussichtlicher Start noch nicht begonnener Pools (src/shared/zeitPrognose.js).
+        const zeitprognose = await ladeZeitprognose(knex, parseInt(turnierId));
 
         // Einzelkämpfe der Mannschafts-Pools mit ihrer wirksamen Matte (Begegnung > Pool).
         const mannschaftsPoolIdsAlle = pools.filter(p => p.typ === 'mannschaft').map(p => p.id);
@@ -2767,9 +2836,15 @@ export async function getDashboardData(knex, req, res) {
                     poolStatus = 'aktiv';
                 }
 
+                const poolStart = ((zeitprognose.matten.find(m => m.id === kf.id) || {}).poolStarts || []).find(s => s.poolId === p.id);
+                const startInMinuten = poolStart && poolStatus === 'bereit'
+                    ? Math.max(0, Math.round((poolStart.startMs - zeitprognose.jetzt) / 60000))
+                    : null;
+
                 return {
                     id: p.id,
                     bezeichnung: p.bezeichnung,
+                    start_in_minuten: startInMinuten,
                     progress,
                     gesamt_kaempfe: gesamt,
                     beendete_kaempfe: beendet,

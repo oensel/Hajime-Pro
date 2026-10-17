@@ -27,7 +27,7 @@ test.describe('Turnier aus der Cloud holen', () => {
         expect((await resp.json()).error).toMatch(/Anmeldefrist/);
     });
 
-    test('Oberfläche: Trennstrich, Anmeldung, Liste und Holen ersetzt das lokale Turnier', async ({ page }) => {
+    test('Oberfläche: Trennstrich, Anmeldung, Liste und Holen legt ein neues, noch nicht aktives Turnier an', async ({ page }) => {
         await page.goto('/turniere.html');
 
         const bereich = page.locator('#cloudBereich');
@@ -58,8 +58,9 @@ test.describe('Turnier aus der Cloud holen', () => {
         await page.waitForURL(/\/teilnehmer\.html\?turnierId=\d+/);
 
         const liste = await (await page.request.get('/api/turniere')).json();
-        expect(liste).toHaveLength(1);
-        expect(liste[0].bezeichnung).toBe('Cloud-Turnier geschlossen');
-        expect(new URL(page.url()).searchParams.get('turnierId')).toBe(String(liste[0].id));
+        const geholt = liste.find(t => t.bezeichnung === 'Cloud-Turnier geschlossen');
+        expect(geholt).toBeTruthy();
+        expect(geholt.aktiv).toBe(false); // aktiviert wird per Knopf am Wettkampftag
+        expect(new URL(page.url()).searchParams.get('turnierId')).toBe(String(geholt.id));
     });
 });

@@ -1335,7 +1335,7 @@ if (!document.getElementById('matchDuration')) {
                 const kampf = kaempfe[i - 1];
                 card.style.display = (i === 1 || kampf) ? 'block' : 'none';
 
-                setText('vorschauPool' + i, kampf ? kampf.pool : '');
+                setText('vorschauPool' + i, kampf ? kampf.pool + (kampf.zeit ? ' · ' + kampf.zeit : '') : '');
                 setText('vorschauNameW' + i, kampf ? kampf.nameW : '');
                 setText('vorschauClubW' + i, kampf ? kampf.clubW : '');
                 setText('vorschauNameB' + i, kampf ? kampf.nameB : '');
@@ -1586,7 +1586,10 @@ async function zeigeTurnierAuswahlModal() {
     try {
         const response = await fetch('/api/turniere');
         if (!response.ok) throw new Error('Fehler beim Laden der Turniere.');
-        const turniere = await response.json();
+        const alleTurniere = await response.json();
+        // Mehrere Turniere am Hallen-Server: das aktive Turnier, sonst alle noch nicht beendeten
+        const aktiveTurniere = alleTurniere.filter(t => t.aktiv);
+        const turniere = aktiveTurniere.length ? aktiveTurniere : alleTurniere.filter(t => !['abgeschlossen', 'abgesagt'].includes(t.status));
 
         if (turniere.length === 0) {
             zeigeNotification('Keine aktiven Turniere in der Datenbank vorhanden.', 'error');
@@ -2058,7 +2061,8 @@ async function zeigeNaechsteKaempferVorschau() {
             clubW: k.mannschaftskampf_id ? (k.mannschaft1_bezeichnung || '') : (k.kaempfer1_verein || ''),
             nameB: `${k.kaempfer2_nachname || ''}, ${k.kaempfer2_vorname || ''}`,
             clubB: k.mannschaftskampf_id ? (k.mannschaft2_bezeichnung || '') : (k.kaempfer2_verein || ''),
-            pool: k.pool_bezeichnung || ''
+            pool: k.pool_bezeichnung || '',
+            zeit: window.ZeitAnzeige.format(k.voraussichtlich_um)
         }));
 
         if (naechste.length === 0) return;
@@ -2557,6 +2561,26 @@ function pruefePoolAenderung(kaempfe) {
 // Kämpfe zusätzlich mit einer "Korrigieren"-Aktion (analog zu kampf.html). Wird an denselben
 // Stellen aufgerufen wie pruefeUndZeigePausenwarnung(), da dieselben Ereignisse (Kampf geladen,
 // Ergebnis gesendet, Matte gewechselt, periodisch) die Matten-Warteschlange verändern.
+// Zeigt das voraussichtliche Ende der gewählten Matte und ihren Rückstand gegenüber der frühesten Matte
+// (nur Information, kein Eingriff; src/shared/zeitPrognose.js).
+async function zeigeVerspaetungHinweis() {
+    const el = document.getElementById('verspaetungHinweis');
+    if (!el) return;
+    const turnierId = localStorage.getItem('aktiveTurnierId');
+    try {
+        const antwort = selectedMatId && turnierId ? await window.Datenzugriff.ladeZeitprognose(turnierId) : null;
+        const matte = antwort && antwort.matten.find(m => Number(m.id) === Number(selectedMatId));
+        if (!matte || matte.endeMs == null) { el.style.display = 'none'; return; }
+        const ende = window.ZeitAnzeige.format(matte.endeMs);
+        el.textContent = matte.rueckstand
+            ? `Diese Matte endet ${ende}, ca. ${matte.rueckstand.minuten} Min. nach ${matte.rueckstand.bezugBezeichnung}.`
+            : `Diese Matte endet ${ende}.`;
+        el.style.display = 'block';
+    } catch (err) {
+        el.style.display = 'none';
+    }
+}
+
 async function ladeMattenUebersicht() {
     const upcomingList = document.getElementById('steuerungUpcomingList');
     const finishedList = document.getElementById('steuerungFinishedList');
@@ -2577,6 +2601,7 @@ async function ladeMattenUebersicht() {
         }
 
         renderePoolAnsichtSteuerung(kaempfe);
+        zeigeVerspaetungHinweis();
 
         pruefePoolAenderung(kaempfe);
 
@@ -2651,7 +2676,12 @@ async function ladeMattenUebersicht() {
                 fightersSpan.className = 'st-k-namen';
                 fightersSpan.textContent = `${name1} vs ${name2}`;
 
-                row.append(orderSpan, poolSpan, fightersSpan);
+                const zeitSpan = document.createElement('span');
+                zeitSpan.className = 'st-k-zeit';
+                zeitSpan.style.cssText = 'margin-left: auto; opacity: 0.8; white-space: nowrap;';
+                zeitSpan.textContent = window.ZeitAnzeige.format(k.voraussichtlich_um);
+
+                row.append(orderSpan, poolSpan, fightersSpan, zeitSpan);
                 upcomingList.appendChild(row);
             });
             window.macheSortierbar(upcomingList, async (kampfIds) => {

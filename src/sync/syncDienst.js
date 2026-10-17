@@ -1,6 +1,7 @@
 // Zentraler Sync-Dienst des Hallen-Servers: hält die Dokument-DB der aktuellen Turnier-Instanz,
 // setzt beim Turnierwechsel alles zurück und bündelt Abgleich (SQL -> Dokumente) und Brücke
-// (Dokumente -> SQL). Genau ein Turnier pro Hallen-Server (Spec CouchDB-Umbau, Abschnitt 8).
+// (Dokumente -> SQL). Genau ein AKTIVES Turnier pro Hallen-Server (Spec CouchDB-Umbau, Abschnitt 8; weitere Turniere
+// warten als Entwurf/geplant, Spec 2026-10-17-mehrere-turniere-design.md).
 //
 // Im Server-Cluster (src/cluster/) läuft der Dienst in einem von zwei Modi:
 //  - 'master':    Abgleich + Brücke aktiv, nimmt Schreibzugriffe an, schreibt die Instanz-ID.
@@ -13,17 +14,11 @@ import { erzeugeDokumentDb, turnierDbName } from './dokumentDb.js';
 import { erzeugeAbgleich } from './abgleich.js';
 import { erzeugeBruecke } from './bruecke.js';
 
-// Löscht alle Turnierdaten; benutzer/vereine bleiben erhalten (Login am Hallen-Server).
-export async function leereTurnierdaten(knex) {
-    await knex('kaempfe').del();
-    await knex('mannschaftskaempfe').del();
-    await knex('mannschaft_mitglieder').del();
-    await knex('mannschaften').del();
-    await knex('turnier_teilnehmer').del();
-    await knex('pools').del();
-    await knex('kampfflaechen').del();
-    await knex('turniere').del();
-    await knex('sync_angewendet').del();
+// Das aktive Turnier (turniere.aktiv, höchstens eines) ist das, an dem Dokument-DB, Abgleich und
+// Brücke hängen. Die übrigen Turniere (Entwurf, geplant, abgeschlossen) liegen nur in der
+// relationalen DB.
+async function ladeAktivesTurnier(knex) {
+    return (await knex('turniere').where({ aktiv: true }).first()) || null;
 }
 
 const INSTANZ_PRUEFUNG_MS = 2000;
@@ -169,7 +164,7 @@ export async function starteSyncDienst({ knex, konfig, partnerUrl = null, startM
     // Secondary: Instanz aus der (replizierten, nur lesbaren) relationalen DB übernehmen. Hat der
     // Master das Turnier gewechselt, wird die alte Dokument-DB verworfen.
     async function synchronisiereInstanzLesend() {
-        const turnier = await knex('turniere').orderBy('id', 'desc').first();
+        const turnier = await ladeAktivesTurnier(knex);
         const instanzId = turnier ? turnier.instanz_id : null;
         if (instanzId === zustand.instanzId) return;
         if (zustand.db) await schliesseInstanz({ loeschen: true });
@@ -192,10 +187,11 @@ export async function starteSyncDienst({ knex, konfig, partnerUrl = null, startM
         instanzTimer = null;
     }
 
-    async function vorTurnierwechsel() {
+    // Turnier beenden/absagen: Brücke stoppen, letzten Stand in die relationale DB schreiben und die
+    // Dokument-DB verwerfen. Die Turnierdaten bleiben in der relationalen DB erhalten.
+    async function deaktiviereTurnier() {
         await dienst.vorDeaktivierung();
         await schliesseInstanz({ loeschen: true });
-        await leereTurnierdaten(knex);
     }
 
     const dienst = {
@@ -203,7 +199,7 @@ export async function starteSyncDienst({ knex, konfig, partnerUrl = null, startM
         zustand,
         middleware,
         aktiviereTurnier,
-        vorTurnierwechsel,
+        deaktiviereTurnier,
         status() {
             return {
                 rolle: konfig.rolle,
@@ -242,7 +238,7 @@ export async function starteSyncDienst({ knex, konfig, partnerUrl = null, startM
             modus = 'master';
             stoppeInstanzPruefung();
             await synchronisiereInstanzLesend().catch(() => {});
-            const turnier = await knex('turniere').orderBy('id', 'desc').first();
+            const turnier = await ladeAktivesTurnier(knex);
             if (turnier) await aktiviereTurnier(turnier.id);
         },
         // Cluster: VIP abgegeben bzw. Start als Secondary.
@@ -262,7 +258,7 @@ export async function starteSyncDienst({ knex, konfig, partnerUrl = null, startM
         entscheideKlaerung: (id, entscheidung) => bruecke.entscheideKlaerung(id, entscheidung)
     };
 
-    // Das (einzige) vorhandene Turnier wird verzögert beim ERSTEN Request aktiviert, nicht beim
+    // Das aktive Turnier wird verzögert beim ERSTEN Request aktiviert, nicht beim
     // Serverstart: vor dem ersten Request ist die DB evtl. noch gar nicht migriert (die E2E-Suites
     // starten den Server vor ihrem globalSetup), und eine früh geöffnete Datenbankverbindung würde
     // unter Windows das Löschen der Testdaten blockieren.
@@ -271,7 +267,7 @@ export async function starteSyncDienst({ knex, konfig, partnerUrl = null, startM
         if (!initVersprechen) {
             initVersprechen = (async () => {
                 if (modus !== 'master') return synchronisiereInstanzLesend();
-                const vorhanden = await knex('turniere').orderBy('id', 'desc').first();
+                const vorhanden = await ladeAktivesTurnier(knex);
                 if (vorhanden) await aktiviereTurnier(vorhanden.id);
             })().catch((err) => {
                 initVersprechen = null; // beim nächsten Request erneut versuchen

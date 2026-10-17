@@ -294,3 +294,10 @@
 /* Sortierbare Kampfliste (Drag&Drop, js/sortierbar.js) */
 .sortier-griff { color: var(--text-muted, #888); margin-right: 8px; user-select: none; }
 .sortier-aktiv { box-shadow: 0 2px 8px rgba(0,0,0,0.25); background: rgba(255,193,7,0.15) !important; }
+
+.fight-row-zeit {
+    margin-left: auto;
+    padding: 0 12px;
+    white-space: nowrap;
+    color: var(--text-muted);
+}

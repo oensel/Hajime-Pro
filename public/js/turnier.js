@@ -13,6 +13,30 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // --- FARBE VON KÄMPFER 2: Umschalter Blau/Rot, der Wert liegt im versteckten Select ---
+    const farbSelect = document.getElementById('farbe_kaempfer2');
+    const farbSchalter = document.getElementById('farbSchalter');
+    function zeigeFarbSchalter() {
+        const rot = farbSelect.value === 'rot';
+        farbSchalter.classList.toggle('rot', rot);
+        farbSchalter.setAttribute('aria-checked', String(rot));
+        const blauEl = document.getElementById('farbSchalterBlau');
+        const rotEl = document.getElementById('farbSchalterRot');
+        blauEl.classList.toggle('aktiv', !rot);
+        rotEl.classList.toggle('aktiv', rot);
+        blauEl.innerHTML = (rot ? '' : '<i class="farb-schalter-punkt"></i>') + 'Blau';
+        rotEl.innerHTML = (rot ? '<i class="farb-schalter-punkt"></i>' : '') + 'Rot';
+    }
+    function wechsleFarbe() {
+        farbSelect.value = farbSelect.value === 'rot' ? 'blau' : 'rot';
+        zeigeFarbSchalter();
+    }
+    farbSchalter.addEventListener('click', wechsleFarbe);
+    farbSchalter.addEventListener('keydown', (e) => {
+        if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); wechsleFarbe(); }
+    });
+    zeigeFarbSchalter();
+
     // --- AUSSCHREIBUNG (PDF) ---
     // ausschreibungPdfBase64: undefined = beim Speichern unverändert lassen, String = neue Datei
     // hochladen, null = ausdrücklich entfernen (siehe baueAusschreibungFragment in
@@ -341,6 +365,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('ausrichter').value = turnier.ausrichter || '';
             document.getElementById('anzahl_kampfflaechen').value = turnier.anzahl_kampfflaechen || 1;
             document.getElementById('farbe_kaempfer2').value = turnier.farbe_kaempfer2 === 'rot' ? 'rot' : 'blau';
+            zeigeFarbSchalter();
             document.getElementById('startgeld').value = turnier.startgeld !== null && turnier.startgeld !== undefined ? turnier.startgeld : '';
             document.getElementById('iban').value = turnier.iban || '';
             document.getElementById('kontoinhaber').value = turnier.kontoinhaber || '';
@@ -631,22 +656,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            // Hallen-Server mit Sync trägt genau ein Turnier: eine Neuanlage löscht das bisherige
-            // komplett (siehe Spec CouchDB-Umbau Abschnitt 8) — vorher ausdrücklich nachfragen.
-            if (!turnierId) {
-                const syncStatus = await fetch('/api/sync/status').then(r => r.json()).catch(() => ({}));
-                if (syncStatus.rolle === 'server' && syncStatus.instanz_id) {
-                    const bestaetigt = window.zeigeZentraleBestaetigung
-                        ? await window.zeigeZentraleBestaetigung(
-                            'Auf diesem Hallen-Server wird immer nur ein Turnier ausgetragen. Das Anlegen löscht alle Daten des bisherigen Turniers (Teilnehmer, Pools, Kämpfe). Fortfahren?',
-                            'Neues Turnier anlegen',
-                            'warning'
-                        )
-                        : confirm('Alle Daten des bisherigen Turniers auf diesem Server werden gelöscht. Fortfahren?');
-                    if (!bestaetigt) return;
-                }
-            }
-
             // Endpoint und Methode dynamisch anpassen (PUT bei Update, POST bei Neuanlage)
             const url = turnierId ? `/api/turniere/${turnierId}` : '/api/turniere';
             const method = turnierId ? 'PUT' : 'POST';
@@ -759,8 +768,22 @@ document.addEventListener('DOMContentLoaded', () => {
             if (importTurnierBtn && !istOffline && wettkampftagErreicht && ['anmeldung_geschlossen', 'in_durchfuehrung'].includes(statusEffektiv)) {
                 importTurnierBtn.style.display = 'inline-flex';
             }
-            if (veroeffentlichenBtn && status === 'entwurf') {
+            if (veroeffentlichenBtn && !istOffline && status === 'entwurf') {
                 veroeffentlichenBtn.style.display = 'inline-flex';
+            }
+            // Hallen-Server: mehrere Turniere nebeneinander, eines aktiv (Aktivieren nur am Wettkampftag)
+            const aktivierenBtn = document.getElementById('aktivierenBtn');
+            const duplizierenBtn = document.getElementById('duplizierenBtn');
+            if (istOffline && duplizierenBtn) {
+                duplizierenBtn.style.display = 'inline-flex';
+                duplizierenBtn.onclick = () => window.TurnierDuplizieren.oeffne(
+                    { id: turnier.id, bezeichnung: turnier.bezeichnung },
+                    (neueId) => { window.location.href = `/turnier.html?id=${neueId}`; }
+                );
+            }
+            if (istOffline && aktivierenBtn && turnier.aktivierbar) {
+                aktivierenBtn.style.display = 'inline-flex';
+                aktivierenBtn.onclick = () => fuehreLebenszyklusAktionAus('aktivieren', 'Turnier aktiviert.');
             }
             if (durchfuehrungBeendenBtn && statusEffektiv === 'in_durchfuehrung' && wettkampftagErreicht) {
                 durchfuehrungBeendenBtn.style.display = 'inline-flex';

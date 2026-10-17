@@ -14,6 +14,7 @@
     let modus = null;
     let db = null;
     let baueMattenAnsicht = null;
+    let baueZeitprognoseAntwort = null;
     let bereit = null;
     let knoten = { rolle: null, client_id: null };
 
@@ -30,6 +31,7 @@
                             ? await window.HajimeMobil.holeDb()
                             : new window.PouchDB(`${window.location.origin}/db/${status.db_name}`, { skip_setup: true });
                         ({ baueMattenAnsicht } = await import('/js/shared/mattenAnsicht.js'));
+                        ({ baueZeitprognoseAntwort } = await import('/js/shared/zeitprognoseAntwort.js'));
                         modus = 'dokumente';
                         return modus;
                     }
@@ -175,6 +177,24 @@
         return (await alleDokumente())
             .filter(d => d.dokumenttyp === 'kampfflaeche' && Number(d.turnier_id) === Number(turnierId))
             .sort((a, b) => a.id - b.id);
+    }
+
+    // Voraussichtliches Ende je Matte und Rückstand (src/shared/zeitprognoseAntwort.js).
+    async function ladeZeitprognose(turnierId) {
+        await init();
+        if (modus === 'rest') {
+            const resp = await fetch(`/api/pools/zeitprognose?turnierId=${turnierId}`);
+            const daten = await resp.json();
+            if (!resp.ok) throw new Error(daten.error || 'Fehler beim Laden der Zeitprognose.');
+            return daten;
+        }
+        const docs = await alleDokumente();
+        const vomTyp = (typ) => docs.filter(d => d.dokumenttyp === typ);
+        return baueZeitprognoseAntwort({
+            kampfflaechen: vomTyp('kampfflaeche').filter(k => Number(k.turnier_id) === Number(turnierId)),
+            pools: vomTyp('pool').filter(p => Number(p.turnier_id) === Number(turnierId)),
+            kaempfe: vomTyp('kampf'), mannschaftskaempfe: vomTyp('mannschaftskampf'), mannschaften: vomTyp('mannschaft')
+        }, Date.now());
     }
 
     async function ladeKaempfeDerMatte(matId) {
@@ -446,6 +466,7 @@
         modus: () => modus,
         rolle: () => knoten.rolle,
         ladeKampfflaechen,
+        ladeZeitprognose,
         ladeKaempfeDerMatte,
         aktualisiereKampf,
         tauscheReihenfolge,

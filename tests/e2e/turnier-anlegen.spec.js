@@ -105,9 +105,11 @@ test('Alters- und Mannschaftsklassen auswählen und mit dem Turnier speichern', 
     await expect(karte).toBeVisible();
     await expect(karte.locator('.status-badge')).toHaveText('Entwurf');
 
-    // --- Erneut in die Bearbeitung wechseln (über den "Bearbeiten"-Button der Karte, nicht per
+    // --- Erneut in die Bearbeitung wechseln: Turnier auswählen, dann im Menü "Turnier" (nicht per
     // direkter URL, damit auch dieser Navigationsweg abgedeckt ist) ---
-    await karte.getByRole('button', { name: 'Bearbeiten' }).click();
+    await expect(karte.getByRole('button', { name: 'Bearbeiten' })).toHaveCount(0);
+    await karte.getByRole('button', { name: 'Auswählen' }).click();
+    await page.locator('#nav-turnier').click();
     await expect(page).toHaveURL(/\/turnier\.html\?id=\d+/);
 
     // --- Startgeld ohne Zahlungsdaten: clientseitige Validierung in turnier.js (gespiegelt vom
@@ -127,23 +129,14 @@ test('Alters- und Mannschaftsklassen auswählen und mit dem Turnier speichern', 
     await page.locator('#submitBtn').click();
     await expect(page.locator('#snackbarText')).toHaveText('Turnier erfolgreich aktualisiert!');
 
-    // --- Veröffentlichen: bestätigt den Material-Dialog (zeigeZentraleBestaetigung in menu.js).
-    // fuehreLebenszyklusAktionAus lädt bei Erfolg direkt per window.location.reload() neu, daher
-    // wird sowohl auf die POST-Antwort als auch auf das anschließende "load" gewartet — sonst
-    // kollidiert ein nachfolgendes page.goto() mit diesem eigenen Reload der Seite. ---
-    const veroeffentlichenResponse = page.waitForResponse(
-        (resp) => resp.url().includes('/veroeffentlichen') && resp.request().method() === 'POST'
-    );
-    const seiteWurdeNeuGeladen = page.waitForEvent('load');
-    await page.locator('#veroeffentlichenBtn').click();
-    await expect(page.locator('#customConfirmModal')).toBeVisible();
-    await page.locator('#modalConfirmBtn').click();
-    const antwort = await veroeffentlichenResponse;
+    // --- Am Hallen-Server gibt es den Knopf "Veröffentlichen" nicht; die Route bleibt per API erreichbar ---
+    await expect(page.locator('#veroeffentlichenBtn')).toBeHidden();
+    const turnierIdAusUrl = new URL(page.url()).searchParams.get('id');
+    const antwort = await page.request.post(`/api/turniere/${turnierIdAusUrl}/veroeffentlichen`);
     expect(antwort.ok()).toBeTruthy();
-    await seiteWurdeNeuGeladen;
 
-    // --- turniere.html: Status ist jetzt von "Entwurf" auf "Anmeldung läuft" gewechselt ---
+    // --- turniere.html: Status ist jetzt von "Entwurf" auf "Geplant" gewechselt (Hallen-Server-Bezeichnung) ---
     await page.goto('/turniere.html');
     const karteVeroeffentlicht = page.locator('.tournament-card').filter({ hasText: TURNIER_NAME_KLASSEN });
-    await expect(karteVeroeffentlicht.locator('.status-badge')).toHaveText('Anmeldung läuft');
+    await expect(karteVeroeffentlicht.locator('.status-badge')).toHaveText('Geplant');
 });

@@ -7,8 +7,8 @@
     <link rel="stylesheet" href="/css/common.css">
     <style>
         .mdc-card {
-            max-width: 1100px;
-            padding: 36px;
+            max-width: none;
+            padding: 24px 32px;
         }
         .header-section {
             display: flex;
@@ -175,6 +175,76 @@
             border: 1px dashed var(--border);
             color: var(--text-muted);
         }
+        .tournament-card.aktiv {
+            border: 2px solid #c62828;
+        }
+        .status-badge.status-aktiv {
+            background: rgba(198, 40, 40, 0.1);
+            color: #c62828;
+            border: 1px solid rgba(198, 40, 40, 0.3);
+        }
+        .lokal-grid {
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 12px;
+        }
+        .tournament-card.kompakt {
+            padding: 12px 14px;
+            gap: 8px;
+        }
+        .tournament-card.kompakt .tournament-name {
+            font-size: 15px;
+            margin: 0 0 6px 0;
+        }
+        .tournament-card.kompakt .card-actions {
+            padding-top: 10px;
+        }
+        .kompakt-ort {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+        }
+        .kompakt-ort .material-icons { font-size: 15px; color: var(--primary); opacity: 0.8; }
+        .info-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+        .info-chip {
+            font-size: 11px;
+            padding: 1px 8px;
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.05);
+            color: var(--text-muted);
+        }
+        .tournament-card.cloud-karte { border-style: dashed; }
+        .status-badge.status-geplant {
+            background: rgba(239, 108, 0, 0.1);
+            color: #ef6c00;
+            border: 1px solid rgba(239, 108, 0, 0.3);
+        }
+        .btn-aktivieren {
+            background: rgba(46, 125, 50, 0.12);
+            color: #2e7d32;
+            border: 1px solid rgba(46, 125, 50, 0.4);
+        }
+        .abgeschlossen-liste { display: flex; flex-direction: column; gap: 5px; margin-top: 12px; }
+        .abgeschlossen-zeile {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 6px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            background: rgba(0, 0, 0, 0.02);
+            color: var(--text-muted);
+            font-size: 12px;
+            opacity: 0.8;
+            filter: grayscale(0.5);
+        }
+        .abgeschlossen-zeile .material-icons { font-size: 16px; }
+        .abgeschlossen-zeile .az-name { flex: 1; font-weight: 700; }
+        .abgeschlossen-zeile .btn { padding: 2px 10px; font-size: 11px; margin: 0; }
+        .abgeschlossen-zeile .btn.btn-icon-aktion { padding: 0; width: 30px; height: 30px; flex: 0 0 30px; }
+        .abgeschlossen-zeile .btn.btn-icon-aktion .material-icons { font-size: 18px; }
         .card-actions {
             display: flex;
             gap: 10px;
@@ -185,6 +255,8 @@
             flex: 1;
             margin: 0;
         }
+        .card-actions .btn.btn-icon-aktion { flex: 0 0 34px; width: 34px; height: auto; align-self: stretch; padding: 0; }
+        .card-actions .btn.btn-icon-aktion .material-icons { font-size: 18px; }
         .no-data-msg {
             text-align: center;
             padding: 48px;
@@ -363,10 +435,17 @@
         <div id="cloudFehler" class="cloud-fehler" style="display: none;"></div>
         <div id="cloudListe"></div>
     </div>
+
+    <div id="abgeschlossenBereich"></div>
 </div>
 
 <script src="/js/ausschreibung-viewer.js"></script>
+<script src="/js/turnierDuplizieren.js"></script>
 <script>
+    // Turnierdaten können aus Importen oder der Cloud stammen: vor dem Einsetzen in HTML immer maskieren.
+    function escHtml(wert) {
+        return String(wert ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
     async function ladeBenutzerStatus() {
         const meResp = await fetch('/api/auth/me');
         if (!meResp.ok) {
@@ -507,9 +586,10 @@
 
         // Turnier-Import (aus einer zuvor exportierten JSON-Datei) gibt es nur offline —
         // online werden Turniere über die Vereinszugehörigkeit verwaltet, nicht per Datei.
+        let istOffline = false;
         try {
             const configResp = await fetch('/api/config');
-            const istOffline = configResp.ok && !!(await configResp.json()).isOffline;
+            istOffline = configResp.ok && !!(await configResp.json()).isOffline;
 
             const importTurnierBtn = document.getElementById('importTurnierBtn');
             if (importTurnierBtn) importTurnierBtn.style.display = istOffline ? 'inline-flex' : 'none';
@@ -527,9 +607,9 @@
             // Timeout) — bei Ablehnung/Timeout/fehlender Unterstützung bleibt "Entfernung"
             // einfach aus, ohne den Rest der Seite zu blockieren.
             const standort = await ermittleStandort();
-            const zukuenftigUrl = standort
-                ? `/api/turniere?zukuenftig=true&lat=${standort.lat}&lon=${standort.lon}`
-                : '/api/turniere?zukuenftig=true';
+            // Hallen-Server: alle Turniere (auch abgeschlossene, kompakt am Ende der Liste)
+            const abfrage = [istOffline ? '' : 'zukuenftig=true', standort ? `lat=${standort.lat}&lon=${standort.lon}` : ''].filter(Boolean);
+            const zukuenftigUrl = '/api/turniere' + (abfrage.length ? '?' + abfrage.join('&') : '');
 
             const response = await fetch(zukuenftigUrl);
             if (!response.ok) {
@@ -588,10 +668,28 @@
                 abgesagt: 'Abgesagt'
             };
 
+            // Hallen-Server: aktiv / geplant (Entwurf bleibt Entwurf) statt der Anmelde-Zustände
+            function hallenStatus(t) {
+                if (t.aktiv) return { klasse: 'aktiv', label: 'Aktiv' };
+                if (t.status === 'abgeschlossen') return { klasse: 'abgeschlossen', label: 'Abgeschlossen' };
+                if (t.status === 'abgesagt') return { klasse: 'abgesagt', label: 'Abgesagt' };
+                if (t.status === 'entwurf') return { klasse: 'entwurf', label: 'Entwurf' };
+                return { klasse: 'geplant', label: 'Geplant' };
+            }
+
+            function hallenAktionen(t) {
+                const aktivieren = t.aktivierbar
+                    ? `<button type="button" class="btn btn-aktivieren" data-aktion="aktivieren" data-id="${t.id}">Aktivieren</button>` : '';
+                const duplizieren = `<button type="button" class="btn btn-outlined btn-icon-aktion" data-aktion="duplizieren" data-id="${t.id}" aria-label="Duplizieren" data-tooltip="Duplizieren"><span class="material-icons">content_copy</span></button>`;
+                return aktivieren + duplizieren;
+            }
+
             function renderCard(t, isEditable) {
                 let deadlineExpired = false;
                 let deadlineStr = 'Keine Frist';
-                const statusLabel = STATUS_LABELS[t.status_effektiv] || t.status_effektiv || '';
+                const hallen = istOffline ? hallenStatus(t) : null;
+                const statusLabel = hallen ? hallen.label : (STATUS_LABELS[t.status_effektiv] || t.status_effektiv || '');
+                const statusKlasse = hallen ? hallen.klasse : t.status_effektiv;
 
                 if (t.anmeldeschluss) {
                     // Anmeldeschluss gilt bis einschließlich 24:00 Uhr Ortszeit dieses Tages
@@ -625,9 +723,9 @@
                 }
 
                 return `
-                    <div class="tournament-card ${deadlineExpired ? 'expired' : ''}">
+                    <div class="tournament-card ${!istOffline && deadlineExpired ? 'expired' : ''} ${t.aktiv ? 'aktiv' : ''}">
                         <div>
-                            <h2 class="tournament-name">${t.bezeichnung}<span class="status-badge status-${t.status_effektiv}">${statusLabel}</span></h2>
+                            <h2 class="tournament-name">${escHtml(t.bezeichnung)}<span class="status-badge status-${escHtml(statusKlasse)}">${escHtml(statusLabel)}</span></h2>
                             <div class="tournament-details">
                                 <div class="detail-item">
                                     <span class="material-icons">calendar_today</span>
@@ -635,7 +733,7 @@
                                 </div>
                                 <div class="detail-item">
                                     <span class="material-icons">place</span>
-                                    <span>Ort: ${t.plz ? `${t.plz} ` : ''}${t.ort}${t.bundesland ? ` (${t.bundesland})` : ''}</span>
+                                    <span>Ort: ${t.plz ? `${escHtml(t.plz)} ` : ''}${escHtml(t.ort)}${t.bundesland ? ` (${escHtml(t.bundesland)})` : ''}</span>
                                 </div>
                                 ${t.entfernung_km !== null && t.entfernung_km !== undefined ? `
                                 <div class="detail-item">
@@ -649,7 +747,7 @@
                                 </div>` : ''}
                                 <div class="detail-item">
                                     <span class="material-icons">business</span>
-                                    <span>Ausrichter: ${t.ausrichter}</span>
+                                    <span>Ausrichter: ${escHtml(t.ausrichter)}</span>
                                 </div>
                                 <div class="detail-item">
                                     <span class="material-icons">layers</span>
@@ -663,7 +761,7 @@
                                             ${(() => {
                                                 const labels = getAltersklassenLabels(t.altersklassen);
                                                 return labels.length > 0
-                                                    ? labels.map(l => `<span class="ak-chip">${l}</span>`).join('')
+                                                    ? labels.map(l => `<span class="ak-chip">${escHtml(l)}</span>`).join('')
                                                     : '<span class="ak-chip ak-chip-empty">–</span>';
                                             })()}
                                         </div>
@@ -678,7 +776,7 @@
                                     <div>
                                         <span>Mannschaften:</span>
                                         <div class="ak-chip-row">
-                                            ${mannschaftLabels.map(l => `<span class="ak-chip">${l}</span>`).join('')}
+                                            ${mannschaftLabels.map(l => `<span class="ak-chip">${escHtml(l)}</span>`).join('')}
                                         </div>
                                     </div>
                                 </div>`;
@@ -700,14 +798,98 @@
                                  (Gastverein meldet nur eigene Athlet:innen an, serverseitig ohnehin auf den
                                  eigenen Verein beschränkt, siehe teilnehmerController.js) — nur das Verwalten
                                  des EIGENEN Turniers braucht die Freigabe. -->
-                            ${(istFreigegeben || !isEditable) ? `<button type="button" class="btn btn-raised" onclick="window.location.href='/teilnehmer.html?turnierId=${t.id}'">Auswählen</button>` : ''}
+                            ${(istFreigegeben || !isEditable) ? `<button type="button" class="btn btn-raised" onclick="window.location.href='/teilnehmer.html?turnierId=${encodeURIComponent(t.id)}'">Auswählen</button>` : ''}
                             ${isEditable && istFreigegeben ? `<button type="button" class="btn btn-outlined" onclick="window.location.href='/turnier.html?id=${t.id}'">Bearbeiten</button>` : ''}
+                            ${istOffline ? hallenAktionen(t) : ''}
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Kompakte Karte für den Hallen-Server: Datum/Ort in einer Zeile, Eckdaten als Chips. Das Bearbeiten
+            // der Stammdaten läuft über "Auswählen" und den Menüpunkt "Turnier".
+            function renderKompakteKarte(t) {
+                const hallen = hallenStatus(t);
+                const o = t.datum ? new Date(t.datum) : null;
+                const dateStr = o ? `${String(o.getDate()).padStart(2, '0')}.${String(o.getMonth() + 1).padStart(2, '0')}.${o.getFullYear()}` : '';
+                const labels = [...getAltersklassenLabels(t.altersklassen), ...getAltersklassenLabels(t.mannschafts_altersklassen)];
+                const waehlen = istFreigegeben
+                    ? `<button type="button" class="btn btn-raised" onclick="window.location.href='/teilnehmer.html?turnierId=${encodeURIComponent(t.id)}'">Auswählen</button>` : '';
+                return `
+                    <div class="tournament-card kompakt ${t.aktiv ? 'aktiv' : ''}">
+                        <div>
+                            <h2 class="tournament-name">${escHtml(t.bezeichnung)}<span class="status-badge status-${escHtml(hallen.klasse)}">${escHtml(hallen.label)}</span></h2>
+                            <div class="kompakt-ort"><span class="material-icons">calendar_today</span><span>${escHtml(dateStr)} · ${t.plz ? `${escHtml(t.plz)} ` : ''}${escHtml(t.ort)}</span></div>
+                            <div class="info-chips">
+                                <span class="info-chip">${escHtml(t.anzahl_kampfflaechen)} Matten</span>
+                                <span class="info-chip">${escHtml(t.teilnehmer_anzahl || 0)} Teilnehmer</span>
+                                ${t.anmeldeschluss ? `<span class="info-chip">Frist ${escHtml(String(t.anmeldeschluss).slice(0, 10).split('-').reverse().join('.'))}</span>` : ''}
+                            </div>
+                            ${labels.length ? `<div class="ak-chip-row">${labels.map(l => `<span class="ak-chip">${escHtml(l)}</span>`).join('')}</div>` : ''}
+                        </div>
+                        <div class="card-actions">
+                            ${waehlen}
+                            ${hallenAktionen(t)}
                         </div>
                     </div>
                 `;
             }
 
             let htmlContent = '';
+
+            if (istOffline) {
+                const aktives = turniere.filter(t => t.aktiv);
+                const geplant = turniere.filter(t => !t.aktiv && !['abgeschlossen', 'abgesagt'].includes(t.status))
+                    .sort((a, b) => String(a.datum).localeCompare(String(b.datum)));
+                const fertig = turniere.filter(t => !t.aktiv && ['abgeschlossen', 'abgesagt'].includes(t.status));
+                const datumKurz = (d) => { const o = new Date(d); return `${String(o.getDate()).padStart(2, '0')}.${String(o.getMonth() + 1).padStart(2, '0')}.${o.getFullYear()}`; };
+
+                // Aktives Turnier (roter Rahmen) zuerst, daneben die übrigen lokalen Turniere.
+                const lokale = [...aktives, ...geplant];
+                if (lokale.length) {
+                    htmlContent += `<h2 class="section-title"><span class="material-icons" style="font-size:20px;">apartment</span> Lokale Turniere</h2>
+                        <div class="tournaments-grid lokal-grid">${lokale.map(t => renderKompakteKarte(t)).join('')}</div>`;
+                }
+                let abgeschlossenHtml = '';
+                if (fertig.length) {
+                    abgeschlossenHtml += `<h2 class="section-title"><span class="material-icons" style="font-size:20px;">inventory_2</span> Abgeschlossen</h2>
+                        <div class="abgeschlossen-liste">${fertig.map(t => `
+                            <div class="abgeschlossen-zeile" data-turnier-id="${t.id}">
+                                <span class="material-icons">${t.status === 'abgesagt' ? 'cancel' : 'check'}</span>
+                                <span class="az-name">${escHtml(t.bezeichnung)}</span>
+                                <span>${escHtml(datumKurz(t.datum))}</span>
+                                <span>${escHtml(t.ort)}</span>
+                                <span>${escHtml(t.teilnehmer_anzahl || 0)} Teilnehmer</span>
+                                <button type="button" class="btn btn-outlined btn-icon-aktion" data-aktion="duplizieren" data-id="${t.id}" aria-label="Duplizieren" data-tooltip="Duplizieren"><span class="material-icons">content_copy</span></button>
+                            </div>`).join('')}</div>`;
+                }
+                container.innerHTML = htmlContent;
+                // Abgeschlossene Turniere stehen immer ganz unten, hinter dem Cloud-Bereich.
+                const abgeschlossenBereich = document.getElementById('abgeschlossenBereich');
+                abgeschlossenBereich.innerHTML = abgeschlossenHtml;
+
+                const behandleKlick = async (e) => {
+                    const knopf = e.target.closest('button[data-aktion]');
+                    if (!knopf) return;
+                    const turnier = turniere.find(t => String(t.id) === knopf.dataset.id);
+                    if (knopf.dataset.aktion === 'duplizieren') {
+                        window.TurnierDuplizieren.oeffne(turnier, () => window.location.reload());
+                    } else if (knopf.dataset.aktion === 'aktivieren') {
+                        knopf.disabled = true;
+                        const resp = await fetch(`/api/turniere/${knopf.dataset.id}/aktivieren`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+                        const daten = await resp.json().catch(() => ({}));
+                        if (!resp.ok) {
+                            knopf.disabled = false;
+                            if (window.zeigeNotification) window.zeigeNotification(daten.error || 'Aktivieren fehlgeschlagen.', 'error');
+                            return;
+                        }
+                        window.location.reload();
+                    }
+                };
+                container.addEventListener('click', behandleKlick);
+                abgeschlossenBereich.addEventListener('click', behandleKlick);
+                return;
+            }
 
             // Section 1: Eigene Turniere (Only if exists)
             if (eigeneTurniere.length > 0) {
@@ -757,15 +939,6 @@
             const file = importTurnierFileInput.files[0];
             importTurnierFileInput.value = '';
             if (!file) return;
-
-            const bestaetigt = window.zeigeZentraleBestaetigung
-                ? await window.zeigeZentraleBestaetigung(
-                    'Der Import löscht alle bestehenden Turniere auf diesem Gerät (inkl. Pools, Kämpfe und Teilnehmer) und ersetzt sie durch das importierte Turnier. Fortfahren?',
-                    'Turnier importieren',
-                    'warning'
-                )
-                : confirm('Der Import löscht alle bestehenden Turniere auf diesem Gerät. Fortfahren?');
-            if (!bestaetigt) return;
 
             importTurnierStatus.style.display = 'block';
             importTurnierStatus.textContent = `Importiere "${file.name}" ...`;
@@ -843,7 +1016,7 @@
                 liste.innerHTML = '<div class="no-data-msg">Keine Turniere in der Cloud.</div>';
                 return;
             }
-            liste.innerHTML = '<div class="tournaments-grid">' + turniere.map(t => {
+            liste.innerHTML = '<div class="tournaments-grid lokal-grid">' + turniere.map(t => {
                 const holbar = ERLAUBTE_STATUS.includes(t.status_effektiv);
                 const status = STATUS_TEXT[t.status_effektiv] || t.status_effektiv || '';
                 const aktion = holbar
@@ -852,14 +1025,11 @@
                         ? 'Anmeldung läuft noch' + (t.anmeldeschluss ? ' (bis ' + datum(t.anmeldeschluss) + ')' : '')
                         : 'Noch nicht abholbar'}</span>`;
                 return `
-                    <div class="tournament-card">
+                    <div class="tournament-card kompakt cloud-karte">
                         <div>
-                            <h2 class="tournament-name">${esc(t.bezeichnung)}<span class="status-badge status-${statusKlasse(t.status_effektiv)}">${esc(status)}</span></h2>
-                            <div class="tournament-details">
-                                <div class="detail-item"><span class="material-icons">calendar_today</span><span>Datum: ${datum(t.datum)}</span></div>
-                                <div class="detail-item"><span class="material-icons">place</span><span>Ort: ${esc(t.ort)}</span></div>
-                                <div class="detail-item"><span class="material-icons">groups</span><span>Gemeldete Teilnehmer: ${esc(t.teilnehmer_anzahl || 0)}</span></div>
-                            </div>
+                            <h2 class="tournament-name"><span class="material-icons" style="font-size:16px;vertical-align:-3px;">cloud</span> ${esc(t.bezeichnung)}<span class="status-badge status-${statusKlasse(t.status_effektiv)}">${esc(status)}</span></h2>
+                            <div class="kompakt-ort"><span class="material-icons">calendar_today</span><span>${datum(t.datum)} · ${esc(t.ort)}</span></div>
+                            <div class="info-chips"><span class="info-chip">${esc(t.teilnehmer_anzahl || 0)} Teilnehmer</span></div>
                         </div>
                         <div class="card-actions">${aktion}</div>
                     </div>`;
@@ -867,15 +1037,6 @@
         }
 
         async function holen(id, name) {
-            const bestaetigt = window.zeigeZentraleBestaetigung
-                ? await window.zeigeZentraleBestaetigung(
-                    `Das Turnier "${name}" wird aus der Cloud geholt. Das löscht alle bestehenden Turniere auf diesem Gerät (inkl. Pools, Kämpfe und Teilnehmer). Fortfahren?`,
-                    'Turnier aus der Cloud holen',
-                    'warning'
-                )
-                : confirm('Das Holen löscht alle bestehenden Turniere auf diesem Gerät. Fortfahren?');
-            if (!bestaetigt) return;
-
             zeigeFehler('');
             liste.querySelectorAll('.cloud-holen').forEach(b => { b.disabled = true; });
             try {

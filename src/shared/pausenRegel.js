@@ -44,7 +44,7 @@ export function ermittlePausensekunden(altersklasse) {
  * @param {Date|string} wert
  * @returns {number} ms seit Epoch, oder NaN falls nicht parsbar
  */
-function parseDbZeitstempel(wert) {
+export function parseDbZeitstempel(wert) {
     if (wert instanceof Date) return wert.getTime();
     if (typeof wert !== 'string') return NaN;
 

@@ -3,7 +3,8 @@
 // Uplink Änderungen über einen Hash erkennen kann; ladeSnapshots liest nur über die schreibgeschützte Rolle live_ro.
 import { berechneKacheln } from '../shared/liveKachel.js';
 import { berechnePlatzierungen } from '../shared/platzierungen.js';
-import { berechneMannschaften } from '../shared/liveMannschaft.js';
+import { berechneMannschaften } from '../shared/liveMannschaft.js';
+import { prognoseMatte } from '../shared/zeitPrognose.js';
 import { mannschaftsSchluessel, teilnehmerSchluessel, vereinSchluessel, waehleAnzeigename } from './schluessel.js';
 
 const OFFEN = new Set(['bereit', 'vorbereiten', 'gestartet']);
@@ -29,6 +30,20 @@ function platzierungenJePool(pools, teilnehmer, kaempfe) {
         ergebnis[pool.id] = Object.fromEntries(r.eintraege.map(e => [e.teilnehmer.id, e.platz]));
     }
     return ergebnis;
+}
+
+// Geschätzte Dauer je Kampf auf einer Matte (Schnitt der gekämpften Zeiten + Puffer, src/shared/zeitPrognose.js).
+function mattenDauer(matteId, pools, kaempfe) {
+    const poolById = new Map(pools.map(p => [p.id, p]));
+    const dieser = kaempfe
+        .filter(k => (k.kampfflaeche_id != null ? k.kampfflaeche_id : (poolById.get(k.pool_id) || {}).kampfflaeche_id) === matteId)
+        .map(k => ({ ...k, pool_kampfzeit: (poolById.get(k.pool_id) || {}).kampfzeit_sekunden }))
+        .sort((a, b) => {
+            const ra = a.matten_reihenfolge == null ? Infinity : Number(a.matten_reihenfolge);
+            const rb = b.matten_reihenfolge == null ? Infinity : Number(b.matten_reihenfolge);
+            return ra !== rb ? ra - rb : a.id - b.id;
+        });
+    return Math.round(prognoseMatte(dieser, 0).dauerSekunden);
 }
 
 export function baueSnapshot({ turnier, kampfflaechen, pools, teilnehmer, kaempfe, mannschaften = [], mitglieder = [], begegnungen = [] }, { geheimnis }) {
@@ -131,7 +146,7 @@ export function baueSnapshot({ turnier, kampfflaechen, pools, teilnehmer, kaempf
         vereine: vereineAlle,
         mannschaften: teamsAusgabe,
         begegnungen: team.begegnungen,
-        matten: kampfflaechen.map(m => ({ id: m.id, bezeichnung: m.bezeichnung })).sort((a, b) => a.id - b.id),
+        matten: kampfflaechen.map(m => ({ id: m.id, bezeichnung: m.bezeichnung, dauerSekunden: mattenDauer(m.id, pools, kaempfe) })).sort((a, b) => a.id - b.id),
         teilnehmer: eintraege,
         warteschlangen,
         pools: poolsAusgabe,

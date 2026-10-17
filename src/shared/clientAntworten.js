@@ -5,6 +5,7 @@
 // (public/js/mobil/). Schreibvorgänge laufen nicht hierüber, sondern über public/js/datenzugriff.js
 // direkt in die lokale Dokument-DB; alle übrigen Verwaltungsfunktionen gibt es nur am Hallen-Server.
 import { baueMattenAnsicht } from './mattenAnsicht.js';
+import { baueZeitprognoseAntwort } from './zeitprognoseAntwort.js';
 
 export const NUR_AM_SERVER = 'Nur am Hallen-Server verfügbar.';
 
@@ -130,6 +131,15 @@ export async function beantworteClientAnfrage({ methode, pfad, query = {}, body 
 
         // Teilnehmerliste je Altersklasse gesperrt/ausgelost (gleiche Regel wie poolController,
         // ermittleAltersklassenPoolZustand); `gesperrt` bleibt als Alias für ältere Clients.
+        if (pfad === '/pools/zeitprognose') {
+            const docs = await dokumenteNachTyp(db);
+            return ok(baueZeitprognoseAntwort({
+                kampfflaechen: (docs.kampfflaeche || []).filter(k => String(k.turnier_id) === String(query.turnierId)),
+                pools: (docs.pool || []).filter(p => String(p.turnier_id) === String(query.turnierId)),
+                kaempfe: docs.kampf || [], mannschaftskaempfe: docs.mannschaftskampf || [], mannschaften: docs.mannschaft || []
+            }, Date.now()));
+        }
+
         if (pfad === '/pools/vorhanden') {
             const docs = await dokumenteNachTyp(db);
             const turnierPools = (docs.pool || []).filter(p => String(p.turnier_id) === String(query.turnierId));

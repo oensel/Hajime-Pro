@@ -426,3 +426,19 @@
 
 /* Druck-Icon an der Matte in der Haupttextfarbe (im Dunkelmodus weiß) statt im gedämpften Grau */
 .matte-druck-icon { color: var(--text-main); }
+
+.matte-ende {
+    margin-left: 8px;
+    font-size: 12px;
+    opacity: 0.85;
+    white-space: nowrap;
+}
+
+.matte-rueckstand {
+    margin-left: 4px;
+    padding: 1px 6px;
+    border-radius: 8px;
+    background: #ffc107;
+    color: #212529;
+    font-weight: 700;
+}

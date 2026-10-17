@@ -13,11 +13,24 @@ export async function warteLeerlauf(request) {
 }
 
 export async function legeTurnierAn(request, bezeichnung, anzahl_kampfflaechen = 1) {
-    const resp = await request.post('/api/turniere', {
-        data: { bezeichnung, ort: 'Teststadt', datum: '2027-03-20', ausrichter: 'JC Test', anzahl_kampfflaechen }
-    });
-    expect(resp.ok(), await resp.text()).toBeTruthy();
-    return (await resp.json()).turnierId;
+    // Ein Turnier pro Tag: freien Wettkampftag suchen. Das neue Turnier wird (testweise ohne Termin-
+    // und Aktiv-Prüfung) aktiviert und ersetzt damit das bisher aktive, wie früher das Anlegen.
+    for (let versuch = 0; versuch < 20; versuch++) {
+        // Lizenzen der Testteilnehmer laufen Ende 2030 ab: der Wettkampftag muss davor liegen.
+        const tage = Math.floor(Math.random() * 1400);
+        const datum = new Date(Date.UTC(2027, 5, 1) + tage * 86400000).toISOString().slice(0, 10);
+        if (datum === '2027-05-15') continue;
+        const resp = await request.post('/api/turniere', {
+            data: { bezeichnung, ort: 'Teststadt', datum, ausrichter: 'JC Test', anzahl_kampfflaechen }
+        });
+        if (resp.status() === 409) continue;
+        expect(resp.ok(), await resp.text()).toBeTruthy();
+        const turnierId = (await resp.json()).turnierId;
+        const aktiv = await request.post(`/api/turniere/${turnierId}/aktivieren`, { data: { erzwingen: true } });
+        expect(aktiv.ok(), await aktiv.text()).toBeTruthy();
+        return turnierId;
+    }
+    throw new Error('Kein freier Wettkampftag für das Testturnier gefunden.');
 }
 
 export async function ladeDokument(request, dbName, id) {

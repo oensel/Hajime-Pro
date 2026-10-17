@@ -24,9 +24,18 @@
             <h1 id="formTitle">Turnier</h1>
         </div>
         <div class="turnier-page-header-actions">
+            <!-- "Veröffentlichen" gibt es nur in der Cloud; am Hallen-Server bleibt der Knopf ausgeblendet -->
             <button type="button" class="btn btn-outlined turnier-header-btn" id="veroeffentlichenBtn" style="display: none;">
                 <span class="material-icons">publish</span>
                 Veröffentlichen
+            </button>
+            <button type="button" class="btn btn-raised turnier-header-btn" id="aktivierenBtn" style="display: none;">
+                <span class="material-icons">play_arrow</span>
+                Turnier aktivieren
+            </button>
+            <button type="button" class="btn btn-outlined turnier-header-btn" id="duplizierenBtn" style="display: none;">
+                <span class="material-icons">content_copy</span>
+                Duplizieren
             </button>
             <button type="button" class="btn btn-outlined turnier-header-btn" id="durchfuehrungBeendenBtn" style="display: none;">
                 <span class="material-icons">flag</span>
@@ -114,10 +123,15 @@
                         </div>
                         <div class="form-group">
                             <label for="farbe_kaempfer2">Kämpfer 2 trägt</label>
-                            <select id="farbe_kaempfer2">
+                            <select id="farbe_kaempfer2" hidden>
                                 <option value="blau">Blau</option>
                                 <option value="rot">Rot</option>
                             </select>
+                            <div class="farb-schalter" id="farbSchalter" role="switch" aria-checked="false" aria-label="Farbe von Kämpfer 2" tabindex="0">
+                                <div class="farb-schalter-knopf"></div>
+                                <span id="farbSchalterBlau" class="aktiv"><i class="farb-schalter-punkt"></i>Blau</span>
+                                <span id="farbSchalterRot">Rot</span>
+                            </div>
                         </div>
                         <div class="form-group" id="anmeldeschlussGroup" style="display: none;">
                             <label for="anmeldeschluss">Anmeldeschluss (Frist)</label>
@@ -208,6 +222,7 @@
 
 <!-- Externe JavaScript-Datei für die Logik einbinden -->
 <script src="/js/ausschreibung-viewer.js"></script>
+<script src="/js/turnierDuplizieren.js"></script>
 <script src="/js/turnier.js"></script>
 </body>
 </html>

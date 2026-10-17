@@ -46,3 +46,11 @@ test('Pausenwarnung für bereit-Kampf zwei Minuten nach dem letzten Kampfende (U
     assert.notEqual(ansicht.find(k => k.id === 6).pausenwarnung, null);
     assert.equal(ansicht.find(k => k.id === 5).pausenwarnung, null);
 });
+
+test('voraussichtlich_um: offene Kämpfe nacheinander ab jetzt, beendete ohne Zeit', () => {
+    const ansicht = baueMattenAnsicht(daten, 10, JETZT);
+    assert.equal(ansicht.find(k => k.id === 5).voraussichtlich_um, null);
+    assert.equal(ansicht.find(k => k.id === 6).voraussichtlich_um, JETZT);
+    // nur ein beendeter Kampf: Vorgabe = Pool-Kampfzeit (240 s) + 90 s Puffer
+    assert.equal(ansicht.find(k => k.id === 7).voraussichtlich_um, JETZT + 330000);
+});

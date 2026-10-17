@@ -34,17 +34,19 @@ test.describe.serial('Sync-Grundlagen: Dokument-DB und Turnier-Instanz', () => {
         await ohneSecret.dispose();
     });
 
-    test('zweites Turnier ersetzt das erste komplett (SQL und Dokument-DB)', async ({ request }) => {
+    test('Aktivieren eines zweiten Turniers wechselt die Dokument-DB; das erste bleibt in der Datenbank', async ({ request }) => {
         const alt = await syncStatus(request);
         await legeTurnierAn(request, 'Sync Grundlagen 2');
         const neu = await syncStatus(request);
         expect(neu.instanz_id).not.toBe(alt.instanz_id);
+        // die Dokument-DB des bisherigen Turniers ist weg, seine Daten liegen weiter in der relationalen DB
         expect((await request.get(`/db/${alt.db_name}`)).status()).toBe(404);
         const turniere = await (await request.get('/api/turniere')).json();
-        expect(turniere.map(t => t.bezeichnung)).toEqual(['Sync Grundlagen 2']);
+        expect(turniere.map(t => t.id)).toContain(alt.turnier_id);
+        expect(turniere.filter(t => t.aktiv).map(t => t.bezeichnung)).toEqual(['Sync Grundlagen 2']);
     });
 
-    test('Neuanlage über turnier.html fragt vorher nach; Abbrechen behält das bisherige Turnier', async ({ page, request }) => {
+    test('Neuanlage über turnier.html legt einen Entwurf an, ohne das aktive Turnier zu wechseln', async ({ page, request }) => {
         const vorher = await syncStatus(request);
 
         await page.goto('/turnier.html');
@@ -57,20 +59,17 @@ test.describe.serial('Sync-Grundlagen: Dokument-DB und Turnier-Instanz', () => {
         await page.locator('#bundesland').selectOption('Nordrhein-Westfalen');
         await page.locator('#submitBtn').click();
 
-        const dialog = page.locator('#customConfirmModal');
-        await expect(dialog).toBeVisible();
-        await expect(page.locator('#modalMessage')).toContainText('nur ein Turnier');
-        await page.locator('#modalCancelBtn').click();
-        await expect(dialog).toBeHidden();
-        expect((await syncStatus(request)).instanz_id).toBe(vorher.instanz_id);
-
-        await page.locator('#submitBtn').click();
-        await expect(dialog).toBeVisible();
-        await page.locator('#modalConfirmBtn').click();
+        // kein Rückfrage-Dialog mehr: das Turnier wartet als Entwurf auf seinen Wettkampftag
         await expect(page.locator('#snackbarText')).toHaveText('Turnier erfolgreich angelegt!');
-        const nachher = await syncStatus(request);
-        expect(nachher.instanz_id).not.toBe(vorher.instanz_id);
+        expect((await syncStatus(request)).instanz_id).toBe(vorher.instanz_id);
         const turniere = await (await request.get('/api/turniere')).json();
-        expect(turniere.map(t => t.bezeichnung)).toEqual(['Sync Grundlagen 3']);
+        const neu = turniere.find(t => t.bezeichnung === 'Sync Grundlagen 3');
+        expect(neu.aktiv).toBe(false);
+        expect(neu.status).toBe('entwurf');
+        // ein weiteres Turnier am selben Tag ist nicht erlaubt
+        const doppelt = await request.post('/api/turniere', {
+            data: { bezeichnung: 'Sync Grundlagen 4', ort: 'Senden', datum: '2027-05-15', ausrichter: 'JC Senden', anzahl_kampfflaechen: 1 }
+        });
+        expect(doppelt.status()).toBe(409);
     });
 });

@@ -995,7 +995,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                             // in teilnehmerController.js verhindert.
                             versteckeMenuePunkte(['nav-turnier', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
 
-                            const eingeschraenkteSeiten = ['turnier.html', 'pools.html', 'matten.html', 'kampf.html', 'siegerliste.html', 'urkunden.html', 'urkunden-designer.html', 'dashboard.html', 'uebersicht.html'];
+                            const eingeschraenkteSeiten = ['turnier.html', 'pools.html', 'matten.html', 'zeitplan.html', 'kampf.html', 'siegerliste.html', 'urkunden.html', 'urkunden-designer.html', 'dashboard.html', 'uebersicht.html'];
                             if (eingeschraenkteSeiten.some(seite => currentPath.includes(seite))) {
                                 window.location.href = `/teilnehmer.html?turnierId=${turnierId}`;
                                 return;
@@ -1021,7 +1021,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (currentPath.includes('teilnehmer.html')) document.getElementById('nav-teilnehmer')?.classList.add('active');
     if (currentPath.includes('pools.html')) document.getElementById('nav-pools')?.classList.add('active');
     if (currentPath.includes('mannschaften.html')) document.getElementById('nav-mannschaften')?.classList.add('active');
-    if (currentPath.includes('matten.html')) document.getElementById('nav-matten')?.classList.add('active');
+    // Die Zeitplan-Simulation gehört zu den Matten (Button auf matten.html).
+    if (currentPath.includes('matten.html') || currentPath.includes('zeitplan.html')) document.getElementById('nav-matten')?.classList.add('active');
     if (currentPath.includes('kampf.html')) document.getElementById('nav-kampf')?.classList.add('active');
     if (currentPath.includes('siegerliste.html')) document.getElementById('nav-siegerliste')?.classList.add('active');
     if (currentPath.includes('urkunden.html')) document.getElementById('nav-urkunden')?.classList.add('active');

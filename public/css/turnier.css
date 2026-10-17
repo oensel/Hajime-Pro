@@ -58,6 +58,47 @@ body { padding-bottom: 96px; }
 
 .turnier-header-btn .material-icons { font-size: 18px; }
 
+/* Umschalter Blau/Rot für die Farbe von Kämpfer 2 */
+.farb-schalter {
+    position: relative;
+    display: inline-grid;
+    grid-template-columns: 1fr 1fr;
+    width: 120px;
+    height: 26px;
+    padding: 2px;
+    border-radius: 13px;
+    border: 1px solid #c9ccd1;
+    background: #f1f2f4;
+    cursor: pointer;
+    user-select: none;
+    box-sizing: border-box;
+}
+.farb-schalter-knopf {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: calc(50% - 2px);
+    height: calc(100% - 4px);
+    border-radius: 11px;
+    background: #185FA5;
+    transition: transform .2s, background .2s;
+}
+.farb-schalter.rot .farb-schalter-knopf { transform: translateX(100%); background: #A32D2D; }
+.farb-schalter span {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #5f6368;
+    transition: color .2s;
+}
+.farb-schalter span.aktiv { color: #fff; }
+.farb-schalter-punkt { width: 7px; height: 7px; border-radius: 50%; background: #fff; }
+
 .turnier-header-btn-danger {
     color: #c62828;
     border-color: #c62828;

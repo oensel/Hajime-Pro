@@ -187,7 +187,7 @@ export async function uebernimmPaket(knex, paket, { jetzt = () => new Date() } =
             name: text(paket.name, 200), datum: paket.datum, stand: new Date(paket.stand), sequenz: paket.sequenz,
             empfangen_am: jetzt(), zurueckgezogen: false,
             vereine: JSON.stringify(paket.vereine.map(v => ({ key: text(v?.key, 64), name: text(v?.name, 200) }))),
-            matten: JSON.stringify(paket.matten.map(m => ({ id: ganzzahl(m?.id), bezeichnung: text(m?.bezeichnung, 100) })))
+            matten: JSON.stringify(paket.matten.map(m => ({ id: ganzzahl(m?.id), bezeichnung: text(m?.bezeichnung, 100), dauerSekunden: ganzzahl(m?.dauerSekunden) })))
         };
         if (bestehend) {
             await trx('live_turniere').where({ turnier_key: key }).update(kopf);
