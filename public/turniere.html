@@ -7,8 +7,8 @@
     <link rel="stylesheet" href="/css/common.css">
     <style>
         .mdc-card {
-            max-width: 1100px;
-            padding: 36px;
+            max-width: none;
+            padding: 24px 32px;
         }
         .header-section {
             display: flex;
@@ -176,13 +176,46 @@
             color: var(--text-muted);
         }
         .tournament-card.aktiv {
-            border: 2px solid var(--primary);
+            border: 2px solid #c62828;
         }
         .status-badge.status-aktiv {
-            background: rgba(21, 101, 192, 0.1);
-            color: #1565c0;
-            border: 1px solid rgba(21, 101, 192, 0.3);
+            background: rgba(198, 40, 40, 0.1);
+            color: #c62828;
+            border: 1px solid rgba(198, 40, 40, 0.3);
         }
+        .lokal-grid {
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 12px;
+        }
+        .tournament-card.kompakt {
+            padding: 12px 14px;
+            gap: 8px;
+        }
+        .tournament-card.kompakt .tournament-name {
+            font-size: 15px;
+            margin: 0 0 6px 0;
+        }
+        .tournament-card.kompakt .card-actions {
+            padding-top: 10px;
+        }
+        .kompakt-ort {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+        }
+        .kompakt-ort .material-icons { font-size: 15px; color: var(--primary); opacity: 0.8; }
+        .info-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+        .info-chip {
+            font-size: 11px;
+            padding: 1px 8px;
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.05);
+            color: var(--text-muted);
+        }
+        .tournament-card.cloud-karte { border-style: dashed; }
         .status-badge.status-geplant {
             background: rgba(239, 108, 0, 0.1);
             color: #ef6c00;
@@ -402,6 +435,8 @@
         <div id="cloudFehler" class="cloud-fehler" style="display: none;"></div>
         <div id="cloudListe"></div>
     </div>
+
+    <div id="abgeschlossenBereich"></div>
 </div>
 
 <script src="/js/ausschreibung-viewer.js"></script>
@@ -767,6 +802,35 @@
                 `;
             }
 
+            // Kompakte Karte für den Hallen-Server: Datum/Ort in einer Zeile, Eckdaten als Chips. Das Bearbeiten
+            // der Stammdaten läuft über "Auswählen" und den Menüpunkt "Turnier".
+            function renderKompakteKarte(t) {
+                const hallen = hallenStatus(t);
+                const o = t.datum ? new Date(t.datum) : null;
+                const dateStr = o ? `${String(o.getDate()).padStart(2, '0')}.${String(o.getMonth() + 1).padStart(2, '0')}.${o.getFullYear()}` : '';
+                const labels = [...getAltersklassenLabels(t.altersklassen), ...getAltersklassenLabels(t.mannschafts_altersklassen)];
+                const waehlen = istFreigegeben
+                    ? `<button type="button" class="btn btn-raised" onclick="window.location.href='/teilnehmer.html?turnierId=${t.id}'">Auswählen</button>` : '';
+                return `
+                    <div class="tournament-card kompakt ${t.aktiv ? 'aktiv' : ''}">
+                        <div>
+                            <h2 class="tournament-name">${t.bezeichnung}<span class="status-badge status-${hallen.klasse}">${hallen.label}</span></h2>
+                            <div class="kompakt-ort"><span class="material-icons">calendar_today</span><span>${dateStr} · ${t.plz ? `${t.plz} ` : ''}${t.ort}</span></div>
+                            <div class="info-chips">
+                                <span class="info-chip">${t.anzahl_kampfflaechen} Matten</span>
+                                <span class="info-chip">${t.teilnehmer_anzahl || 0} Teilnehmer</span>
+                                ${t.anmeldeschluss ? `<span class="info-chip">Frist ${String(t.anmeldeschluss).slice(0, 10).split('-').reverse().join('.')}</span>` : ''}
+                            </div>
+                            ${labels.length ? `<div class="ak-chip-row">${labels.map(l => `<span class="ak-chip">${l}</span>`).join('')}</div>` : ''}
+                        </div>
+                        <div class="card-actions">
+                            ${waehlen}
+                            ${hallenAktionen(t)}
+                        </div>
+                    </div>
+                `;
+            }
+
             let htmlContent = '';
 
             if (istOffline) {
@@ -776,16 +840,15 @@
                 const fertig = turniere.filter(t => !t.aktiv && ['abgeschlossen', 'abgesagt'].includes(t.status));
                 const datumKurz = (d) => { const o = new Date(d); return `${String(o.getDate()).padStart(2, '0')}.${String(o.getMonth() + 1).padStart(2, '0')}.${o.getFullYear()}`; };
 
-                if (aktives.length) {
-                    htmlContent += `<h2 class="section-title"><span class="material-icons" style="font-size:20px;">play_arrow</span> Aktives Turnier</h2>
-                        <div class="tournaments-grid">${aktives.map(t => renderCard(t, true)).join('')}</div>`;
+                // Aktives Turnier (roter Rahmen) zuerst, daneben die übrigen lokalen Turniere.
+                const lokale = [...aktives, ...geplant];
+                if (lokale.length) {
+                    htmlContent += `<h2 class="section-title"><span class="material-icons" style="font-size:20px;">apartment</span> Lokale Turniere</h2>
+                        <div class="tournaments-grid lokal-grid">${lokale.map(t => renderKompakteKarte(t)).join('')}</div>`;
                 }
-                if (geplant.length) {
-                    htmlContent += `<h2 class="section-title"><span class="material-icons" style="font-size:20px;">schedule</span> Geplant und Entwürfe</h2>
-                        <div class="tournaments-grid">${geplant.map(t => renderCard(t, true)).join('')}</div>`;
-                }
+                let abgeschlossenHtml = '';
                 if (fertig.length) {
-                    htmlContent += `<h2 class="section-title"><span class="material-icons" style="font-size:20px;">inventory_2</span> Abgeschlossen</h2>
+                    abgeschlossenHtml += `<h2 class="section-title"><span class="material-icons" style="font-size:20px;">inventory_2</span> Abgeschlossen</h2>
                         <div class="abgeschlossen-liste">${fertig.map(t => `
                             <div class="abgeschlossen-zeile" data-turnier-id="${t.id}">
                                 <span class="material-icons">${t.status === 'abgesagt' ? 'cancel' : 'check'}</span>
@@ -797,8 +860,11 @@
                             </div>`).join('')}</div>`;
                 }
                 container.innerHTML = htmlContent;
+                // Abgeschlossene Turniere stehen immer ganz unten, hinter dem Cloud-Bereich.
+                const abgeschlossenBereich = document.getElementById('abgeschlossenBereich');
+                abgeschlossenBereich.innerHTML = abgeschlossenHtml;
 
-                container.addEventListener('click', async (e) => {
+                const behandleKlick = async (e) => {
                     const knopf = e.target.closest('button[data-aktion]');
                     if (!knopf) return;
                     const turnier = turniere.find(t => String(t.id) === knopf.dataset.id);
@@ -815,7 +881,9 @@
                         }
                         window.location.reload();
                     }
-                });
+                };
+                container.addEventListener('click', behandleKlick);
+                abgeschlossenBereich.addEventListener('click', behandleKlick);
                 return;
             }
 
@@ -944,7 +1012,7 @@
                 liste.innerHTML = '<div class="no-data-msg">Keine Turniere in der Cloud.</div>';
                 return;
             }
-            liste.innerHTML = '<div class="tournaments-grid">' + turniere.map(t => {
+            liste.innerHTML = '<div class="tournaments-grid lokal-grid">' + turniere.map(t => {
                 const holbar = ERLAUBTE_STATUS.includes(t.status_effektiv);
                 const status = STATUS_TEXT[t.status_effektiv] || t.status_effektiv || '';
                 const aktion = holbar
@@ -953,14 +1021,11 @@
                         ? 'Anmeldung läuft noch' + (t.anmeldeschluss ? ' (bis ' + datum(t.anmeldeschluss) + ')' : '')
                         : 'Noch nicht abholbar'}</span>`;
                 return `
-                    <div class="tournament-card">
+                    <div class="tournament-card kompakt cloud-karte">
                         <div>
-                            <h2 class="tournament-name">${esc(t.bezeichnung)}<span class="status-badge status-${statusKlasse(t.status_effektiv)}">${esc(status)}</span></h2>
-                            <div class="tournament-details">
-                                <div class="detail-item"><span class="material-icons">calendar_today</span><span>Datum: ${datum(t.datum)}</span></div>
-                                <div class="detail-item"><span class="material-icons">place</span><span>Ort: ${esc(t.ort)}</span></div>
-                                <div class="detail-item"><span class="material-icons">groups</span><span>Gemeldete Teilnehmer: ${esc(t.teilnehmer_anzahl || 0)}</span></div>
-                            </div>
+                            <h2 class="tournament-name"><span class="material-icons" style="font-size:16px;vertical-align:-3px;">cloud</span> ${esc(t.bezeichnung)}<span class="status-badge status-${statusKlasse(t.status_effektiv)}">${esc(status)}</span></h2>
+                            <div class="kompakt-ort"><span class="material-icons">calendar_today</span><span>${datum(t.datum)} · ${esc(t.ort)}</span></div>
+                            <div class="info-chips"><span class="info-chip">${esc(t.teilnehmer_anzahl || 0)} Teilnehmer</span></div>
                         </div>
                         <div class="card-actions">${aktion}</div>
                     </div>`;

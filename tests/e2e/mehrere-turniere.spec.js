@@ -155,3 +155,47 @@ test('turniere.html: Aktivieren und Duplizieren erscheinen, abgeschlossene Turni
     expect((await request.post(`/api/turniere/${heutiges}/aktivieren`, { data: {} })).ok()).toBeTruthy();
     expect((await request.post(`/api/turniere/${heutiges}/durchfuehrung-beenden`)).ok()).toBeTruthy();
 });
+
+test('turniere.html: aktives Turnier mit rotem Rahmen, abgeschlossene Turniere ganz unten, volle Breite', async ({ page, request }) => {
+    const aktivName = `Layout Aktiv ${Date.now()}`;
+    const geplantName = `Layout Geplant ${Date.now()}`;
+    const fertigName = `Layout Fertig ${Date.now()}`;
+    const aktiv = await legeTurnierAn(request, aktivName, heute());
+    await legeTurnierAn(request, geplantName, '2031-09-01');
+    const fertig = await legeTurnierAn(request, fertigName, heute());
+    expect((await request.post(`/api/turniere/${fertig}/aktivieren`, { data: {} })).ok()).toBeTruthy();
+    expect((await request.post(`/api/turniere/${fertig}/durchfuehrung-beenden`)).ok()).toBeTruthy();
+    expect((await request.post(`/api/turniere/${aktiv}/aktivieren`, { data: {} })).ok()).toBeTruthy();
+
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await page.goto('/turniere.html');
+    const aktivKarte = page.locator('.tournament-card').filter({ hasText: aktivName });
+    const geplantKarte = page.locator('.tournament-card').filter({ hasText: geplantName });
+    await expect(aktivKarte).toHaveClass(/aktiv/);
+    expect(await aktivKarte.evaluate(e => getComputedStyle(e).borderTopColor)).toBe('rgb(198, 40, 40)');
+    // das aktive Turnier steht vor den anderen lokalen Turnieren, nebeneinander im selben Raster
+    const karten = page.locator('.lokal-grid .tournament-card');
+    await expect(karten.first()).toHaveClass(/aktiv/);
+    const [a, zweite] = [await karten.nth(0).boundingBox(), await karten.nth(1).boundingBox()];
+    expect(Math.abs(a.y - zweite.y)).toBeLessThan(2);
+    expect(zweite.x).toBeGreaterThan(a.x);
+    await expect(geplantKarte).toBeVisible();
+    // kein "Bearbeiten" mehr, das Bearbeiten läuft über Auswählen und das Menü
+    await expect(page.getByRole('button', { name: 'Bearbeiten' })).toHaveCount(0);
+
+    // abgeschlossene Turniere ganz unten (unter dem Cloud-Bereich bzw. unter den lokalen Karten)
+    const zeile = page.locator('.abgeschlossen-zeile').filter({ hasText: fertigName });
+    await expect(zeile).toBeVisible();
+    expect((await zeile.boundingBox()).y).toBeGreaterThan((await geplantKarte.boundingBox()).y);
+    const letzte = await page.evaluate(() => {
+        const bereich = document.getElementById('abgeschlossenBereich');
+        const cloud = document.getElementById('cloudBereich');
+        return !!(cloud.compareDocumentPosition(bereich) & Node.DOCUMENT_POSITION_FOLLOWING);
+    });
+    expect(letzte).toBeTruthy();
+
+    // volle Breite: die Hauptkarte füllt den Platz neben dem Menü (keine feste Höchstbreite von 1100 px)
+    const breite = await page.locator('.mdc-card').filter({ has: page.locator('#tournamentsContainer') }).evaluate(e => e.getBoundingClientRect().width);
+    expect(breite).toBeGreaterThan(1200);
+});
+

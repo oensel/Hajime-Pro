@@ -105,9 +105,11 @@ test('Alters- und Mannschaftsklassen auswählen und mit dem Turnier speichern', 
     await expect(karte).toBeVisible();
     await expect(karte.locator('.status-badge')).toHaveText('Entwurf');
 
-    // --- Erneut in die Bearbeitung wechseln (über den "Bearbeiten"-Button der Karte, nicht per
+    // --- Erneut in die Bearbeitung wechseln: Turnier auswählen, dann im Menü "Turnier" (nicht per
     // direkter URL, damit auch dieser Navigationsweg abgedeckt ist) ---
-    await karte.getByRole('button', { name: 'Bearbeiten' }).click();
+    await expect(karte.getByRole('button', { name: 'Bearbeiten' })).toHaveCount(0);
+    await karte.getByRole('button', { name: 'Auswählen' }).click();
+    await page.locator('#nav-turnier').click();
     await expect(page).toHaveURL(/\/turnier\.html\?id=\d+/);
 
     // --- Startgeld ohne Zahlungsdaten: clientseitige Validierung in turnier.js (gespiegelt vom
