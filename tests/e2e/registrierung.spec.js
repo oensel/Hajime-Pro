@@ -393,3 +393,10 @@ test('Super-Admin sieht eine Erstregistrierung in der Warteschlange und kann sie
         await mitTestDb((db) => db('benutzer').where({ id: 'offline_user' }).update({ ist_super_admin: false }));
     }
 });
+
+test('Auth-Endpunkte lehnen übergroße Anfragen ab (413)', async ({ request }) => {
+    const gross = await request.post('/api/auth/login', { data: { email: 'x@example.test', password: 'p'.repeat(20 * 1024) } });
+    expect(gross.status()).toBe(413);
+    const normal = await request.post('/api/auth/login', { data: { email: 'x@example.test', password: 'falsch12345' } });
+    expect(normal.status()).toBe(401);
+});

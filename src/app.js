@@ -233,8 +233,12 @@ if (syncKonfig.istClient) {
     // eigenes, höheres Limit nur für diese beiden Routen.
     const jsonImport = express.json({ limit: '200mb' });
     const jsonStandard = express.json({ limit: '15mb' });
+    // Anmeldung/Registrierung/Profil (/api/auth, teils öffentlich) brauchen nur wenige Felder: kleines Limit (413).
+    const jsonAuth = express.json({ limit: '10kb' });
     const IMPORT_ROUTE = /^\/api\/turniere\/(import|\d+\/import-ergebnisse)$/;
-    app.use((req, res, next) => (IMPORT_ROUTE.test(req.path) ? jsonImport : jsonStandard)(req, res, next));
+    const AUTH_ROUTE = /^\/api\/auth(\/|$)/;
+    app.use((req, res, next) => (IMPORT_ROUTE.test(req.path) ? jsonImport
+        : AUTH_ROUTE.test(req.path) ? jsonAuth : jsonStandard)(req, res, next));
     app.use(bodyLeerFallback);
     app.use(express.static(path.join(__dirname, '../public')));
 

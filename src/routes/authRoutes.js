@@ -5,12 +5,12 @@ import { erzeugeAuthRatenbegrenzung } from '../middleware/authRatenbegrenzung.js
 
 export function getAuthRoutes(knex) {
     const router = express.Router();
-    // je Absender bzw. je E-Mail-Adresse und 10 Minuten (nur in der Cloud bzw. mit AUTH_RATENLIMIT_AKTIV=true)
+    // je 10 Minuten: je Absender, Bestätigungsmail zusätzlich je Adresse, Login zusätzlich je Adresse und Absender (nur in der Cloud bzw. mit AUTH_RATENLIMIT_AKTIV=true)
     const grenzeRegistrierung = erzeugeAuthRatenbegrenzung({ max: 10 });
     const grenzeErneut = erzeugeAuthRatenbegrenzung({ max: 10 });
-    const grenzeErneutAdresse = erzeugeAuthRatenbegrenzung({ max: 10, schluessel: 'email' });
+    const grenzeErneutAdresse = erzeugeAuthRatenbegrenzung({ max: 3, schluessel: 'email', endpunkt: 'email-bestaetigung-erneut' });
     const grenzeLogin = erzeugeAuthRatenbegrenzung({ max: 30 });
-    const grenzeLoginAdresse = erzeugeAuthRatenbegrenzung({ max: 10, schluessel: 'email' });
+    const grenzeLoginAdresse = erzeugeAuthRatenbegrenzung({ max: 10, schluessel: 'email+ip', endpunkt: 'login' });
 
     router.post('/register', grenzeRegistrierung, (req, res) => register(knex, req, res));
     router.post('/email-bestaetigen', (req, res) => emailBestaetigen(knex, req, res));

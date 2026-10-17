@@ -89,7 +89,7 @@ test('ratenSchluessel: IPv6 je /64, IPv4 und IPv4-mapped unverändert', async ()
     assert.equal(ratenSchluessel('unbekannt'), 'unbekannt');
 });
 
-test('Auth-Ratenbegrenzung: volle Tabelle sperrt neue Absender statt Zähler zu verdrängen', async () => {
+test('Auth-Ratenbegrenzung: volle Tabelle verdrängt, neue Clients werden nicht gesperrt', async () => {
     const { erzeugeAuthRatenbegrenzung } = await import('../../src/middleware/authRatenbegrenzung.js');
     const mw = erzeugeAuthRatenbegrenzung({ max: 1, aktiv: true, maxEintraege: 2, env: {} });
     const anfrage = (ip) => new Promise((resolve) => {
@@ -98,28 +98,57 @@ test('Auth-Ratenbegrenzung: volle Tabelle sperrt neue Absender statt Zähler zu 
     });
     assert.equal(await anfrage('198.51.100.1'), 200);
     assert.equal(await anfrage('198.51.100.2'), 200);
-    assert.equal(await anfrage('198.51.100.3'), 429, 'Tabelle voll: neuer Absender gesperrt');
-    assert.equal(await anfrage('198.51.100.1'), 429, 'bestehender Zähler bleibt erhalten');
+    assert.equal(await anfrage('198.51.100.2'), 429);
+    assert.equal(await anfrage('198.51.100.3'), 200, 'Tabelle voll: neuer Client trotzdem bedient');
+    assert.equal(await anfrage('198.51.100.4'), 200);
 });
 
-test('Auth-Ratenbegrenzung: je E-Mail-Adresse 10 Versuche, auch von verschiedenen Adressen', async () => {
+test('emailRatenSchluessel: Hash statt Rohtext, zu lange Adressen ohne Schlüssel', async () => {
+    const { emailRatenSchluessel } = await import('../../src/middleware/authRatenbegrenzung.js');
+    const k = emailRatenSchluessel('login', ' Opfer@Example.de ', '2001:db8:1:2::1');
+    assert.match(k, /^[0-9a-f]{64}$/);
+    assert.equal(k, emailRatenSchluessel('login', 'opfer@example.de', '2001:db8:1:2::ffff'), 'gleiches /64');
+    assert.notEqual(k, emailRatenSchluessel('login', 'opfer@example.de', '2001:db8:1:3::1'));
+    assert.notEqual(emailRatenSchluessel('a', 'x@y.de'), emailRatenSchluessel('b', 'x@y.de'), 'je Endpunkt getrennt');
+    const lang = `${'a'.repeat(250)}@x.de`;
+    assert.equal(emailRatenSchluessel('login', lang, '198.51.100.1'), null);
+    assert.equal(emailRatenSchluessel('login', '', '198.51.100.1'), null);
+    assert.equal(emailRatenSchluessel('login', 'a'.repeat(242) + '@example.de', '198.51.100.1').length, 64, '254 Zeichen gehen noch');
+});
+
+test('Auth-Ratenbegrenzung: Login je Adresse und Absender, Bestätigungsmail je Adresse', async () => {
     const vorher = process.env.LIVE_PROXY_VERTRAUEN;
     process.env.LIVE_PROXY_VERTRAUEN = 'true';
     delete process.env.AUTH_RATENLIMIT_AKTIV;
     const fehler = mock.method(console, 'error', () => {});
     try {
         await mitServer(async (_post, postMit) => {
-            for (const pfad of ['/login', '/email-bestaetigung-erneut']) {
-                for (let i = 1; i <= 10; i++) {
-                    const r = await postMit(pfad, { email: i % 2 ? 'Opfer@Example.de' : ' opfer@example.de' }, `198.51.100.${i}`);
-                    assert.notEqual(r.status, 429, `${pfad} Versuch ${i}`);
-                }
-                const elfte = await postMit(pfad, { email: 'OPFER@example.de' }, '198.51.100.99');
-                assert.equal(elfte.status, 429, pfad);
-                assert.deepEqual(await elfte.json(), { success: false, error: 'Zu viele Anfragen. Bitte versuche es später erneut.' });
-                // andere Adresse unbeeinflusst
-                assert.notEqual((await postMit(pfad, { email: 'andere@example.de' }, '198.51.100.98')).status, 429);
+            // Login: 10 Versuche derselben Adresse vom selben Absender, der 11. → 429
+            for (let i = 1; i <= 10; i++) {
+                const r = await postMit('/login', { email: i % 2 ? 'Opfer@Example.de' : ' opfer@example.de' }, '198.51.100.7');
+                assert.notEqual(r.status, 429, `Login ${i}`);
             }
+            const elfte = await postMit('/login', { email: 'OPFER@example.de' }, '198.51.100.7');
+            assert.equal(elfte.status, 429);
+            assert.deepEqual(await elfte.json(), { success: false, error: 'Zu viele Anfragen. Bitte versuche es später erneut.' });
+            // ein anderer Absender (z.B. der Kontoinhaber) ist davon nicht betroffen
+            assert.notEqual((await postMit('/login', { email: 'opfer@example.de' }, '203.0.113.50')).status, 429,
+                'Kontoinhaber von anderer Adresse nicht ausgesperrt');
+            // überlange Adresse: kein Schlüssel aus dem Rohtext, nur die IP-Grenze zählt
+            for (let i = 1; i <= 12; i++) {
+                assert.notEqual((await postMit('/login', { email: `${'b'.repeat(300)}@x.de` }, '198.51.100.8')).status, 429);
+            }
+
+            // Bestätigungsmail: 3 je Adresse (gleich, ob es sie gibt), die 4. → 429, auch von anderen Absendern
+            for (const adresse of ['opfer@example.de', 'gibt-es-nicht@example.de']) {
+                for (let i = 1; i <= 3; i++) {
+                    const r = await postMit('/email-bestaetigung-erneut', { email: adresse }, `198.51.100.${20 + i}`);
+                    assert.equal(r.status, 200, `${adresse} ${i}`);
+                }
+                const vierte = await postMit('/email-bestaetigung-erneut', { email: adresse.toUpperCase() }, '198.51.100.30');
+                assert.equal(vierte.status, 429, adresse);
+            }
+            assert.equal((await postMit('/email-bestaetigung-erneut', { email: 'andere@example.de' }, '198.51.100.30')).status, 200);
         });
     } finally {
         fehler.mock.restore();
