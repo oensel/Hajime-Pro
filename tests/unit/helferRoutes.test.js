@@ -295,12 +295,16 @@ test('Helfer-API und Helferplan-API: Rechte, Eintragen, Frist, Fremdturniere, Ma
         assert.deepEqual([geladen.beginn_min, geladen.ende_min, geladen.waagen_anzahl], [600, 1080, 3]);
         for (const falsch of [
             { beginn_min: 600, ende_min: 600 }, { beginn_min: 700, ende_min: 600 }, { beginn_min: -15, ende_min: 600 },
-            { beginn_min: 600, ende_min: 1441 }, { beginn_min: 600.5, ende_min: 900 }, { waagen_anzahl: 0 }, { waagen_anzahl: 11 },
+            { beginn_min: 600, ende_min: 1441 }, { beginn_min: 600, ende_min: 1440 }, { beginn_min: 600.5, ende_min: 900 }, { waagen_anzahl: 0 }, { waagen_anzahl: 11 },
             { waagen_anzahl: 'zwei' }
         ]) {
             const r = await put('u-benutzer', `/api/turniere/${tA}`, { ...turnierBody, ...falsch });
             assert.equal(r.status, 400, JSON.stringify(falsch));
         }
+        // 23:59 ist das späteste Turnierende
+        assert.equal((await put('u-benutzer', `/api/turniere/${tA}`, { ...zeitBody, ende_min: 1439 })).status, 200);
+        assert.equal((await knex('turniere').where({ id: tA }).first()).ende_min, 1439);
+        assert.equal((await put('u-benutzer', `/api/turniere/${tA}`, zeitBody)).status, 200);
         // Nicht mitgesendet: unverändert
         assert.equal((await put('u-benutzer', `/api/turniere/${tA}`, { ...turnierBody, bezeichnung: 'Pokal A' })).status, 200);
         const unveraendert = await knex('turniere').where({ id: tA }).first();

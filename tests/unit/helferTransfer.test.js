@@ -133,6 +133,26 @@ test('Turnier-Import: alte Datei ohne helferplan und ohne Turnierzeit', async ()
     }
 });
 
+test('Turnier-Import: Turnierende 24:00 wird 23:59, Werte darüber leer', async () => {
+    const db = await starteTestPostgres();
+    try {
+        const ergebnis = [];
+        for (const [beginn, ende] of [[540, 1440], [540, 2000], [1440, null]]) {
+            const daten = {
+                turnier: { id: 78, bezeichnung: 'Spaet', ort: 'Halle', datum: '2030-04-02', ausrichter: 'JC', altersklassen: [],
+                    beginn_min: beginn, ende_min: ende },
+                kampfflaechen: [], pools: [], teilnehmer: [], kaempfe: []
+            };
+            const { turnierId } = await importiereTurnierDaten(db.knex, null, daten);
+            const t = await db.knex('turniere').where({ id: turnierId }).first();
+            ergebnis.push([t.beginn_min, t.ende_min]);
+        }
+        assert.deepEqual(ergebnis, [[540, 1439], [540, null], [null, null]]);
+    } finally {
+        await db.stoppe();
+    }
+});
+
 test('ersetzeHelferplan: ersetzt nur den Helferplan des Turniers', async () => {
     const db = await starteTestPostgres();
     const { knex } = db;

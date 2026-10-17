@@ -96,15 +96,16 @@ function validiereZahlungsdaten(startgeld, iban, kontoinhaber, verwendungszweck)
 }
 
 // Turnierzeit für den Helferplan (Spec Helferverwaltung 7): beginn_min/ende_min als ganze Minuten seit
-// Mitternacht (0..1440, optional, ende > beginn), waagen_anzahl 1..10. `bisher` = gespeicherte Werte (Update):
+// Mitternacht (0..1439, also bis 23:59, optional, ende > beginn), waagen_anzahl 1..10. `bisher` = gespeicherte Werte (Update):
 // nicht mitgesendete Felder bleiben unverändert, leer ('' / null) entfernt die Uhrzeit.
+const MAX_TAGESMINUTE = 1439; // 23:59
 function leseTurnierzeit(body, bisher = null) {
     const fragment = {};
     const minuten = (wert, name) => {
         if (wert === null || wert === '') return null;
         const n = Number(wert);
-        if (!Number.isInteger(n) || n < 0 || n > 1440) {
-            throw new FachFehler(400, `${name} muss eine Uhrzeit zwischen 00:00 und 24:00 in ganzen Minuten sein.`);
+        if (!Number.isInteger(n) || n < 0 || n > MAX_TAGESMINUTE) {
+            throw new FachFehler(400, `${name} muss eine Uhrzeit zwischen 00:00 und 23:59 in ganzen Minuten sein.`);
         }
         return n;
     };
@@ -124,13 +125,14 @@ function leseTurnierzeit(body, bisher = null) {
 }
 
 // Turnierzeit aus einer Exportdatei, nachsichtig: ungültige oder fehlende Werte (ältere Dateien) werden
-// leer (Beginn/Ende) bzw. 1 (Waagen), statt den Import abzubrechen.
+// leer (Beginn/Ende) bzw. 1 (Waagen), statt den Import abzubrechen; ein Turnierende 24:00 (1440) wird 23:59.
 function importTurnierzeit(t) {
     const ganz = (w) => (w === null || w === undefined || w === '' || !Number.isInteger(Number(w)) ? null : Number(w));
     let beginn = ganz(t.beginn_min);
     let ende = ganz(t.ende_min);
-    if (beginn != null && (beginn < 0 || beginn > 1440)) beginn = null;
-    if (ende != null && (ende < 0 || ende > 1440)) ende = null;
+    if (ende === 1440) ende = MAX_TAGESMINUTE;
+    if (beginn != null && (beginn < 0 || beginn > MAX_TAGESMINUTE)) beginn = null;
+    if (ende != null && (ende < 0 || ende > MAX_TAGESMINUTE)) ende = null;
     if (beginn != null && ende != null && ende <= beginn) { beginn = null; ende = null; }
     const waagen = ganz(t.waagen_anzahl);
     return { beginn_min: beginn, ende_min: ende, waagen_anzahl: waagen != null && waagen >= 1 && waagen <= 10 ? waagen : 1 };
