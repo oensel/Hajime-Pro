@@ -199,3 +199,15 @@ test('turniere.html: aktives Turnier mit rotem Rahmen, abgeschlossene Turniere g
     expect(breite).toBeGreaterThan(1200);
 });
 
+test('turniere.html: Turniernamen werden maskiert (kein HTML aus Namen oder Orten)', async ({ page, request }) => {
+    const gift = '<img src=x id="xss-name" onerror="window.__xss=1">';
+    const resp = await request.post('/api/turniere', {
+        data: { bezeichnung: gift, ort: '<b id="xss-ort">Ort</b>', datum: '2031-10-10', ausrichter: 'JC Test', anzahl_kampfflaechen: 1 }
+    });
+    expect(resp.ok(), await resp.text()).toBeTruthy();
+    await page.goto('/turniere.html');
+    await expect(page.locator('.tournament-card').filter({ hasText: 'xss-name' })).toBeVisible();
+    await expect(page.locator('#xss-name, #xss-ort')).toHaveCount(0);
+    expect(await page.evaluate(() => window.__xss)).toBeUndefined();
+});
+
