@@ -37,6 +37,12 @@ async function mitTestDb(fn) {
 const TEST_EMAIL = `registrierung-e2e-${Date.now()}@example.test`;
 const TEST_PASSWORD = 'test1234';
 
+// "Offline Club" legt erst der requireAuth-Bootstrap beim ersten angemeldeten Aufruf an (die Vereinsliste ist
+// öffentlich und löst ihn nicht aus).
+async function stelleOfflineClubSicher(request) {
+    expect((await request.get('/api/auth/me')).ok()).toBeTruthy();
+}
+
 async function oeffneRegisterTab(page) {
     await page.goto('/login.html');
     await page.locator('#tabRegister').click();
@@ -70,7 +76,7 @@ test('Registrierung legt ein unbestätigtes Konto an und zeigt den Hinweis auf d
     await page.locator('#registerForm button[type="submit"]').click();
 
     // Kein Token, keine Weiterleitung: das Konto ist erst nach der E-Mail-Bestätigung nutzbar.
-    await expect(page.locator('#infoMessage')).toContainText('Bitte bestätigen Sie Ihre Adresse');
+    await expect(page.locator('#infoMessage')).toHaveText('Wir haben dir eine E-Mail geschickt. Bitte bestätige deine Adresse über den Link.');
     await expect(page.locator('#bestaetigungErneut')).toBeVisible();
     await expect(page).toHaveURL(/\/login\.html$/);
     expect(await page.evaluate(() => localStorage.getItem('dokume_token'))).toBeNull();
@@ -94,9 +100,84 @@ test('Login vor der E-Mail-Bestätigung wird mit Hinweis abgewiesen', async ({ p
     await page.locator('#loginEmail').fill(TEST_EMAIL);
     await page.locator('#loginPassword').fill(TEST_PASSWORD);
     await page.locator('#loginForm button[type="submit"]').click();
-    await expect(page.locator('#infoMessage')).toContainText('Bitte bestätigen Sie zuerst Ihre E-Mail-Adresse');
+    await expect(page.locator('#infoMessage')).toHaveText('Bitte bestätige zuerst deine E-Mail-Adresse.');
     await expect(page.locator('#bestaetigungErneut')).toBeVisible();
     expect(await page.evaluate(() => localStorage.getItem('dokume_token'))).toBeNull();
+});
+
+test('Registrierung: Verein per Autovervollständigung wählen, Freitext wird nicht übernommen', async ({ page }) => {
+    const email = `registrierung-auswahl-${Date.now()}@example.test`;
+    await stelleOfflineClubSicher(page.request);
+    await oeffneRegisterTab(page);
+    await page.locator('#registerVorname').fill('Vera');
+    await page.locator('#registerNachname').fill('Auswahl');
+    await page.locator('#registerEmail').fill(email);
+    await page.locator('#registerPassword').fill(TEST_PASSWORD);
+
+    // Ein Zeichen: noch keine Vorschläge
+    const feld = page.locator('#registerVerein');
+    await feld.fill('O');
+    await expect(page.locator('#registerVereinListe')).toBeHidden();
+
+    // Freitext ohne Auswahl: Registrieren mit Verein ist nicht möglich
+    await feld.fill('Offline Cl');
+    await expect(page.locator('#registerVereinListe [role="option"]', { hasText: 'Offline Club' })).toBeVisible();
+    await page.locator('#registerVorname').click();
+    await page.locator('#registerForm button[type="submit"]').click();
+    await expect(page.locator('#errorMessage')).toHaveText('Bitte wähle einen Verein aus der Liste oder lass das Feld leer.');
+    expect(await mitTestDb((db) => db('benutzer').where({ email }).first())).toBeUndefined();
+
+    // Auswahl per Pfeiltaste und Enter
+    await feld.fill('ffline');
+    const option = page.locator('#registerVereinListe [role="option"]', { hasText: 'Offline Club' });
+    await expect(option).toBeVisible();
+    const index = await page.locator('#registerVereinListe [role="option"]').evaluateAll(
+        (els) => els.findIndex(el => el.textContent === 'Offline Club'));
+    for (let i = 0; i <= index; i++) await feld.press('ArrowDown');
+    await feld.press('Enter');
+    await expect(feld).toHaveValue('Offline Club');
+    await expect(page.locator('#registerVereinListe')).toBeHidden();
+
+    let gesendet = null;
+    page.on('request', (req) => {
+        if (req.url().endsWith('/api/auth/register')) gesendet = req.postDataJSON();
+    });
+    await page.locator('#registerForm button[type="submit"]').click();
+    await expect(page.locator('#infoMessage')).toHaveText('Wir haben dir eine E-Mail geschickt. Bitte bestätige deine Adresse über den Link.');
+    await expect(page.locator('#bestaetigungErneut')).toBeVisible();
+
+    const vereinId = await mitTestDb(async (db) => (await db('vereine').where({ name: 'Offline Club' }).first()).id);
+    expect(gesendet).toMatchObject({ vereinId, quelle: 'verwaltung', email });
+    // Der Verein hängt am Bestätigungs-Token, die Mitgliedschaft entsteht erst nach der Bestätigung.
+    const token = await mitTestDb(async (db) => {
+        const konto = await db('benutzer').where({ email }).first();
+        return db('token_einmal').where({ benutzer_id: konto.id, zweck: 'email' }).first();
+    });
+    expect(token).toMatchObject({ verein_id: vereinId, angefragt_ueber: 'verwaltung' });
+});
+
+test('Registrierung: Verein per Klick wählen und wieder leeren registriert ohne Verein', async ({ page }) => {
+    const email = `registrierung-ohne-${Date.now()}@example.test`;
+    await stelleOfflineClubSicher(page.request);
+    await oeffneRegisterTab(page);
+    await page.locator('#registerVorname').fill('Otto');
+    await page.locator('#registerNachname').fill('Ohne');
+    await page.locator('#registerEmail').fill(email);
+    await page.locator('#registerPassword').fill(TEST_PASSWORD);
+
+    const feld = page.locator('#registerVerein');
+    await feld.fill('offline');
+    await page.locator('#registerVereinListe [role="option"]', { hasText: 'Offline Club' }).click();
+    await expect(feld).toHaveValue('Offline Club');
+    await feld.fill('');
+
+    await page.locator('#registerForm button[type="submit"]').click();
+    await expect(page.locator('#infoMessage')).toHaveText('Wir haben dir eine E-Mail geschickt. Bitte bestätige deine Adresse über den Link.');
+    const token = await mitTestDb(async (db) => {
+        const konto = await db('benutzer').where({ email }).first();
+        return db('token_einmal').where({ benutzer_id: konto.id, zweck: 'email' }).first();
+    });
+    expect(token.verein_id).toBeNull();
 });
 
 test('Bestätigungsseite bestätigt erst per Knopf, ein zweiter Klick auf denselben Link schlägt fehl', async ({ page }) => {
@@ -151,6 +232,7 @@ test('Login mit den gerade registrierten Zugangsdaten führt zur Vereinsauswahl'
 
 test('Registrierung mit Verein legt die Beitrittsanfrage erst nach der Bestätigung an', async ({ request }) => {
     const email = `registrierung-verein-${Date.now()}@example.test`;
+    await stelleOfflineClubSicher(request);
     const vereinId = await mitTestDb(async (db) => (await db('vereine').where({ name: 'Offline Club' }).first()).id);
 
     const unbekannt = await request.post('/api/auth/register', {

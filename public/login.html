@@ -140,6 +140,47 @@
             margin-top: 8px;
             display: none;
         }
+        .form-hinweis {
+            font-size: 12px;
+            color: #9ca3af;
+        }
+        .verein-suche {
+            position: relative;
+        }
+        .verein-suche input {
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .verein-vorschlaege {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 100%;
+            z-index: 10;
+            margin: 2px 0 0 0;
+            padding: 4px 0;
+            list-style: none;
+            max-height: 220px;
+            overflow-y: auto;
+            background: #111827;
+            border: 1px solid #4b5563;
+            border-radius: 4px;
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+        }
+        .verein-vorschlaege[hidden] {
+            display: none;
+        }
+        .verein-vorschlaege li {
+            padding: 10px 14px;
+            font-size: 14px;
+            color: #f3f4f6;
+            cursor: pointer;
+        }
+        .verein-vorschlaege li:hover,
+        .verein-vorschlaege li[aria-selected="true"] {
+            background: #3b82f6;
+            color: #ffffff;
+        }
         .auth-form {
             display: none;
         }
@@ -192,12 +233,22 @@
             <label for="registerPassword">Passwort</label>
             <input type="password" id="registerPassword" required placeholder="mindestens 8 Zeichen" minlength="8">
         </div>
+        <div class="form-group">
+            <label for="registerVerein">Verein (optional)</label>
+            <div class="verein-suche">
+                <input type="text" id="registerVerein" autocomplete="off" role="combobox"
+                       aria-autocomplete="list" aria-expanded="false" aria-controls="registerVereinListe"
+                       aria-describedby="registerVereinHinweis" placeholder="Vereinsname eingeben (ab 2 Zeichen)">
+                <ul id="registerVereinListe" class="verein-vorschlaege" role="listbox" hidden></ul>
+            </div>
+            <span id="registerVereinHinweis" class="form-hinweis" role="status">Nur Vereine aus der Liste. Ohne Angabe wählst du den Verein nach der Anmeldung.</span>
+        </div>
         <button type="submit" class="btn-login">Konto erstellen</button>
     </form>
 
     <div id="errorMessage" class="error-message"></div>
     <div id="infoMessage" class="info-message" role="status"></div>
-    <button type="button" id="bestaetigungErneut" class="btn-link">Bestätigungsmail erneut senden</button>
+    <button type="button" id="bestaetigungErneut" class="btn-link">Mail erneut senden</button>
 </div>
 
 <script>
@@ -258,16 +309,144 @@
     tabLogin.addEventListener('click', () => showTab('login'));
     tabRegister.addEventListener('click', () => showTab('register'));
 
-    function handleAuthSuccess(data) {
-        localStorage.setItem('dokume_token', data.token);
-        localStorage.setItem('dokume_user', JSON.stringify(data.user));
+    // Reine Logik (Vereinssuche, Menü-Rechte) liegt DOM-frei in src/shared/ (ausgeliefert unter /js/shared).
+    const geteilt = Promise.all([
+        import('/js/shared/helferAnzeige.js'),
+        import('/js/shared/menueRechte.js')
+    ]).then(([anzeige, rechte]) => ({ ...anzeige, ...rechte }));
 
-        if (!data.user.verein_id) {
-            window.location.href = '/verein_auswahl.html';
-        } else {
-            window.location.href = '/turniere.html';
+    async function istEinzelbenutzer() {
+        try {
+            const resp = await fetch('/api/config');
+            return resp.ok ? !!(await resp.json()).isOffline : false;
+        } catch {
+            return false;
         }
     }
+
+    // Ziel nach der Anmeldung: ohne Verein zur Vereinsauswahl (Altfluss), Konten ohne Verwaltungsrecht
+    // (nur Helfer, Freischaltung ausstehend) zur Helfer-App, sonst zur Turnierübersicht. Ist der aktive
+    // Verein ein reiner Helfer-Verein, gibt es aber einen verwaltbaren, wechselt menu.js dorthin.
+    async function zielNachAnmeldung(user) {
+        if (!user.verein_id) return '/verein_auswahl.html';
+        try {
+            const { menueFuerRolle, verwaltbareVereine } = await geteilt;
+            const rechte = menueFuerRolle({
+                rolle: user.verein_rolle, istSuperAdmin: user.ist_super_admin, einzelbenutzer: await istEinzelbenutzer()
+            });
+            if (!rechte.verwaltung && verwaltbareVereine(user.vereine).length === 0) return '/helfer.html';
+        } catch (e) {
+            console.error('Menü-Rechte nicht ladbar:', e);
+        }
+        return '/turniere.html';
+    }
+
+    async function handleAuthSuccess(data) {
+        localStorage.setItem('dokume_token', data.token);
+        localStorage.setItem('dokume_user', JSON.stringify(data.user));
+        window.location.href = await zielNachAnmeldung(data.user);
+    }
+
+    // --- Verein mit Autovervollständigung (Registrierung) ---
+    // Nur Vereine aus der Liste sind wählbar; das Feld ist optional.
+    const vereinEingabe = document.getElementById('registerVerein');
+    const vereinListe = document.getElementById('registerVereinListe');
+    const vereinHinweis = document.getElementById('registerVereinHinweis');
+    const VEREIN_HINWEIS = vereinHinweis.textContent;
+    let vereineLaden = null;
+    let vereinTreffer = [];
+    let vereinAktiv = -1;
+    let gewaehlterVerein = null;
+    let suchNummer = 0;
+
+    function ladeVereine() {
+        if (!vereineLaden) {
+            vereineLaden = fetch('/api/vereine').then(async (resp) => {
+                if (!resp.ok) throw new Error('Die Vereinsliste konnte nicht geladen werden.');
+                return resp.json();
+            }).catch((e) => { vereineLaden = null; throw e; });
+        }
+        return vereineLaden;
+    }
+
+    function schliesseVereinListe() {
+        vereinListe.hidden = true;
+        vereinEingabe.setAttribute('aria-expanded', 'false');
+        vereinEingabe.removeAttribute('aria-activedescendant');
+        vereinAktiv = -1;
+    }
+
+    function markiereVerein(index) {
+        vereinAktiv = index;
+        [...vereinListe.children].forEach((option, i) => option.setAttribute('aria-selected', i === index ? 'true' : 'false'));
+        if (index >= 0) {
+            vereinEingabe.setAttribute('aria-activedescendant', vereinListe.children[index].id);
+            vereinListe.children[index].scrollIntoView({ block: 'nearest' });
+        }
+    }
+
+    function waehleVerein(verein) {
+        gewaehlterVerein = verein;
+        vereinEingabe.value = verein.name;
+        vereinHinweis.textContent = VEREIN_HINWEIS;
+        schliesseVereinListe();
+    }
+
+    async function zeigeVereinTreffer() {
+        const nummer = ++suchNummer;
+        gewaehlterVerein = null;
+        vereinHinweis.textContent = VEREIN_HINWEIS;
+        if (vereinEingabe.value.trim().length < 2) return schliesseVereinListe();
+        let vereine;
+        let filtereVereine;
+        try {
+            [vereine, { filtereVereine }] = await Promise.all([ladeVereine(), geteilt]);
+        } catch (e) {
+            if (nummer !== suchNummer) return;
+            vereinHinweis.textContent = e.message;
+            return schliesseVereinListe();
+        }
+        // Inzwischen weitergetippt: nur das Ergebnis der neuesten Eingabe zeichnen
+        if (nummer !== suchNummer) return;
+        vereinTreffer = filtereVereine(vereine, vereinEingabe.value).slice(0, 20);
+        vereinListe.replaceChildren(...vereinTreffer.map((verein, i) => {
+            const option = document.createElement('li');
+            option.id = `registerVerein-${verein.id}`;
+            option.setAttribute('role', 'option');
+            option.setAttribute('aria-selected', 'false');
+            option.textContent = verein.name;
+            // Fokus bleibt im Feld, damit die Liste bis zum click offen bleibt
+            option.addEventListener('mousedown', (e) => e.preventDefault());
+            option.addEventListener('click', () => waehleVerein(vereinTreffer[i]));
+            return option;
+        }));
+        if (vereinTreffer.length === 0) {
+            vereinHinweis.textContent = 'Kein Verein gefunden.';
+            return schliesseVereinListe();
+        }
+        vereinListe.hidden = false;
+        vereinEingabe.setAttribute('aria-expanded', 'true');
+        vereinAktiv = -1;
+    }
+
+    vereinEingabe.addEventListener('input', () => { zeigeVereinTreffer(); });
+    vereinEingabe.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            if (vereinListe.hidden || vereinTreffer.length === 0) return;
+            e.preventDefault();
+            const schritt = e.key === 'ArrowDown' ? 1 : -1;
+            markiereVerein((vereinAktiv + schritt + vereinTreffer.length) % vereinTreffer.length);
+        } else if (e.key === 'Enter' && !vereinListe.hidden) {
+            // Enter wählt nur aus der offenen Liste und schickt das Formular nicht ab
+            e.preventDefault();
+            if (vereinAktiv >= 0) waehleVerein(vereinTreffer[vereinAktiv]);
+        } else if (e.key === 'Escape') {
+            schliesseVereinListe();
+        }
+    });
+    vereinEingabe.addEventListener('blur', () => setTimeout(() => {
+        if (document.activeElement !== vereinEingabe) schliesseVereinListe();
+    }, 200));
 
     loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -286,14 +465,14 @@
             const data = await response.json();
             if (response.status === 403 && data.code === 'email_unbestaetigt') {
                 unbestaetigteEmail = email;
-                zeigeInfo(data.error, true);
+                zeigeInfo('Bitte bestätige zuerst deine E-Mail-Adresse.', true);
                 return;
             }
             if (!response.ok) {
                 throw new Error(data.error || 'Login fehlgeschlagen');
             }
 
-            handleAuthSuccess(data);
+            await handleAuthSuccess(data);
         } catch (err) {
             errDiv.textContent = err.message;
             errDiv.style.display = 'block';
@@ -309,11 +488,23 @@
         const email = document.getElementById('registerEmail').value;
         const password = document.getElementById('registerPassword').value;
 
+        // Freitext ohne Auswahl aus der Liste wird nicht als Verein übernommen
+        const vereinText = vereinEingabe.value.trim();
+        if (vereinText && (!gewaehlterVerein || vereinEingabe.value !== gewaehlterVerein.name)) {
+            errDiv.textContent = 'Bitte wähle einen Verein aus der Liste oder lass das Feld leer.';
+            errDiv.style.display = 'block';
+            vereinEingabe.focus();
+            return;
+        }
+
+        const daten = { vorname, nachname, email, password, quelle: 'verwaltung' };
+        if (vereinText) daten.vereinId = gewaehlterVerein.id;
+
         try {
             const response = await fetch('/api/auth/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ vorname, nachname, email, password })
+                body: JSON.stringify(daten)
             });
 
             const data = await response.json();
@@ -321,11 +512,12 @@
                 throw new Error(data.error || 'Registrierung fehlgeschlagen');
             }
 
-            // Das Konto ist erst nach der E-Mail-Bestätigung nutzbar (kein Token); danach anmelden und
-            // über die Vereinsauswahl einem Verein beitreten.
+            // Das Konto ist erst nach der E-Mail-Bestätigung nutzbar (kein Token). Mit Verein entsteht danach
+            // die Beitrittsanfrage, ohne Verein folgt der Beitritt über die Vereinsauswahl.
             unbestaetigteEmail = email;
             registerForm.reset();
-            zeigeInfo(data.message || 'Bitte bestätigen Sie Ihre E-Mail-Adresse über den Link in der E-Mail.', true);
+            gewaehlterVerein = null;
+            zeigeInfo('Wir haben dir eine E-Mail geschickt. Bitte bestätige deine Adresse über den Link.', true);
         } catch (err) {
             errDiv.textContent = err.message;
             errDiv.style.display = 'block';

@@ -9,9 +9,11 @@ import { requireAuth, requireSuperAdmin } from '../middleware/auth.js';
 export function getVereinRoutes(knex) {
     const router = express.Router();
 
-    router.use(requireAuth);
-
+    // Vereinsliste (nur id und Name) ohne Anmeldung: die Registrierung auf login.html wählt den Verein per
+    // Autovervollständigung, bevor es ein Konto gibt (Helferverwaltung, Spec 4).
     router.get('/', (req, res) => listVereine(knex, req, res));
+
+    router.use(requireAuth);
     router.post('/join', (req, res) => joinVerein(knex, req, res));
     router.post('/leave', (req, res) => leaveVerein(knex, req, res));
     router.post('/aktiv', (req, res) => wechsleAktivenVerein(knex, req, res));
