@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   RASTER_MIN, MIN_LAENGE, STANDARD_SLOT,
   fristEndeBerlin, darfHelferAendern, ueberlappt, rasterRunde,
-  erzeugeStandardSlots, zeitstrahlBereich, formatiereMinuten,
+  erzeugeStandardSlots, zeitstrahlBereich, formatiereMinuten, parseUhrzeit,
 } from '../../src/shared/helferZeit.js';
 
 test('Konstanten', () => {
@@ -53,4 +53,17 @@ test('zeitstrahlBereich', () => {
 test('formatiereMinuten', () => {
   assert.equal(formatiereMinuten(570), '09:30');
   assert.equal(formatiereMinuten(0), '00:00');
+});
+
+test('parseUhrzeit: gültige Uhrzeiten in Minuten', () => {
+  assert.equal(parseUhrzeit('09:30'), 570);
+  assert.equal(parseUhrzeit('9:30'), 570);
+  assert.equal(parseUhrzeit('00:00'), 0);
+  assert.equal(parseUhrzeit('23:59'), 1439);
+});
+
+test('parseUhrzeit: ungültige Eingaben ergeben null', () => {
+  for (const s of ['24:00', '23:60', 'abc', '', '9', '09:3', '09:30:00', null, undefined]) {
+    assert.equal(parseUhrzeit(s), null, String(s));
+  }
 });

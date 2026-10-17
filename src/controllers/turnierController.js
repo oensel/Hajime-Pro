@@ -108,7 +108,7 @@ function leseTurnierzeit(body, bisher = null) {
     };
     if (body.beginn_min !== undefined) fragment.beginn_min = minuten(body.beginn_min, 'Der Turnierbeginn');
     if (body.ende_min !== undefined) fragment.ende_min = minuten(body.ende_min, 'Das Turnierende');
-    if (body.waagen_anzahl !== undefined) {
+    if (body.waagen_anzahl !== undefined && body.waagen_anzahl !== null && body.waagen_anzahl !== '') {
         const n = Number(body.waagen_anzahl);
         if (!Number.isInteger(n) || n < 1 || n > 10) throw new FachFehler(400, 'Die Anzahl der Waagen muss zwischen 1 und 10 liegen.');
         fragment.waagen_anzahl = n;

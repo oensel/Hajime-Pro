@@ -67,3 +67,13 @@ export function formatiereMinuten(min) {
   const m = String(min % 60).padStart(2, '0');
   return `${h}:${m}`;
 }
+
+// 'HH:MM' (auch 'H:MM') -> Minuten seit 00:00; ungültig (auch 24:00) -> null.
+export function parseUhrzeit(text) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(text ?? '').trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h > 23 || min > 59) return null;
+  return h * 60 + min;
+}

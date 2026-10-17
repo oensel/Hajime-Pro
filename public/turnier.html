@@ -122,6 +122,21 @@
                             <input type="number" id="anzahl_kampfflaechen" min="1" value="1" required>
                         </div>
                         <div class="form-group">
+                            <label for="beginn">Beginn des Wettkampfs</label>
+                            <input type="time" id="beginn">
+                            <small style="color: var(--text-muted);">Wird für den Helferplan verwendet.</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="ende">Ende des Wettkampfs</label>
+                            <input type="time" id="ende">
+                            <small style="color: var(--text-muted);">Wird für den Helferplan verwendet.</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="waagen_anzahl">Anzahl Waagen</label>
+                            <input type="number" id="waagen_anzahl" min="1" max="10" value="1">
+                            <small style="color: var(--text-muted);">Wird für den Helferplan verwendet.</small>
+                        </div>
+                        <div class="form-group">
                             <label for="farbe_kaempfer2">Kämpfer 2 trägt</label>
                             <select id="farbe_kaempfer2" hidden>
                                 <option value="blau">Blau</option>

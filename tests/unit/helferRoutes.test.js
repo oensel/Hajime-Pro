@@ -317,6 +317,14 @@ test('Helfer-API und Helferplan-API: Rechte, Eintragen, Frist, Fremdturniere, Ma
         const standard = await post('u-benutzer', '/api/turniere', { ...turnierBody, bezeichnung: 'Neu2', datum: '2030-06-01' });
         assert.equal((await knex('turniere').where({ id: standard.daten.turnierId }).first()).waagen_anzahl, 1);
         assert.equal((await post('u-benutzer', '/api/turniere', { ...turnierBody, bezeichnung: 'Neu3', beginn_min: 900, ende_min: 800 })).status, 400);
+        // waagen_anzahl leer ('' / null): Update unverändert, Anlegen Standard 1
+        for (const leer of ['', null]) {
+            assert.equal((await put('u-benutzer', `/api/turniere/${tA}`, { ...turnierBody, bezeichnung: 'Pokal A', waagen_anzahl: leer })).status, 200);
+            assert.equal((await knex('turniere').where({ id: tA }).first()).waagen_anzahl, 3);
+        }
+        const leerAngelegt = await post('u-benutzer', '/api/turniere', { ...turnierBody, bezeichnung: 'Neu4', datum: '2030-07-01', waagen_anzahl: '' });
+        assert.equal(leerAngelegt.status, 201, JSON.stringify(leerAngelegt.daten));
+        assert.equal((await knex('turniere').where({ id: leerAngelegt.daten.turnierId }).first()).waagen_anzahl, 1);
 
         // --- Profil
         const profil = await get('u-helfer', '/api/helfer/profil');
