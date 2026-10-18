@@ -197,3 +197,19 @@ test('Posten hinzufügen und „Alle auf mich“', async ({ page, request }) => 
     await page.getByRole('button', { name: 'Alle auf mich' }).click();
     await expect(page.locator('#ogPosten .og-chip-ich')).toHaveCount(5);
 });
+
+test('Eigene Aufgabe: über den Pfeil Posten anlegen, abhaken, Aufgabe ist erledigt', async ({ page, request }) => {
+    const neu = await request.post('/api/orga/aufgaben', { data: { turnierId, titel: 'Eigene mit Posten', phase: 'turniertag' } });
+    expect(neu.status()).toBe(201);
+    await page.goto(`/orga.html?turnierId=${turnierId}`);
+    await zeile(page, 'Eigene mit Posten').getByRole('link', { name: /Posten öffnen/ }).click();
+    await expect(page.locator('#ogPosten')).toContainText('Noch keine Posten');
+    await page.getByRole('button', { name: 'Posten hinzufügen' }).click();
+    await page.getByRole('dialog').getByLabel('Titel').fill('Einziger Posten');
+    await page.getByRole('dialog').getByRole('button', { name: 'Hinzufügen' }).click();
+    await expect(page.locator('#ogFortschrittText')).toHaveText('0 von 1');
+    await page.locator('#ogPosten .og-punkt').click();
+    await expect(page.locator('#ogFortschrittText')).toHaveText('1 von 1');
+    await page.getByRole('link', { name: 'Zurück zur Orga' }).click();
+    await expect(zeile(page, 'Eigene mit Posten')).toHaveClass(/og-status-erledigt/);
+});

@@ -109,7 +109,12 @@ async function mitbringEintragen(e) {
     });
     if (!neu.ok) { fehler.textContent = neu.daten.error || 'Eintragen fehlgeschlagen.'; return; }
     const z = await api('POST', `/api/orga/aufgaben/${neu.daten.id}/zuweisen`, { name: state.ctx.ich.name });
-    if (!z.ok) melde(z.daten.error || 'Der Name konnte nicht eingetragen werden.');
+    if (!z.ok) {
+        await api('DELETE', `/api/orga/aufgaben/${neu.daten.id}`);
+        fehler.textContent = z.daten.error || 'Der Name konnte nicht eingetragen werden.';
+        await neuLaden();
+        return;
+    }
     titel.value = '';
     menge.value = '';
     await neuLaden();
@@ -120,10 +125,16 @@ async function alleAufMich() {
         && String(k.benutzer_id || '') !== state.ctx.ich.id);
     if (!offen.length) return melde('Alle offenen Posten liegen schon bei Ihnen.', 'success');
     let fehler = 0;
-    for (const k of offen) {
-        const r = await api('POST', `/api/orga/aufgaben/${k.id}/zuweisen`, { benutzerId: state.ctx.ich.id });
+    const knopf = document.getElementById('ogAlleAufMich');
+    const text = knopf.textContent;
+    knopf.disabled = true;
+    for (let i = 0; i < offen.length; i++) {
+        knopf.textContent = `${i} von ${offen.length}`;
+        const r = await api('POST', `/api/orga/aufgaben/${offen[i].id}/zuweisen`, { benutzerId: state.ctx.ich.id });
         if (!r.ok) fehler += 1;
     }
+    knopf.textContent = text;
+    knopf.disabled = false;
     if (fehler) melde(`${fehler} Posten konnten nicht zugewiesen werden.`);
     else melde(`${offen.length} Posten auf Sie zugewiesen.`, 'success');
     await neuLaden();

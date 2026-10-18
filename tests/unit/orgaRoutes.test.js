@@ -132,6 +132,12 @@ test('Orga-API: Rechte, Turnierbindung der Aufgaben-IDs, Helfer-Routen, Mitbring
         const z = await post('u-benutzer', `/api/orga/aufgaben/${wiegen.id}/zuweisen`, { benutzerId: 'u-helfer' });
         assert.deepEqual([z.status, z.daten.modus], [200, 'konto']);
         assert.equal(mails.length, 1);
+        assert.equal(z.daten.ohneMail, undefined);
+        // Selbst zuweisen: keine Mail, Antwort markiert ohneMail
+        const abbau = alle(erst.daten).find((a) => a.vorlage_key === 'abbau');
+        const selbst = await post('u-benutzer', `/api/orga/aufgaben/${abbau.id}/zuweisen`, { benutzerId: 'u-benutzer' });
+        assert.deepEqual([selbst.status, selbst.daten.modus, selbst.daten.ohneMail], [200, 'konto', true]);
+        assert.equal(mails.length, 1);
         assert.equal((await post('u-benutzer', `/api/orga/aufgaben/${wiegen.id}/zuweisen`, { benutzerId: 'u-fremd' })).status, 400);
         const ez = await post('u-benutzer', `/api/orga/aufgaben/${catering.id}/zuweisen`, { name: 'Gast', email: 'gast@extern.de' });
         assert.deepEqual([ez.status, ez.daten.modus], [200, 'einladung']);

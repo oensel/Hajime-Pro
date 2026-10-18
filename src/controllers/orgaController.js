@@ -159,10 +159,13 @@ export async function weiseZuRoute(knex, req, res, { sende } = {}) {
         const b = req.body || {};
         const ziel = b.frei === false ? { frei: false } : b.benutzerId ? { benutzerId: String(b.benutzerId) } : { name: b.name, email: b.email };
         // Hallen-Server (Einzelbenutzerbetrieb): keine Einladungen, keine Mails, kein Host-Header-Link.
+        // Wer sich selbst zuweist, bekommt keine Mail (sonst eine je Posten bei "Alle auf mich"); die Antwort
+        // trägt dann modus 'konto' mit ohneMail: true.
+        const selbst = ziel.benutzerId != null && ziel.benutzerId === String(req.user?.id);
         const ergebnis = await weiseZu(knex, parseInt(req.params.id, 10), ziel, {
-            basisUrl: ermittleBasisUrl(req), mitMail: !istEinzelbenutzerBetrieb(), ...(sende ? { sende } : {})
+            basisUrl: ermittleBasisUrl(req), mitMail: !istEinzelbenutzerBetrieb() && !selbst, ...(sende ? { sende } : {})
         });
-        res.json({ success: true, modus: ergebnis.modus });
+        res.json({ success: true, modus: ergebnis.modus, ...(selbst && ergebnis.modus === 'konto' ? { ohneMail: true } : {}) });
     } catch (error) {
         sendeFehler(res, error, 'Orga-Zuweisen');
     }

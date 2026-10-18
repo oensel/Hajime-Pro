@@ -104,8 +104,8 @@ export async function ladeKontext(turnierId) {
     const user = me.ok ? me.daten.user : null;
     const mitglieder = mit.ok && Array.isArray(mit.daten.liste) ? mit.daten.liste : [];
     const ich = user
-        ? { id: String(user.id), name: [user.vorname, user.nachname].filter(Boolean).join(' ').trim() || 'Ich' }
-        : { id: null, name: 'Ich' };
+        ? { id: String(user.id), name: [user.vorname, user.nachname].filter(Boolean).join(' ').trim() || user.email || 'Unbekannt' }
+        : { id: null, name: 'Unbekannt' };
     return { turnierId, ich, mitglieder, einzelbenutzer: ich.id === 'offline_user' };
 }
 
@@ -215,13 +215,15 @@ export function oeffneZuweisenDialog(aufgabe, ctx, onFertig) {
 
     const sende = async (ziel) => {
         ok.disabled = true;
+        entfernen.disabled = true;
         const r = await api('POST', `/api/orga/aufgaben/${aufgabe.id}/zuweisen`, ziel);
         ok.disabled = false;
+        entfernen.disabled = false;
         if (!r.ok) { fehler.textContent = r.daten.error || 'Zuweisen fehlgeschlagen.'; return; }
         schliesse();
         await onFertig(r.daten.modus, ziel.benutzerId
             ? (ziel.benutzerId === ctx.ich.id ? ctx.ich.name : mitgliedName(ctx.mitglieder.find((m) => String(m.id) === ziel.benutzerId) || {}))
-            : ziel.name);
+            : ziel.name, r.daten.ohneMail === true);
     };
 
     form.addEventListener('submit', (e) => {
@@ -239,8 +241,9 @@ export function oeffneZuweisenDialog(aufgabe, ctx, onFertig) {
 }
 
 /** Meldung nach dem Zuweisen laut Modus der Antwort. */
-export function meldeZuweisung(modus, name, ctx) {
+export function meldeZuweisung(modus, name, ctx, ohneMail = false) {
     if (modus === null || modus === undefined) return melde('Zuständiger entfernt.', 'success');
+    if (modus === 'konto' && ohneMail && name === ctx.ich.name) return melde('Aufgabe dir zugewiesen.', 'success');
     if (modus === 'konto') {
         return melde(ctx.einzelbenutzer ? `Zugewiesen an ${name}.` : `E-Mail an ${name} verschickt.`, 'success');
     }
@@ -357,8 +360,8 @@ export function baueZustaendigenChip(aufgabe, ctx, onGeaendert) {
         knopf.setAttribute('aria-label', `Zuständigen für ${aufgabe.titel} zuweisen`);
     }
     if (ueberfaellig) knopf.classList.add('og-chip-rot');
-    knopf.addEventListener('click', () => oeffneZuweisenDialog(aufgabe, ctx, async (modus, name) => {
-        meldeZuweisung(modus, name, ctx);
+    knopf.addEventListener('click', () => oeffneZuweisenDialog(aufgabe, ctx, async (modus, name, ohneMail) => {
+        meldeZuweisung(modus, name, ctx, ohneMail);
         await onGeaendert();
     }));
     return knopf;
@@ -426,7 +429,7 @@ export function baueZeile(aufgabe, ctx, optionen) {
     if (faellig) chips.append(faellig);
 
     const aktionen = el('div', 'og-aktionen');
-    if (mitDetails && !postenModus && ((aufgabe.kinder || []).some((k) => k.art !== 'mitbringen') || aufgabe.mitbringliste)) {
+    if (mitDetails && !postenModus) {
         const oeffnen = el('a', 'og-icon-knopf og-oeffnen');
         oeffnen.href = `/orga-aufgabe.html?id=${encodeURIComponent(aufgabe.id)}&turnierId=${encodeURIComponent(ctx.turnierId)}`;
         oeffnen.setAttribute('aria-label', `${aufgabe.titel}: Posten öffnen`);
