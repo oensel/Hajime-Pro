@@ -221,7 +221,7 @@ jobs:
           VERSION="${RELEASE_TAG#v}"
           mkdir -p dienst
           tar czf "dienst/Hajime-Pro-Dienst-${VERSION}.tar.gz" --transform 's,^,hajime-pro/,' \
-            src public migrations knexfile.cjs package.json package-lock.json deploy \
+            src public teilnehmer-app migrations knexfile.cjs package.json package-lock.json deploy \
             scripts/cloud-lokal.mjs scripts/cloud-update.mjs scripts/lokale-pg.mjs \
             update.sh desktop/updateLogik.js desktop/update-schluessel.pub desktop/server/selbstUpdate.js
       - uses: actions/upload-artifact@v4
