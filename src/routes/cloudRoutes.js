@@ -1,4 +1,5 @@
 import express from 'express';
+import { erzeugeApiRatenbegrenzung } from '../middleware/apiRatenbegrenzung.js';
 import { importiereTurnierDaten } from '../controllers/turnierController.js';
 import { FachFehler } from '../utils/fachFehler.js';
 import { ersetzeHelferplan } from '../services/helferTransfer.js';
@@ -8,6 +9,7 @@ import betriebsmodus from '../config/betriebsmodus.cjs';
 // Nur im Einzelbenutzerbetrieb (Hallen-Server); in der Cloud selbst gibt es die Funktion nicht.
 export function getCloudRoutes(knex, { cloud, holeCluster = () => null }) {
     const router = express.Router();
+    router.use(erzeugeApiRatenbegrenzung());
 
     router.use((req, res, next) => {
         if (!betriebsmodus.istEinzelbenutzerBetrieb()) {

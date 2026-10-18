@@ -1,4 +1,5 @@
 import express from 'express';
+import { erzeugeApiRatenbegrenzung } from '../middleware/apiRatenbegrenzung.js';
 import { requireAuth, requireTournamentEditAccess, requireTurnierAktiv } from '../middleware/auth.js';
 import {
     pruefeVorhanden, ladePlanRoute, legeTaetigkeitAnRoute, aendereTaetigkeitRoute, loescheTaetigkeitRoute,
@@ -14,7 +15,7 @@ import {
  */
 export function getHelferPlanRoutes(knex, { jetzt = () => new Date(), sende } = {}) {
     const router = express.Router();
-    router.use(requireAuth);
+    router.use(erzeugeApiRatenbegrenzung(), requireAuth);
 
     const lesen = [requireTournamentEditAccess(knex)];
     const schreiben = [requireTournamentEditAccess(knex), requireTurnierAktiv(knex)];

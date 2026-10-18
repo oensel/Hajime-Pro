@@ -1,4 +1,5 @@
 import express from 'express';
+import { erzeugeApiRatenbegrenzung } from '../middleware/apiRatenbegrenzung.js';
 import {
     listVereine, joinVerein, leaveVerein, wechsleAktivenVerein,
     getPendingRequests, approveMember, rejectMember, changeRolle, removeMember, getMitglieder,
@@ -13,7 +14,7 @@ export function getVereinRoutes(knex) {
     // Autovervollständigung, bevor es ein Konto gibt (Helferverwaltung, Spec 4).
     router.get('/', (req, res) => listVereine(knex, req, res));
 
-    router.use(requireAuth);
+    router.use(erzeugeApiRatenbegrenzung(), requireAuth);
     router.post('/join', (req, res) => joinVerein(knex, req, res));
     router.post('/leave', (req, res) => leaveVerein(knex, req, res));
     router.post('/aktiv', (req, res) => wechsleAktivenVerein(knex, req, res));

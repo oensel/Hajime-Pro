@@ -1,4 +1,5 @@
 import express from 'express';
+import { erzeugeApiRatenbegrenzung } from '../middleware/apiRatenbegrenzung.js';
 import { requireAuth } from '../middleware/auth.js';
 import {
     listeTurniere, ladeDienste, traegeSichEin, traegeSichAus, ladeMeineDiensteRoute,
@@ -13,7 +14,7 @@ import {
  */
 export function getHelferRoutes(knex, { jetzt = () => new Date(), sende } = {}) {
     const router = express.Router();
-    router.use(requireAuth);
+    router.use(erzeugeApiRatenbegrenzung(), requireAuth);
 
     router.get('/turniere', (req, res) => listeTurniere(knex, req, res, { jetzt }));
     router.get('/turniere/:id/dienste', (req, res) => ladeDienste(knex, req, res, { jetzt }));
