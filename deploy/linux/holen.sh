@@ -13,6 +13,8 @@
 # CLIENT_RELEASE_REPO (oensel/Hajime-Pro-Releases), CLIENT_RELEASE_TOKEN (nur falls das Repository privat ist).
 set -euo pipefail
 
+tmp=""   # global, damit das trap beim Beenden (nach main) es noch kennt
+
 main() {
     local repo="${CLIENT_RELEASE_REPO:-oensel/Hajime-Pro-Releases}"
     local ziel="${QUELLE_DIR:-/opt/hajime-quelle}"
@@ -38,9 +40,8 @@ main() {
 
     local basis="https://github.com/$repo/releases/download/v$version"
     local paket="Hajime-Pro-Dienst-$version.tar.gz"
-    local tmp
     tmp="$(mktemp -d)"
-    trap "rm -rf '$tmp'" EXIT
+    trap 'rm -rf "$tmp"' EXIT
 
     echo "==> Hajime Pro $version aus $repo holen"
     curl -fsSL "${auth[@]}" -o "$tmp/$paket" "$basis/$paket" || fehler "$paket nicht gefunden ($basis)."
