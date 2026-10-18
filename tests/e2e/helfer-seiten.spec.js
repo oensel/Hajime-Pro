@@ -41,7 +41,9 @@ test('Offene Dienste sind nach Tätigkeit gruppiert, Slots nach Uhrzeit', async 
     await karte(page).click();
     await expect(page).toHaveURL(new RegExp(`#turnier=${turnierId}$`));
     await expect(page.locator('.hf-titel')).toContainText(NAME);
-    const titel = await page.locator('.hf-gruppe-titel').allTextContents();
+    // Neue Turniere haben die Orga-Vorlage samt Mitbringliste: deren Block steht als letzter Abschnitt unter den Diensten.
+    await expect(page.locator('#hfMitbringliste')).toBeVisible();
+    const titel = await page.locator('.hf-gruppe:not(.hf-mitbring) .hf-gruppe-titel').allTextContents();
     expect(titel).toEqual(['Ersthelfer/Sanitäter', 'Kampfgericht Matte 1', 'Kampfrichter Matte 1', 'Mattenaufbau', 'Tribünenaufbau', 'Waage 1']);
     const waage = gruppe(page, 'Waage 1');
     await expect(waage.locator('.hf-slot-zeit')).toHaveText(['09:00 – 11:00', '11:00 – 13:00']);
