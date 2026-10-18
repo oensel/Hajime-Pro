@@ -393,9 +393,20 @@ test('Helferplan: Ersthelfer und Aufbau am Vortag (tag_versatz)', async () => {
         await erwarteFehler(plan.traegeEin(knex, { slotId: tribuene.slots[0].id, benutzerId: 'u-vera', durchId: 'u-vera', jetzt: NACH_FRIST }),
             403, null, 'frist');
 
+        // null ist kein gültiger tag_versatz
+        await erwarteFehler(plan.aendereTaetigkeit(knex, tribuene.id, { tag_versatz: null }), 400);
+
+        // Verschieben mit Einsätzen: vera steht im Mattenaufbau (Vortag 17-19) und im Ersthelfer-Slot 17-18 (Turniertag)
+        await erwarteFehler(plan.aendereTaetigkeit(knex, mattenaufbau.id, { tag_versatz: 0 }), 409, /Ersthelfer/, 'ueberlappung');
+        assert.equal((await finde(knex, turnier, 'Mattenaufbau')).tag_versatz, -1, 'unverändert');
+        // ohne Konflikt: Ersthelfer-Einsatz weg, dann ist das Verschieben erlaubt
+        await knex('helfer_einsaetze').where({ slot_id: eh.slots[4].id, benutzer_id: 'u-vera' }).del();
+        await plan.aendereTaetigkeit(knex, mattenaufbau.id, { tag_versatz: 0 });
+        assert.equal((await finde(knex, turnier, 'Mattenaufbau')).tag_versatz, 0);
+
         // ladeOffeneSlots liefert tag_versatz
         const offen = await plan.ladeOffeneSlots(knex, turnier, 'u-vera');
-        assert.equal(offen.find(s => s.taetigkeit === 'Mattenaufbau').tag_versatz, -1);
+        assert.equal(offen.find(s => s.taetigkeit === 'Mattenaufbau').tag_versatz, 0);
         assert.equal(offen.find(s => s.taetigkeit === 'Ersthelfer/Sanitäter').tag_versatz, 0);
     } finally {
         await db.stoppe();

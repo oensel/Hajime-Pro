@@ -136,7 +136,7 @@ export async function legeTaetigkeitAnRoute(knex, req, res) {
     }
 }
 
-/** PUT /taetigkeiten/:taetigkeitId — Body { bezeichnung?, bedarf?, bestaetigt? } */
+/** PUT /taetigkeiten/:taetigkeitId — Body { bezeichnung?, bedarf?, tag_versatz? (0 Turniertag | -1 Vortag), bestaetigt? } */
 export async function aendereTaetigkeitRoute(knex, req, res) {
     try {
         const taetigkeitId = parseInt(req.params.taetigkeitId, 10);

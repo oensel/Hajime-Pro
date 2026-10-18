@@ -128,7 +128,7 @@ function pruefeZeitraum(von, bis) {
 
 // Nur Turniertag (0) oder Vortag (-1).
 function pruefeTagVersatz(wert) {
-    const n = typeof wert === 'string' && wert.trim() === '' ? NaN : Number(wert);
+    const n = wert === null || (typeof wert === 'string' && wert.trim() === '') ? NaN : Number(wert);
     if (n !== 0 && n !== -1) throw fehler(400, 'Eine Tätigkeit liegt am Turniertag (0) oder am Vortag (-1).');
     return n === 0 ? 0 : -1;
 }
@@ -298,6 +298,29 @@ export async function legeTaetigkeitAn(knex, turnierId, { bezeichnung, bedarf } 
     });
 }
 
+// Beim Wechsel Vortag/Turniertag darf kein Konto dieser Tätigkeit danach mit einem anderen eigenen Dienst im
+// selben Turnier überlappen (absolute Minuten wie in traegeEin).
+async function pruefeVersatzOhneDoppelbuchung(trx, taetigkeit, neuerVersatz) {
+    const betroffene = await trx('helfer_einsaetze as e')
+        .join('helfer_slots as s', 's.id', 'e.slot_id')
+        .where('s.taetigkeit_id', taetigkeit.id).whereNotNull('e.benutzer_id')
+        .select('e.benutzer_id', 's.von_min', 's.bis_min');
+    if (betroffene.length === 0) return;
+    const andere = await trx('helfer_einsaetze as e')
+        .join('helfer_slots as s', 's.id', 'e.slot_id')
+        .join('helfer_taetigkeiten as t', 't.id', 's.taetigkeit_id')
+        .where('t.turnier_id', taetigkeit.turnier_id).whereNot('t.id', taetigkeit.id)
+        .whereIn('e.benutzer_id', [...new Set(betroffene.map(b => b.benutzer_id))])
+        .select('e.benutzer_id', 's.von_min', 's.bis_min', 't.tag_versatz', 't.bezeichnung');
+    for (const b of betroffene) {
+        const konflikt = andere.find(a => a.benutzer_id === b.benutzer_id && ueberlappt({ ...b, tag_versatz: neuerVersatz }, a));
+        if (konflikt) {
+            throw fehler(409, `Die Verschiebung ist nicht möglich: Ein eingetragener Helfer hätte sich überschneidende Dienste (Überschneidung mit „${konflikt.bezeichnung}“).`,
+                { code: FEHLER_CODES.UEBERLAPPUNG });
+        }
+    }
+}
+
 /**
  * Ändert Bezeichnung (nur eigene Tätigkeiten) und/oder Bedarf. Ein neuer Bedarf gilt auch für die Slots, die
  * bisher den Bedarf der Tätigkeit hatten (abweichende Slot-Werte bleiben). Fällt dabei der Bedarf eines Slots
@@ -314,6 +337,7 @@ export async function aendereTaetigkeit(knex, id, { bezeichnung, bedarf, bestaet
             if (!ARTEN_MIT_TAG_VERSATZ.includes(t.art)) {
                 throw fehler(409, 'Nur Aufbau und eigene Tätigkeiten lassen sich zwischen Vortag und Turniertag verschieben.');
             }
+            await pruefeVersatzOhneDoppelbuchung(trx, t, neuerVersatz);
             aenderung.tag_versatz = neuerVersatz;
         }
         let betroffeneBenutzerIds = [];
