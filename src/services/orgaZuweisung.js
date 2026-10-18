@@ -119,7 +119,7 @@ export async function weiseZu(knex, aufgabeId, ziel = {}, { basisUrl, sende = se
         return { modus: 'frei' };
     }
     if (email.length > MAX_EMAIL_LAENGE) throw fehler(400, MELDUNG_EMAIL_ZU_LANG);
-    if (!/^[^\s@]+@[^\s@]+$/.test(email)) throw fehler(400, 'Bitte eine gültige E-Mail-Adresse angeben.');
+    if (!/^[^\s@<>,;"]+@[^\s@<>,;"]+\.[^\s@<>,;".]+$/.test(email)) throw fehler(400, 'Bitte eine gültige E-Mail-Adresse angeben.');
 
     const b = basis(basisUrl);
     const mitglied = await findeMitglied(knex, email, vereinId);

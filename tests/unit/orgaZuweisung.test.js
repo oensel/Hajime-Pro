@@ -256,3 +256,50 @@ test('Einlösen: Konto in anderem Verein bekommt nur die Mitgliedschaft', async 
     assert.equal(Number(mit.freigegeben), 1);
     assert.equal((await holeAufgabe(aid)).benutzer_id, konto);
 });
+
+test('Einlösen: unbestätigtes Konto wird überschrieben und bestätigt, alter E-Mail-Token tot', async () => {
+    const v = await neuerVerein();
+    const email = `e5-${v}@x.de`;
+    const konto = await neuesKonto(email, null, { bestaetigt: false, passwort: 'angreifer-pw' });
+    await knex('token_einmal').insert({
+        benutzer_id: konto, zweck: 'email', token_hash: crypto.randomUUID(), laeuft_ab_am: knex.raw("now() + interval '1 day'")
+    });
+    const { aid } = await neueAufgabe(v);
+    const { mails, sende } = sammler();
+    await weiseZu(knex, aid, { name: 'N', email }, { basisUrl: BASIS, sende });
+    const token = tokenAus(mails[0].text);
+    assert.equal((await pruefeEinladung(knex, token)).kontoVorhanden, false);
+    assert.equal((await loeseEinladungEin(knex, token, { password: 'kurz', vorname: 'A', nachname: 'B' })).status, 400);
+    const r = await loeseEinladungEin(knex, token, { password: 'neues-passwort', vorname: 'Echt', nachname: 'Person' });
+    assert.deepEqual([r.ok, r.benutzerId], [true, konto]);
+    const b = await knex('benutzer').where({ id: konto }).first();
+    assert.ok(b.email_bestaetigt_am);
+    assert.equal(b.vorname, 'Echt');
+    assert.ok(verifyPassword('neues-passwort', b.password_hash));
+    assert.ok(!verifyPassword('angreifer-pw', b.password_hash));
+    assert.equal((await knex('token_einmal').where({ benutzer_id: konto, zweck: 'email' }).whereNull('benutzt_am')).length, 0);
+    assert.equal((await holeAufgabe(aid)).benutzer_id, konto);
+});
+
+test('Einlösen: bestehende Admin-Mitgliedschaft bleibt unverändert', async () => {
+    const v = await neuerVerein();
+    const email = `e6-${v}@x.de`;
+    const konto = await neuesKonto(email, v, { rolle: 'admin', passwort: 'admin-pw-123' });
+    await knex('orga_einladungen').insert({
+        token_hash: crypto.createHash('sha256').update('tok-e6').digest('hex'), email, verein_id: v,
+        laeuft_ab_am: knex.raw("now() + interval '1 day'")
+    });
+    const r = await loeseEinladungEin(knex, 'tok-e6', { password: 'admin-pw-123' });
+    assert.equal(r.ok, true);
+    const mit = await knex('benutzer_vereine').where({ benutzer_id: konto, verein_id: v }).first();
+    assert.equal(mit.rolle, 'admin');
+});
+
+test('Zuweisen: ungültige Adressen werden abgelehnt', async () => {
+    const v = await neuerVerein();
+    const { aid } = await neueAufgabe(v);
+    const { sende } = sammler();
+    for (const mail of ['a@b', 'a@b.de,c@d.de', 'a b@c.de', '<a@b.de>', 'a@b.de;c@d.de', 'a"@b.de', 'a@b.']) {
+        await assert.rejects(weiseZu(knex, aid, { name: 'N', email: mail }, { basisUrl: BASIS, sende }), (e) => e.statusCode === 400, mail);
+    }
+});

@@ -5,6 +5,7 @@
 // In orga_einladungen steht nur der SHA-256 des Tokens; der Klartext existiert nur im Link der Mail.
 import crypto from 'crypto';
 import { hashPassword, verifyPassword } from '../utils/password.js';
+import { entwerteTokens } from './einmalToken.js';
 import { findeKontoPerEmail, normalisiereEmail, MIN_PASSWORT_LAENGE } from './registrierung.js';
 
 export const EINLADUNG_GUELTIG_TAGE = 14;
@@ -55,7 +56,7 @@ export async function pruefeEinladung(knex, token) {
     if (!e) return null;
     const verein = await knex('vereine').where({ id: e.verein_id }).first('name');
     const konto = await findeKontoPerEmail(knex, e.email);
-    return { email: e.email, name: e.name, vereinName: verein ? verein.name : '', kontoVorhanden: !!konto };
+    return { email: e.email, name: e.name, vereinName: verein ? verein.name : '', kontoVorhanden: !!(konto && konto.email_bestaetigt_am) };
 }
 
 class Abbruch extends Error {
@@ -76,7 +77,9 @@ export async function loeseEinladungEin(knex, token, { password, vorname, nachna
     const vorab = await gueltig(knex('orga_einladungen'), token).first();
     if (!vorab) return { ok: false, status: 400, error: MELDUNG_UNGUELTIG };
 
-    const vorhanden = await findeKontoPerEmail(knex, vorab.email);
+    // Ein unbestätigtes Konto zählt als "kein Konto": der Link beweist das Postfach, nicht das Passwort dieses Kontos.
+    const kontoVorab = await findeKontoPerEmail(knex, vorab.email);
+    const vorhanden = kontoVorab && kontoVorab.email_bestaetigt_am ? kontoVorab : null;
     const vor = typeof vorname === 'string' ? vorname.trim() : '';
     const nach = typeof nachname === 'string' ? nachname.trim() : '';
     if (typeof password !== 'string' || !password) {
@@ -99,12 +102,20 @@ export async function loeseEinladungEin(knex, token, { password, vorname, nachna
 
             let benutzerId;
             const konto = await findeKontoPerEmail(trx, e.email);
-            if (konto) {
-                // Bestehendes Konto: nur mit dessen Passwort; Name und Passwort bleiben unverändert.
+            if (konto && konto.email_bestaetigt_am) {
+                // Bestätigtes Konto: nur mit dessen Passwort; Name und Passwort bleiben unverändert.
                 if (!verifyPassword(password, konto.password_hash)) throw new Abbruch(401, 'Das Passwort ist nicht korrekt.');
                 benutzerId = konto.id;
-                await trx('benutzer').where({ id: benutzerId }).whereNull('email_bestaetigt_am')
-                    .update({ email_bestaetigt_am: trx.fn.now(), updated_at: trx.fn.now() });
+                await trx('benutzer').where({ id: benutzerId }).whereNull('aktiver_verein_id')
+                    .update({ aktiver_verein_id: e.verein_id, updated_at: trx.fn.now() });
+            } else if (konto) {
+                // Unbestätigtes Konto (evtl. von Dritten vorab registriert): Zugangsdaten gehören der eingeladenen Person.
+                benutzerId = konto.id;
+                await trx('benutzer').where({ id: benutzerId }).update({
+                    password_hash: hashPassword(password), vorname: vor, nachname: nach,
+                    email_bestaetigt_am: trx.fn.now(), updated_at: trx.fn.now()
+                });
+                await entwerteTokens(trx, benutzerId, 'email');
                 await trx('benutzer').where({ id: benutzerId }).whereNull('aktiver_verein_id')
                     .update({ aktiver_verein_id: e.verein_id, updated_at: trx.fn.now() });
             } else {
@@ -129,7 +140,14 @@ export async function loeseEinladungEin(knex, token, { password, vorname, nachna
                 });
             } else if (!Number(mitgliedschaft.freigegeben)) {
                 await trx('benutzer_vereine').where({ benutzer_id: benutzerId, verein_id: e.verein_id })
-                    .update({ freigegeben: 1, rolle: 'helfer' });
+                    .update({
+                        freigegeben: 1, rolle: 'helfer', entschieden_von: null,
+                        entschieden_am: trx.fn.now(), updated_at: trx.fn.now()
+                    });
+                await trx('token_einmal')
+                    .where({ benutzer_id: benutzerId, zweck: 'freischaltung', verein_id: e.verein_id })
+                    .whereNull('benutzt_am')
+                    .update({ benutzt_am: trx.fn.now() });
             }
 
             // Offene Aufgaben dieser Adresse in Turnieren dieses Vereins gehören jetzt dem Konto (freie Felder bleiben).
