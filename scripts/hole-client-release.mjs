@@ -16,7 +16,7 @@ const ziel = path.join(path.resolve(process.env.CLIENT_DOWNLOADS_VERZEICHNIS || 
 
 try {
     await holeClientRelease({
-        repo: process.env.CLIENT_RELEASE_REPO || 'oensel/Hajime-Pro',
+        repo: process.env.CLIENT_RELEASE_REPO || 'oensel/Hajime-Pro-Releases',
         version,
         token: process.env.CLIENT_RELEASE_TOKEN || process.env.GITHUB_TOKEN || '',
         ziel,

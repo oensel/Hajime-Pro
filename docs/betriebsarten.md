@@ -62,7 +62,7 @@ Lesehilfe:
 | | Wie einrichten |
 |---|---|
 | 1× Linux-Server | `sudo bash deploy/linux/install.sh` auf Debian/Ubuntu |
-| 2× Linux-Server | drei Befehle je Server (`apt-get install git`, `git clone`, `bash deploy/linux/install-cluster.sh`); server2 bekommt von server1 einen Kopplungscode, siehe `deploy/linux/README.md` |
+| 2× Linux-Server | drei Befehle je Server (`curl …/hajime-holen.sh | bash`, `cd /opt/hajime-quelle`, `bash deploy/linux/install-cluster.sh`); server2 bekommt von server1 einen Kopplungscode, siehe `deploy/linux/README.md` |
 | Windows / Linux als Server (autark) | Installer bzw. AppImage „Hajime Pro Server“ |
 | Windows-/Linux-Client | Installer „Hajime Pro“, vom Server unter `/download` |
 | Android | APK vom Server unter `/download`, Kopplung per QR-Code |

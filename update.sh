@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Hajime Pro – Update eines Hallen-Servers (Linux, Dienst unter /opt/hajime-pro) auf den Stand des Klons.
 #
-# Aufruf im Klon (z. B. ~/Hajime-Pro) auf dem jeweiligen Server, als root:
+# Aufruf im Quellordner (Standard /opt/hajime-quelle, angelegt von deploy/linux/holen.sh) auf dem jeweiligen Server, als root:
 #     sudo bash update.sh
 #
 # Was das Skript tut:
-#   1. holt den neuesten Stand von GitHub (git pull --ff-only; lokale Änderungen im Klon brechen ab)
+#   1. holt das Dienst-Paket des Releases aus dem öffentlichen Release-Repository (deploy/linux/holen.sh, mit Prüfsumme)
 #   2. sichert die Datenbank nach /root/sicherung/ (pg_dump)
 #   3. spielt das Update ein: im Cluster install-cluster.sh mit den Angaben der vorhandenen .env
 #      (Knoten, Partner, VIP, Zeuge), auf einem Einzelserver install.sh; .env und Daten bleiben,
@@ -15,8 +15,8 @@
 # danach den anderen Server aktualisieren. Währenddessen sollte kein Turnier laufen.
 #
 # Optionen (Umgebungsvariablen):
-#   GIT_REF   Branch oder Tag statt main (z. B. GIT_REF=v1.0.18)
-#   OHNE_PULL=1   kein git pull (Klon ist schon auf dem gewünschten Stand)
+#   VERSION   Version statt des neuesten Releases (z. B. VERSION=1.0.18)
+#   OHNE_PULL=1   nichts herunterladen (der Quellordner ist schon auf dem gewünschten Stand)
 #   OHNE_SICHERUNG=1   keine Datenbanksicherung
 set -euo pipefail
 
@@ -31,7 +31,7 @@ if [ -z "${HAJIME_UPDATE_KOPIE:-}" ]; then
     HAJIME_UPDATE_KOPIE=1 HAJIME_UPDATE_KLON="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" exec bash "$KOPIE" "$@"
 fi
 KLON="$HAJIME_UPDATE_KLON"
-GIT_REF="${GIT_REF:-main}"
+VERSION="${VERSION:-}"
 
 log()     { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 hinweis() { printf '    %s\n' "$*"; }
@@ -39,26 +39,17 @@ fehler()  { printf '\033[1;31mFehler: %s\033[0m\n' "$*" >&2; exit 1; }
 lies()    { [ -f "$ENV_DATEI" ] && grep -m1 "^$1=" "$ENV_DATEI" | cut -d= -f2- || true; }
 
 [ "$(id -u)" -eq 0 ] || fehler "Als root ausführen: sudo bash update.sh"
-[ -d "$KLON/.git" ] || fehler "$KLON ist kein Git-Klon."
+[ -f "$KLON/package.json" ] || fehler "$KLON enthält keinen Quellstand (erst deploy/linux/holen.sh ausführen)."
 [ -f "$ENV_DATEI" ] || fehler "$ENV_DATEI fehlt – dieser Server ist noch nicht installiert (deploy/linux/install.sh bzw. install-cluster.sh)."
 
 VORHER="$(grep -m1 '"version"' "$INSTALL_DIR/package.json" 2>/dev/null | cut -d'"' -f4 || true)"
-# Klon-Besitzer führt git aus (kein root-eigener Klon durch sudo).
-GIT_NUTZER="$(stat -c %U "$KLON")"
-git_als() { if [ "$GIT_NUTZER" = "root" ]; then git -C "$KLON" "$@"; else sudo -u "$GIT_NUTZER" git -C "$KLON" "$@"; fi; }
-
 if [ "${OHNE_PULL:-0}" != "1" ]; then
-    log "Neuesten Stand holen ($GIT_REF)"
-    git_als fetch --tags origin
-    git_als checkout "$GIT_REF"
-    # Tags sind unbeweglich, nur Branches fortschreiben.
-    if git_als show-ref --verify --quiet "refs/remotes/origin/$GIT_REF"; then
-        git_als merge --ff-only "origin/$GIT_REF"
-    fi
+    log "Release holen (${VERSION:-neuestes})"
+    [ -f "$KLON/deploy/linux/holen.sh" ] || fehler "$KLON/deploy/linux/holen.sh fehlt – einmalig von Hand holen: curl -fsSL https://github.com/oensel/Hajime-Pro-Releases/releases/latest/download/hajime-holen.sh | QUELLE_DIR=$KLON bash"
+    QUELLE_DIR="$KLON" VERSION="$VERSION" bash "$KLON/deploy/linux/holen.sh"
 fi
-STAND="$(git_als describe --tags --always)"
-VERSION="$(node -p "require('$KLON/package.json').version" 2>/dev/null || grep -m1 '"version"' "$KLON/package.json" | cut -d'"' -f4)"
-hinweis "Klon-Stand: $STAND (Version $VERSION)"
+STAND_VERSION="$(node -p "require('$KLON/package.json').version" 2>/dev/null || grep -m1 '"version"' "$KLON/package.json" | cut -d'"' -f4)"
+hinweis "Quellstand: Version $STAND_VERSION"
 
 if [ "${OHNE_SICHERUNG:-0}" != "1" ]; then
     log "Datenbank sichern"
@@ -95,4 +86,4 @@ systemctl is-active --quiet hajime-pro && hinweis "Dienst hajime-pro: aktiv" || 
 if command -v curl >/dev/null; then
     curl -fsS --max-time 5 "http://127.0.0.1:${APP_PORT:-3000}/api/cluster/gesund" 2>/dev/null && echo || hinweis "Gesundheitscheck nicht erreichbar (Einzelserver oder Dienst startet noch)."
 fi
-printf '\nFertig. Version im Klon: %s (vorher: %s)\n' "$VERSION" "${VORHER:-unbekannt}"
+printf '\nFertig. Version im Quellordner: %s (vorher: %s)\n' "$STAND_VERSION" "${VORHER:-unbekannt}"

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Hajime Pro – Ein-Befehl-Installation eines einzelnen Hallen-Servers (Debian 12/13, Ubuntu 22.04+).
 #
-#   git clone <repo-url> && cd Hajime-Pro && sudo bash deploy/linux/install.sh
+#   curl -fsSL https://github.com/oensel/Hajime-Pro-Releases/releases/latest/download/hajime-holen.sh | sudo bash
+#   cd /opt/hajime-quelle && sudo bash deploy/linux/install.sh
 #
 # Installiert Node.js, PostgreSQL und alle Abhängigkeiten, legt Datenbank, Systembenutzer,
 # .env (mit zufälligen Geheimnissen), systemd-Dienst und Firewall-Regeln an und startet die App.
@@ -15,8 +16,8 @@
 # MDNS_NAME (turnier), NODE_MAJOR (22), CLIENT_RELEASE_TOKEN.
 #
 # Client-Dateien (Windows/macOS/Linux/Android für /download): Der Server holt sie beim Start selbst aus dem
-# GitHub-Release zur Version (src/sync/clientDateien.js). Ist das Repository privat, dafür einmal ein
-# Token mit Leserecht mitgeben: sudo CLIENT_RELEASE_TOKEN=ghp_... bash deploy/linux/install.sh (steht dann in .env).
+# GitHub-Release zur Version (src/sync/clientDateien.js) aus dem öffentlichen Repository oensel/Hajime-Pro-Releases
+# (kein Token nötig; nur bei abweichendem CLIENT_RELEASE_REPO mit privatem Repository: sudo CLIENT_RELEASE_TOKEN=ghp_... bash ...).
 set -euo pipefail
 
 INSTALL_DIR="${INSTALL_DIR:-/opt/hajime-pro}"
@@ -156,7 +157,7 @@ cat <<EOF
   Client-Download:    http://${IP:-<server-ip>}:$APP_PORT/download
   Konfiguration:      $ENV_DATEI  (enthält alle Passwörter, nur für root/$APP_USER lesbar)
   Logs / Status:      journalctl -u hajime-pro -f   |   systemctl status hajime-pro
-  Update:             Repository aktualisieren (git pull), dann dieses Skript erneut ausführen
+  Update:             automatisch beim Start, oder: sudo bash $QUELLE/update.sh
 EOF
 if [ "$NEUE_INSTALLATION" -eq 1 ]; then
     cat <<EOF

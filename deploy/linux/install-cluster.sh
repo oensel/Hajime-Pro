@@ -5,8 +5,8 @@
 # als root; feste IPs, dazu eine freie VIP im selben Netz). Je Server drei Befehle:
 #
 #   server1 (Master):
-#     apt-get update && apt-get install -y git
-#     git clone https://github.com/oensel/Hajime-Pro.git && cd Hajime-Pro
+#     curl -fsSL https://github.com/oensel/Hajime-Pro-Releases/releases/latest/download/hajime-holen.sh | bash
+#     cd /opt/hajime-quelle
 #     bash deploy/linux/install-cluster.sh --partner-ip 192.168.10.12 --vip 192.168.10.10
 #   -> erkennt die eigene IP selbst, legt alle Geheimnisse an und gibt am Ende die drei Zeilen für server2 samt
 #      Kopplungscode aus (auch in /root/hajime-kopplungscode.txt).
@@ -66,7 +66,7 @@ MARKE_ENDE="# <<< hajime-cluster"
 KNOTEN=""; EIGENE_IP=""; PARTNER_IP=""; VIP=""; ZEUGE=""; SCHNITTSTELLE=""; VRRP_ID="51"
 GEHEIMNIS_DATEI=""; NUR_KONFIG=""; KOPPLUNGSCODE=""; KOPPLUNGSCODE_DATEI=""; CLOUD_URL=""
 URSPRUENGLICHE_ARGUMENTE=("$@")
-REPO_URL_STANDARD="https://github.com/oensel/Hajime-Pro.git"
+RELEASE_REPO="${CLIENT_RELEASE_REPO:-oensel/Hajime-Pro-Releases}"
 KOPPLUNGS_DATEI="/root/hajime-kopplungscode.txt"
 
 log()    { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
@@ -657,17 +657,16 @@ fi
 printf '\n\033[1;32m✔ %s ist eingerichtet.\033[0m\n' "$KNOTEN"
 bash "$QUELLE/deploy/linux/cluster-status.sh" || true
 if [ "$KNOTEN" = "server1" ]; then
-    REPO_URL="$(git -C "$QUELLE" remote get-url origin 2>/dev/null || true)"
-    case "$REPO_URL" in https://*@*|"") REPO_URL="$REPO_URL_STANDARD" ;; esac   # keine Zugangsdaten in die Ausgabe
+    PAKET_VERSION="$(grep -m1 '"version"' "$QUELLE/package.json" | cut -d'"' -f4)"   # server2 bekommt dieselbe Version
     CODE="$(kopplungscode_erzeugen)"
     ( umask 077; printf '%s\n' "$CODE" > "$KOPPLUNGS_DATEI" )
     cat <<EOF
 
   Nächster Schritt – server2 ($PARTNER_IP, Debian, als root) einrichten, diese drei Zeilen dort einfügen:
 
-    apt-get update && apt-get install -y git
-    git clone $REPO_URL && cd $(basename "$REPO_URL" .git)
-    bash deploy/linux/install-cluster.sh --kopplungscode -
+    apt-get update && apt-get install -y curl ca-certificates
+    curl -fsSL https://github.com/$RELEASE_REPO/releases/download/v$PAKET_VERSION/hajime-holen.sh | VERSION=$PAKET_VERSION bash
+    cd /opt/hajime-quelle && bash deploy/linux/install-cluster.sh --kopplungscode -
 
   Beim letzten Befehl wird nach dem Kopplungscode gefragt – diese Zeile einfügen und Enter drücken (unsichtbar):
 
