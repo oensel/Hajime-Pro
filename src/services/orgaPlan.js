@@ -10,12 +10,12 @@ import { FachFehler } from '../utils/fachFehler.js';
 import { berechneStatus } from '../shared/orgaStatus.js';
 import { berechneFaelligkeit } from '../shared/orgaFrist.js';
 import { ORGA_VORLAGE, ORGA_PHASEN } from '../shared/orgaVorlage.js';
-import { datumAlsText } from './helferPlan.js';
+import { datumAlsText, heuteBerlin } from './helferPlan.js';
 
 const ARTEN = ['aufgabe', 'posten', 'mitbringen'];
 const ANKER = ['turnier', 'anmeldeschluss'];
 const MAX_TEXT = 255;
-const MITBRINGLISTEN_KEYS = new Set(ORGA_VORLAGE.filter((v) => v.mitbringliste).map((v) => v.vorlage_key));
+export const MITBRINGLISTEN_KEYS = new Set(ORGA_VORLAGE.filter((v) => v.mitbringliste).map((v) => v.vorlage_key));
 
 function fehler(status, nachricht) {
     const e = new FachFehler(status, nachricht);
@@ -34,11 +34,6 @@ async function transaktion(knex, fn) {
         }
         throw e;
     }
-}
-
-function heuteBerlin(jetzt = new Date()) {
-    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit' })
-        .format(jetzt);
 }
 
 async function sperreTurnier(trx, turnierId) {
@@ -155,7 +150,7 @@ export async function ladeOrga(knex, turnierId, { jetzt = new Date() } = {}) {
         kennzahlen.gesamt += 1;
         if (status.status === 'erledigt') kennzahlen.erledigt += 1;
         else if (aufgabe.faellig_am && aufgabe.faellig_am < heute) kennzahlen.ueberfaellig += 1;
-        if (!z.benutzer_id && !z.name_frei) kennzahlen.ohneZustaendigen += 1;
+        if (status.status !== 'erledigt' && !z.benutzer_id && !z.name_frei) kennzahlen.ohneZustaendigen += 1;
     }
     return { phasen, kennzahlen };
 }
@@ -172,6 +167,9 @@ export async function legeAufgabeAn(knex, turnierId, felder = {}) {
             if (!eltern) throw fehler(404, 'Übergeordnete Aufgabe nicht gefunden.');
             if (eltern.eltern_id != null) throw fehler(400, 'Unteraufgaben lassen sich nicht weiter schachteln.');
             if (art === 'aufgabe') throw fehler(400, 'Unter einer Aufgabe liegen Posten oder Mitbringeinträge.');
+            if (art === 'mitbringen' && !MITBRINGLISTEN_KEYS.has(eltern.vorlage_key)) {
+                throw fehler(400, 'Mitbringeinträge gibt es nur unter der Mitbringliste (Catering).');
+            }
             phase = eltern.phase;
         } else if (art !== 'aufgabe') {
             throw fehler(400, 'Posten und Mitbringeinträge brauchen eine übergeordnete Aufgabe.');
@@ -207,6 +205,10 @@ export async function aendereAufgabe(knex, aufgabeId, felder = {}) {
         const update = {};
         for (const k of AENDERBAR) if (k in felder) update[k] = felder[k] === '' ? null : felder[k];
         if ('titel' in felder) update.titel = pruefeTitel(felder.titel);
+        if (update.benutzer_id != null) {
+            const konto = await trx('benutzer').where({ id: String(update.benutzer_id) }).first('id');
+            if (!konto) throw fehler(400, 'Unbekannte Person als Zuständige.');
+        }
         if ('phase' in update) {
             if (aufgabe.eltern_id != null) throw fehler(400, 'Die Phase einer Unteraufgabe folgt der übergeordneten Aufgabe.');
             if (!ORGA_PHASEN.includes(update.phase)) throw fehler(400, 'Ungültige Phase.');
@@ -221,7 +223,10 @@ export async function aendereAufgabe(knex, aufgabeId, felder = {}) {
             }
         }
         if ('frist_anker' in felder || 'frist_tage' in felder) {
-            const frist = pruefeFrist(felder.frist_anker ?? aufgabe.frist_anker, felder.frist_tage ?? aufgabe.frist_tage);
+            const frist = pruefeFrist(
+                'frist_anker' in felder ? felder.frist_anker : aufgabe.frist_anker,
+                'frist_tage' in felder ? felder.frist_tage : aufgabe.frist_tage
+            );
             Object.assign(update, frist);
             if (!('faellig_am' in felder) && !aufgabe.faellig_manuell) {
                 update.faellig_am = berechneFaelligkeit(frist, { turnierdatum: turnier.datum, anmeldeschluss: turnier.anmeldeschluss });

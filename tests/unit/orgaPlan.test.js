@@ -110,3 +110,28 @@ test('Eigene Aufgabe anlegen und ändern', async () => {
     await assert.rejects(legeAufgabeAn(knex, tid, { phase: 'quatsch', titel: 'X' }), { statusCode: 400 });
     await assert.rejects(aendereAufgabe(knex, 999999, { titel: 'x' }), { statusCode: 404 });
 });
+
+test('Übernahme: ohneZustaendigen zählt nur offene Hauptaufgaben', async () => {
+    const tid = await neuesTurnier();
+    await legeAusVorlageAn(knex, tid);
+    const vorher = (await ladeOrga(knex, tid)).kennzahlen.ohneZustaendigen;
+    assert.equal(vorher, ORGA_VORLAGE.length);
+    const orga = await ladeOrga(knex, tid);
+    await setzeErledigt(knex, finde(orga.phasen, 'wiegen').id, { erledigt: true });
+    assert.equal((await ladeOrga(knex, tid)).kennzahlen.ohneZustaendigen, vorher - 1);
+});
+
+test('Übernahme: frist_anker null löscht die Frist, unbekannter Zuständiger 400, Mitbringen nur unter Mitbringliste', async () => {
+    const tid = await neuesTurnier();
+    await legeAusVorlageAn(knex, tid);
+    const orga = await ladeOrga(knex, tid);
+    const abbau = finde(orga.phasen, 'abbau');
+    await aendereAufgabe(knex, abbau.id, { frist_anker: null });
+    const z = await knex('orga_aufgaben').where({ id: abbau.id }).first();
+    assert.equal(z.frist_anker, null);
+    assert.equal(z.frist_tage, null);
+    assert.equal(z.faellig_am, null);
+    await assert.rejects(aendereAufgabe(knex, abbau.id, { benutzer_id: 'gibt-es-nicht' }), (e) => e.statusCode === 400);
+    const med = finde(orga.phasen, 'medaillen');
+    await assert.rejects(legeAufgabeAn(knex, tid, { eltern_id: med.id, art: 'mitbringen', titel: 'x' }), (e) => e.statusCode === 400);
+});

@@ -105,7 +105,7 @@ export function datumAlsText(wert) {
 }
 
 // Heutiges Datum in Europe/Berlin als 'YYYY-MM-DD'.
-function heuteBerlin(jetzt = new Date()) {
+export function heuteBerlin(jetzt = new Date()) {
     return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit' })
         .format(jetzt);
 }

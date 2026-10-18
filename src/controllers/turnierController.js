@@ -2,6 +2,7 @@ import { hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../ut
 import { gueltigeFarbe } from '../shared/kampfFarbe.js';
 import { exportiereVorlagen, importiereVorlagen } from '../services/urkundenVorlagenTransfer.js';
 import { exportiereHelferplan, ersetzeHelferplan } from '../services/helferTransfer.js';
+import { exportiereOrga, ersetzeOrga } from '../services/orgaTransfer.js';
 import { entfernungZuPlzInKm } from '../utils/entfernungHelper.js';
 import { turnierHatEchteKaempfe } from './poolController.js';
 import { FachFehler } from '../utils/fachFehler.js';
@@ -866,6 +867,8 @@ export async function importiereTurnierDaten(knex, sync, daten) {
             await importiereVorlagen(trx, verein.id, daten.urkunden_vorlagen);
             // Helferplan gehört zum neu angelegten Turnier (Einsätze als name_manuell); fehlt er, bleibt er leer
             if (daten.helferplan) await ersetzeHelferplan(trx, turnierId, daten.helferplan);
+            // Orga-Checkliste; alte Exportdateien ohne Abschnitt lassen sie leer (wird beim ersten Öffnen aus der Vorlage angelegt)
+            await ersetzeOrga(trx, turnierId, daten.orga);
 
             return turnierId;
         });
@@ -1083,7 +1086,8 @@ export async function baueTurnierExport(knex, turnierId, turnierZeile = null) {
             mannschaften,
             mannschaft_mitglieder: mannschaftMitglieder,
             urkunden_vorlagen: await exportiereVorlagen(knex, turnier.verein_id),
-            helferplan: await exportiereHelferplan(knex, turnierId, kampfflaechen)
+            helferplan: await exportiereHelferplan(knex, turnierId, kampfflaechen),
+            orga: await exportiereOrga(knex, turnierId)
         };
         return exportData;
 }

@@ -5,16 +5,11 @@
 // erst nach erfolgreichem Versand gesetzt. Überfällige und weiter als 3 Tage entfernte Fristen werden nicht gemeldet.
 import { sendeMail } from '../utils/mailer.js';
 import { normalisiereBasisUrl } from '../utils/basisUrl.js';
-import { datumAlsText } from './helferPlan.js';
+import { datumAlsText, heuteBerlin } from './helferPlan.js';
 import { ladeZaehlung } from './orgaPlan.js';
 import { berechneStatus } from '../shared/orgaStatus.js';
 
 const VORLAUF_TAGE = 3;
-
-function heuteBerlin(jetzt = new Date()) {
-    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit' })
-        .format(jetzt);
-}
 
 function plusTage(datum, tage) {
     const d = new Date(`${datum}T00:00:00Z`);
