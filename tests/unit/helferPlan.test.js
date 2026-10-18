@@ -63,11 +63,13 @@ test('Helferplan: Standard-Tätigkeiten, Slots, Eintragen und Austragen', async 
         assert.deepEqual(liste.map(t => [t.art, t.bezeichnung, t.bedarf]), [
             ['matte', 'Kampfgericht Matte 1', 2],
             ['matte', 'Kampfgericht Matte 2', 2],
+            ['kampfrichter', 'Kampfrichter Matte 1', 1],
+            ['kampfrichter', 'Kampfrichter Matte 2', 1],
             ['waage', 'Waage 1', 2]
         ]);
         for (const t of liste) {
             assert.deepEqual(t.slots.map(s => [s.von_min, s.bis_min, s.bedarf]), [
-                [540, 660, 2], [660, 780, 2], [780, 900, 2], [900, 1020, 2], [1020, 1080, 2]
+                [540, 660, t.bedarf], [660, 780, t.bedarf], [780, 900, t.bedarf], [900, 1020, t.bedarf], [1020, 1080, t.bedarf]
             ]);
         }
         const davor = JSON.stringify(liste);
@@ -83,7 +85,7 @@ test('Helferplan: Standard-Tätigkeiten, Slots, Eintragen und Austragen', async 
         await plan.synchronisiereStandardTaetigkeiten(knex, turnier);
         liste = await zeilen(knex, turnier);
         assert.deepEqual(liste.map(t => t.bezeichnung),
-            ['Kampfgericht Matte 1', 'Kampfgericht Matte 2', 'Waage 1', 'Waage 2']);
+            ['Kampfgericht Matte 1', 'Kampfgericht Matte 2', 'Kampfrichter Matte 1', 'Kampfrichter Matte 2', 'Waage 1', 'Waage 2']);
         assert.equal((await finde(knex, turnier, 'Waage 1')).id, waage1Vorher.id);
 
         // --- Slots: Raster, Mindestlänge, Überlappung
@@ -306,14 +308,14 @@ test('Helferplan: Matten und Waagen bekommen 2-Stunden-Schichten, sobald die Tur
         const turnier = await legeTurnierAn(knex, { vereinId: verein, datum: '2026-11-01', matten: 1, beginn: null, ende: null });
         await plan.synchronisiereStandardTaetigkeiten(knex, turnier);
         let liste = await zeilen(knex, turnier);
-        assert.deepEqual(liste.map(t => [t.bezeichnung, t.slots.length]), [['Kampfgericht Matte 1', 0], ['Waage 1', 0]]);
+        assert.deepEqual(liste.map(t => [t.bezeichnung, t.slots.length]), [['Kampfgericht Matte 1', 0], ['Kampfrichter Matte 1', 0], ['Waage 1', 0]]);
 
         // Zeiten werden später am Turnier eingetragen: der nächste Abgleich füllt die leeren Tätigkeiten auf
         await knex('turniere').where({ id: turnier }).update({ beginn_min: 540, ende_min: 960 });
         await plan.synchronisiereStandardTaetigkeiten(knex, turnier);
         liste = await zeilen(knex, turnier);
         for (const t of liste) {
-            assert.deepEqual(t.slots.map(s => [s.von_min, s.bis_min, s.bedarf]), [[540, 660, 2], [660, 780, 2], [780, 900, 2], [900, 960, 2]], t.bezeichnung);
+            assert.deepEqual(t.slots.map(s => [s.von_min, s.bis_min, s.bedarf]), [[540, 660, t.bedarf], [660, 780, t.bedarf], [780, 900, t.bedarf], [900, 960, t.bedarf]], t.bezeichnung);
         }
 
         // Idempotent: ein weiterer Abgleich ändert nichts

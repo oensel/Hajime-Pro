@@ -5,7 +5,7 @@
 // Kampfflächenliste) zugeordnet, nicht über die Datenbank-ID. Beim Import werden die Einsätze zu
 // name_manuell-Einträgen (Benutzerkonten gibt es nur in der Cloud).
 
-const ARTEN = ['matte', 'waage', 'frei'];
+const ARTEN = ['matte', 'kampfrichter', 'waage', 'frei'];
 const idAus = (r) => (typeof r === 'object' ? r.id : r);
 
 function anzeigename(e) {
@@ -91,7 +91,7 @@ export async function ersetzeHelferplan(trx, turnierId, helferplan) {
         if (!bezeichnung) continue;
         const art = ARTEN.includes(t.art) ? t.art : 'frei';
         const ref = ganzzahl(t.kampfflaeche_ref);
-        const kampfflaecheId = art === 'matte' && ref != null && ref >= 0 && ref < flaechen.length ? flaechen[ref].id : null;
+        const kampfflaecheId = (art === 'matte' || art === 'kampfrichter') && ref != null && ref >= 0 && ref < flaechen.length ? flaechen[ref].id : null;
         const bedarf = bedarfAus(t.bedarf);
         const taetigkeitId = idAus((await trx('helfer_taetigkeiten').insert({
             turnier_id: turnierId,

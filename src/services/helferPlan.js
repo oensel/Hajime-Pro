@@ -1,7 +1,8 @@
 // Helferplan (Helferverwaltung, Spec Abschnitte 5–7): Tätigkeiten je Turnier, ihre Zeit-Slots und die
 // Einsätze der Helfer. Erwartete Fehler werfen FachFehler mit HTTP-Status und deutscher Meldung.
 // Regeln:
-//   - Je Kampffläche „Kampfgericht Matte n“ und je Waage „Waage n“ (art 'matte'/'waage'), Bedarf 2,
+//   - Je Kampffläche „Kampfgericht Matte n“ (art 'matte', Bedarf 2) und „Kampfrichter Matte n“ (art 'kampfrichter',
+//     Bedarf 1, mindestens ein Kampfrichter je Matte) und je Waage „Waage n“ (art 'waage', Bedarf 2),
 //     nicht umbenennbar/löschbar; eigene Tätigkeiten (art 'frei') frei änderbar.
 //   - Slots im 15-Minuten-Raster, mindestens 30 Minuten, keine Überlappung innerhalb einer Tätigkeit.
 //   - Eintragen: freigegebene Mitgliedschaft im ausrichtenden Verein, kein überlappender eigener Dienst im
@@ -12,6 +13,7 @@ import { hatHelferZugriffAufVerein } from '../utils/vereinHelper.js';
 import { RASTER_MIN, MIN_LAENGE, darfHelferAendern, ueberlappt, erzeugeStandardSlots } from '../shared/helferZeit.js';
 
 const STANDARD_BEDARF = 2;
+const KAMPFRICHTER_BEDARF = 1;
 const FRIST_MELDUNG = 'Die Frist ist abgelaufen (Turniertag 08:00 Uhr). Bitte melde dich bei der Turnierleitung.';
 
 // Maschinenlesbare Fehlerarten (FachFehler.code) für die Routen/Oberfläche.
@@ -152,9 +154,9 @@ async function loescheWennLeer(knex, taetigkeitId) {
     return true;
 }
 
-function mattenBezeichnung(kampfflaeche, nummer) {
+function mattenBezeichnung(kampfflaeche, nummer, vorsatz = 'Kampfgericht') {
     const bez = String(kampfflaeche.bezeichnung || '').trim();
-    return /^matte\b/i.test(bez) ? `Kampfgericht ${bez}` : `Kampfgericht Matte ${nummer}`;
+    return /^matte\b/i.test(bez) ? `${vorsatz} ${bez}` : `${vorsatz} Matte ${nummer}`;
 }
 
 /**
@@ -181,7 +183,7 @@ export async function synchronisiereStandardTaetigkeiten(knex, turnierId) {
         // Turnier sperren: gleichzeitige Läufe legen nichts doppelt an.
         const turnier = await trx('turniere').where({ id: turnierId }).forUpdate().first();
         if (!turnier) throw fehler(404, 'Turnier nicht gefunden.');
-        const vorhandene = await trx('helfer_taetigkeiten').where({ turnier_id: turnierId }).whereIn('art', ['matte', 'waage']);
+        const vorhandene = await trx('helfer_taetigkeiten').where({ turnier_id: turnierId }).whereIn('art', ['matte', 'kampfrichter', 'waage']);
 
         // Matten
         const flaechen = await trx('kampfflaechen').where({ turnier_id: turnierId }).orderBy('id');
@@ -195,6 +197,19 @@ export async function synchronisiereStandardTaetigkeiten(knex, turnierId) {
             });
         }
         for (const t of matten) {
+            if (t.kampfflaeche_id == null || !flaechenIds.has(t.kampfflaeche_id)) await loescheWennLeer(trx, t.id);
+        }
+
+        // Kampfrichter: mindestens einer je Matte
+        const kampfrichter = vorhandene.filter(t => t.art === 'kampfrichter');
+        for (const [i, kf] of flaechen.entries()) {
+            if (kampfrichter.some(t => t.kampfflaeche_id === kf.id)) continue;
+            await legeTaetigkeitMitSlotsAn(trx, turnier, {
+                turnier_id: turnierId, art: 'kampfrichter', kampfflaeche_id: kf.id,
+                bezeichnung: mattenBezeichnung(kf, i + 1, 'Kampfrichter'), bedarf: KAMPFRICHTER_BEDARF, reihenfolge: i + 1
+            });
+        }
+        for (const t of kampfrichter) {
             if (t.kampfflaeche_id == null || !flaechenIds.has(t.kampfflaeche_id)) await loescheWennLeer(trx, t.id);
         }
 
@@ -216,7 +231,7 @@ export async function synchronisiereStandardTaetigkeiten(knex, turnierId) {
         // die 2-Stunden-Schichten jetzt nachträglich (eigene Tätigkeiten bleiben unangetastet).
         const ohneSlots = await trx('helfer_taetigkeiten as t')
             .where({ 't.turnier_id': turnierId })
-            .whereIn('t.art', ['matte', 'waage'])
+            .whereIn('t.art', ['matte', 'kampfrichter', 'waage'])
             .whereNotExists(trx('helfer_slots as s').whereRaw('s.taetigkeit_id = t.id').select(trx.raw('1')))
             .select('t.id', 't.bedarf');
         for (const t of ohneSlots) await fuegeStandardSlotsEin(trx, turnier, t.id, t.bedarf);
@@ -253,7 +268,7 @@ export async function aendereTaetigkeit(knex, id, { bezeichnung, bedarf, bestaet
         if (bezeichnung !== undefined) {
             const name = pruefeBezeichnung(bezeichnung);
             if (name !== t.bezeichnung) {
-                if (t.art !== 'frei') throw fehler(409, 'Matten- und Waagenzeilen lassen sich nicht umbenennen.');
+                if (t.art !== 'frei') throw fehler(409, 'Matten-, Kampfrichter- und Waagenzeilen lassen sich nicht umbenennen.');
                 aenderung.bezeichnung = name;
             }
         }
@@ -289,7 +304,7 @@ export async function aendereTaetigkeit(knex, id, { bezeichnung, bedarf, bestaet
 export async function loescheTaetigkeit(knex, id, { bestaetigt } = {}) {
     return transaktion(knex, async (trx) => {
         const t = await sperreTaetigkeit(trx, id);
-        if (t.art !== 'frei') throw fehler(409, 'Matten- und Waagenzeilen lassen sich nicht löschen.');
+        if (t.art !== 'frei') throw fehler(409, 'Matten-, Kampfrichter- und Waagenzeilen lassen sich nicht löschen.');
         const slots = await trx('helfer_slots').where({ taetigkeit_id: id }).orderBy('id').forUpdate().select('id');
         const einsaetze = await trx('helfer_einsaetze').whereIn('slot_id', slots.map(s => s.id)).select('benutzer_id');
         if (einsaetze.length > 0 && bestaetigt !== true) {
@@ -467,7 +482,7 @@ export async function traegeManuellEin(knex, { slotId, name, durchId }) {
     });
 }
 
-const ART_REIHENFOLGE = { matte: 0, waage: 1, frei: 2 };
+const ART_REIHENFOLGE = { matte: 0, kampfrichter: 1, waage: 2, frei: 3 };
 
 function anzeigename(e) {
     if (!e.benutzer_id) return e.name_manuell || '';
@@ -481,7 +496,7 @@ export async function ladePlan(knex, turnierId) {
     const taetigkeiten = await knex('helfer_taetigkeiten').where({ turnier_id: turnierId }).orderBy([
         { column: 'reihenfolge' }, { column: 'id' }
     ]);
-    taetigkeiten.sort((a, b) => (ART_REIHENFOLGE[a.art] ?? 3) - (ART_REIHENFOLGE[b.art] ?? 3));
+    taetigkeiten.sort((a, b) => (ART_REIHENFOLGE[a.art] ?? 4) - (ART_REIHENFOLGE[b.art] ?? 4));
     const ids = taetigkeiten.map(t => t.id);
     const slots = ids.length
         ? await knex('helfer_slots').whereIn('taetigkeit_id', ids).orderBy([{ column: 'von_min' }, { column: 'id' }])
