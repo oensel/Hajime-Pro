@@ -296,3 +296,37 @@ test('Helferplan: Standard-Tätigkeiten, Slots, Eintragen und Austragen', async 
         await db.stoppe();
     }
 });
+
+test('Helferplan: Matten und Waagen bekommen 2-Stunden-Schichten, sobald die Turnierzeit feststeht', async () => {
+    const db = await starteTestPostgres();
+    const { knex } = db;
+    try {
+        const verein = id((await knex('vereine').insert({ name: 'JC Spaet' }).returning('id'))[0]);
+        // Turnier zunächst ohne Beginn/Ende: die Tätigkeiten entstehen, aber ohne Schichten
+        const turnier = await legeTurnierAn(knex, { vereinId: verein, datum: '2026-11-01', matten: 1, beginn: null, ende: null });
+        await plan.synchronisiereStandardTaetigkeiten(knex, turnier);
+        let liste = await zeilen(knex, turnier);
+        assert.deepEqual(liste.map(t => [t.bezeichnung, t.slots.length]), [['Kampfgericht Matte 1', 0], ['Waage 1', 0]]);
+
+        // Zeiten werden später am Turnier eingetragen: der nächste Abgleich füllt die leeren Tätigkeiten auf
+        await knex('turniere').where({ id: turnier }).update({ beginn_min: 540, ende_min: 960 });
+        await plan.synchronisiereStandardTaetigkeiten(knex, turnier);
+        liste = await zeilen(knex, turnier);
+        for (const t of liste) {
+            assert.deepEqual(t.slots.map(s => [s.von_min, s.bis_min, s.bedarf]), [[540, 660, 2], [660, 780, 2], [780, 900, 2], [900, 960, 2]], t.bezeichnung);
+        }
+
+        // Idempotent: ein weiterer Abgleich ändert nichts
+        const davor = JSON.stringify(liste);
+        await plan.synchronisiereStandardTaetigkeiten(knex, turnier);
+        assert.equal(JSON.stringify(await zeilen(knex, turnier)), davor);
+
+        // Eigene Tätigkeiten ohne Schichten werden nicht angefasst (nur Matten/Waagen)
+        const frei = (await plan.legeTaetigkeitAn(knex, turnier, { bezeichnung: 'Kuchen', bedarf: 2 })).id;
+        await knex('helfer_slots').where({ taetigkeit_id: frei }).del();
+        await plan.synchronisiereStandardTaetigkeiten(knex, turnier);
+        assert.equal((await knex('helfer_slots').where({ taetigkeit_id: frei })).length, 0);
+    } finally {
+        await db.stoppe();
+    }
+});

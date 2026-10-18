@@ -112,8 +112,9 @@ function baueZeile(taetigkeit) {
     const label = el('div', 'hp-label');
     const text = el('div', 'hp-label-text');
     const bedarf = el('div', 'hp-bedarf', `min. ${taetigkeit.bedarf} Helfer`);
-    if (taetigkeit.art !== 'frei') bedarf.append(el('span', 'hp-quelle', 'aus Turnier'));
-    text.append(el('div', 'hp-name', taetigkeit.bezeichnung), bedarf);
+    const name = el('div', 'hp-name', taetigkeit.bezeichnung);
+    name.title = taetigkeit.bezeichnung;
+    text.append(name, bedarf);
     label.append(text);
     if (taetigkeit.art === 'frei') label.append(baueLabelMenue(taetigkeit));
 

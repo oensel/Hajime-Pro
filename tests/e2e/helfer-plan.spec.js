@@ -32,7 +32,15 @@ test('zeigt die Zeilen der Matten und der Waage mit Slots', async ({ page }) => 
     await expect(zeile(page, 'Kampfgericht Matte 1')).toBeVisible();
     await expect(zeile(page, 'Kampfgericht Matte 2')).toBeVisible();
     await expect(zeile(page, 'Waage 1')).toBeVisible();
-    await expect(zeile(page, 'Waage 1')).toContainText('aus Turnier');
+    await expect(zeile(page, 'Waage 1')).not.toContainText('aus Turnier');
+    // Der Titel einer Tätigkeit bricht nicht um: die Höhe des Namens entspricht einer Textzeile
+    const name = zeile(page, 'Kampfgericht Matte 1').locator('.hp-name');
+    const { hoehe, zeilenhoehe, ueberlauf } = await name.evaluate((el) => {
+        const stil = getComputedStyle(el);
+        return { hoehe: el.getBoundingClientRect().height, zeilenhoehe: parseFloat(stil.lineHeight) || parseFloat(stil.fontSize) * 1.5, ueberlauf: el.scrollWidth > el.clientWidth };
+    });
+    expect(hoehe).toBeLessThanOrEqual(zeilenhoehe + 2);
+    expect(ueberlauf).toBe(false);
     await expect(zeile(page, 'Waage 1').locator('.hp-slot').first()).toContainText('09:00–11:00 · 0/2');
     await expect(page.locator('#nav-helfer')).toHaveClass(/active/);
 });

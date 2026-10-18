@@ -130,13 +130,17 @@ async function anzahlEinsaetze(knex, slotIds) {
     return parseInt(r.anzahl, 10);
 }
 
+// 2-Stunden-Schichten über die Turnierzeit; ohne gültigen Beginn/Ende entstehen keine.
+async function fuegeStandardSlotsEin(knex, turnier, taetigkeitId, bedarf) {
+    if (turnier.beginn_min == null || turnier.ende_min == null || turnier.ende_min <= turnier.beginn_min) return;
+    const slots = erzeugeStandardSlots(turnier.beginn_min, turnier.ende_min)
+        .map(s => ({ taetigkeit_id: taetigkeitId, von_min: s.von_min, bis_min: s.bis_min, bedarf }));
+    if (slots.length) await knex('helfer_slots').insert(slots);
+}
+
 async function legeTaetigkeitMitSlotsAn(knex, turnier, felder) {
     const taetigkeitId = idAus((await knex('helfer_taetigkeiten').insert(felder).returning('id'))[0]);
-    if (turnier.beginn_min != null && turnier.ende_min != null && turnier.ende_min > turnier.beginn_min) {
-        const slots = erzeugeStandardSlots(turnier.beginn_min, turnier.ende_min)
-            .map(s => ({ taetigkeit_id: taetigkeitId, von_min: s.von_min, bis_min: s.bis_min, bedarf: felder.bedarf }));
-        if (slots.length) await knex('helfer_slots').insert(slots);
-    }
+    await fuegeStandardSlotsEin(knex, turnier, taetigkeitId, felder.bedarf);
     return taetigkeitId;
 }
 
@@ -207,6 +211,15 @@ export async function synchronisiereStandardTaetigkeiten(knex, turnierId) {
         for (const t of waagen) {
             if (t.reihenfolge > anzahl) await loescheWennLeer(trx, t.id);
         }
+
+        // Standen Beginn/Ende beim Anlegen noch nicht fest, bekommen Matten und Waagen ohne jede Schicht
+        // die 2-Stunden-Schichten jetzt nachträglich (eigene Tätigkeiten bleiben unangetastet).
+        const ohneSlots = await trx('helfer_taetigkeiten as t')
+            .where({ 't.turnier_id': turnierId })
+            .whereIn('t.art', ['matte', 'waage'])
+            .whereNotExists(trx('helfer_slots as s').whereRaw('s.taetigkeit_id = t.id').select(trx.raw('1')))
+            .select('t.id', 't.bedarf');
+        for (const t of ohneSlots) await fuegeStandardSlotsEin(trx, turnier, t.id, t.bedarf);
     });
 }
 
