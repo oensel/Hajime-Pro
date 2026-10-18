@@ -37,9 +37,16 @@ async function transaktion(knex, fn) {
 }
 
 async function sperreTurnier(trx, turnierId) {
-    const t = await trx('turniere').where({ id: turnierId }).forUpdate().first('id', 'datum', 'anmeldeschluss');
+    const t = await trx('turniere').where({ id: turnierId }).forUpdate().first('id', 'datum', 'anmeldeschluss', 'verein_id');
     if (!t) throw fehler(404, 'Turnier nicht gefunden.');
     return t;
+}
+
+// Zuständige müssen freigegebene Mitglieder des ausrichtenden Vereins sein (sonst 400).
+async function pruefeZustaendigen(trx, benutzerId, vereinId) {
+    const ok = benutzerId != null && vereinId != null && await trx('benutzer_vereine')
+        .where({ benutzer_id: String(benutzerId), verein_id: vereinId, freigegeben: 1 }).first('benutzer_id');
+    if (!ok) throw fehler(400, 'Diese Person ist kein freigegebenes Mitglied des Vereins.');
 }
 
 function pruefeTitel(titel) {
@@ -176,6 +183,7 @@ export async function legeAufgabeAn(knex, turnierId, felder = {}) {
         }
         if (!ORGA_PHASEN.includes(phase)) throw fehler(400, 'Ungültige Phase.');
         const titel = pruefeTitel(felder.titel);
+        if (felder.benutzer_id != null) await pruefeZustaendigen(trx, felder.benutzer_id, turnier.verein_id);
         const frist = pruefeFrist(felder.frist_anker, felder.frist_tage);
         const explizit = pruefeDatum(felder.faellig_am);
         const faellig = explizit ?? berechneFaelligkeit(frist, { turnierdatum: turnier.datum, anmeldeschluss: turnier.anmeldeschluss });
@@ -205,10 +213,7 @@ export async function aendereAufgabe(knex, aufgabeId, felder = {}) {
         const update = {};
         for (const k of AENDERBAR) if (k in felder) update[k] = felder[k] === '' ? null : felder[k];
         if ('titel' in felder) update.titel = pruefeTitel(felder.titel);
-        if (update.benutzer_id != null) {
-            const konto = await trx('benutzer').where({ id: String(update.benutzer_id) }).first('id');
-            if (!konto) throw fehler(400, 'Unbekannte Person als Zuständige.');
-        }
+        if (update.benutzer_id != null) await pruefeZustaendigen(trx, update.benutzer_id, turnier.verein_id);
         if ('phase' in update) {
             if (aufgabe.eltern_id != null) throw fehler(400, 'Die Phase einer Unteraufgabe folgt der übergeordneten Aufgabe.');
             if (!ORGA_PHASEN.includes(update.phase)) throw fehler(400, 'Ungültige Phase.');

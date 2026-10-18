@@ -19,6 +19,7 @@ const alle = (o) => o.phasen.flatMap((p) => p.aufgaben);
 async function baueQuelle(knex) {
     const verein = id((await knex('vereine').insert({ name: 'JC Orga' }).returning('id'))[0]);
     await knex('benutzer').insert({ id: 'u-orga-1', email: 'zustaendig@test.de', vorname: 'Zora', nachname: 'Zustaendig', password_hash: 'hash-xyz' });
+    await knex('benutzer_vereine').insert({ benutzer_id: 'u-orga-1', verein_id: verein, freigegeben: 1, rolle: 'helfer' });
     const tid = id((await knex('turniere').insert({
         bezeichnung: 'Orgapokal', ort: 'Halle', datum: '2031-03-01', anmeldeschluss: '2031-02-15', ausrichter: 'JC Orga', verein_id: verein
     }).returning('id'))[0]);
@@ -57,7 +58,8 @@ test('Orga-Rundreise: Hierarchie, Status, Fristen; Zuständige nur als freier Te
         assert.ok(!text.includes('hash-xyz'));
         const wiegenExport = daten.orga.aufgaben.find((a) => a.vorlage_key === 'wiegen');
         assert.equal(wiegenExport.name_frei, 'Zora Zustaendig');
-        assert.equal(wiegenExport.email_frei, 'zustaendig@test.de');
+        assert.equal(wiegenExport.email_frei, null);
+        assert.ok(!text.includes('zustaendig@test.de'), 'Konto-E-Mail im Export');
 
         const { turnierId } = await importiereTurnierDaten(ziel.knex, null, daten);
         const z = await ziel.knex('orga_aufgaben').where({ turnier_id: turnierId });

@@ -26,7 +26,7 @@ export async function exportiereOrga(knex, turnierId) {
         .leftJoin('benutzer as b', 'b.id', 'a.benutzer_id')
         .where('a.turnier_id', turnierId)
         .orderBy([{ column: 'a.reihenfolge' }, { column: 'a.id' }])
-        .select('a.*', 'b.vorname', 'b.nachname', 'b.email as benutzer_email');
+        .select('a.*', 'b.vorname', 'b.nachname');
     const eltern = zeilen.filter((z) => z.eltern_id == null);
     const kinder = zeilen.filter((z) => z.eltern_id != null);
     const reihe = [...eltern, ...kinder];
@@ -52,7 +52,7 @@ export async function exportiereOrga(knex, turnierId) {
                 link: z.link,
                 vorlage_key: z.vorlage_key,
                 name_frei: z.benutzer_id ? (kontoName || null) : z.name_frei,
-                email_frei: z.benutzer_id ? (z.benutzer_email || null) : z.email_frei,
+                email_frei: z.benutzer_id ? null : z.email_frei,
                 erledigt_am: zeitpunktAlsText(z.erledigt_am)
             };
         })

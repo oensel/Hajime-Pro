@@ -135,3 +135,21 @@ test('Übernahme: frist_anker null löscht die Frist, unbekannter Zuständiger 4
     const med = finde(orga.phasen, 'medaillen');
     await assert.rejects(legeAufgabeAn(knex, tid, { eltern_id: med.id, art: 'mitbringen', titel: 'x' }), (e) => e.statusCode === 400);
 });
+
+test('Zuständige müssen freigegebene Mitglieder des Vereins sein', async () => {
+    const verein = id((await knex('vereine').insert({ name: 'JC Mitglied' }).returning('id'))[0]);
+    const tid = id((await knex('turniere').insert({ bezeichnung: 'T', ort: 'O', datum: '2032-01-01', ausrichter: 'A', verein_id: verein }).returning('id'))[0]);
+    for (const n of ['mit', 'fremd', 'offen']) {
+        await knex('benutzer').insert({ id: `u-zm-${n}`, email: `zm-${n}@test.de`, vorname: n, nachname: 'T' });
+    }
+    await knex('benutzer_vereine').insert([
+        { benutzer_id: 'u-zm-mit', verein_id: verein, freigegeben: 1, rolle: 'helfer' },
+        { benutzer_id: 'u-zm-offen', verein_id: verein, freigegeben: 0, rolle: null }
+    ]);
+    const { id: aid } = await legeAufgabeAn(knex, tid, { titel: 'X', phase: 'turniertag', benutzer_id: 'u-zm-mit' });
+    await aendereAufgabe(knex, aid, { benutzer_id: 'u-zm-mit' });
+    for (const bid of ['u-zm-fremd', 'u-zm-offen', 'unbekannt']) {
+        await assert.rejects(aendereAufgabe(knex, aid, { benutzer_id: bid }), (e) => e.statusCode === 400);
+        await assert.rejects(legeAufgabeAn(knex, tid, { titel: 'Y', phase: 'turniertag', benutzer_id: bid }), (e) => e.statusCode === 400);
+    }
+});
