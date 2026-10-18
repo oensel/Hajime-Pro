@@ -7,14 +7,14 @@
 //
 // Nicht im Cluster (CLUSTER_KNOTEN): zwei Server dürfen nicht gleichzeitig neu starten; dort bleibt das Update Handarbeit
 // (deploy/linux/README.md). Abschalten: HAJIME_SELBSTUPDATE=false.
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'fs';
 import { execFile } from 'child_process';
 import path from 'path';
 import { MELDUNG, erzeugeKonsolenAnzeige, schrittZeile } from '../shared/updateAnzeige.js';
 
 export const DIENST_PLATTFORM = 'linux-dienst';
 // Was beim Austausch ersetzt wird; .env, data/ und alles andere im Installationsordner bleiben unberührt.
-export const PAKET_TEILE = ['src', 'public', 'migrations', 'node_modules', 'knexfile.cjs', 'package.json', 'package-lock.json', 'desktop', 'deploy'];
+export const PAKET_TEILE = ['src', 'public', 'migrations', 'node_modules', 'knexfile.cjs', 'package.json', 'package-lock.json', 'desktop', 'deploy', 'scripts'];
 
 export function dienstUpdateAktiv(env = process.env) {
     return env.BETRIEBSMODUS === 'server'
@@ -24,23 +24,81 @@ export function dienstUpdateAktiv(env = process.env) {
         && env.NODE_ENV !== 'test';
 }
 
+// npm unter Windows: über das Node mitgelieferte npm-cli.js (kein .cmd, keine Shell); fehlt es, bleibt die Shell als Ausweg.
+function npmAufruf(befehl, args) {
+    if (befehl !== 'npm' || process.platform !== 'win32') return { befehl, args, shell: false };
+    const cli = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
+    return existsSync(cli) ? { befehl: process.execPath, args: [cli, ...args], shell: false } : { befehl, args, shell: true };
+}
+
 function fuehreAusStandard(befehl, args, optionen = {}) {
+    const aufruf = npmAufruf(befehl, args);
     return new Promise((resolve, reject) => {
-        execFile(befehl, args, { timeout: 15 * 60 * 1000, maxBuffer: 16 * 1024 * 1024, ...optionen }, (fehler, stdout, stderr) => {
+        execFile(aufruf.befehl, aufruf.args, { timeout: 15 * 60 * 1000, maxBuffer: 16 * 1024 * 1024, ...(aufruf.shell ? { shell: true } : {}), ...optionen }, (fehler, stdout, stderr) => {
             if (fehler) reject(new Error(`${befehl} ${args.join(' ')}: ${(stderr || fehler.message).toString().trim().split('\n').slice(-5).join(' | ')}`));
             else resolve(stdout);
         });
     });
 }
 
+// Windows: Virenscanner/Indexdienst halten frisch geschriebene Ordner kurz fest (EPERM/EBUSY), daher mit Wiederholung.
+function benenne(von, nach) {
+    for (let versuch = 0; ; versuch++) {
+        try {
+            return renameSync(von, nach);
+        } catch (err) {
+            if (!['EPERM', 'EBUSY', 'EACCES'].includes(err.code) || versuch >= 20) throw err;
+            Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
+        }
+    }
+}
+
+// Teile, die das Paket nicht enthalten muss (ältere Releases): fehlen sie im Paket, bleibt der vorhandene Teil stehen.
+const OPTIONALE_TEILE = ['scripts'];
+const AUSTAUSCH_DATEI = 'austausch.json';
+
+// Tauscht die Programmteile gegen die vorbereitete neue Version: erst das Alte beiseite, dann das Neue hinein; scheitert
+// etwas, wird alles zurückgelegt.
+function tauscheAus({ installDir, neu, alt }) {
+    rmSync(alt, { recursive: true, force: true });
+    mkdirSync(alt, { recursive: true });
+    const verschoben = [];
+    try {
+        for (const teil of PAKET_TEILE) {
+            const imPaket = existsSync(path.join(neu, teil));
+            if (!imPaket && OPTIONALE_TEILE.includes(teil)) continue;
+            if (existsSync(path.join(installDir, teil))) {
+                benenne(path.join(installDir, teil), path.join(alt, teil));
+                verschoben.push({ teil, hattAlt: true });
+            } else {
+                verschoben.push({ teil, hattAlt: false });
+            }
+            if (imPaket) benenne(path.join(neu, teil), path.join(installDir, teil));
+        }
+    } catch (err) {
+        for (const { teil, hattAlt } of verschoben.reverse()) {
+            try {
+                rmSync(path.join(installDir, teil), { recursive: true, force: true });
+                if (hattAlt) benenne(path.join(alt, teil), path.join(installDir, teil));
+            } catch { /* so weit wie möglich zurückholen */ }
+        }
+        throw err;
+    }
+    rmSync(neu, { recursive: true, force: true });
+}
+
 /**
  * Entpackt das Paket, baut es auf und tauscht es gegen die laufende Installation aus. Bei jedem Fehler vor oder während des
  * Austauschs bleibt (bzw. wird wiederhergestellt) die bisherige Installation.
- * @returns {Promise<{alt: string}>} Ordner mit der vorherigen Version (zum manuellen Zurückrollen)
+ *
+ * `austausch: 'spaeter'` (Windows: eine laufende PostgreSQL sperrt node_modules) bereitet nur vor und merkt den Austausch
+ * in .update/austausch.json vor; `fuehreVorgemerktenAustauschAus` führt ihn aus, sobald nichts mehr auf den Dateien läuft.
+ * @returns {Promise<{alt: string, vorgemerkt?: boolean}>} Ordner mit der vorherigen Version (zum manuellen Zurückrollen)
  */
 export async function installiereDienstPaket({
     paket, installDir, aktuelleVersion, neueVersion, fuehreAus = fuehreAusStandard, env = process.env, log = console,
-    anzeige = { meldung: (text) => log.log(`[Selbst-Update] ${text}`) }
+    anzeige = { meldung: (text) => log.log(`[Selbst-Update] ${text}`) },
+    migrationsUmgebung = 'online', austausch = 'sofort'
 }) {
     const arbeit = path.join(installDir, '.update');
     const neu = path.join(arbeit, `neu-${neueVersion}`);
@@ -49,7 +107,9 @@ export async function installiereDienstPaket({
     mkdirSync(neu, { recursive: true });
 
     anzeige.meldung(schrittZeile(1, 4, `Entpacke Version ${neueVersion} …`));
-    await fuehreAus('tar', ['-xzf', paket, '-C', neu, '--strip-components=1']);
+    // Relative Pfade im Ordner des Pakets: GNU tar (Git Bash unter Windows) hielte "D:\..." sonst für einen Rechnernamen.
+    const paketDir = path.dirname(path.resolve(paket));
+    await fuehreAus('tar', ['-xzf', path.basename(paket), '-C', path.relative(paketDir, neu).split(path.sep).join('/'), '--strip-components=1'], { cwd: paketDir });
     for (const pflicht of ['src/app.js', 'package.json', 'package-lock.json', 'knexfile.cjs']) {
         if (!existsSync(path.join(neu, pflicht))) throw new Error(`Paket unvollständig: ${pflicht} fehlt`);
     }
@@ -57,34 +117,43 @@ export async function installiereDienstPaket({
     anzeige.meldung(schrittZeile(2, 4, 'Installiere Abhängigkeiten (npm ci) – das dauert einige Minuten …'));
     await fuehreAus('npm', ['ci', '--omit=dev', '--no-audit', '--no-fund'], { cwd: neu, env });
     anzeige.meldung(schrittZeile(3, 4, 'Migriere die Datenbank …'));
-    await fuehreAus(process.execPath, [path.join(neu, 'node_modules/knex/bin/cli.js'), 'migrate:latest', '--knexfile', 'knexfile.cjs', '--env', 'online'], { cwd: neu, env });
+    await fuehreAus(process.execPath, [path.join(neu, 'node_modules/knex/bin/cli.js'), 'migrate:latest', '--knexfile', 'knexfile.cjs', '--env', migrationsUmgebung], { cwd: neu, env });
 
-    anzeige.meldung(schrittZeile(4, 4, 'Tausche die Programmdateien aus …'));
-    // Austausch: erst das Alte beiseite, dann das Neue hinein; scheitert etwas, wird alles zurückgelegt.
-    rmSync(alt, { recursive: true, force: true });
-    mkdirSync(alt, { recursive: true });
-    const verschoben = [];
-    try {
-        for (const teil of PAKET_TEILE) {
-            if (existsSync(path.join(installDir, teil))) {
-                renameSync(path.join(installDir, teil), path.join(alt, teil));
-                verschoben.push({ teil, hattAlt: true });
-            } else {
-                verschoben.push({ teil, hattAlt: false });
-            }
-            if (existsSync(path.join(neu, teil))) renameSync(path.join(neu, teil), path.join(installDir, teil));
-        }
-    } catch (err) {
-        for (const { teil, hattAlt } of verschoben.reverse()) {
-            try {
-                rmSync(path.join(installDir, teil), { recursive: true, force: true });
-                if (hattAlt) renameSync(path.join(alt, teil), path.join(installDir, teil));
-            } catch { /* so weit wie möglich zurückholen */ }
-        }
-        throw err;
+    if (austausch === 'spaeter') {
+        writeFileSync(path.join(arbeit, AUSTAUSCH_DATEI), JSON.stringify({ neu, alt, neueVersion, aktuelleVersion }));
+        anzeige.meldung(schrittZeile(4, 4, 'Austausch der Programmdateien beim nächsten Start vorgemerkt.'));
+        return { alt, vorgemerkt: true };
     }
-    rmSync(neu, { recursive: true, force: true });
+    anzeige.meldung(schrittZeile(4, 4, 'Tausche die Programmdateien aus …'));
+    tauscheAus({ installDir, neu, alt });
     return { alt };
+}
+
+/**
+ * Führt einen mit `austausch: 'spaeter'` vorgemerkten Austausch aus (aufzurufen, solange weder der Server noch eine
+ * PostgreSQL aus node_modules läuft). Gibt die neue Version zurück oder null, wenn nichts vorgemerkt war. Bei einem Fehler
+ * bleibt die alte Version erhalten, die Vormerkung wird in jedem Fall entfernt.
+ */
+export function fuehreVorgemerktenAustauschAus(installDir, log = console) {
+    const datei = path.join(installDir, '.update', AUSTAUSCH_DATEI);
+    if (!existsSync(datei)) return null;
+    let eintrag;
+    try {
+        eintrag = JSON.parse(readFileSync(datei, 'utf8'));
+    } catch (err) {
+        rmSync(datei, { force: true });
+        log.warn(`[Selbst-Update] Vormerkung unlesbar, verworfen: ${err.message}`);
+        return null;
+    }
+    rmSync(datei, { force: true });
+    try {
+        tauscheAus({ installDir, neu: eintrag.neu, alt: eintrag.alt });
+        log.log(`[Selbst-Update] Version ${eintrag.neueVersion} eingesetzt (vorherige Version: ${eintrag.alt}).`);
+        return eintrag.neueVersion;
+    } catch (err) {
+        log.warn(`[Selbst-Update] Austausch auf ${eintrag.neueVersion} fehlgeschlagen, ${eintrag.aktuelleVersion} bleibt: ${err.message}`);
+        return null;
+    }
 }
 
 /**

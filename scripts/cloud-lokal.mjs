@@ -13,6 +13,7 @@ import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
 import { spawn, spawnSync } from 'child_process';
+import { pathToFileURL } from 'url';
 
 const WURZEL = path.resolve(import.meta.dirname, '..');
 const ENV_DATEI = path.join(WURZEL, '.env.cloud-lokal');
@@ -87,20 +88,47 @@ function fuehreAus(skript, argumente, env) {
     if (r.status !== 0) throw new Error(`${path.basename(skript)} ${argumente.join(' ')} endete mit Code ${r.status}`);
 }
 
-function start() {
+// Überwachter Start: der Server startet nach einem Update (Exit-Code NEUSTART_EXITCODE aus src/utils/cloudUpdate.js) bzw. auf
+// Anforderung von scripts/cloud-update.mjs (Datei data/neustart.anfordern) selbst neu. Ein vorgemerkter Austausch der
+// Programmdateien (Windows) läuft dazwischen: PostgreSQL stoppen (sperrt node_modules), tauschen, alles neu starten.
+const NEUSTART_EXITCODE = 75;
+const NEUSTART_DATEI = path.join(WURZEL, 'data', 'neustart.anfordern');
+
+async function start() {
     if (!fs.existsSync(ENV_DATEI)) einrichten([]);
-    const env = kindUmgebung();
-    fuehreAus('scripts/lokale-pg.mjs', ['start'], env);
-    fuehreAus('node_modules/knex/bin/cli.js', ['migrate:latest', '--knexfile', 'knexfile.cjs', '--env', 'online'], env);
-    console.log(`Starte Cloud-Server auf Port ${PORT} (${env.PUBLIC_BASE_URL}) …`);
-    const app = spawn(process.execPath, ['src/app.js'], { cwd: WURZEL, env, stdio: 'inherit' });
-    for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => app.kill(signal));
-    app.on('exit', (code) => process.exit(code ?? 0));
+    const env = { ...kindUmgebung(), HAJIME_UEBERWACHT: '1' };
+    fs.rmSync(NEUSTART_DATEI, { force: true });
+    let beenden = false;
+    let app = null;
+    for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { beenden = true; if (app) app.kill(signal); });
+    while (!beenden) {
+        const { fuehreVorgemerktenAustauschAus } = await import(pathToFileURL(path.join(WURZEL, 'src/utils/dienstUpdate.js')).href);
+        if (fs.existsSync(path.join(WURZEL, '.update', 'austausch.json'))) {
+            fuehreAus('scripts/lokale-pg.mjs', ['stopp'], env);
+            fuehreVorgemerktenAustauschAus(WURZEL);
+        }
+        fuehreAus('scripts/lokale-pg.mjs', ['start'], env);
+        fuehreAus('node_modules/knex/bin/cli.js', ['migrate:latest', '--knexfile', 'knexfile.cjs', '--env', 'online'], env);
+        console.log(`Starte Cloud-Server auf Port ${PORT} (${env.PUBLIC_BASE_URL}) …`);
+        app = spawn(process.execPath, ['src/app.js'], { cwd: WURZEL, env, stdio: 'inherit' });
+        let angefordert = false;
+        const wache = setInterval(() => {
+            if (!fs.existsSync(NEUSTART_DATEI)) return;
+            fs.rmSync(NEUSTART_DATEI, { force: true });
+            angefordert = true;
+            app.kill();
+        }, 2000);
+        const code = await new Promise((resolve) => app.on('exit', (c) => resolve(c)));
+        clearInterval(wache);
+        app = null;
+        if (beenden || (code !== NEUSTART_EXITCODE && !angefordert)) process.exit(code ?? 0);
+        console.log('Neustart …');
+    }
 }
 
 const [befehl = 'start', ...rest] = process.argv.slice(2);
 if (befehl === 'einrichten') einrichten(rest);
-else if (befehl === 'start') start();
+else if (befehl === 'start') await start();
 else if (befehl === 'stopp') fuehreAus('scripts/lokale-pg.mjs', ['stopp'], kindUmgebung());
 else if (befehl === 'status') fuehreAus('scripts/lokale-pg.mjs', ['status'], kindUmgebung());
 else {

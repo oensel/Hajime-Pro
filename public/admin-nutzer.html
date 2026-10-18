@@ -15,6 +15,10 @@
         .nutzer-filter { width: 100%; max-width: 360px; padding: 8px 10px; margin-bottom: 12px; box-sizing: border-box; }
         .nutzer-fehler { color: #ef4444; font-weight: 700; }
         .tabelle-scroll { overflow-x: auto; }
+        .update-box { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border-color, #374151); }
+        .update-box h2 { font-size: 16px; margin: 0 0 8px; }
+        .update-box .zeile { font-size: 14px; margin: 4px 0; }
+        .update-box pre { max-height: 180px; overflow: auto; font-size: 12px; white-space: pre-wrap; color: var(--text-muted); }
     </style>
 </head>
 <body>
@@ -39,8 +43,19 @@
             <tbody id="nutzerListe"><tr><td colspan="4">Wird geladen …</td></tr></tbody>
         </table>
     </div>
+
+    <div class="update-box" id="updateBox" hidden>
+        <h2>Server-Update</h2>
+        <div class="zeile">Laufende Version: <strong id="updateAktuell">–</strong> · Neuestes Release: <strong id="updateNeueste">–</strong></div>
+        <div class="zeile" id="updateHinweis" style="color: var(--text-muted);"></div>
+        <button type="button" class="mdc-button mdc-button--raised" id="updateKnopf" disabled>
+            <span class="mdc-button__label">Aktualisieren</span>
+        </button>
+        <pre id="updateLog" aria-live="polite"></pre>
+    </div>
 </div>
 
 <script src="/js/adminNutzer.js"></script>
+<script src="/js/adminUpdate.js"></script>
 </body>
 </html>

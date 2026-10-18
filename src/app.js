@@ -17,6 +17,8 @@ import { initialisiere as initialisiereSteuerungPasswort } from './utils/steueru
 import { getVereinRoutes } from './routes/vereinRoutes.js';
 import { getFreigabeRoutes } from './routes/freigabeRoutes.js';
 import { getNutzerRoutes } from './routes/nutzerRoutes.js';
+import { getCloudUpdateRoutes } from './routes/cloudUpdateRoutes.js';
+import { erzeugeCloudUpdate } from './utils/cloudUpdate.js';
 import { getTurnierRoutes } from './routes/turnierRoutes.js';
 import { getCloudRoutes } from './routes/cloudRoutes.js';
 import { erzeugeCloudZugriff } from './services/cloudZugriff.js';
@@ -310,6 +312,15 @@ if (syncKonfig.istClient) {
     // Freischaltung per Mail-Link (Token trägt die Berechtigung, daher ohne Anmeldung) und Super-Admin-Verwaltung.
     app.use('/api/freigabe', getFreigabeRoutes(knex));
     app.use('/api/nutzer', getNutzerRoutes(knex));
+    // Update des Cloud-Servers durch den Super-Admin (src/utils/cloudUpdate.js).
+    if (bm.istCloud) {
+        const installDir = path.resolve(__dirname, '..');
+        app.use('/api/cloud-update', getCloudUpdateRoutes(knex, erzeugeCloudUpdate({
+            installDir, aktuelleVersion: appVersion,
+            repo: process.env.CLIENT_RELEASE_REPO || 'oensel/Hajime-Pro-Releases',
+            token: process.env.CLIENT_RELEASE_TOKEN || process.env.GITHUB_TOKEN || ''
+        })));
+    }
     app.use('/api/turniere', requireWriteAuth, getTurnierRoutes(knex));
     app.use('/api/teilnehmer', requireWriteAuth, getTeilnehmerRoutes(knex));
     app.use('/api/pools', requireWriteAuth, getPoolRoutes(knex));
