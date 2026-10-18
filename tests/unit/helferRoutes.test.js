@@ -15,7 +15,7 @@ const jwt = (await import('jsonwebtoken')).default;
 const { getHelferRoutes } = await import('../../src/routes/helferRoutes.js');
 const { getHelferPlanRoutes } = await import('../../src/routes/helferPlanRoutes.js');
 const { getTurnierRoutes } = await import('../../src/routes/turnierRoutes.js');
-const { stelleSicherDassGehoertZu } = await import('../../src/controllers/helferPlanController.js');
+const { stelleSicherDassGehoertZu, dienstTagText } = await import('../../src/controllers/helferPlanController.js');
 const { hashPassword, verifyPassword } = await import('../../src/utils/password.js');
 
 const id = (r) => (typeof r === 'object' ? r.id : r);
@@ -359,4 +359,11 @@ test('Helfer-API und Helferplan-API: Rechte, Eintragen, Frist, Fremdturniere, Ma
         await new Promise((resolve) => server.close(resolve));
         await db.stoppe();
     }
+});
+
+test('dienstTagText: Turniertag als Datum, Vortag als „Vortag (Datum − 1 Tag)“', () => {
+    assert.equal(dienstTagText('2030-05-04', 0), '04.05.2030');
+    assert.equal(dienstTagText('2030-05-04', -1), 'Vortag (03.05.2030)');
+    assert.equal(dienstTagText('2030-03-01', -1), 'Vortag (28.02.2030)');
+    assert.equal(dienstTagText(null, -1), '');
 });

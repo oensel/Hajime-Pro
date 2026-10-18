@@ -73,6 +73,15 @@ function datumDeutsch(iso) {
     return iso ? iso.split('-').reverse().join('.') : '';
 }
 
+/** Datumstext eines Dienstes: der Turniertag, bei einer Vortag-Tätigkeit (tag_versatz -1) „Vortag (TT.MM.JJJJ)“. */
+export function dienstTagText(datumIso, tagVersatz) {
+    if (!datumIso) return '';
+    if (!tagVersatz) return datumDeutsch(datumIso);
+    const d = new Date(`${datumIso}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + tagVersatz);
+    return `Vortag (${datumDeutsch(d.toISOString().slice(0, 10))})`;
+}
+
 /**
  * Mail an die Konten, deren Dienstzeit sich geändert hat. Fehler beim Versand werden nur geloggt.
  */
@@ -83,7 +92,7 @@ async function benachrichtigeUeberZeitaenderung(knex, slotId, benutzerIds, sende
             .join('helfer_taetigkeiten as t', 't.id', 's.taetigkeit_id')
             .join('turniere as tu', 'tu.id', 't.turnier_id')
             .where('s.id', slotId)
-            .first('s.von_min', 's.bis_min', 't.bezeichnung as taetigkeit', 'tu.bezeichnung as turnier', 'tu.datum');
+            .first('s.von_min', 's.bis_min', 't.tag_versatz', 't.bezeichnung as taetigkeit', 'tu.bezeichnung as turnier', 'tu.datum');
         if (!info) return;
         const konten = await knex('benutzer').whereIn('id', benutzerIds).select('id', 'email', 'vorname');
         for (const konto of konten) {
@@ -94,7 +103,7 @@ async function benachrichtigeUeberZeitaenderung(knex, slotId, benutzerIds, sende
                     subject: `Hajime Pro: Dein Helferdienst beim Turnier „${info.turnier}“ wurde geändert`,
                     text: `Hallo ${konto.vorname || ''},
 
-Dein Dienst „${info.taetigkeit}“ beim Turnier „${info.turnier}“ am ${datumDeutsch(plan.datumAlsText(info.datum))} ist jetzt von ${uhrzeit(info.von_min)} bis ${uhrzeit(info.bis_min)} Uhr.
+Dein Dienst „${info.taetigkeit}“ beim Turnier „${info.turnier}“ am ${dienstTagText(plan.datumAlsText(info.datum), info.tag_versatz)} ist jetzt von ${uhrzeit(info.von_min)} bis ${uhrzeit(info.bis_min)} Uhr.
 
 Wenn du zu dieser Zeit nicht kannst, melde dich bitte bei der Turnierleitung.`
                 });
