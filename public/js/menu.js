@@ -400,8 +400,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const urlParams = new URLSearchParams(window.location.search);
     const currentPath = window.location.pathname;
     // orga-aufgabe.html führt die Aufgaben-ID in `id`; das Turnier steht dort in `turnierId`.
-    const turnierId = (currentPath.includes('orga-aufgabe.html') ? urlParams.get('turnierId') : null)
-        || urlParams.get('id') || urlParams.get('turnierId');
+    const turnierId = currentPath.includes('orga-aufgabe.html')
+        ? urlParams.get('turnierId')
+        : (urlParams.get('id') || urlParams.get('turnierId'));
 
     // Turnier-ID sofort an die Menü-Links hängen, noch bevor window.hajimeAktualisiereMenueSperren
     // existiert: Seiten-Skripte (z.B. pools.js beim ersten Laden) sperren Menüpunkte teils, während
@@ -1192,7 +1193,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         };
         const ZIELE = { technik_bereitstellen: 'nav-orga-technik', catering: 'nav-orga-catering', medaillen: 'nav-orga-medaillen' };
 
-        fetch(`/api/orga?turnierId=${encodeURIComponent(turnierId)}`).then((r) => (r.ok ? r.json() : null)).then((daten) => {
+        fetch(`/api/orga?turnierId=${encodeURIComponent(turnierId)}&nurLesen=1`).then((r) => (r.ok ? r.json() : null)).then((daten) => {
             if (!daten || !Array.isArray(daten.phasen)) return;
             for (const aufgabe of daten.phasen.flatMap((p) => p.aufgaben || [])) {
                 const a = document.getElementById(ZIELE[aufgabe.vorlage_key]);
@@ -1209,9 +1210,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         }).catch(() => { /* ohne Zähler weiter */ });
 
         // Eigene offene Aufgaben (nur wo die Helfer-API gemountet ist; sonst 404 -> kein Zähler)
+        if (!rechte.helferApp) return;
         fetch('/api/helfer/orga/meine').then((r) => (r.ok ? r.json() : null)).then((daten) => {
             if (!daten || !Array.isArray(daten.aufgaben)) return;
-            const offene = daten.aufgaben.filter((a) => a.status && a.status.status !== 'erledigt').length;
+            const offene = daten.aufgaben.filter((a) => String(a.turnier_id) === String(turnierId) && a.status && a.status.status !== 'erledigt').length;
             setzeZaehler(document.getElementById('nav-orga-meine'), offene > 0 ? String(offene) : '');
         }).catch(() => { /* ohne Zähler weiter */ });
     }

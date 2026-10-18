@@ -70,8 +70,10 @@ export async function ladeOrgaRoute(knex, req, res) {
         const turnierId = await autorisiertesTurnierId(knex, req);
         if (turnierId == null) throw new FachFehler(400, 'Turnier-ID fehlt.');
         const turnier = await ladeTurnier(knex, req, turnierId);
+        // nurLesen=1 (Seitenmenü): keine Vorlage anlegen, kein Schreibzugriff
+        const nurLesen = req.query.nurLesen === '1';
         const vorhanden = await knex('orga_aufgaben').where({ turnier_id: turnierId }).first('id');
-        if (!vorhanden) {
+        if (!vorhanden && !nurLesen) {
             try {
                 await legeAusVorlageAn(knex, turnierId);
             } catch (err) {

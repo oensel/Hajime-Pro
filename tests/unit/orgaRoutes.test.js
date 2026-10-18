@@ -237,3 +237,37 @@ test('Hallen-Server (Einzelbenutzerbetrieb): Zuweisen ohne Einladung und ohne Ma
         await db.stoppe();
     }
 });
+
+test('GET /api/orga?nurLesen=1 legt die Vorlage nicht an, ohne Flag genau einmal', async () => {
+    const db = await starteTestPostgres();
+    const { knex } = db;
+    const vorher = process.env.BETRIEBSMODUS;
+    process.env.BETRIEBSMODUS = 'server';
+    const app = express();
+    app.set('knex', knex);
+    app.use(express.json());
+    app.use('/api/orga', getOrgaRoutes(knex, { sende: async () => {} }));
+    const server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
+    const basis = `http://127.0.0.1:${server.address().port}`;
+    const lade = async (pfad) => (await fetch(basis + pfad)).json();
+    const anzahl = async (tid) => Number((await knex('orga_aufgaben').where({ turnier_id: tid }).count('* as n').first()).n);
+    try {
+        const verein = id((await knex('vereine').insert({ name: 'Lesen Club' }).returning('id'))[0]);
+        const tid = id((await knex('turniere').insert({ bezeichnung: 'Lesen', ort: 'O', datum: '2033-06-04', ausrichter: 'JC', verein_id: verein }).returning('id'))[0]);
+        const leer = await lade(`/api/orga?turnierId=${tid}&nurLesen=1`);
+        assert.equal(leer.success, true);
+        assert.equal(alle(leer).length, 0);
+        assert.equal(await anzahl(tid), 0);
+        const befuellt = await lade(`/api/orga?turnierId=${tid}`);
+        assert.ok(alle(befuellt).length > 0);
+        const n = await anzahl(tid);
+        assert.ok(n > 0);
+        await lade(`/api/orga?turnierId=${tid}`);
+        assert.equal(await anzahl(tid), n);
+        assert.equal(alle(await lade(`/api/orga?turnierId=${tid}&nurLesen=1`)).length, alle(befuellt).length);
+    } finally {
+        process.env.BETRIEBSMODUS = vorher;
+        server.close();
+        await db.stoppe();
+    }
+});
