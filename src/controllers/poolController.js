@@ -851,6 +851,15 @@ function ermittleAkStrategien(turnier) {
     return akConfig;
 }
 
+// Strategie einer Gruppe (Schlüssel "<geschlecht|mixed>_<Altersklasse>"). Mixed-Klassen haben keine
+// DJB-Gewichtsklassen (Import und Teilnehmer-Dialog vergeben dort immer "gewichtsnah"), deshalb
+// werden sie unabhängig von der gespeicherten Einstellung immer gewichtsnah ausgelost.
+function ermittleGruppenStrategie(akConfig, turnier, key, altersklasse) {
+    if (key.startsWith('mixed_')) return 'gewichtsnahe';
+    return akConfig[key] || akConfig[altersklasse]
+        || (Number(turnier.nutze_gewichtsklassen) === 1 ? 'gewichtsnahe' : 'djb');
+}
+
 export async function generierePools(knex, req, res) {
     try {
         const { turnierId, neuGenerieren } = req.body;
@@ -885,8 +894,7 @@ export async function generierePools(knex, req, res) {
             const gewichtsnaheGruppen = new Set();
             for (const t of teilnehmer.filter(x => gewaehlteKlassen.includes(klassenSchluessel(x)))) {
                 const key = gruppenSchluessel(t);
-                const modus = akStrategien[key] || akStrategien[t.altersklasse]
-                    || (Number(turnier.nutze_gewichtsklassen) === 1 ? 'gewichtsnahe' : 'djb');
+                const modus = ermittleGruppenStrategie(akStrategien, turnier, key, t.altersklasse);
                 if (modus === 'gewichtsnahe') gewichtsnaheGruppen.add(key);
             }
             teilnehmer = teilnehmer.filter(t =>
@@ -1020,37 +1028,14 @@ export async function generierePools(knex, req, res) {
         });
 
         // Check database value for altersklassen
-        let akConfig = {};
-        if (turnier.altersklassen) {
-            let ak = turnier.altersklassen;
-            if (typeof ak === 'string') {
-                try {
-                    ak = JSON.parse(ak);
-                } catch (e) {
-                    ak = {};
-                }
-            }
-            if (Array.isArray(ak)) {
-                // Convert array to object mapping to global default
-                const globalDefault = Number(turnier.nutze_gewichtsklassen) === 1 ? 'gewichtsnahe' : 'djb';
-                akConfig = {};
-                ak.forEach(item => {
-                    akConfig[item] = globalDefault;
-                });
-            } else if (typeof ak === 'object') {
-                akConfig = ak;
-            }
-        }
+        const akConfig = ermittleAkStrategien(turnier);
 
         for (const key in gruppen) {
             const [geschlecht, altersklasse] = key.split('_');
             const liste = gruppen[key];
 
-            // Determine strategy for this specific group (gender + altersklasse)
-            let modus = akConfig[key] || akConfig[altersklasse];
-            if (!modus) {
-                modus = Number(turnier.nutze_gewichtsklassen) === 1 ? 'gewichtsnahe' : 'djb';
-            }
+            // Strategie dieser Gruppe (Geschlecht + Altersklasse); Mixed immer gewichtsnah
+            const modus = ermittleGruppenStrategie(akConfig, turnier, key, altersklasse);
 
             if (modus === 'gewichtsnahe') {
                 // --- STRATEGIE A: GEWICHTSNAHE POOLS ---
