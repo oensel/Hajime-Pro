@@ -1,9 +1,10 @@
 // Helfer-App (Spec Helferverwaltung 5): Turniere der eigenen Vereine, offene Dienste, Meine Dienste, Profil.
 // Spricht nur /api/helfer/* (und /api/vereine für die Vereinssuche). Bindet menu.js bewusst nicht ein:
 // apiFetch übernimmt dessen Verhalten (Bearer-Token, bei 401 zur Anmeldung). Navigation über den Hash
-// (#turniere, #turnier=<id>, #dienste, #profil), damit die Zurück-Taste funktioniert.
+// (#turniere, #turnier=<id>, #dienste, #aufgaben, #profil), damit die Zurück-Taste funktioniert.
 // Alle Daten werden per textContent/createElement eingesetzt, nie per innerHTML.
 import { platzText, gruppiereNachBezeichnung, datumText, wartetAufFreischaltung } from '/js/shared/helferAnzeige.js';
+import { heuteBerlin, faelligkeitText, statusText, gruppiereAufgaben, zaehleOffene, tageBis } from '/js/shared/orgaAnzeige.js';
 import { formatiereMinuten } from '/js/shared/helferZeit.js';
 import { ansichtProfil } from '/js/helferProfil.js';
 
@@ -249,13 +250,122 @@ async function ansichtMeine() {
     return inhalt;
 }
 
+// ---------- Meine Aufgaben (Orga-Planer) ----------
+
+function setzeAufgabenZaehler(anzahl) {
+    const marke = document.getElementById('hfAufgabenZaehler');
+    if (!marke) return;
+    marke.hidden = !anzahl;
+    marke.textContent = anzahl ? String(anzahl) : '';
+    marke.setAttribute('aria-label', anzahl === 1 ? '1 offene Aufgabe' : `${anzahl} offene Aufgaben`);
+}
+
+/** Zähler am Reiter „Aufgaben“; Fehler (z. B. keine Orga-Routen) bleiben stumm. */
+function aktualisiereAufgabenZaehler() {
+    apiFetch('/api/helfer/orga/meine')
+        .then(({ ok, daten }) => { if (ok && daten && Array.isArray(daten.aufgaben)) setzeAufgabenZaehler(zaehleOffene(daten.aufgaben)); })
+        .catch(() => { /* Zähler ist optional */ });
+}
+
+const AUFGABEN_GRUPPEN = [
+    { schluessel: 'ueberfaellig', titel: 'Überfällig', klasse: 'hf-gruppe-ueberfaellig' },
+    { schluessel: 'dieseWoche', titel: 'Diese Woche', klasse: '' },
+    { schluessel: 'spaeter', titel: 'Später', klasse: '' }
+];
+
+function aufgabeZeile(a, heute, beiAenderung, fehlerText) {
+    const erledigt = !!(a.status && a.status.status === 'erledigt');
+    const ueberfaellig = !erledigt && (tageBis(a.faellig_am, heute) ?? 0) < 0;
+    const kasten = el('input', {
+        type: 'checkbox', class: 'hf-haken', id: `hfAufgabe${a.id}`, 'data-aufgabe-id': a.id,
+        'aria-describedby': `hfAufgabeInfo${a.id}`
+    });
+    kasten.checked = erledigt;
+    kasten.addEventListener('change', () => beiAenderung(a, kasten.checked));
+    const meta = [a.turnier, a.eltern_titel ? `zu „${a.eltern_titel}“` : null].filter(Boolean).join(' · ');
+    return el('li', { class: 'hf-aufgabe' + (erledigt ? ' hf-aufgabe-erledigt' : ''), 'data-aufgabe-zeile': a.id },
+        el('label', { class: 'hf-haken-feld', for: `hfAufgabe${a.id}` }, kasten,
+            el('span', { class: 'hf-haken-kasten', 'aria-hidden': 'true' })),
+        el('div', { class: 'hf-slot-text', id: `hfAufgabeInfo${a.id}` },
+            el('label', { class: 'hf-aufgabe-titel', for: `hfAufgabe${a.id}`, text: a.titel }),
+            meta ? el('span', { class: 'hf-slot-info', text: meta }) : null,
+            el('span', { class: 'hf-slot-info' + (ueberfaellig ? ' hf-ueberfaellig' : ''),
+                text: `${erledigt ? 'Erledigt' : faelligkeitText(a.faellig_am, heute)} · ${statusText(a.status)}` })),
+        fehlerText ? el('p', { class: 'hf-fehler', role: 'alert', text: fehlerText }) : null);
+}
+
+async function ansichtAufgaben() {
+    const daten = await ladeJson('/api/helfer/orga/meine');
+    const aufgaben = daten.aufgaben || [];
+    const heute = heuteBerlin();
+    const inhalt = el('div', {}, el('h1', { class: 'hf-titel hf-titel-seite', text: 'Meine Aufgaben' }));
+    setzeAufgabenZaehler(zaehleOffene(aufgaben));
+    if (aufgaben.length === 0) {
+        inhalt.append(leer('Keine Aufgaben', 'Wenn dir jemand eine Aufgabe zuweist, erscheint sie hier.'));
+        return inhalt;
+    }
+    const liste = el('div', {});
+    const fehler = new Map();   // Aufgaben-ID → Meldung nach fehlgeschlagenem Speichern
+    let erledigtOffen = false;  // „Erledigt“ ist eingeklappt
+
+    // Optimistisch: sofort umsetzen, bei Fehler zurückrollen und die Meldung an der Zeile zeigen.
+    const aendern = async (a, erledigt) => {
+        const vorher = a.status;
+        a.status = { status: erledigt ? 'erledigt' : 'offen', erledigt: erledigt ? 1 : 0, gesamt: 1, quelle: 'manuell' };
+        fehler.delete(a.id);
+        zeichne(a.id);
+        setzeAufgabenZaehler(zaehleOffene(aufgaben));
+        try {
+            const { ok, daten: antwort } = await apiFetch(`/api/helfer/orga/aufgaben/${a.id}/erledigt`, { method: 'POST', body: { erledigt } });
+            if (ok) return;
+            fehler.set(a.id, (antwort && antwort.error) || 'Speichern fehlgeschlagen.');
+        } catch (e) {
+            if (e instanceof AbmeldungFehler) return;
+            fehler.set(a.id, 'Speichern fehlgeschlagen. Bitte prüfe deine Verbindung.');
+        }
+        a.status = vorher;
+        zeichne(a.id);
+        setzeAufgabenZaehler(zaehleOffene(aufgaben));
+    };
+
+    function zeichne(fokusId) {
+        const gruppen = gruppiereAufgaben(aufgaben, heute);
+        const teile = [];
+        for (const g of AUFGABEN_GRUPPEN) {
+            if (gruppen[g.schluessel].length === 0) continue;
+            teile.push(el('section', { class: `hf-gruppe ${g.klasse}`.trim() },
+                el('h2', { class: 'hf-gruppe-titel', text: g.titel }),
+                el('ul', { class: 'hf-liste' }, gruppen[g.schluessel].map(a => aufgabeZeile(a, heute, aendern, fehler.get(a.id))))));
+        }
+        if (gruppen.erledigt.length > 0) {
+            const details = el('details', { class: 'hf-gruppe hf-erledigt-gruppe' },
+                el('summary', { class: 'hf-gruppe-titel', text: `Erledigt (${gruppen.erledigt.length})` }),
+                el('ul', { class: 'hf-liste' }, gruppen.erledigt.map(a => aufgabeZeile(a, heute, aendern, fehler.get(a.id)))));
+            if (erledigtOffen) details.open = true;
+            details.addEventListener('toggle', () => { erledigtOffen = details.open; });
+            teile.push(details);
+        }
+        liste.replaceChildren(...teile);
+        if (fokusId != null) {
+            // Die Zeile kann in eine andere Gruppe gewandert sein: Fokus zurück auf ihren Haken
+            const ziel = liste.querySelector(`[data-aufgabe-id="${fokusId}"]`);
+            const details = ziel && ziel.closest('details');
+            if (ziel && !(details && !details.open)) ziel.focus({ preventScroll: true });
+            else if (details) details.querySelector('summary').focus({ preventScroll: true });   // eingeklappt: Fokus auf „Erledigt“
+        }
+    }
+    zeichne();
+    inhalt.append(liste);
+    return inhalt;
+}
+
 // ---------- Navigation ----------
 
 function liesRoute() {
     const hash = decodeURIComponent(window.location.hash.slice(1));
     const treffer = /^turnier=(\d+)$/.exec(hash);
     if (treffer) return { reiter: 'turniere', turnierId: Number(treffer[1]) };
-    if (hash === 'dienste' || hash === 'profil') return { reiter: hash };
+    if (hash === 'dienste' || hash === 'aufgaben' || hash === 'profil') return { reiter: hash };
     return { reiter: 'turniere' };
 }
 
@@ -291,6 +401,7 @@ export async function zeige({ fokus } = {}) {
     try {
         if (route.turnierId) knoten = await ansichtDienste(route.turnierId);
         else if (route.reiter === 'dienste') knoten = await ansichtMeine();
+        else if (route.reiter === 'aufgaben') knoten = await ansichtAufgaben();
         else if (route.reiter === 'profil') knoten = await ansichtProfil({ apiFetch, ladeJson, el, abmelden, zeige });
         else knoten = await ansichtTurniere();
     } catch (e) {
@@ -303,6 +414,7 @@ export async function zeige({ fokus } = {}) {
     bereich.replaceChildren(knoten);
     bereich.removeAttribute('aria-busy');
     if (fokus) setzeFokus(bereich, fokus);
+    if (route.reiter !== 'aufgaben') aktualisiereAufgabenZaehler();
 }
 
 window.addEventListener('hashchange', () => {

@@ -355,6 +355,58 @@ a { color: var(--hf-primaer); }
 :root[data-theme="dark"] .hf-meldung-ok { color: #86efac; }
 .hf-abmelden { margin: 8px 0 16px; }
 
+/* Einladungsseite (ohne Navigation) */
+body.hf-ohne-nav { padding-bottom: env(safe-area-inset-bottom, 0px); }
+.hf-einladung { max-width: 440px; }
+.hf-einladung-einleitung { margin: 0 0 16px; font-size: 15px; }
+.hf-einladung .hf-feld .hf-meta { margin-top: 4px; }
+.hf-einladung .hf-fehler:empty { display: none; }
+.hf-eingabe[readonly] { color: var(--hf-leise); }
+.hf-eingabe[aria-invalid="true"] { border-color: var(--hf-fehler); }
+
+/* Nav-Zähler (offene Aufgaben) */
+.hf-nav a { position: relative; }
+.hf-nav-zaehler {
+    position: absolute;
+    top: 6px;
+    left: calc(50% + 6px);
+    min-width: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--hf-fehler);
+    color: var(--hf-karte);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 18px;
+    text-align: center;
+}
+.hf-nav-zaehler[hidden] { display: none; }
+
+/* Meine Aufgaben */
+.hf-gruppe-ueberfaellig > .hf-gruppe-titel { color: var(--hf-fehler); }
+.hf-ueberfaellig { color: var(--hf-fehler); font-weight: 600; }
+.hf-aufgabe { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 4px 16px 4px 4px; border-top: 1px solid var(--hf-rand); }
+.hf-aufgabe .hf-slot-text { padding: 8px 0; }
+.hf-aufgabe-titel { font-weight: 600; cursor: pointer; }
+.hf-aufgabe-erledigt .hf-aufgabe-titel { text-decoration: line-through; color: var(--hf-leise); }
+.hf-haken-feld { position: relative; flex: none; width: 52px; height: 52px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.hf-haken { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.hf-haken-kasten {
+    width: 28px;
+    height: 28px;
+    border: 2px solid var(--hf-leise);
+    border-radius: 8px;
+    background: var(--hf-bg);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.hf-haken:checked + .hf-haken-kasten { background: var(--hf-primaer); border-color: var(--hf-primaer); }
+.hf-haken:checked + .hf-haken-kasten::after { content: '✓'; color: var(--hf-auf-primaer); font-weight: 700; font-size: 18px; line-height: 1; }
+.hf-haken:focus-visible + .hf-haken-kasten { outline: 3px solid var(--hf-primaer); outline-offset: 2px; }
+.hf-aufgabe .hf-fehler { padding: 0 0 8px 52px; }
+.hf-erledigt-gruppe > summary { cursor: pointer; color: var(--hf-leise); min-height: 44px; display: flex; align-items: center; }
+
 /* ---------- Desktop ---------- */
 @media (min-width: 720px) {
     body { padding-bottom: 0; }
@@ -378,6 +430,7 @@ a { color: var(--hf-primaer); }
     .hf-nav a:hover { color: var(--hf-primaer); }
     .hf-nav a[aria-current="page"] { border-bottom-color: var(--hf-primaer); }
     .hf-nav svg { width: 20px; height: 20px; }
+    .hf-nav-zaehler { position: static; }
     .hf-inhalt { padding: 24px 16px 48px; }
     .hf-titel { font-size: 26px; }
 }
