@@ -106,7 +106,7 @@ function zeigeFormular(info) {
             try { daten = await antwort.json(); } catch (e) { /* leere Antwort */ }
             if (antwort.ok && daten && daten.token) {
                 speichereSitzung(daten);
-                window.location.href = ZIEL;
+                window.location.replace(ZIEL);
                 return;
             }
             if (antwort.status === 429) formularFehler.textContent = HINWEIS_RATE;

@@ -434,3 +434,27 @@ body.hf-ohne-nav { padding-bottom: env(safe-area-inset-bottom, 0px); }
     .hf-inhalt { padding: 24px 16px 48px; }
     .hf-titel { font-size: 26px; }
 }
+
+/* Mitbringliste (Turnier-Ansicht) */
+.hf-mitbring[hidden] { display: none; }
+.hf-mitbring .hf-meta { margin: 0 0 8px; }
+.hf-mitbring-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 8px 12px;
+    margin-top: 12px;
+}
+.hf-mitbring-form .hf-feld { margin-bottom: 0; flex: 1 1 200px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; color: var(--hf-leise); }
+.hf-mitbring-form .hf-feld-schmal { flex: 0 1 140px; }
+.hf-mitbring-form .hf-eingabe {
+    min-height: 44px;
+    padding: 0 12px;
+    border: 1px solid var(--hf-rand);
+    border-radius: 8px;
+    background: var(--hf-karte);
+    color: var(--hf-text);
+    font: inherit;
+    width: 100%;
+    box-sizing: border-box;
+}

@@ -213,3 +213,18 @@ test('Eigene Aufgabe: über den Pfeil Posten anlegen, abhaken, Aufgabe ist erled
     await page.getByRole('link', { name: 'Zurück zur Orga' }).click();
     await expect(zeile(page, 'Eigene mit Posten')).toHaveClass(/og-status-erledigt/);
 });
+
+test('„Vorlage nachladen“ bringt eine gelöschte Vorlagen-Aufgabe zurück', async ({ page, request }) => {
+    const orga = await ladeOrga(request);
+    const weg = alleAufgaben(orga).find((a) => a.titel === 'Genehmigung beim Landesverband');
+    expect(weg).toBeTruthy();
+    expect((await request.delete(`/api/orga/aufgaben/${weg.id}`)).ok()).toBeTruthy();
+    await page.goto(`/orga.html?turnierId=${turnierId}`);
+    await expect(zeile(page, 'Genehmigung beim Landesverband')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Vorlage nachladen' }).click();
+    await expect(zeile(page, 'Genehmigung beim Landesverband')).toBeVisible();
+    await expect(page.getByText('1 Aufgabe aus der Vorlage ergänzt.')).toBeVisible();
+    // zweiter Klick: nichts mehr zu ergänzen
+    await page.getByRole('button', { name: 'Vorlage nachladen' }).click();
+    await expect(page.getByText('Alle Aufgaben der Vorlage sind bereits vorhanden.')).toBeVisible();
+});

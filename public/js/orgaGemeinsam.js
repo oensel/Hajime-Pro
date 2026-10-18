@@ -1,5 +1,6 @@
 // Orga-Planer (orga.html, orga-aufgabe.html): gemeinsame Bausteine - API-Zugriff, Zeilen, Chips, Dialoge.
 // Namen und Titel kommen nur per textContent in die Seite.
+import { heuteBerlin, tageBis } from '/js/shared/orgaAnzeige.js';
 
 export function melde(text, typ = 'error') {
     if (window.zeigeNotification) window.zeigeNotification(text, typ);
@@ -56,18 +57,11 @@ const LINK_TEXTE = {
 
 // ---------------------------------------------------------------- Datum
 
-export function heuteBerlin() {
-    return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(new Date());
-}
-
-const tagNummer = (iso) => {
-    const [j, m, t] = String(iso).slice(0, 10).split('-').map(Number);
-    return Date.UTC(j, m - 1, t) / 86400000;
-};
+export { heuteBerlin };
 
 /** Tage von a nach b (b - a), beide als YYYY-MM-DD. */
 export function tageZwischen(a, b) {
-    return Math.round(tagNummer(b) - tagNummer(a));
+    return tageBis(b, a);
 }
 
 export function formatiereDatum(iso) {
@@ -89,8 +83,7 @@ export function faelligkeitText(aufgabe, turnierDatum) {
 }
 
 export function istUeberfaellig(aufgabe) {
-    return aufgabe.status?.status !== 'erledigt' && !!aufgabe.faellig_am
-        && String(aufgabe.faellig_am).slice(0, 10) < heuteBerlin();
+    return aufgabe.status?.status !== 'erledigt' && (tageBis(aufgabe.faellig_am, heuteBerlin()) ?? 0) < 0;
 }
 
 // ---------------------------------------------------------------- Kontext
@@ -199,12 +192,17 @@ export function oeffneZuweisenDialog(aufgabe, ctx, onFertig) {
     const entfernen = el('button', 'btn btn-outlined og-gefahr', 'Zuständigen entfernen');
     entfernen.type = 'button';
     entfernen.hidden = !(aufgabe.benutzer_id || aufgabe.name_frei);
+    // Nur für eine freie Person mit E-Mail-Adresse und nur dort, wo es Einladungen gibt (nicht am Hallen-Server).
+    const erneut = el('button', 'btn btn-outlined', 'Einladung erneut senden');
+    erneut.type = 'button';
+    erneut.id = 'ogZuErneut';
+    erneut.hidden = !(aufgabe.email_frei && !aufgabe.benutzer_id && !ctx.einzelbenutzer);
     const abbrechen = el('button', 'btn btn-outlined', 'Abbrechen');
     abbrechen.type = 'button';
     const ok = el('button', 'btn btn-raised', 'Zuweisen');
     ok.type = 'submit';
     const aktionen = el('div', 'og-modal-aktionen');
-    aktionen.append(entfernen, abbrechen, ok);
+    aktionen.append(entfernen, erneut, abbrechen, ok);
 
     form.append(feld('ogZuMitglied', 'Vereinsmitglied', auswahl), feld('ogZuName', 'oder freier Name', name),
         feld('ogZuEmail', 'E-Mail-Adresse (optional)', email), hinweis, fehler, aktionen);
@@ -236,6 +234,16 @@ export function oeffneZuweisenDialog(aufgabe, ctx, onFertig) {
         return sende(ziel);
     });
     entfernen.addEventListener('click', () => sende({ frei: false }));
+    erneut.addEventListener('click', async () => {
+        fehler.textContent = '';
+        erneut.disabled = true;
+        const r = await api('POST', `/api/orga/aufgaben/${aufgabe.id}/einladung-erneut`);
+        erneut.disabled = false;
+        // z. B. 409 „Einladungen gibt es nur in der Cloud.“ am Hallen-Server
+        if (!r.ok) { fehler.textContent = r.daten.error || 'Einladung konnte nicht gesendet werden.'; return; }
+        schliesse();
+        await onFertig(r.daten.modus, aufgabe.name_frei);
+    });
     abbrechen.addEventListener('click', schliesse);
     (aufgabe.benutzer_id || aufgabe.name_frei ? auswahl : (ctx.mitglieder.length ? auswahl : name)).focus();
 }

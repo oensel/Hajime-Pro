@@ -190,7 +190,90 @@ async function ansichtDienste(turnierId) {
     }
     if (gruppen.length === 0) inhalt.append(leer('Keine offenen Dienste', 'Alle Dienste dieses Turniers sind besetzt.'));
     else inhalt.append(...abschnitte);
+    inhalt.append(mitbringlisteBlock(turnierId));
     return inhalt;
+}
+
+// ---------- Mitbringliste (Orga-Planer) ----------
+
+/**
+ * Block „Mitbringliste“ eines Turniers: Einträge (Titel, Menge, wer), Formular „Ich bringe mit“ und Löschen der eigenen.
+ * Lädt lazy nach dem Zeichnen der Ansicht; ohne Mitbringliste (404) oder bei Fehlern bleibt der Block unsichtbar.
+ */
+function mitbringlisteBlock(turnierId) {
+    const block = el('section', { class: 'hf-gruppe hf-mitbring', id: 'hfMitbringliste', hidden: true });
+    const url = `/api/helfer/orga/mitbringliste?turnierId=${encodeURIComponent(turnierId)}`;
+
+    async function lade(fokus) {
+        const { ok, daten } = await apiFetch(url);
+        if (!ok || !daten || !Array.isArray(daten.eintraege)) return;
+        block.replaceChildren(...zeichne(daten.eintraege));
+        block.hidden = false;
+        if (fokus) { const ziel = block.querySelector(fokus); if (ziel) ziel.focus({ preventScroll: true }); }
+    }
+
+    function zeichne(eintraege) {
+        const fehlerZeile = el('p', { class: 'hf-fehler', role: 'alert', id: 'hfMitbringFehler' });
+        const liste = eintraege.length === 0
+            ? el('p', { class: 'hf-meta', text: 'Noch nichts eingetragen.' })
+            : el('ul', { class: 'hf-liste' }, eintraege.map((e) => {
+                const loeschen = e.eigen ? el('button', {
+                    type: 'button', class: 'hf-knopf hf-knopf-zweit', text: 'Löschen', 'data-mitbring-loeschen': e.id,
+                    'aria-label': `Eintrag „${e.titel}“ löschen`
+                }) : null;
+                if (loeschen) {
+                    loeschen.addEventListener('click', async () => {
+                        loeschen.disabled = true;
+                        fehlerZeile.textContent = '';
+                        try {
+                            const r = await apiFetch(`/api/helfer/orga/mitbringliste/${e.id}`, { method: 'DELETE' });
+                            if (r.ok) return lade('#hfMitbringTitel');
+                            fehlerZeile.textContent = (r.daten && r.daten.error) || 'Löschen fehlgeschlagen.';
+                        } catch (err) {
+                            if (!(err instanceof AbmeldungFehler)) fehlerZeile.textContent = 'Löschen fehlgeschlagen.';
+                        }
+                        loeschen.disabled = false;
+                    });
+                }
+                return el('li', { class: 'hf-dienst hf-mitbring-eintrag' + (e.eigen ? ' hf-slot-eigen' : ''), 'data-mitbring-id': e.id },
+                    el('div', { class: 'hf-slot-text' },
+                        el('span', { class: 'hf-slot-zeit', text: e.menge ? `${e.titel} (${e.menge}×)` : e.titel }),
+                        el('span', { class: 'hf-slot-info', text: e.name ? `von ${e.name}` : 'ohne Namen' })),
+                    loeschen);
+            }));
+
+        const titel = el('input', { type: 'text', id: 'hfMitbringTitel', class: 'hf-eingabe', maxlength: 100, required: true, autocomplete: 'off', placeholder: 'z. B. Kuchen' });
+        const menge = el('input', { type: 'number', id: 'hfMitbringMenge', class: 'hf-eingabe hf-eingabe-schmal', min: 1, max: 99999, step: 1, inputmode: 'numeric', placeholder: '1' });
+        const absenden = el('button', { type: 'submit', class: 'hf-knopf', text: 'Eintragen' });
+        const formular = el('form', { class: 'hf-mitbring-form', novalidate: true },
+            el('label', { class: 'hf-feld', for: 'hfMitbringTitel' }, el('span', { text: 'Ich bringe mit' }), titel),
+            el('label', { class: 'hf-feld hf-feld-schmal', for: 'hfMitbringMenge' }, el('span', { text: 'Menge (optional)' }), menge),
+            absenden);
+        formular.addEventListener('submit', async (ereignis) => {
+            ereignis.preventDefault();
+            fehlerZeile.textContent = '';
+            if (!titel.value.trim()) { fehlerZeile.textContent = 'Bitte eintragen, was du mitbringst.'; titel.focus(); return; }
+            absenden.disabled = true;
+            try {
+                const body = { turnierId: Number(turnierId), titel: titel.value.trim() };
+                if (menge.value.trim()) body.menge = Number(menge.value);
+                const r = await apiFetch('/api/helfer/orga/mitbringliste', { method: 'POST', body });
+                if (r.ok) return lade('#hfMitbringTitel');
+                fehlerZeile.textContent = (r.daten && r.daten.error) || 'Eintragen fehlgeschlagen.';
+            } catch (err) {
+                if (!(err instanceof AbmeldungFehler)) fehlerZeile.textContent = 'Eintragen fehlgeschlagen.';
+            }
+            absenden.disabled = false;
+        });
+        return [
+            el('h2', { class: 'hf-gruppe-titel', text: 'Mitbringliste' }),
+            el('p', { class: 'hf-meta', text: 'Kuchen, Getränke & Co. für das Catering: trag ein, was du mitbringst.' }),
+            liste, formular, fehlerZeile
+        ];
+    }
+
+    lade().catch(() => { /* Mitbringliste ist optional */ });
+    return block;
 }
 
 // ---------- Meine Dienste ----------

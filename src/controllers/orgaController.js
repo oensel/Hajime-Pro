@@ -58,10 +58,6 @@ async function ladeTurnier(knex, req, turnierId) {
     return turnier;
 }
 
-async function istFreigegebenesMitglied(knex, benutzerId, vereinId) {
-    return !!(await knex('benutzer_vereine').where({ benutzer_id: benutzerId, verein_id: vereinId, freigegeben: 1 }).first());
-}
-
 // ---- Orga (/api/orga) ----
 
 /** GET /?turnierId= — Checkliste; ein Turnier ohne Aufgaben bekommt vorher die Standardvorlage (idempotent). */

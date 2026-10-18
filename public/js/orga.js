@@ -143,6 +143,16 @@ async function start() {
     document.getElementById('ogNachPerson').addEventListener('click', () => schalte('person'));
     document.getElementById('ogNeueAufgabe').addEventListener('click', () =>
         oeffneAufgabeDialog(state.ctx, { art: 'aufgabe', phase: 'vorbereitung' }, () => neuLaden()));
+    document.getElementById('ogVorlageNachladen').addEventListener('click', async (e) => {
+        const knopf = e.currentTarget;
+        knopf.disabled = true;
+        const r = await api('POST', '/api/orga/vorlage-nachladen', { turnierId: Number(turnierId) });
+        knopf.disabled = false;
+        if (!r.ok) { melde(r.daten.error || 'Vorlage konnte nicht nachgeladen werden.'); return; }
+        const n = r.daten.angelegt || 0;
+        melde(n ? `${n} ${n === 1 ? 'Aufgabe' : 'Aufgaben'} aus der Vorlage ergänzt.` : 'Alle Aufgaben der Vorlage sind bereits vorhanden.', 'success');
+        await neuLaden();
+    });
     // Menüpunkt „Meine Aufgaben“ (orga.html?ansicht=meine): Filter gleich einschalten
     if (new URLSearchParams(window.location.search).get('ansicht') === 'meine') {
         state.nurMeine = true;
