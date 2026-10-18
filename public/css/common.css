@@ -396,6 +396,16 @@ body {
     background-color: rgba(59, 130, 246, 0.1);
 }
 
+/* --- ORGA-UNTERMENÜ (aufklappbare Gruppe in der Sidebar) --- */
+.menu-gruppe { display: flex; flex-direction: column; gap: 4px; }
+.menu-gruppe-kopf { background: none; border: 0; font-family: inherit; cursor: pointer; text-align: left; }
+.menu-gruppe-kopf .menu-gruppe-pfeil { margin-left: auto; font-size: 18px; }
+.menu-untermenue { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.menu-gruppe.zugeklappt .menu-untermenue { display: none; }
+.menu-subitem { padding: 7px 14px 7px 46px; font-size: 12px; font-weight: 600; text-transform: none; letter-spacing: 0.2px; }
+.menu-subitem .menu-item-badge { height: 16px; min-width: 16px; line-height: 16px; font-size: 10px; }
+.menu-gruppe-kopf:focus-visible, .menu-subitem:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+
 /* --- STABILE KANJI WASSERZEICHEN --- */
 .kanji-left, .kanji-right {
     position: fixed;
@@ -820,6 +830,7 @@ input:focus, select:focus {
     .sidebar-nav { padding: 16px 8px; }
     .menu-text { display: none; }
     .menu-item { justify-content: center; padding: 10px 8px; gap: 0; }
+    .menu-untermenue, .menu-gruppe-pfeil { display: none; }
     .top-header-bar { left: 72px; }
     body { padding-left: calc(72px + 24px); }
 }
@@ -851,6 +862,11 @@ body.sidebar-collapsed .menu-item {
     justify-content: center;
     padding: 10px 8px;
     gap: 0;
+}
+
+body.sidebar-collapsed .menu-untermenue,
+body.sidebar-collapsed .menu-gruppe-pfeil {
+    display: none;
 }
 
 body.sidebar-collapsed .top-header-bar {

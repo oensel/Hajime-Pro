@@ -221,6 +221,22 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <span class="material-icons">emoji_events</span>
                     <span class="menu-text">Turnier</span>
                 </a>
+                <div class="menu-gruppe" id="nav-orga">
+                    <button type="button" class="menu-item menu-gruppe-kopf" id="nav-orga-kopf" aria-expanded="true" aria-controls="nav-orga-liste" title="Orga">
+                        <span class="material-icons">fact_check</span>
+                        <span class="menu-text">Orga</span>
+                        <span class="material-icons menu-gruppe-pfeil" id="nav-orga-pfeil" aria-hidden="true">expand_more</span>
+                    </button>
+                    <ul class="menu-untermenue" id="nav-orga-liste">
+                        <li><a href="/orga.html" class="menu-item menu-subitem" id="nav-orga-uebersicht"><span class="menu-text">Übersicht</span></a></li>
+                        <li><a href="/orga.html?ansicht=meine" class="menu-item menu-subitem" id="nav-orga-meine"><span class="menu-text">Meine Aufgaben</span><span class="menu-item-badge" id="nav-orga-meine-zaehler" style="display: none;"></span></a></li>
+                        <li><a href="/helfer-plan.html" class="menu-item menu-subitem" id="nav-helfer"><span class="menu-text">Helfer</span></a></li>
+                        <li><a href="#" class="menu-item menu-subitem" id="nav-orga-technik" data-ohne-turnier style="display: none;"><span class="menu-text">Technik</span><span class="menu-item-badge" style="display: none;"></span></a></li>
+                        <li><a href="#" class="menu-item menu-subitem" id="nav-orga-catering" data-ohne-turnier style="display: none;"><span class="menu-text">Catering</span><span class="menu-item-badge" style="display: none;"></span></a></li>
+                        <li><a href="#" class="menu-item menu-subitem" id="nav-orga-medaillen" data-ohne-turnier style="display: none;"><span class="menu-text">Medaillen und Pokale</span><span class="menu-item-badge" style="display: none;"></span></a></li>
+                        <li><a href="/urkunden-designer.html" class="menu-item menu-subitem" id="nav-urkunden-designer"><span class="menu-text">Urkunden-Designer</span></a></li>
+                    </ul>
+                </div>
                 <a href="/teilnehmer.html" class="menu-item" id="nav-teilnehmer">
                     <span class="material-icons">badge</span>
                     <span class="menu-text">Teilnehmer</span>
@@ -240,10 +256,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <span class="material-icons">layers</span>
                     <span class="menu-text">Matten</span>
                 </a>
-                <a href="/helfer-plan.html" class="menu-item" id="nav-helfer">
-                    <span class="material-icons">volunteer_activism</span>
-                    <span class="menu-text">Helfer</span>
-                </a>
                 <a href="/kampf.html" class="menu-item" id="nav-kampf">
                     <span class="material-icons">sports_kabaddi</span>
                     <span class="menu-text">Kampf</span>
@@ -255,10 +267,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <a href="/urkunden.html" class="menu-item" id="nav-urkunden">
                     <span class="material-icons">workspace_premium</span>
                     <span class="menu-text">Urkunden</span>
-                </a>
-                <a href="/urkunden-designer.html" class="menu-item" id="nav-urkunden-designer">
-                    <span class="material-icons">design_services</span>
-                    <span class="menu-text">Urkunden-Designer</span>
                 </a>
             </nav>
             <nav class="sidebar-nav" id="sidebarNavSecondary" style="visibility: hidden;">
@@ -390,8 +398,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const urlParams = new URLSearchParams(window.location.search);
-    const turnierId = urlParams.get('id') || urlParams.get('turnierId');
     const currentPath = window.location.pathname;
+    // orga-aufgabe.html führt die Aufgaben-ID in `id`; das Turnier steht dort in `turnierId`.
+    const turnierId = (currentPath.includes('orga-aufgabe.html') ? urlParams.get('turnierId') : null)
+        || urlParams.get('id') || urlParams.get('turnierId');
 
     // Turnier-ID sofort an die Menü-Links hängen, noch bevor window.hajimeAktualisiereMenueSperren
     // existiert: Seiten-Skripte (z.B. pools.js beim ersten Laden) sperren Menüpunkte teils, während
@@ -404,7 +414,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (href && href !== '#') {
                 if (href.includes('turniere.html') || link.hasAttribute('data-ohne-turnier')) return;
                 const paramName = href.includes('turnier.html') ? 'id' : 'turnierId';
-                link.setAttribute('href', `${href}?${paramName}=${turnierId}`);
+                link.setAttribute('href', `${href}${href.includes('?') ? '&' : '?'}${paramName}=${turnierId}`);
             }
         });
     }
@@ -821,7 +831,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // siehe src/sync/clientApi.js). Die Menü-Sperren-Prüfungen des Servers entfallen.
     if (syncRolle === 'client') {
         const clientTurnierId = turnierId || localStorage.getItem('aktiveTurnierId');
-        versteckeMenuePunkte(['nav-turniere', 'nav-turnier', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
+        versteckeMenuePunkte(['nav-turniere', 'nav-turnier', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-orga', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
         const nav = document.getElementById('sidebarNavPrimary');
         const suffix = clientTurnierId ? `?turnierId=${clientTurnierId}` : '';
         const teilnehmerLink = document.getElementById('nav-teilnehmer');
@@ -999,7 +1009,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const wartetAufFreigabe = !!(currentUser && currentUser.verein_id && !currentUser.verein_freigegeben);
 
     if (wartetAufFreigabe) {
-        versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
+        versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-orga', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
 
         const istErlaubteSeite = currentPath.includes('turniere.html') || currentPath.includes('profil.html') || currentPath.includes('teilnehmer.html') ||
             (rechte.nutzer && currentPath.includes('admin-nutzer.html'));
@@ -1011,7 +1021,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // --- STUFEN-VALIDIERUNG DER SICHTBARKEIT ---
         // Direkt nach der Anmeldung (kein Turnier ausgewählt) darf nur "Turniere" sichtbar sein.
         if (!turnierId) {
-            versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
+            versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-orga', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
         } else {
             await Promise.all([
                 pruefePoolsMenuSperre(turnierId),
@@ -1079,7 +1089,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                             // darüber selbst an bzw. bearbeiten sie (siehe "Bearbeiten"/"Hinzufügen" in
                             // teilnehmer.js) — der Zugriff auf fremde Teilnehmer wird dabei serverseitig
                             // in teilnehmerController.js verhindert.
-                            versteckeMenuePunkte(['nav-turnier', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
+                            versteckeMenuePunkte(['nav-turnier', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-orga', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
 
                             const eingeschraenkteSeiten = ['turnier.html', 'pools.html', 'matten.html', 'zeitplan.html', 'helfer-plan.html', 'orga.html', 'orga-aufgabe.html', 'kampf.html', 'siegerliste.html', 'urkunden.html', 'urkunden-designer.html', 'dashboard.html', 'uebersicht.html'];
                             if (eingeschraenkteSeiten.some(seite => currentPath.includes(seite))) {
@@ -1099,9 +1109,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Ohne Verwaltungsrecht (reiner Helfer) bleibt nur die Helfer-App; „Helfer“ (Helferplan) ab Rolle Benutzer,
     // „Nutzer“ nur für Super-Admins.
     if (!rechte.verwaltung) {
-        versteckeMenuePunkte(['nav-turniere', 'nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
+        versteckeMenuePunkte(['nav-turniere', 'nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-orga', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
     }
-    if (!rechte.helferPlan) versteckeMenuePunkte(['nav-helfer']);
+    if (!rechte.helferPlan) versteckeMenuePunkte(['nav-helfer', 'nav-orga']);
     const helferAppLink = document.getElementById('nav-helfer-app');
     if (helferAppLink && rechte.helferApp) helferAppLink.style.display = '';
     const nutzerLink = document.getElementById('nav-nutzer');
@@ -1131,6 +1141,80 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (currentPath.includes('urkunden-designer.html')) document.getElementById('nav-urkunden-designer')?.classList.add('active');
     if (currentPath.includes('dashboard.html')) document.getElementById('nav-dashboard')?.classList.add('active');
     if (currentPath.includes('uebersicht.html')) document.getElementById('nav-uebersicht')?.classList.add('active');
+
+    initialisiereOrgaMenue();
+
+    // --- ORGA-UNTERMENÜ (aufklappbar, Zähler aus /api/orga und /api/helfer/orga/meine) ---
+    function initialisiereOrgaMenue() {
+        const gruppe = document.getElementById('nav-orga');
+        const kopf = document.getElementById('nav-orga-kopf');
+        const liste = document.getElementById('nav-orga-liste');
+        if (!gruppe || !kopf || !liste) return;
+        const SPEICHER_KEY = 'hajime-orga-menue-offen';
+        const suche = new URLSearchParams(window.location.search);
+        const ansichtMeine = suche.get('ansicht') === 'meine';
+        const aufgabeId = currentPath.includes('orga-aufgabe.html') ? suche.get('id') : null;
+        const seiteIstOrga = currentPath.includes('orga.html') || currentPath.includes('orga-aufgabe.html')
+            || currentPath.includes('helfer-plan.html') || currentPath.includes('urkunden-designer.html');
+
+        let offen = true;
+        try { if (localStorage.getItem(SPEICHER_KEY) === 'false') offen = false; } catch { /* ohne Speicher: offen */ }
+        if (seiteIstOrga) offen = true;
+        const zeige = (o) => {
+            kopf.setAttribute('aria-expanded', String(o));
+            gruppe.classList.toggle('zugeklappt', !o);
+            document.getElementById('nav-orga-pfeil').textContent = o ? 'expand_more' : 'chevron_right';
+        };
+        zeige(offen);
+        kopf.addEventListener('click', () => {
+            // Eingeklappte Seitenleiste (nur Icons): kein Untermenü, der Klick öffnet die Orga-Übersicht.
+            if (document.body.classList.contains('sidebar-collapsed') || window.matchMedia('(max-width: 850px)').matches) {
+                window.location.href = document.getElementById('nav-orga-uebersicht').getAttribute('href');
+                return;
+            }
+            const neu = kopf.getAttribute('aria-expanded') !== 'true';
+            zeige(neu);
+            try { localStorage.setItem(SPEICHER_KEY, String(neu)); } catch { /* ohne Speicher */ }
+        });
+
+        // Aktiv-Markierung (Technik & Co. folgen nach dem Laden der Aufgaben)
+        if (seiteIstOrga) kopf.classList.add('active');
+        if (currentPath.includes('orga.html')) {
+            document.getElementById(ansichtMeine ? 'nav-orga-meine' : 'nav-orga-uebersicht').classList.add('active');
+        }
+
+        if (!turnierId || gruppe.style.display === 'none') return;
+        const setzeZaehler = (a, text) => {
+            const z = a && a.querySelector('.menu-item-badge');
+            if (!z) return;
+            z.textContent = text;
+            z.style.display = text ? '' : 'none';
+        };
+        const ZIELE = { technik_bereitstellen: 'nav-orga-technik', catering: 'nav-orga-catering', medaillen: 'nav-orga-medaillen' };
+
+        fetch(`/api/orga?turnierId=${encodeURIComponent(turnierId)}`).then((r) => (r.ok ? r.json() : null)).then((daten) => {
+            if (!daten || !Array.isArray(daten.phasen)) return;
+            for (const aufgabe of daten.phasen.flatMap((p) => p.aufgaben || [])) {
+                const a = document.getElementById(ZIELE[aufgabe.vorlage_key]);
+                if (!a) continue;
+                a.setAttribute('href', `/orga-aufgabe.html?id=${aufgabe.id}&turnierId=${encodeURIComponent(turnierId)}`);
+                a.style.display = '';
+                const st = aufgabe.status;
+                if (st && st.gesamt > 0) setzeZaehler(a, `${st.erledigt}/${st.gesamt}`);
+                if (aufgabeId && String(aufgabe.id) === String(aufgabeId)) a.classList.add('active');
+            }
+            if (aufgabeId && !liste.querySelector('.menu-subitem.active')) {
+                document.getElementById('nav-orga-uebersicht').classList.add('active');
+            }
+        }).catch(() => { /* ohne Zähler weiter */ });
+
+        // Eigene offene Aufgaben (nur wo die Helfer-API gemountet ist; sonst 404 -> kein Zähler)
+        fetch('/api/helfer/orga/meine').then((r) => (r.ok ? r.json() : null)).then((daten) => {
+            if (!daten || !Array.isArray(daten.aufgaben)) return;
+            const offene = daten.aufgaben.filter((a) => a.status && a.status.status !== 'erledigt').length;
+            setzeZaehler(document.getElementById('nav-orga-meine'), offene > 0 ? String(offene) : '');
+        }).catch(() => { /* ohne Zähler weiter */ });
+    }
 
     // --- GLOBALER DARKMODE TOGGLE ---
     const themeToggle = document.getElementById('themeToggle');

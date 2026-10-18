@@ -143,6 +143,11 @@ async function start() {
     document.getElementById('ogNachPerson').addEventListener('click', () => schalte('person'));
     document.getElementById('ogNeueAufgabe').addEventListener('click', () =>
         oeffneAufgabeDialog(state.ctx, { art: 'aufgabe', phase: 'vorbereitung' }, () => neuLaden()));
+    // Menüpunkt „Meine Aufgaben“ (orga.html?ansicht=meine): Filter gleich einschalten
+    if (new URLSearchParams(window.location.search).get('ansicht') === 'meine') {
+        state.nurMeine = true;
+        document.getElementById('ogNurMeine').setAttribute('aria-pressed', 'true');
+    }
     await neuLaden();
 }
 
