@@ -117,3 +117,35 @@ test('Posten mit Zuständigem nutzt die Fälligkeit der Eltern', async () => {
     assert.ok(mails.some((m) => m.to.startsWith('e5-') && m.text.includes('Kuchen')));
     assert.equal(text((await hole(posten)).erinnert_fuer), '2026-12-12');
 });
+
+test('Hauptaufgabe mit allen Posten erledigt: keine Mail', async () => {
+    const { tid } = await neuesTurnier();
+    const k = await neuesKonto(`e6-${crypto.randomUUID()}@x.de`);
+    const eltern = await aufgabe(tid, { benutzer_id: k, faellig_am: '2026-12-12', titel: 'AlleFertig' });
+    await aufgabe(tid, { art: 'posten', eltern_id: eltern, titel: 'P1', erledigt_am: knex.fn.now() });
+    await aufgabe(tid, { art: 'posten', eltern_id: eltern, titel: 'P2', erledigt_am: knex.fn.now() });
+    const { mails, sende } = sammler();
+    await sendeFaelligeErinnerungen(knex, { jetzt: JETZT, sende, basisUrl: BASIS });
+    assert.equal(mails.filter((m) => m.text.includes('AlleFertig')).length, 0);
+    assert.equal((await hole(eltern)).erinnert_fuer, null);
+});
+
+async function helferplanAufgabe(titel, mitEinsatz) {
+    const { tid } = await neuesTurnier();
+    const k = await neuesKonto(`e7-${crypto.randomUUID()}@x.de`);
+    const ta = id((await knex('helfer_taetigkeiten').insert({ turnier_id: tid, art: 'waage', bezeichnung: 'Waage', bedarf: 1 }).returning('id'))[0]);
+    const s1 = id((await knex('helfer_slots').insert({ taetigkeit_id: ta, von_min: 480, bis_min: 600, bedarf: 1 }).returning('id'))[0]);
+    const s2 = id((await knex('helfer_slots').insert({ taetigkeit_id: ta, von_min: 600, bis_min: 720, bedarf: 1 }).returning('id'))[0]);
+    await knex('helfer_einsaetze').insert({ slot_id: s1, name_manuell: 'A' });
+    if (mitEinsatz) await knex('helfer_einsaetze').insert({ slot_id: s2, name_manuell: 'B' });
+    await aufgabe(tid, { benutzer_id: k, faellig_am: '2026-12-12', titel, auto_art: 'helferplan_taetigkeit', auto_ref: 'waage' });
+}
+
+test('Helferplan-Aufgabe mit voller Besetzung: keine Mail, mit freiem Slot: Mail', async () => {
+    await helferplanAufgabe('HPVoll', true);
+    await helferplanAufgabe('HPLuecke', false);
+    const { mails, sende } = sammler();
+    await sendeFaelligeErinnerungen(knex, { jetzt: JETZT, sende, basisUrl: BASIS });
+    assert.equal(mails.filter((m) => m.text.includes('HPVoll')).length, 0);
+    assert.equal(mails.filter((m) => m.text.includes('HPLuecke')).length, 1);
+});

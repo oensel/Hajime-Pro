@@ -335,7 +335,8 @@ if (syncKonfig.istClient) {
     // Helfer-App (Spec 5): nur in der Cloud; HELFER_APP_AKTIV=true schaltet sie für Tests im Modus server ein.
     if (bm.istCloud || process.env.HELFER_APP_AKTIV === 'true') {
         app.use('/api/helfer', getHelferRoutes(knex));
-    }    // Orga-Planer: stündliche Erinnerungsmails; nur mit SMTP, nie in Testläufen (Mail-Rauschen).
+    }
+    // Orga-Planer: stündliche Erinnerungsmails; nur mit SMTP, nie in Testläufen (Mail-Rauschen).
     if ((bm.istCloud || process.env.HELFER_APP_AKTIV === 'true') && process.env.SMTP_HOST && process.env.NODE_ENV !== 'test') {
         startOrgaErinnerung(knex);
     }

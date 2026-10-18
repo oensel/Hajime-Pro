@@ -98,7 +98,7 @@ export async function legeAusVorlageAn(knex, turnierId) {
 }
 
 // Helferplan-Zählung in EINER Abfrage: belegt = Einsätze je Slot, höchstens Bedarf des Slots.
-async function ladeZaehlung(knex, turnierId) {
+export async function ladeZaehlung(knex, turnierId) {
     const zeilen = await knex('helfer_taetigkeiten as t')
         .join('helfer_slots as s', 's.taetigkeit_id', 't.id')
         .leftJoin('helfer_einsaetze as e', 'e.slot_id', 's.id')
