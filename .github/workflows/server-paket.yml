@@ -1,7 +1,7 @@
 # Server-Paket "Hajime Pro Server" (Notebook als Hallen-Server und Frontend in einem) bauen und testen:
 # Build je Plattform, Rauchtest der gebauten App (Server startet mit eigenem PostgreSQL, Frontend, sauberes
-# Beenden), unter Windows zusätzlich Installer samt Firewall-Regel. Wird aus ci.yml (Stage qa, nach dem E2E-Kern, nur bei
-# passenden Pfaden) und aus release.yml aufgerufen; ein eigener pull_request-Trigger würde die Staffelung umgehen.
+# Beenden), unter Windows zusätzlich Installer samt Firewall-Regel. Läuft nur aus release.yml und auf Knopfdruck (workflow_dispatch); die PR-CI baut
+# keine Installer.
 name: Server-Paket
 on:
   workflow_dispatch:

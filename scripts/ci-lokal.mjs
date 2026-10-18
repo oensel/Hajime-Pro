@@ -129,7 +129,7 @@ if (hat('--paket')) {
     schritte.push({ name: 'server-paket-bauen', befehl: [npm, 'run', 'desktop:server:build'] });
     schritte.push({ name: 'server-paket-rauchtest', befehl: [npm, 'run', 'test:electron:server'] });
 } else if (trifft('paket')) {
-    console.log('Hinweis: Paket-Dateien geändert, Server-Paket läuft nur mit --paket (CI baut es).');
+    console.log('Hinweis: Paket-Dateien geändert, Server-Paket läuft nur mit --paket (die CI baut es nicht, nur das Release).');
 }
 if (hat('--docker')) {
     schritte.push({ name: 'cluster-installation', befehl: ['bash', 'scripts/test-cluster-install-docker.sh'] });
