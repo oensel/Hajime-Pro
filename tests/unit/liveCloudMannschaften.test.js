@@ -15,8 +15,10 @@ const team = (key, bezeichnung, extra = {}) => ({
     mitglieder: [{ vorname: 'Anna', nachname: 'Adler', gewichtsklasse: '-40' }, { vorname: 'Berta', nachname: 'Busch', gewichtsklasse: '+57' }],
     ...extra
 });
+// Heutiges Datum, damit die Push-Anmeldung (läuft 3 Tage nach dem Turnierdatum ab) nie ausläuft
+const heute = new Date().toISOString().slice(0, 10);
 const paket = (extra = {}) => ({
-    version: 1, turnierKey: 'M', name: 'Mannschaftsturnier', datum: '2026-10-15', stand: '2026-10-15T10:00:00.000Z', sequenz: 100,
+    version: 1, turnierKey: 'M', name: 'Mannschaftsturnier', datum: heute, stand: `${heute}T10:00:00.000Z`, sequenz: 100,
     vereine: [{ key: 'v1', name: 'JC Senden' }], matten: [{ id: 1, bezeichnung: 'Matte 1' }], teilnehmer: [], warteschlangen: [],
     mannschaften: [team('t1', 'Team 1'), team('t2', 'Team 2', { zustand: 'laeuft', abstand: 0, naechsteBegegnungId: 30, gegner: 'Team 1' })],
     begegnungen: [
