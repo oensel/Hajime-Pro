@@ -15,11 +15,12 @@ export function getAuthRoutes(knex) {
     // weiches Konto-Limit gegen verteiltes Passwort-Raten (höchstens 360 Versuche je Stunde und Konto)
     const grenzeLoginKonto = erzeugeAuthRatenbegrenzung({ max: 60, schluessel: 'email', endpunkt: 'login-konto' });
 
+    const grenzeAngemeldet = erzeugeApiRatenbegrenzung();
+
     router.post('/register', grenzeRegistrierung, (req, res) => register(knex, req, res));
     router.post('/email-bestaetigen', (req, res) => emailBestaetigen(knex, req, res));
     router.post('/email-bestaetigung-erneut', grenzeErneut, grenzeErneutAdresse, (req, res) => emailBestaetigungErneut(knex, req, res));
-    router.post('/login', grenzeLogin, grenzeLoginAdresse, grenzeLoginKonto, (req, res) => login(knex, req, res));
-    const grenzeAngemeldet = erzeugeApiRatenbegrenzung();
+    router.post('/login', grenzeAngemeldet, grenzeLogin, grenzeLoginAdresse, grenzeLoginKonto, (req, res) => login(knex, req, res));
     router.get('/me', grenzeAngemeldet, requireAuth, (req, res) => getMe(knex, req, res));
     router.put('/profile', grenzeAngemeldet, requireAuth, (req, res) => updateProfile(knex, req, res));
     router.get('/mode', (req, res) => getAuthMode(knex, req, res));
