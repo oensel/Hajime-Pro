@@ -20,7 +20,7 @@ dotenv.config({ quiet: true });
 const PLATTFORM = { win32: 'windows-x64', linux: process.arch === 'arm64' ? 'linux-arm64' : 'linux-x64', darwin: process.arch === 'arm64' ? 'darwin-arm64' : 'darwin-x64' }[process.platform];
 const binaries = await import(`@embedded-postgres/${PLATTFORM}`);
 
-const DIR = path.resolve('data/pg-lokal');
+const DIR = path.resolve(process.env.PG_LOKAL_VERZEICHNIS || 'data/pg-lokal');
 const PORT = Number(process.env.DB_PORT || 5433);
 const DB_NAME = process.env.DB_NAME || 'hajime';
 
