@@ -23,8 +23,8 @@ main() {
 
     fehler() { printf '\033[1;31mFehler: %s\033[0m\n' "$*" >&2; exit 1; }
     [ "$(id -u)" -eq 0 ] || fehler "Als root ausführen (sudo)."
-    for b in curl tar rsync sha256sum; do
-        command -v "$b" >/dev/null || { command -v apt-get >/dev/null && apt-get install -y -qq curl ca-certificates tar rsync coreutils >/dev/null; break; }
+    for b in curl tar sha256sum; do
+        command -v "$b" >/dev/null || fehler "$b fehlt (apt-get update && apt-get install -y curl ca-certificates tar coreutils)."
     done
 
     if [ -z "$version" ]; then
@@ -40,7 +40,7 @@ main() {
     local paket="Hajime-Pro-Dienst-$version.tar.gz"
     local tmp
     tmp="$(mktemp -d)"
-    trap 'rm -rf "$tmp"' EXIT
+    trap "rm -rf '$tmp'" EXIT
 
     echo "==> Hajime Pro $version aus $repo holen"
     curl -fsSL "${auth[@]}" -o "$tmp/$paket" "$basis/$paket" || fehler "$paket nicht gefunden ($basis)."
@@ -54,7 +54,9 @@ main() {
     tar xzf "$tmp/$paket" -C "$tmp/neu"
     [ -f "$tmp/neu/hajime-pro/package.json" ] || fehler "Unerwarteter Paketinhalt."
     mkdir -p "$ziel"
-    rsync -a --delete --exclude '.git' "$tmp/neu/hajime-pro"/ "$ziel"/
+    # Alter Inhalt weg (ein .git bleibt), dann das neue Paket darüber: ohne rsync, damit auf einem frischen System nichts nachzuinstallieren ist.
+    find "$ziel" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+    cp -a "$tmp/neu/hajime-pro"/. "$ziel"/
     echo "    Version $version liegt in $ziel"
 }
 
