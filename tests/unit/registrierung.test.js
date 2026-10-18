@@ -29,7 +29,8 @@ function fakeRes() {
 }
 
 function tokenAusLink(text, seite) {
-    const m = new RegExp(`${BASIS.replace(/\./g, '\\.')}/${seite}\\?token=([A-Za-z0-9_-]+)`).exec(text);
+    const basis = BASIS.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const m = new RegExp(`${basis}/${seite}\\?token=([A-Za-z0-9_-]+)`).exec(text);
     assert.ok(m, `Link auf ${seite} fehlt in: ${text}`);
     return m[1];
 }
