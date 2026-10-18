@@ -1081,7 +1081,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                             // in teilnehmerController.js verhindert.
                             versteckeMenuePunkte(['nav-turnier', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
 
-                            const eingeschraenkteSeiten = ['turnier.html', 'pools.html', 'matten.html', 'zeitplan.html', 'helfer-plan.html', 'kampf.html', 'siegerliste.html', 'urkunden.html', 'urkunden-designer.html', 'dashboard.html', 'uebersicht.html'];
+                            const eingeschraenkteSeiten = ['turnier.html', 'pools.html', 'matten.html', 'zeitplan.html', 'helfer-plan.html', 'orga.html', 'orga-aufgabe.html', 'kampf.html', 'siegerliste.html', 'urkunden.html', 'urkunden-designer.html', 'dashboard.html', 'uebersicht.html'];
                             if (eingeschraenkteSeiten.some(seite => currentPath.includes(seite))) {
                                 window.location.href = `/teilnehmer.html?turnierId=${turnierId}`;
                                 return;
