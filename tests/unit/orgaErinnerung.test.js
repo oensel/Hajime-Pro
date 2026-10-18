@@ -149,3 +149,59 @@ test('Helferplan-Aufgabe mit voller Besetzung: keine Mail, mit freiem Slot: Mail
     assert.equal(mails.filter((m) => m.text.includes('HPVoll')).length, 0);
     assert.equal(mails.filter((m) => m.text.includes('HPLuecke')).length, 1);
 });
+
+test('Mehrere fällige Einträge eines Empfängers: eine Sammelmail, Posten unter ihrer Aufgabe', async () => {
+    const { tid } = await neuesTurnier();
+    const k = await neuesKonto(`e8-${crypto.randomUUID()}@x.de`);
+    const a1 = await aufgabe(tid, { benutzer_id: k, faellig_am: '2026-12-11', titel: 'SammelEins' });
+    const a2 = await aufgabe(tid, { benutzer_id: k, faellig_am: '2026-12-13', titel: 'SammelZwei' });
+    const eltern = await aufgabe(tid, { faellig_am: '2026-12-12', titel: 'SammelCatering' });
+    const posten = await aufgabe(tid, { art: 'posten', eltern_id: eltern, benutzer_id: k, titel: 'SammelKuchen' });
+    const { mails, sende } = sammler();
+    const r = await sendeFaelligeErinnerungen(knex, { jetzt: JETZT, sende, basisUrl: BASIS });
+    const an = mails.filter((m) => m.to.startsWith('e8-'));
+    assert.equal(an.length, 1);
+    assert.ok(r.gesendet >= 1);
+    for (const t of ['SammelEins', 'SammelZwei', 'SammelKuchen', 'SammelCatering', 'Nikolausturnier']) assert.ok(an[0].text.includes(t), t);
+    assert.ok(an[0].text.indexOf('SammelCatering') < an[0].text.indexOf('SammelKuchen'));
+    assert.match(an[0].text, /fällig am 13\.12\.2026/);
+    assert.match(an[0].subject, /3 fällige Aufgaben/);
+    for (const x of [a1, a2, posten]) assert.ok((await hole(x)).erinnert_fuer);
+});
+
+test('Abgesagtes Turnier: keine Erinnerung', async () => {
+    const { tid } = await neuesTurnier();
+    await knex('turniere').where({ id: tid }).update({ status: 'abgesagt' });
+    const k = await neuesKonto(`e9-${crypto.randomUUID()}@x.de`);
+    const aid = await aufgabe(tid, { benutzer_id: k, faellig_am: '2026-12-12', titel: 'Abgesagt' });
+    const { mails, sende } = sammler();
+    await sendeFaelligeErinnerungen(knex, { jetzt: JETZT, sende, basisUrl: BASIS });
+    assert.equal(mails.filter((m) => m.to.startsWith('e9-')).length, 0);
+    assert.equal((await hole(aid)).erinnert_fuer, null);
+});
+
+test('Zwei gleichzeitige Läufe senden nur einmal; Fehlschlag setzt den vorherigen Wert zurück', async () => {
+    const { tid } = await neuesTurnier();
+    const k = await neuesKonto(`e10-${crypto.randomUUID()}@x.de`);
+    const aid = await aufgabe(tid, { benutzer_id: k, faellig_am: '2026-12-12', titel: 'Parallel' });
+    const a = sammler();
+    const b = sammler();
+    await Promise.all([
+        sendeFaelligeErinnerungen(knex, { jetzt: JETZT, sende: a.sende, basisUrl: BASIS }),
+        sendeFaelligeErinnerungen(knex, { jetzt: JETZT, sende: b.sende, basisUrl: BASIS })
+    ]);
+    assert.equal([...a.mails, ...b.mails].filter((m) => m.to.startsWith('e10-')).length, 1);
+    assert.equal(text((await hole(aid)).erinnert_fuer), '2026-12-12');
+
+    // Frist verschoben, Versand scheitert: erinnert_fuer fällt auf den vorherigen Wert (alte Frist) zurück
+    await knex('orga_aufgaben').where({ id: aid }).update({ faellig_am: '2026-12-13' });
+    const orig = console.error;
+    console.error = () => {};
+    try {
+        await sendeFaelligeErinnerungen(knex, { jetzt: JETZT, sende: sammler(true).sende, basisUrl: BASIS });
+    } finally { console.error = orig; }
+    assert.equal(text((await hole(aid)).erinnert_fuer), '2026-12-12');
+    const c = sammler();
+    await sendeFaelligeErinnerungen(knex, { jetzt: JETZT, sende: c.sende, basisUrl: BASIS });
+    assert.equal(c.mails.filter((m) => m.to.startsWith('e10-')).length, 1);
+});
