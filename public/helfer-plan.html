@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hajime Pro - Helferplan</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <link rel="stylesheet" href="/css/matten.css">
+    <link rel="stylesheet" href="/css/helfer-plan.css">
+    <script src="/js/menu.js"></script>
+</head>
+<body>
+
+<div class="kanji-left">柔</div>
+<div class="kanji-right">道</div>
+
+<div class="mdc-card matten-management-card helfer-plan-card">
+    <div class="form-title-area">
+        <h1>Helferplan</h1>
+    </div>
+
+    <div class="hp-werkzeuge">
+        <button type="button" class="btn btn-outlined" id="hpAusweise">
+            <span class="material-icons">badge</span> Helferausweise drucken
+        </button>
+        <button type="button" class="btn btn-outlined" id="hpCloudAktualisieren" hidden>
+            <span class="material-icons">cloud_download</span> Helferplan aus der Cloud aktualisieren
+        </button>
+    </div>
+
+    <p class="hp-hinweis">
+        Ränder eines Slots ziehen ändert die Dauer, die Mitte verschiebt ihn (Raster 15 Minuten).
+        Doppelklick auf eine freie Fläche legt einen Slot an, Klick auf einen Slot zeigt die Helfer.
+    </p>
+
+    <div id="hpMeldung" class="hp-meldung" role="status"></div>
+
+    <div class="hp-scroll" id="hpScroll" hidden>
+        <div class="hp-raster" id="hpRaster">
+            <div class="hp-kopf">
+                <div class="hp-label hp-label-kopf">Tätigkeit</div>
+                <div class="hp-achse" id="hpAchse"></div>
+            </div>
+            <div id="hpZeilen"></div>
+            <div class="hp-zeile hp-zeile-neu">
+                <button type="button" class="hp-neu-knopf" id="hpTaetigkeitNeu">
+                    <span class="material-icons">add</span> Tätigkeit hinzufügen
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="hp-detail" id="hpDetail" hidden></div>
+</div>
+
+<div id="hpTaetigkeitModal" class="hp-modal" hidden>
+    <div class="hp-modal-karte" role="dialog" aria-modal="true" aria-labelledby="hpTaetigkeitTitel">
+        <h2 id="hpTaetigkeitTitel">Tätigkeit hinzufügen</h2>
+        <form id="hpTaetigkeitForm" novalidate>
+            <div class="form-group">
+                <label for="hpTaetigkeitBezeichnung">Bezeichnung</label>
+                <input type="text" id="hpTaetigkeitBezeichnung" maxlength="100" autocomplete="off" placeholder="z. B. Kuchenverkauf">
+            </div>
+            <div class="form-group">
+                <label for="hpTaetigkeitBedarf">Anzahl Helfer pro Slot</label>
+                <input type="number" id="hpTaetigkeitBedarf" min="1" max="20" step="1" value="2">
+            </div>
+            <div class="hp-fehler" id="hpTaetigkeitFehler" role="alert"></div>
+            <div class="hp-modal-aktionen">
+                <button type="button" class="btn btn-outlined" id="hpTaetigkeitAbbrechen">Abbrechen</button>
+                <button type="submit" class="btn btn-raised" id="hpTaetigkeitOk">Hinzufügen</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="hpCloudModal" class="hp-modal" hidden>
+    <div class="hp-modal-karte" role="dialog" aria-modal="true" aria-labelledby="hpCloudTitel">
+        <h2 id="hpCloudTitel">Helferplan aus der Cloud aktualisieren</h2>
+        <p class="hp-hinweis">
+            Der Helferplan dieses Turniers wird durch den Stand der Cloud ersetzt, auch alle Eintragungen.
+            Hier gemachte Änderungen am Helferplan gehen dabei verloren. Turnier, Teilnehmer und Pools bleiben unverändert.
+            Die Zugangsdaten werden nicht gespeichert.
+        </p>
+        <form id="hpCloudForm" novalidate>
+            <div class="form-group">
+                <label for="hpCloudEmail">Benutzer (E-Mail) in der Cloud</label>
+                <input type="email" id="hpCloudEmail" autocomplete="username">
+            </div>
+            <div class="form-group">
+                <label for="hpCloudPasswort">Passwort</label>
+                <input type="password" id="hpCloudPasswort" autocomplete="current-password">
+            </div>
+            <div class="hp-fehler" id="hpCloudFehler" role="alert"></div>
+            <div class="hp-modal-aktionen">
+                <button type="button" class="btn btn-outlined" id="hpCloudAbbrechen">Abbrechen</button>
+                <button type="submit" class="btn btn-raised" id="hpCloudOk">Aktualisieren</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script type="module" src="/js/helferPlan.js"></script>
+</body>
+</html>

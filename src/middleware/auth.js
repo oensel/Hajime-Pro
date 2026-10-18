@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import { hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
+import { rolleReicht } from '../shared/rollen.js';
 import * as steuerungPasswort from '../utils/steuerungPasswort.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 const { istEinzelbenutzerBetrieb } = betriebsmodus;
@@ -28,12 +29,14 @@ export async function requireAuth(req, res, next) {
                         email: 'offline@hajime.os',
                         vorname: 'Offline',
                         nachname: 'User',
+                        email_bestaetigt_am: knex.fn.now(),
                         aktiver_verein_id: offlineVerein.id
                     });
                     await knex('benutzer_vereine').insert({
                         benutzer_id: 'offline_user',
                         verein_id: offlineVerein.id,
-                        freigegeben: 1
+                        freigegeben: 1,
+                        rolle: 'admin'
                     });
                     console.log('[DB] Offline-Mock-User "offline_user" wurde angelegt.');
                 }
@@ -60,6 +63,35 @@ export async function requireAuth(req, res, next) {
 }
 
 /**
+ * Turnier-ID zu einer Tätigkeit, einem Slot oder einem Einsatz des Helferplans (genau eine Angabe).
+ * @returns {Promise<number|null>} null, wenn der Datensatz nicht existiert
+ */
+export async function ermittleHelferplanTurnierId(knex, { taetigkeitId, slotId, einsatzId }) {
+    const ganzzahl = (w) => (/^\d+$/.test(String(w)) ? parseInt(w, 10) : null);
+    let abfrage;
+    if (taetigkeitId != null) {
+        const tid = ganzzahl(taetigkeitId);
+        if (tid == null) return null;
+        abfrage = knex('helfer_taetigkeiten as t').where('t.id', tid);
+    } else if (slotId != null) {
+        const sid = ganzzahl(slotId);
+        if (sid == null) return null;
+        abfrage = knex('helfer_slots as s').join('helfer_taetigkeiten as t', 't.id', 's.taetigkeit_id').where('s.id', sid);
+    } else if (einsatzId != null) {
+        const eid = ganzzahl(einsatzId);
+        if (eid == null) return null;
+        abfrage = knex('helfer_einsaetze as e')
+            .join('helfer_slots as s', 's.id', 'e.slot_id')
+            .join('helfer_taetigkeiten as t', 't.id', 's.taetigkeit_id')
+            .where('e.id', eid);
+    } else {
+        return null;
+    }
+    const zeile = await abfrage.first('t.turnier_id');
+    return zeile ? zeile.turnier_id : null;
+}
+
+/**
  * Resolves the turnierId a request refers to, from path parameters, query params,
  * request body, or by looking up the referenced pool/teilnehmer/kampfflaeche/kampf.
  * Used by requireTournamentEditAccess.
@@ -68,6 +100,16 @@ export async function requireAuth(req, res, next) {
  * @returns {Promise<string|number|null>}
  */
 async function resolveTurnierId(knex, req) {
+    // Helferplan (/api/helfer-plan): Tätigkeits-, Slot- und Einsatz-IDs im Pfad bestimmen das Turnier allein —
+    // eine turnierId in Body/Query darf sie nicht überstimmen (sonst autorisiert das Gate ein anderes Turnier
+    // als das, zu dem der Datensatz gehört). Unbekannte ID → null (die Routen melden vorher 404).
+    if (req.baseUrl === '/api/helfer-plan') {
+        const { taetigkeitId, slotId, einsatzId } = req.params || {};
+        if (taetigkeitId || slotId || einsatzId) {
+            return ermittleHelferplanTurnierId(knex, { taetigkeitId, slotId, einsatzId });
+        }
+    }
+
     // Extract turnierId from path parameters, query params, or request body.
     let turnierId = req.params.turnierId || req.query.turnierId || req.body.turnierId || req.body.turnier_id;
 
@@ -119,11 +161,11 @@ async function resolveTurnierId(knex, req) {
 }
 
 /**
- * Middleware factory to check that the authenticated user is an approved (freigegeben)
- * member of the club hosting the tournament (turnier.verein_id). This is the single access
- * rule for managing a tournament and its content (editing the tournament itself, pools/
- * Auslosung, Kampfflächen, Kämpfe) — there is no separate "owner"
- * concept; club membership alone governs access.
+ * Middleware factory to check that the authenticated user may manage the tournament: Super-Admin,
+ * or an approved (freigegeben) member of the hosting club (turnier.verein_id) with at least the role
+ * 'benutzer' (hatVereinsZugriffAufTurnier). Reine Helfer bekommen 403, auch wenn der Verein ihr
+ * aktiver Verein ist. Gilt für das Turnier selbst und seinen Inhalt (Pools/Auslosung, Kampfflächen,
+ * Kämpfe) — es gibt keinen separaten "Besitzer".
  * @param {Object} knex - Knex instance
  */
 export function requireTournamentEditAccess(knex) {
@@ -150,7 +192,7 @@ export function requireTournamentEditAccess(knex) {
             if (!hatVereinsZugriffAufTurnier(user, turnier)) {
                 return res.status(403).json({
                     success: false,
-                    error: 'Kein Zugriff auf dieses Turnier. Sie sind kein freigegebenes Mitglied des ausrichtenden Vereins.'
+                    error: 'Kein Zugriff auf dieses Turnier. Verwalten dürfen nur freigegebene Admins und Benutzer des ausrichtenden Vereins.'
                 });
             }
 
@@ -201,8 +243,9 @@ export function requireTurnierAktiv(knex) {
 }
 
 /**
- * Middleware factory to check that the authenticated user's club membership
- * has been approved before allowing write access to tournaments.
+ * Middleware factory to check that the authenticated user's club membership in the active club
+ * has been approved with at least the role 'benutzer' before allowing write access to tournaments
+ * (Turnier anlegen, veröffentlichen, absagen, …). Super-Admin immer erlaubt.
  * @param {Object} knex - Knex instance
  */
 export function requireVereinFreigabe(knex) {
@@ -213,16 +256,56 @@ export function requireVereinFreigabe(knex) {
 
         try {
             const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
+            if (user && user.ist_super_admin) return next();
             if (!user || !user.verein_freigegeben) {
                 return res.status(403).json({
                     success: false,
                     error: 'Ihr Vereinsbeitritt wurde noch nicht freigegeben.'
                 });
             }
+            if (!rolleReicht(user.verein_rolle, 'benutzer')) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Mit Ihrer Rolle in diesem Verein dürfen Sie das nicht.'
+                });
+            }
             next();
         } catch (error) {
             console.error('[Verein-Freigabe-Check-Fehler]:', error);
             return res.status(500).json({ success: false, error: 'Interner Server-Fehler bei der Freigabe-Prüfung.' });
+        }
+    };
+}
+
+const ROLLEN_BEZEICHNUNG = { admin: 'Admin', benutzer: 'Benutzer', helfer: 'Helfer' };
+
+/**
+ * Middleware factory: verlangt im aktiven Verein mindestens die angegebene Rolle (freigegebene
+ * Mitgliedschaft). Super-Admin und Einzelbenutzerbetrieb sind immer erlaubt.
+ * Setzt req.vereinRolle (null beim Super-Admin ohne passende Mitgliedschaft und im Einzelbenutzerbetrieb).
+ * @param {Object} knex - Knex instance
+ * @param {'helfer'|'benutzer'|'admin'} mindestens
+ */
+export function requireRolle(knex, mindestens) {
+    return async (req, res, next) => {
+        if (istEinzelbenutzerBetrieb()) {
+            req.vereinRolle = null;
+            return next();
+        }
+
+        try {
+            const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
+            req.vereinRolle = user ? user.verein_rolle : null;
+            if (user && (user.ist_super_admin || rolleReicht(user.verein_rolle, mindestens))) {
+                return next();
+            }
+            return res.status(403).json({
+                success: false,
+                error: `Dafür ist im aktiven Verein mindestens die Rolle ${ROLLEN_BEZEICHNUNG[mindestens] || mindestens} nötig.`
+            });
+        } catch (error) {
+            console.error('[Rollen-Check-Fehler]:', error);
+            return res.status(500).json({ success: false, error: 'Interner Server-Fehler bei der Berechtigungsprüfung.' });
         }
     };
 }

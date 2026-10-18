@@ -38,6 +38,7 @@ export async function ensureSuperAdmin(knex) {
                 nachname: SUPER_ADMIN_NACHNAME,
                 password_hash: hashPassword(initialPassword),
                 ist_super_admin: true,
+                email_bestaetigt_am: knex.fn.now(),
                 aktiver_verein_id: verein.id,
                 created_at: knex.fn.now(),
                 updated_at: knex.fn.now()
@@ -59,10 +60,11 @@ export async function ensureSuperAdmin(knex) {
             .where({ benutzer_id: benutzer.id, verein_id: verein.id })
             .first();
 
+        // Im eigenen Verein "Administration" ist der Super-Admin freigegebener Admin (Helferverwaltung: Rollen).
         if (!mitgliedschaft) {
-            await knex('benutzer_vereine').insert({ benutzer_id: benutzer.id, verein_id: verein.id, freigegeben: 1 });
-        } else if (!mitgliedschaft.freigegeben) {
-            await knex('benutzer_vereine').where({ id: mitgliedschaft.id }).update({ freigegeben: 1, updated_at: knex.fn.now() });
+            await knex('benutzer_vereine').insert({ benutzer_id: benutzer.id, verein_id: verein.id, freigegeben: 1, rolle: 'admin' });
+        } else if (!mitgliedschaft.freigegeben || mitgliedschaft.rolle !== 'admin') {
+            await knex('benutzer_vereine').where({ id: mitgliedschaft.id }).update({ freigegeben: 1, rolle: 'admin', updated_at: knex.fn.now() });
         }
     } catch (error) {
         console.error('[Super-Admin-Bootstrap-Fehler]:', error.message);

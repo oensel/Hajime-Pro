@@ -15,6 +15,8 @@ pg.types.setTypeParser(1082, (val) => val);
 import { getAuthRoutes } from './routes/authRoutes.js';
 import { initialisiere as initialisiereSteuerungPasswort } from './utils/steuerungPasswort.js';
 import { getVereinRoutes } from './routes/vereinRoutes.js';
+import { getFreigabeRoutes } from './routes/freigabeRoutes.js';
+import { getNutzerRoutes } from './routes/nutzerRoutes.js';
 import { getTurnierRoutes } from './routes/turnierRoutes.js';
 import { getCloudRoutes } from './routes/cloudRoutes.js';
 import { erzeugeCloudZugriff } from './services/cloudZugriff.js';
@@ -25,6 +27,8 @@ import { getKampfRoutes } from './routes/kampfRoutes.js';
 import { getMannschaftRoutes, getMannschaftskampfRoutes } from './routes/mannschaftRoutes.js';
 import { getUrkundenRoutes } from './routes/urkundenRoutes.js';
 import { getLiveRoutes } from './routes/liveRoutes.js';
+import { getHelferRoutes } from './routes/helferRoutes.js';
+import { getHelferPlanRoutes } from './routes/helferPlanRoutes.js';
 import { starteAufbewahrung } from './liveCloud/aufbewahrung.js';
 import { liesPushKonfig } from './liveCloud/pushKonfig.js';
 import { erzeugeSender } from './liveCloud/pushSender.js';
@@ -229,8 +233,12 @@ if (syncKonfig.istClient) {
     // eigenes, höheres Limit nur für diese beiden Routen.
     const jsonImport = express.json({ limit: '200mb' });
     const jsonStandard = express.json({ limit: '15mb' });
+    // Anmeldung/Registrierung/Profil (/api/auth, teils öffentlich) brauchen nur wenige Felder: kleines Limit (413).
+    const jsonAuth = express.json({ limit: '10kb' });
     const IMPORT_ROUTE = /^\/api\/turniere\/(import|\d+\/import-ergebnisse)$/;
-    app.use((req, res, next) => (IMPORT_ROUTE.test(req.path) ? jsonImport : jsonStandard)(req, res, next));
+    const AUTH_ROUTE = /^\/api\/auth(\/|$)/;
+    app.use((req, res, next) => (IMPORT_ROUTE.test(req.path) ? jsonImport
+        : AUTH_ROUTE.test(req.path) ? jsonAuth : jsonStandard)(req, res, next));
     app.use(bodyLeerFallback);
     app.use(express.static(path.join(__dirname, '../public')));
 
@@ -299,6 +307,9 @@ if (syncKonfig.istClient) {
     initialisiereSteuerungPasswort(knex);
     app.use('/api/auth', getAuthRoutes(knex));
     app.use('/api/vereine', getVereinRoutes(knex));
+    // Freischaltung per Mail-Link (Token trägt die Berechtigung, daher ohne Anmeldung) und Super-Admin-Verwaltung.
+    app.use('/api/freigabe', getFreigabeRoutes(knex));
+    app.use('/api/nutzer', getNutzerRoutes(knex));
     app.use('/api/turniere', requireWriteAuth, getTurnierRoutes(knex));
     app.use('/api/teilnehmer', requireWriteAuth, getTeilnehmerRoutes(knex));
     app.use('/api/pools', requireWriteAuth, getPoolRoutes(knex));
@@ -307,6 +318,12 @@ if (syncKonfig.istClient) {
     app.use('/api/mannschaften', requireWriteAuth, getMannschaftRoutes(knex));
     app.use('/api/mannschaftskaempfe', requireWriteAuth, getMannschaftskampfRoutes(knex));
     app.use('/api/urkunden', requireWriteAuth, getUrkundenRoutes(knex));
+    // Helferplan der Orga (Spec Helferverwaltung 6): überall, im Hallenbetrieb hinter dem Turnierleitungs-Passwort.
+    app.use('/api/helfer-plan', requireWriteAuth, getHelferPlanRoutes(knex));
+    // Helfer-App (Spec 5): nur in der Cloud; HELFER_APP_AKTIV=true schaltet sie für Tests im Modus server ein.
+    if (bm.istCloud || process.env.HELFER_APP_AKTIV === 'true') {
+        app.use('/api/helfer', getHelferRoutes(knex));
+    }
     app.use('/api/cloud', requireWriteAuth, getCloudRoutes(knex, { cloud: erzeugeCloudZugriff(), holeCluster: () => app.get('cluster') }));
     app.use('/api/sync', getSyncRoutes(() => app.get('sync')));
 

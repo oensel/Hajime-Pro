@@ -240,6 +240,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <span class="material-icons">layers</span>
                     <span class="menu-text">Matten</span>
                 </a>
+                <a href="/helfer-plan.html" class="menu-item" id="nav-helfer">
+                    <span class="material-icons">volunteer_activism</span>
+                    <span class="menu-text">Helfer</span>
+                </a>
                 <a href="/kampf.html" class="menu-item" id="nav-kampf">
                     <span class="material-icons">sports_kabaddi</span>
                     <span class="menu-text">Kampf</span>
@@ -268,6 +272,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 </a>
             </nav>
             <nav class="sidebar-nav-unten" id="sidebarNavUnten">
+                <a href="/helfer.html" class="menu-item" id="nav-helfer-app" data-ohne-turnier style="display: none;">
+                    <span class="material-icons">handshake</span>
+                    <span class="menu-text">Helfer-App</span>
+                </a>
+                <a href="/admin-nutzer.html" class="menu-item" id="nav-nutzer" data-ohne-turnier style="display: none;">
+                    <span class="material-icons">admin_panel_settings</span>
+                    <span class="menu-text">Nutzer</span>
+                </a>
                 <a href="/video-live.html" class="menu-item" id="nav-video-live" style="display: none;">
                     <span class="material-icons">videocam</span>
                     <span class="menu-text">Video live</span>
@@ -390,7 +402,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.querySelectorAll('.menu-item').forEach(link => {
             const href = link.getAttribute('href');
             if (href && href !== '#') {
-                if (href.includes('turniere.html')) return;
+                if (href.includes('turniere.html') || link.hasAttribute('data-ohne-turnier')) return;
                 const paramName = href.includes('turnier.html') ? 'id' : 'turnierId';
                 link.setAttribute('href', `${href}?${paramName}=${turnierId}`);
             }
@@ -584,6 +596,69 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.error('Fehler beim Laden des Benutzerstatus:', error);
     }
 
+    // Im Offline-Modus (lokaler Kiosk-Betrieb) gelten keine Vereins-Einschränkungen,
+    // analog zur Server-Middleware.
+    let istOffline = false;
+    let syncRolle = null;
+    let configGeladen = false;
+    try {
+        const configResp = await fetch('/api/config');
+        if (configResp.ok) {
+            const config = await configResp.json();
+            istOffline = !!config.isOffline;
+            syncRolle = config.syncRolle || null;
+            configGeladen = true;
+        }
+    } catch (error) {
+        console.error('Fehler beim Laden der System-Konfiguration:', error);
+    }
+
+    // --- MENÜ-RECHTE NACH ROLLE (Helferverwaltung, src/shared/menueRechte.js) ---
+    // Nur in der Cloud: reine Helfer (oder Konten ohne freigegebene Rolle im aktiven Verein) sehen kein
+    // Verwaltungsmenü. Im Einzelbenutzerbetrieb (Hallen-Server, Client-Gerät) bleibt alles wie bisher; ebenso,
+    // wenn Konfiguration, Benutzer oder Regeln nicht ladbar sind (der Server prüft die Rechte ohnehin selbst).
+    let menueRechte = null;
+    try {
+        menueRechte = await import('/js/shared/menueRechte.js');
+    } catch (error) {
+        console.error('Menü-Rechte nicht ladbar:', error);
+    }
+    const einzelbenutzer = !configGeladen || istOffline || !currentUser || !menueRechte;
+    const rechte = menueRechte
+        ? menueRechte.menueFuerRolle({
+            rolle: currentUser && currentUser.verein_rolle,
+            istSuperAdmin: !!(currentUser && currentUser.ist_super_admin),
+            einzelbenutzer
+        })
+        : { verwaltung: true, helferPlan: true, nutzer: false, helferApp: false };
+    const verwaltbar = !einzelbenutzer ? menueRechte.verwaltbareVereine(currentUser.vereine) : [];
+
+    if (!rechte.verwaltung) {
+        // Aktiver Verein ist nur ein Helfer-Verein (oder noch nicht freigegeben), es gibt aber einen
+        // verwaltbaren: dorthin wechseln, statt die Verwaltung zu verweigern.
+        if (verwaltbar.length > 0 && !menueRechte.istHelferFreieSeite(currentPath)) {
+            try {
+                const resp = await fetch('/api/vereine/aktiv', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ vereinId: verwaltbar[0].verein_id })
+                });
+                if (resp.ok) {
+                    window.location.reload();
+                    return;
+                }
+            } catch (error) {
+                console.error('Wechsel in einen verwaltbaren Verein fehlgeschlagen:', error);
+            }
+        }
+        // Keine Verwaltung: zur Helfer-App (ohne jeden Verein wie bisher zur Vereinsauswahl).
+        if (!menueRechte.istHelferFreieSeite(currentPath)) {
+            const ohneVerein = !Array.isArray(currentUser.vereine) || currentUser.vereine.length === 0;
+            window.location.href = ohneVerein ? '/verein_auswahl.html' : '/helfer.html';
+            return;
+        }
+    }
+
     // --- GENEHMIGUNGS-HINWEIS: freizugebende Benutzer, die auf Prüfung warten ---
     // Läuft auf jeder Seite (menu.js ist überall eingebunden), damit weder der Super-Admin
     // (Erstregistrierungen, /api/vereine/super/pending) noch ein einfaches freigegebenes
@@ -677,14 +752,38 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const schliesseMenu = () => { menu.style.display = 'none'; };
 
-        menu.innerHTML = vereine.map(v => `
-            <button type="button" class="verein-switcher-item${v.verein_id === aktiverVerein.verein_id ? ' aktiv' : ''}" data-verein-id="${v.verein_id}">
-                <span>${v.name}</span>
-                <span class="verein-switcher-item-status">${v.freigegeben ? 'Freigegeben' : 'Freigabe ausstehend'}</span>
-            </button>
-        `).join('');
+        // Als aktiven Verein der Verwaltung bietet der Wechsler in der Cloud nur Vereine an, in denen das Konto
+        // Benutzer oder Admin ist (Spec 3.3); reine Helfer- und wartende Vereine stehen nur zur Ansicht da.
+        // Super-Admins und der Einzelbenutzerbetrieb wechseln wie bisher frei.
+        const verwaltbareIds = new Set(verwaltbar.map(v => v.verein_id));
+        const darfWechseln = (v) => einzelbenutzer || !!currentUser.ist_super_admin || verwaltbareIds.has(v.verein_id);
+        const rollenText = (menueRechte && menueRechte.ROLLEN_TEXT) || {};
+        const statusText = (v) => {
+            if (!v.freigegeben) return 'Freigabe ausstehend';
+            return v.rolle && rollenText[v.rolle] ? `Freigegeben · ${rollenText[v.rolle]}` : 'Freigegeben';
+        };
 
-        menu.querySelectorAll('.verein-switcher-item').forEach(item => {
+        menu.replaceChildren(...vereine.map(v => {
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = `verein-switcher-item${v.verein_id === aktiverVerein.verein_id ? ' aktiv' : ''}`;
+            item.dataset.vereinId = String(v.verein_id);
+            const name = document.createElement('span');
+            name.textContent = v.name;
+            const status = document.createElement('span');
+            status.className = 'verein-switcher-item-status';
+            status.textContent = statusText(v);
+            item.append(name, status);
+            if (!darfWechseln(v) && v.verein_id !== aktiverVerein.verein_id) {
+                item.disabled = true;
+                item.title = 'Nur für die Helfer-App: hier fehlt die Rolle Benutzer oder Admin.';
+                item.style.opacity = '0.55';
+                item.style.cursor = 'default';
+            }
+            return item;
+        }));
+
+        menu.querySelectorAll('.verein-switcher-item:not([disabled])').forEach(item => {
             item.addEventListener('click', async () => {
                 const vereinId = item.getAttribute('data-verein-id');
                 if (parseInt(vereinId) === aktiverVerein.verein_id) {
@@ -717,27 +816,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     })();
 
-    // Im Offline-Modus (lokaler Kiosk-Betrieb) gelten keine Vereins-Einschränkungen,
-    // analog zur Server-Middleware.
-    let istOffline = false;
-    let syncRolle = null;
-    try {
-        const configResp = await fetch('/api/config');
-        if (configResp.ok) {
-            const config = await configResp.json();
-            istOffline = !!config.isOffline;
-            syncRolle = config.syncRolle || null;
-        }
-    } catch (error) {
-        console.error('Fehler beim Laden der System-Konfiguration:', error);
-    }
-
     // --- CLIENT-GERÄT (SYNC_ROLLE=client, Notebook/Tablet an Matte oder Waage) ---
     // Es gibt nur Waage, Scoreboard und Mattenleitung (die Verwaltung liegt am Hallen-Server,
     // siehe src/sync/clientApi.js). Die Menü-Sperren-Prüfungen des Servers entfallen.
     if (syncRolle === 'client') {
         const clientTurnierId = turnierId || localStorage.getItem('aktiveTurnierId');
-        versteckeMenuePunkte(['nav-turniere', 'nav-turnier', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
+        versteckeMenuePunkte(['nav-turniere', 'nav-turnier', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
         const nav = document.getElementById('sidebarNavPrimary');
         const suffix = clientTurnierId ? `?turnierId=${clientTurnierId}` : '';
         const teilnehmerLink = document.getElementById('nav-teilnehmer');
@@ -907,16 +991,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Verein gewählt, aber Beitritt noch nicht freigegeben: Vereinsverwaltung (eigenes Turnier
-    // anlegen/bearbeiten, Pools, Matten, ...) bleibt gesperrt. teilnehmer.html ist trotzdem
-    // erreichbar — das deckt den Gastverein-Fall ab (eigene Athlet:innen bei EINEM FREMDEN,
-    // bereits veröffentlichten Turnier anmelden; serverseitig ohnehin auf den eigenen Verein
-    // beschränkt, siehe teilnehmerController.js), ohne auf die eigene Freigabe warten zu müssen.
+    // anlegen/bearbeiten, Pools, Matten, ...) bleibt gesperrt. Seit der Helferverwaltung landen solche
+    // Cloud-Konten oben schon in der Helfer-App (rechte.verwaltung ist ohne freigegebene Rolle false);
+    // hier kommen nur noch an: Super-Admins, deren aktiver Verein noch nicht freigegeben ist (sie behalten
+    // die Verwaltung), und wartende Konten auf helfer-freien Seiten mit menu.js (profil.html), denen die
+    // Turnier-Menüpunkte ausgeblendet werden.
     const wartetAufFreigabe = !!(currentUser && currentUser.verein_id && !currentUser.verein_freigegeben);
 
     if (wartetAufFreigabe) {
-        versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
+        versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
 
-        const istErlaubteSeite = currentPath.includes('turniere.html') || currentPath.includes('profil.html') || currentPath.includes('teilnehmer.html');
+        const istErlaubteSeite = currentPath.includes('turniere.html') || currentPath.includes('profil.html') || currentPath.includes('teilnehmer.html') ||
+            (rechte.nutzer && currentPath.includes('admin-nutzer.html'));
         if (!istErlaubteSeite) {
             window.location.href = '/turniere.html';
             return;
@@ -925,7 +1011,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // --- STUFEN-VALIDIERUNG DER SICHTBARKEIT ---
         // Direkt nach der Anmeldung (kein Turnier ausgewählt) darf nur "Turniere" sichtbar sein.
         if (!turnierId) {
-            versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
+            versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
         } else {
             await Promise.all([
                 pruefePoolsMenuSperre(turnierId),
@@ -993,9 +1079,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                             // darüber selbst an bzw. bearbeiten sie (siehe "Bearbeiten"/"Hinzufügen" in
                             // teilnehmer.js) — der Zugriff auf fremde Teilnehmer wird dabei serverseitig
                             // in teilnehmerController.js verhindert.
-                            versteckeMenuePunkte(['nav-turnier', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
+                            versteckeMenuePunkte(['nav-turnier', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
 
-                            const eingeschraenkteSeiten = ['turnier.html', 'pools.html', 'matten.html', 'zeitplan.html', 'kampf.html', 'siegerliste.html', 'urkunden.html', 'urkunden-designer.html', 'dashboard.html', 'uebersicht.html'];
+                            const eingeschraenkteSeiten = ['turnier.html', 'pools.html', 'matten.html', 'zeitplan.html', 'helfer-plan.html', 'kampf.html', 'siegerliste.html', 'urkunden.html', 'urkunden-designer.html', 'dashboard.html', 'uebersicht.html'];
                             if (eingeschraenkteSeiten.some(seite => currentPath.includes(seite))) {
                                 window.location.href = `/teilnehmer.html?turnierId=${turnierId}`;
                                 return;
@@ -1007,6 +1093,21 @@ document.addEventListener('DOMContentLoaded', async () => {
                 console.error('Fehler beim Laden des Turniernamens:', error);
             }
         }
+    }
+
+    // --- MENÜ NACH ROLLE (nur Cloud, siehe menueFuerRolle oben) ---
+    // Ohne Verwaltungsrecht (reiner Helfer) bleibt nur die Helfer-App; „Helfer“ (Helferplan) ab Rolle Benutzer,
+    // „Nutzer“ nur für Super-Admins.
+    if (!rechte.verwaltung) {
+        versteckeMenuePunkte(['nav-turniere', 'nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
+    }
+    if (!rechte.helferPlan) versteckeMenuePunkte(['nav-helfer']);
+    const helferAppLink = document.getElementById('nav-helfer-app');
+    if (helferAppLink && rechte.helferApp) helferAppLink.style.display = '';
+    const nutzerLink = document.getElementById('nav-nutzer');
+    if (nutzerLink && rechte.nutzer) {
+        nutzerLink.style.display = '';
+        if (currentPath.includes('admin-nutzer.html')) nutzerLink.classList.add('active');
     }
 
     // Erst jetzt sind alle Sperr-/Versteck-Entscheidungen (Freigabe, Turnierauswahl, Vereins-
@@ -1023,6 +1124,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (currentPath.includes('mannschaften.html')) document.getElementById('nav-mannschaften')?.classList.add('active');
     // Die Zeitplan-Simulation gehört zu den Matten (Button auf matten.html).
     if (currentPath.includes('matten.html') || currentPath.includes('zeitplan.html')) document.getElementById('nav-matten')?.classList.add('active');
+    if (currentPath.includes('helfer-plan.html')) document.getElementById('nav-helfer')?.classList.add('active');
     if (currentPath.includes('kampf.html')) document.getElementById('nav-kampf')?.classList.add('active');
     if (currentPath.includes('siegerliste.html')) document.getElementById('nav-siegerliste')?.classList.add('active');
     if (currentPath.includes('urkunden.html')) document.getElementById('nav-urkunden')?.classList.add('active');

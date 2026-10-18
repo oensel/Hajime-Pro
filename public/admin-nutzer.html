@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hajime Pro - Nutzer</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <script src="/js/menu.js"></script>
+    <style>
+        .nutzer-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .nutzer-table th, .nutzer-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border-color, #374151); vertical-align: top; }
+        .nutzer-table th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
+        .nutzer-table .verein { display: block; }
+        .nutzer-table .status { color: var(--text-muted); font-size: 12px; }
+        .nutzer-filter { width: 100%; max-width: 360px; padding: 8px 10px; margin-bottom: 12px; box-sizing: border-box; }
+        .nutzer-fehler { color: #ef4444; font-weight: 700; }
+        .tabelle-scroll { overflow-x: auto; }
+    </style>
+</head>
+<body>
+
+<div class="kanji-left">柔</div>
+<div class="kanji-right">道</div>
+
+<div class="mdc-card" style="padding: 16px 24px;">
+    <div class="form-title-area">
+        <span class="material-icons">manage_accounts</span>
+        <h1>Nutzer</h1>
+        <span class="material-icons">manage_accounts</span>
+    </div>
+    <p style="color: var(--text-muted); font-size: 13px; margin-top: 0;">Alle Konten mit ihren Vereinen. Super-Admins dürfen alles in allen Vereinen und bekommen die Anfragen für Vereine ohne Admin. Es bleibt immer mindestens ein Super-Admin.</p>
+    <input type="search" id="nutzerFilter" class="nutzer-filter" placeholder="Name, E-Mail oder Verein suchen" aria-label="Nutzer filtern">
+    <div id="nutzerMeldung" class="nutzer-fehler" role="alert"></div>
+    <div class="tabelle-scroll">
+        <table class="nutzer-table">
+            <thead>
+                <tr><th>Name</th><th>E-Mail</th><th>Vereine</th><th>Super-Admin</th></tr>
+            </thead>
+            <tbody id="nutzerListe"><tr><td colspan="4">Wird geladen …</td></tr></tbody>
+        </table>
+    </div>
+</div>
+
+<script src="/js/adminNutzer.js"></script>
+</body>
+</html>

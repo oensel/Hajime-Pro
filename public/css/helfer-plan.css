@@ -1,0 +1,158 @@
+/* Helferplan (helfer-plan.html): Zeitstrahl mit einer Zeile je Tätigkeit. */
+:root {
+    --hp-label-breite: 200px;
+    --hp-turnierzeit: rgba(30, 58, 138, 0.08);
+    --hp-linie: rgba(100, 116, 139, 0.25);
+    --hp-ok-bg: #d1fae5;
+    --hp-ok-rand: #059669;
+    --hp-teil-bg: #fef3c7;
+    --hp-teil-rand: #d97706;
+    --hp-leer-bg: #fee2e2;
+    --hp-leer-rand: #dc2626;
+    --hp-auswahl: #1e3a8a;
+    --hp-fehler: #b91c1c;
+}
+[data-theme="dark"] {
+    --hp-turnierzeit: rgba(59, 130, 246, 0.14);
+    --hp-linie: rgba(156, 163, 175, 0.2);
+    --hp-ok-bg: #064e3b;
+    --hp-ok-rand: #34d399;
+    --hp-teil-bg: #78350f;
+    --hp-teil-rand: #fbbf24;
+    --hp-leer-bg: #7f1d1d;
+    --hp-leer-rand: #f87171;
+    --hp-auswahl: #93c5fd;
+    --hp-fehler: #fca5a5;
+}
+
+.helfer-plan-card [hidden], .hp-modal[hidden] { display: none !important; }
+
+.hp-hinweis { margin: 0 0 12px 0; color: var(--text-muted); font-size: 14px; }
+.hp-werkzeuge { display: flex; justify-content: flex-end; gap: 10px; margin-bottom: 12px; }
+.hp-werkzeuge [hidden] { display: none !important; }
+.hp-werkzeuge:not(:has(button:not([hidden]))) { display: none; }
+.hp-werkzeuge .btn .material-icons { font-size: 18px; vertical-align: middle; }
+.hp-meldung:empty { display: none; }
+.hp-meldung { margin-bottom: 12px; padding: 10px 12px; border: 2px solid var(--border); border-radius: 4px; }
+.hp-meldung a { color: var(--primary); font-weight: 700; }
+
+/* Raster: horizontal scrollbar, die Labelspalte bleibt stehen */
+.hp-scroll { overflow-x: auto; max-width: 100%; border: 2px solid var(--border); border-radius: 4px; }
+.hp-raster { min-width: calc(var(--hp-label-breite) + 640px); }
+.hp-kopf, .hp-zeile { display: flex; border-bottom: 1px solid var(--hp-linie); }
+.hp-zeile:last-child { border-bottom: none; }
+.hp-label {
+    flex: 0 0 var(--hp-label-breite);
+    width: var(--hp-label-breite);
+    box-sizing: border-box;
+    padding: 6px 8px;
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    background: var(--bg-card);
+    border-right: 1px solid var(--hp-linie);
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+}
+.hp-label-kopf { font-size: 12px; font-weight: 700; color: var(--text-muted); align-items: flex-end; }
+.hp-label-text { flex: 1; min-width: 0; }
+/* Der Titel bricht nie um; zu lange eigene Bezeichnungen werden mit „…“ gekürzt (voller Name im Tooltip) */
+.hp-name { font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-main); }
+.hp-bedarf { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+
+.hp-achse, .hp-spur { position: relative; flex: 1; overflow: hidden; }
+.hp-achse { height: 30px; }
+.hp-spur { height: 52px; }
+.hp-turnierzeit { position: absolute; top: 0; bottom: 0; background: var(--hp-turnierzeit); pointer-events: none; }
+.hp-stundenlinie { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed var(--hp-linie); pointer-events: none; }
+.hp-stunde {
+    position: absolute; bottom: 4px; transform: translateX(-50%);
+    font-size: 11px; color: var(--text-muted); white-space: nowrap; pointer-events: none;
+}
+
+/* Slots */
+.hp-slot {
+    position: absolute; top: 6px; bottom: 6px;
+    box-sizing: border-box;
+    border-radius: 6px;
+    border: 2px solid var(--hp-leer-rand);
+    background: var(--hp-leer-bg);
+    color: var(--text-main);
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+    overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1;
+}
+.hp-slot.hp-teil { border-color: var(--hp-teil-rand); background: var(--hp-teil-bg); }
+.hp-slot.hp-ok { border-color: var(--hp-ok-rand); background: var(--hp-ok-bg); }
+.hp-slot.hp-ausgewaehlt { outline: 3px solid var(--hp-auswahl); outline-offset: 1px; z-index: 2; }
+.hp-slot.hp-zieht { cursor: grabbing; opacity: 0.85; z-index: 2; }
+.hp-slot-text { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 10px; pointer-events: none; }
+.hp-griff { position: absolute; top: 0; bottom: 0; width: 8px; cursor: ew-resize; }
+.hp-griff.links { left: 0; }
+.hp-griff.rechts { right: 0; }
+.hp-griff:hover { background: rgba(0, 0, 0, 0.12); }
+
+/* Zeile „+ Tätigkeit hinzufügen“ */
+.hp-zeile-neu { padding: 6px 8px; }
+.hp-neu-knopf {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: transparent; border: 2px dashed var(--border); border-radius: 4px;
+    padding: 4px 10px; color: var(--primary); font-weight: 700; cursor: pointer;
+    position: sticky; left: 8px;
+}
+.hp-neu-knopf:hover { background: var(--border); }
+.hp-neu-knopf .material-icons { font-size: 18px; }
+
+/* Menü der eigenen Tätigkeiten */
+.hp-menue-knopf { background: transparent; border: none; cursor: pointer; color: var(--text-muted); padding: 0; line-height: 1; }
+.hp-menue-knopf .material-icons { font-size: 20px; }
+.hp-menue {
+    position: absolute; top: 28px; right: 4px; z-index: 10;
+    background: var(--bg-card); border: 2px solid var(--border); border-radius: 4px; box-shadow: var(--shadow);
+    display: flex; flex-direction: column; min-width: 120px;
+}
+.hp-menue button { background: transparent; border: none; text-align: left; padding: 8px 12px; cursor: pointer; color: var(--text-main); font-size: 14px; }
+.hp-menue button:hover { background: var(--border); }
+
+/* Detailleiste unter dem Raster */
+.hp-detail { margin-top: 16px; padding: 12px 14px; border: 2px solid var(--border); border-radius: 4px; }
+.hp-detail-kopf { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; }
+.hp-detail-kopf h2 { margin: 0; font-size: 17px; }
+.hp-detail-zeit, .hp-detail-belegung { color: var(--text-muted); font-size: 14px; }
+.hp-detail-schliessen { margin-left: auto; background: transparent; border: none; cursor: pointer; color: var(--text-muted); }
+.hp-detail-liste { list-style: none; padding: 0; margin: 10px 0; }
+.hp-detail-liste li { display: flex; align-items: center; gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--hp-linie); }
+.hp-detail-liste li span { flex: 1; overflow-wrap: anywhere; }
+.hp-detail-leer { color: var(--text-muted); font-style: italic; }
+.hp-detail-zeilen { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: flex-end; margin-top: 8px; }
+.hp-detail-zeilen .form-group { width: auto; min-width: 0; flex: 1 1 180px; max-width: 260px; }
+.hp-detail-zeilen .hp-schmal { flex: 0 1 110px; }
+.hp-detail .btn { white-space: nowrap; }
+.hp-btn-gefahr { color: var(--hp-fehler); border-color: var(--hp-fehler); }
+
+/* Popup Tätigkeit */
+.hp-modal {
+    position: fixed; inset: 0; z-index: 9999;
+    background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(2px);
+    display: flex; align-items: center; justify-content: center;
+    padding: 16px; box-sizing: border-box;
+}
+.hp-modal-karte {
+    width: min(420px, 100%); box-sizing: border-box; padding: 20px;
+    background: var(--bg-card); color: var(--text-main);
+    border: 2px solid var(--border); border-radius: 4px; box-shadow: var(--shadow);
+    display: flex; flex-direction: column; gap: 12px;
+}
+.hp-modal-karte h2 { margin: 0 0 4px 0; font-size: 18px; }
+.hp-modal-karte form { display: flex; flex-direction: column; gap: 12px; }
+.hp-fehler { color: var(--hp-fehler); font-size: 13px; min-height: 1em; }
+.hp-modal-aktionen { display: flex; justify-content: flex-end; gap: 10px; }
+
+@media (max-width: 600px) {
+
+    .helfer-plan-card { padding: 12px 8px; }
+}

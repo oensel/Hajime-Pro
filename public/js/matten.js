@@ -351,9 +351,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // --- MATTEN-STATUS-BADGE ---
+    // "frei" und "pools_vorhanden" sind der Normalzustand und bekommen kein Badge.
     const MATTE_STATUS_LABELS = {
-        frei: { text: 'Frei', klasse: 'bereit' },
-        pools_vorhanden: { text: 'Pools vorhanden', klasse: 'vorbereitung' },
         in_austragung: { text: 'In Austragung', klasse: 'laufend' },
         pausiert: { text: 'Pausiert', klasse: 'kampflos' },
         gesperrt: { text: 'Gesperrt', klasse: 'beendet' }
@@ -378,7 +377,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     function renderMatte(kf, pools, begegnungen = []) {
         const gesamtMinuten = pools.reduce((sum, p) => sum + restDauer(p), 0)
             + begegnungen.reduce((sum, b) => sum + (b.restdauer_minuten || 0), 0);
-        const { text: mattenStatusText, klasse: mattenStatusKlasse } = MATTE_STATUS_LABELS[kf.status] || { text: kf.status || '', klasse: 'bereit' };
+        const mattenStatus = MATTE_STATUS_LABELS[kf.status];
+        const mattenStatusBadge = mattenStatus
+            ? `<span class="pool-status-badge ${mattenStatus.klasse}" style="margin-left: 8px;">${mattenStatus.text}</span>`
+            : '';
         const istPausiert = kf.status === 'pausiert';
         const istGesperrt = kf.status === 'gesperrt';
 
@@ -386,7 +388,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             <div class="matte-box" data-kampflaeche-id="${kf.id}">
                 <div class="matte-header">
                     <span class="matte-name">${escapeHtml(kf.bezeichnung)}</span>
-                    <span class="pool-status-badge ${mattenStatusKlasse}" style="margin-left: 8px;">${mattenStatusText}</span>
+                    ${mattenStatusBadge}
                     <span class="matte-total-time">${gesamtMinuten} Min.</span>
                     ${renderPrognose(kf.id)}
                     <span class="material-icons matte-druck-icon" data-kampflaeche-id="${kf.id}" title="Pools dieser Matte drucken" style="cursor: pointer; font-size: 18px; margin-left: 8px;">print</span>

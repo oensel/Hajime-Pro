@@ -1,12 +1,15 @@
 import express from 'express';
+import { erzeugeApiRatenbegrenzung } from '../middleware/apiRatenbegrenzung.js';
 import { importiereTurnierDaten } from '../controllers/turnierController.js';
 import { FachFehler } from '../utils/fachFehler.js';
+import { ersetzeHelferplan } from '../services/helferTransfer.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 
 // Turniere des eigenen Vereins aus der Cloud auf den Hallen-Server holen (Turnierauswahl).
 // Nur im Einzelbenutzerbetrieb (Hallen-Server); in der Cloud selbst gibt es die Funktion nicht.
 export function getCloudRoutes(knex, { cloud, holeCluster = () => null }) {
     const router = express.Router();
+    router.use(erzeugeApiRatenbegrenzung());
 
     router.use((req, res, next) => {
         if (!betriebsmodus.istEinzelbenutzerBetrieb()) {
@@ -82,6 +85,35 @@ export function getCloudRoutes(knex, { cloud, holeCluster = () => null }) {
             return res.status(201).json({ success: true, ...ergebnis });
         } catch (e) {
             return fehler(res, e, 'Holen');
+        }
+    });
+
+    // Helferplan aus der Cloud aktualisieren (Helferverwaltung, Spec Abschnitt 8): ersetzt NUR den Helferplan
+    // des lokalen Turniers, das aus dem Cloud-Turnier :id stammt (urspruengliche_id). Turnier, Teilnehmer und
+    // Pools bleiben unberührt; die Einsätze werden komplett durch den Stand der Cloud ersetzt.
+    router.post('/turniere/:id/helferplan', async (req, res) => {
+        try {
+            const { token } = req.body || {};
+            if (!token) return res.status(400).json({ success: false, error: 'Cloud-Anmeldung fehlt.' });
+            const cloudId = parseInt(req.params.id, 10);
+            if (!Number.isInteger(cloudId) || cloudId <= 0) {
+                return res.status(400).json({ success: false, error: 'Ungültige Turnier-ID.' });
+            }
+            const lokal = await knex('turniere').where({ urspruengliche_id: cloudId }).orderBy('id', 'desc').first('id');
+            if (!lokal) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Zu diesem Cloud-Turnier gibt es hier kein Turnier. Bitte das Turnier zuerst aus der Cloud holen.'
+                });
+            }
+            const daten = await cloud.ladeExport(String(token), cloudId);
+            if (!daten.helferplan || !Array.isArray(daten.helferplan.taetigkeiten)) {
+                return res.status(422).json({ success: false, error: 'Die Cloud liefert für dieses Turnier keinen Helferplan.' });
+            }
+            const anzahl = await knex.transaction(trx => ersetzeHelferplan(trx, lokal.id, daten.helferplan));
+            return res.json({ success: true, turnierId: lokal.id, ...anzahl });
+        } catch (e) {
+            return fehler(res, e, 'Helferplan');
         }
     });
 

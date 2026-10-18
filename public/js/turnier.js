@@ -380,6 +380,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('datum').value = dateObj.toISOString().split('T')[0];
             }
 
+            // Turnierzeit für den Helferplan (Minuten seit Mitternacht <-> HH:MM)
+            const { formatiereMinuten } = await import('/js/shared/helferZeit.js');
+            document.getElementById('beginn').value = Number.isInteger(turnier.beginn_min) ? formatiereMinuten(turnier.beginn_min) : '';
+            document.getElementById('ende').value = Number.isInteger(turnier.ende_min) && turnier.ende_min < 1440 ? formatiereMinuten(turnier.ende_min) : '';
+            document.getElementById('waagen_anzahl').value = turnier.waagen_anzahl || 1;
+
             // Anmeldeschluss befüllen (reines Datum ohne Uhrzeit; String-Slice statt Date-Objekt,
             // um Zeitzonen-bedingte Tagesverschiebung zu vermeiden)
             if (turnier.anmeldeschluss) {
@@ -618,6 +624,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 anmeldeschlussValue = anmeldeschlussFeld.value;
             }
 
+            const { parseUhrzeit } = await import('/js/shared/helferZeit.js');
+            const beginnMin = parseUhrzeit(document.getElementById('beginn').value);
+            const endeMin = parseUhrzeit(document.getElementById('ende').value);
+            if (beginnMin !== null && endeMin !== null && endeMin <= beginnMin) {
+                if (window.zeigeNotification) {
+                    window.zeigeNotification('Das Ende des Wettkampfs muss nach dem Beginn liegen.', 'error');
+                }
+                return;
+            }
+
             // Payload zusammenbauen
             const payload = {
                 bezeichnung: document.getElementById('bezeichnung').value.trim(),
@@ -632,6 +648,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 altersklassen: selectedAK,
                 mannschafts_altersklassen: selectedMannschaftAK,
                 anmeldeschluss: anmeldeschlussValue,
+                beginn_min: beginnMin,
+                ende_min: endeMin,
+                waagen_anzahl: document.getElementById('waagen_anzahl').value,
                 startgeld: document.getElementById('startgeld').value,
                 iban: document.getElementById('iban').value.trim(),
                 kontoinhaber: document.getElementById('kontoinhaber').value.trim(),

@@ -2,7 +2,7 @@ import * as XLSX from 'xlsx';
 import { readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { resolveUserVereinName, hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
+import { ladeVerwaltendenVereinsnamen, hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
 import { turnierHatEchteKaempfe, mannschaftsPoolsHabenEchteKaempfe, ermittleAltersklassenPoolZustand, regeneriereKampfplanFuerPool, aktualisiereMatteNachPoolAenderung } from './poolController.js';
 import { FachFehler } from '../utils/fachFehler.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
@@ -142,7 +142,7 @@ async function ermittleKontext(knex, req, turnier) {
     return {
         istGastgeberVerein,
         istPrivilegiert: istGastgeberVerein || !!(user && user.ist_super_admin),
-        userVereinName: await resolveUserVereinName(knex, user),
+        userVereinName: await ladeVerwaltendenVereinsnamen(knex, user),
         userGefunden: !!user
     };
 }
@@ -304,7 +304,7 @@ export async function getTeilnehmerByTurnier(knex, req, res) {
         }
 
         const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
-        const userVereinName = user ? await resolveUserVereinName(knex, user) : null;
+        const userVereinName = user ? await ladeVerwaltendenVereinsnamen(knex, user) : null;
 
         const istGastgeberVerein = istEinzelbenutzerBetrieb() || hatVereinsZugriffAufTurnier(user, turnier);
 
@@ -378,7 +378,7 @@ export async function ziehZurueck(knex, req, res) {
             return res.status(409).json({ success: false, error: sperrgrund });
         }
 
-        const userVereinName = await resolveUserVereinName(knex, user);
+        const userVereinName = await ladeVerwaltendenVereinsnamen(knex, user);
         const isSameClub = userVereinName && athlet.verein === userVereinName;
         if (!isSameClub) {
             return res.status(403).json({ success: false, error: 'Sie dürfen nur Teilnehmer Ihres eigenen Vereins zurückziehen.' });
@@ -741,7 +741,7 @@ export async function aendereStatusFelder(knex, req, res) {
             // (physische Verifikation am Wiegetisch bzw. zentrale Anmeldeverwaltung des
             // Ausrichters) — "auch Einzelwettkampf" ist davon ausgenommen: das entscheidet jeder
             // Verein für seine eigenen gemeldeten Kämpfer selbst (siehe teilnehmer.js).
-            const userVereinName = await resolveUserVereinName(knex, user);
+            const userVereinName = await ladeVerwaltendenVereinsnamen(knex, user);
             const istEigenerKaempfer = !!(userVereinName && athlet.verein === userVereinName);
             const nurAuchEinzelwettkampf = auch_einzelwettkampf !== undefined
                 && startgeld_bezahlt === undefined && lizenz_ablauf === undefined
@@ -1223,7 +1223,7 @@ async function ladeImportKontext(knex, req) {
         return { fehler: { status: 401, body: { success: false, error: 'Benutzerprofil nicht gefunden.' } } };
     }
 
-    const userVereinName = await resolveUserVereinName(knex, user);
+    const userVereinName = await ladeVerwaltendenVereinsnamen(knex, user);
     const istOffline = istEinzelbenutzerBetrieb();
     const istGastgeberVerein = istOffline || hatVereinsZugriffAufTurnier(user, turnier);
     const istSuperAdmin = !!user.ist_super_admin;

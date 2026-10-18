@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Helfer · Hajime Pro</title>
+    <script>
+        // Theme wie in der Verwaltung (menu.js); ohne Wahl entscheidet prefers-color-scheme (helfer.css).
+        try {
+            var thema = localStorage.getItem('hajime-theme');
+            if (thema) document.documentElement.setAttribute('data-theme', thema);
+        } catch (e) { /* localStorage gesperrt */ }
+    </script>
+    <link rel="stylesheet" href="/css/schriften.css">
+    <link rel="stylesheet" href="/css/helfer.css">
+    <script type="module" src="/js/helfer.js"></script>
+</head>
+<body>
+    <header class="hf-kopf">
+        <div class="hf-kopf-innen">
+            <span class="hf-marke">Hajime Pro <span class="hf-marke-zusatz">Helfer</span></span>
+            <nav class="hf-nav" aria-label="Bereiche">
+                <a href="#turniere" data-reiter="turniere">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2Zm0 16H5V9h14v11ZM7 11h5v5H7v-5Z"/></svg>
+                    <span>Turniere</span>
+                </a>
+                <a href="#dienste" data-reiter="dienste">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z"/></svg>
+                    <span>Meine Dienste</span>
+                </a>
+                <a href="#profil" data-reiter="profil">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0 2c-2.7 0-8 1.3-8 4v2h16v-2c0-2.7-5.3-4-8-4Z"/></svg>
+                    <span>Profil</span>
+                </a>
+            </nav>
+        </div>
+    </header>
+    <main id="hfInhalt" class="hf-inhalt"></main>
+</body>
+</html>

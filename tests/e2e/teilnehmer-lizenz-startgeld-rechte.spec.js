@@ -76,9 +76,9 @@ test.describe.serial('Lizenz-/Startgeld-Rechte: nur ausrichtender Verein oder Su
             { id: gastSuperAdminUserId, email: `${gastSuperAdminUserId}@example.test`, vorname: 'Gast', nachname: 'Superadmin', aktiver_verein_id: gastVereinId, ist_super_admin: true }
         ]);
         await knex('benutzer_vereine').insert([
-            { benutzer_id: ausrichterUserId, verein_id: ausrichterVereinId, freigegeben: 1 },
-            { benutzer_id: gastUserId, verein_id: gastVereinId, freigegeben: 1 },
-            { benutzer_id: gastSuperAdminUserId, verein_id: gastVereinId, freigegeben: 1 }
+            { benutzer_id: ausrichterUserId, verein_id: ausrichterVereinId, freigegeben: 1, rolle: 'admin' },
+            { benutzer_id: gastUserId, verein_id: gastVereinId, freigegeben: 1, rolle: 'admin' },
+            { benutzer_id: gastSuperAdminUserId, verein_id: gastVereinId, freigegeben: 1, rolle: 'admin' }
         ]);
 
         const [turnier] = await knex('turniere').insert({

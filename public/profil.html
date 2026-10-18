@@ -138,6 +138,47 @@
             flex-direction: column;
             gap: 24px;
         }
+        .rollen-auswahl {
+            padding: 5px 8px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: var(--bg-card);
+            color: var(--text-main);
+            font-size: 12px;
+        }
+        #mitgliederCard {
+            max-width: 984px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .mitglieder-verein {
+            margin: 0 0 8px 0;
+            font-size: 14px;
+            font-weight: 800;
+            color: var(--text-main);
+        }
+        .mitglieder-scroll {
+            overflow-x: auto;
+            margin-bottom: 24px;
+        }
+        .mitglieder-tabelle {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .mitglieder-tabelle th,
+        .mitglieder-tabelle td {
+            text-align: left;
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-main);
+        }
+        .mitglieder-tabelle th {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            color: var(--text-muted);
+        }
         @media (max-width: 850px) {
             .profil-card-row {
                 flex-direction: column;
@@ -179,11 +220,11 @@
         <div class="profil-section-title">Passwort ändern (optional)</div>
         <div class="profil-form-group">
             <label for="newPassword">Neues Passwort</label>
-            <input type="password" id="newPassword" placeholder="Leer lassen, um unverändert zu bleiben" minlength="6">
+            <input type="password" id="newPassword" placeholder="Leer lassen, um unverändert zu bleiben" minlength="8">
         </div>
         <div class="profil-form-group">
             <label for="newPasswordConfirm">Neues Passwort bestätigen</label>
-            <input type="password" id="newPasswordConfirm" minlength="6">
+            <input type="password" id="newPasswordConfirm" minlength="8">
         </div>
 
         <div class="profil-section-title">Bestätigung</div>
@@ -224,6 +265,14 @@
         <h1>Erstregistrierungen prüfen</h1>
     </div>
     <div id="erstregistrierungenListe" style="display: flex; flex-direction: column;"></div>
+</div>
+
+<div class="mdc-card" id="mitgliederCard" style="margin-top: 24px; display: none;">
+    <div class="form-title-area">
+        <span class="material-icons">manage_accounts</span>
+        <h1>Mitglieder verwalten</h1>
+    </div>
+    <div id="mitgliederBereich"></div>
 </div>
 
 <script>
@@ -300,150 +349,190 @@
         });
 
         // --- MEINE VEREINE ---
+        // Alle Namen/Adressen stammen von anderen Konten: nur per textContent/createElement einsetzen.
         const meineVereineListe = document.getElementById('meineVereineListe');
         let aktuellerNutzer = null;
+        let einzelbenutzer = false;
+        const { ROLLEN_TEXT, vorbelegteFreigabeRolle } = await import('/js/shared/menueRechte.js');
+        const { rolleReicht } = await import('/js/shared/rollen.js');
 
         try {
-            const meResp = await fetch('/api/auth/me');
-            if (meResp.ok) {
-                aktuellerNutzer = (await meResp.json()).user;
-            }
+            const [meResp, configResp] = await Promise.all([fetch('/api/auth/me'), fetch('/api/config')]);
+            if (meResp.ok) aktuellerNutzer = (await meResp.json()).user;
+            if (configResp.ok) einzelbenutzer = !!(await configResp.json()).isOffline;
         } catch (err) {
             console.error('Fehler beim Laden des Vereinsstatus:', err);
         }
 
+        const meldeFehler = (text) => window.zeigeNotification ? window.zeigeNotification(text, 'error') : alert(text);
+        const meldeErfolg = (text) => { if (window.zeigeNotification) window.zeigeNotification(text); };
+
+        function el(tag, eigenschaften = {}, ...kinder) {
+            const e = document.createElement(tag);
+            for (const [k, v] of Object.entries(eigenschaften)) {
+                if (k === 'text') e.textContent = v;
+                else if (k === 'class') e.className = v;
+                else if (k === 'style') e.style.cssText = v;
+                else e.setAttribute(k, v);
+            }
+            e.append(...kinder);
+            return e;
+        }
+
+        const kleinerKnopf = (text, klasse, zusatzStil = '') =>
+            el('button', { type: 'button', class: `btn ${klasse}`, text, style: `padding: 6px 12px; font-size: 11px;${zusatzStil}` });
+
+        /** Auswahl Admin/Benutzer/Helfer für Freigaben und Rollenwechsel. */
+        function rollenAuswahl(vorbelegt, beschriftung) {
+            const auswahl = el('select', { class: 'rollen-auswahl', 'aria-label': beschriftung });
+            for (const rolle of ['helfer', 'benutzer', 'admin']) {
+                const option = el('option', { value: rolle, text: ROLLEN_TEXT[rolle] });
+                if (rolle === vorbelegt) option.selected = true;
+                auswahl.append(option);
+            }
+            return auswahl;
+        }
+
+        async function sendePost(url, daten) {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(daten)
+            });
+            const antwort = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(antwort.error || 'Aktion fehlgeschlagen');
+            return antwort;
+        }
+
+        // Im Einzelbenutzerbetrieb (Hallen-Server) gibt es keine Rollen: Anzeige wie vor der Helferverwaltung.
+        function statusText(v) {
+            if (!v.freigegeben) return 'Freigabe ausstehend';
+            if (einzelbenutzer) return 'Freigegeben';
+            return v.rolle ? `Freigegeben als ${ROLLEN_TEXT[v.rolle] || v.rolle}` : 'Freigegeben';
+        }
+
+        // Als aktiven Verein der Verwaltung lassen sich nur Vereine setzen, in denen das Konto Benutzer oder
+        // Admin ist (Spec 3.3); im Einzelbenutzerbetrieb und für Super-Admins wie bisher alle.
+        const darfAktivSetzen = (v) => einzelbenutzer || !!(aktuellerNutzer && aktuellerNutzer.ist_super_admin) ||
+            (v.freigegeben && rolleReicht(v.rolle, 'benutzer'));
+
         function renderMeineVereine() {
             if (!aktuellerNutzer || !Array.isArray(aktuellerNutzer.vereine) || aktuellerNutzer.vereine.length === 0) {
-                meineVereineListe.innerHTML = '<p style="font-size: 13px; color: var(--text-muted); text-align: center;">Sie sind aktuell keinem Verein zugeordnet.</p>';
+                meineVereineListe.replaceChildren(el('p', {
+                    style: 'font-size: 13px; color: var(--text-muted); text-align: center;',
+                    text: 'Sie sind aktuell keinem Verein zugeordnet.'
+                }));
                 return;
             }
 
-            meineVereineListe.innerHTML = aktuellerNutzer.vereine.map(v => {
+            meineVereineListe.replaceChildren(...aktuellerNutzer.vereine.map(v => {
                 const istAktiv = v.verein_id === aktuellerNutzer.verein_id;
-                return `
-                    <div class="verein-mitglied-row${istAktiv ? ' aktiv' : ''}">
-                        <div>
-                            <div class="verein-mitglied-name">${v.name}${istAktiv ? ' (aktiv)' : ''}</div>
-                            <div class="verein-mitglied-status">${v.freigegeben ? 'Freigegeben' : 'Freigabe ausstehend'}</div>
-                        </div>
-                        <div class="verein-mitglied-actions">
-                            ${istAktiv ? '' : `<button type="button" class="btn btn-outlined" data-action="aktivieren" data-verein-id="${v.verein_id}" style="padding: 6px 12px; font-size: 11px;">Als aktiv setzen</button>`}
-                            <button type="button" class="btn btn-outlined" data-action="verlassen" data-verein-id="${v.verein_id}" data-verein-name="${v.name}" style="padding: 6px 12px; font-size: 11px; color: #ef4444; border-color: #ef4444;">Verlassen</button>
-                        </div>
-                    </div>
-                `;
-            }).join('');
+                const aktionen = el('div', { class: 'verein-mitglied-actions' });
 
-            meineVereineListe.querySelectorAll('button[data-action="aktivieren"]').forEach(btn => {
-                btn.addEventListener('click', async () => {
-                    try {
-                        const response = await fetch('/api/vereine/aktiv', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ vereinId: btn.getAttribute('data-verein-id') })
-                        });
-                        const data = await response.json();
-                        if (!response.ok) throw new Error(data.error || 'Vereinswechsel fehlgeschlagen.');
-                        window.location.reload();
-                    } catch (err) {
-                        window.zeigeNotification ? window.zeigeNotification(err.message, 'error') : alert(err.message);
-                    }
-                });
-            });
+                if (!istAktiv && darfAktivSetzen(v)) {
+                    const aktivKnopf = kleinerKnopf('Als aktiv setzen', 'btn-outlined');
+                    aktivKnopf.dataset.action = 'aktivieren';
+                    aktivKnopf.addEventListener('click', async () => {
+                        try {
+                            await sendePost('/api/vereine/aktiv', { vereinId: v.verein_id });
+                            window.location.reload();
+                        } catch (err) {
+                            meldeFehler(err.message);
+                        }
+                    });
+                    aktionen.append(aktivKnopf);
+                }
 
-            meineVereineListe.querySelectorAll('button[data-action="verlassen"]').forEach(btn => {
-                btn.addEventListener('click', async () => {
-                    const vereinName = btn.getAttribute('data-verein-name');
+                const verlassenKnopf = kleinerKnopf('Verlassen', 'btn-outlined', ' color: #ef4444; border-color: #ef4444;');
+                verlassenKnopf.dataset.action = 'verlassen';
+                verlassenKnopf.addEventListener('click', async () => {
                     const bestaetigt = await window.zeigeZentraleBestaetigung(
-                        `Möchten Sie "${vereinName}" wirklich verlassen?`,
+                        `Möchten Sie "${v.name}" wirklich verlassen?`,
                         'Verein verlassen',
                         'warning'
                     );
                     if (!bestaetigt) return;
-
                     try {
-                        const response = await fetch('/api/vereine/leave', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ vereinId: btn.getAttribute('data-verein-id') })
-                        });
-                        const data = await response.json();
-                        if (!response.ok) throw new Error(data.error || 'Verein konnte nicht verlassen werden.');
-
-                        let meldung = `"${vereinName}" verlassen.`;
+                        const data = await sendePost('/api/vereine/leave', { vereinId: v.verein_id });
+                        let meldung = `"${v.name}" verlassen.`;
                         if (data.verein_geloescht) {
                             meldung += ' Der Verein wurde gelöscht, da er keine Mitglieder mehr hatte.';
                         }
-                        if (window.zeigeNotification) window.zeigeNotification(meldung, 'success');
+                        meldeErfolg(meldung);
                         setTimeout(() => window.location.reload(), 1200);
                     } catch (err) {
-                        window.zeigeNotification ? window.zeigeNotification(err.message, 'error') : alert(err.message);
+                        meldeFehler(err.message || 'Verein konnte nicht verlassen werden.');
                     }
                 });
-            });
+                aktionen.append(verlassenKnopf);
+
+                return el('div', { class: `verein-mitglied-row${istAktiv ? ' aktiv' : ''}`, 'data-verein-id': String(v.verein_id) },
+                    el('div', {},
+                        el('div', { class: 'verein-mitglied-name', text: `${v.name}${istAktiv ? ' (aktiv)' : ''}` }),
+                        el('div', { class: 'verein-mitglied-status', text: statusText(v) })),
+                    aktionen);
+            }));
         }
 
         renderMeineVereine();
 
-        // --- BEITRITTSANFRAGEN: weitere Funktionäre des eigenen Vereins ---
-        // Läuft für jeden Aufruf (nicht nur Super-Admins) — /api/vereine/pending liefert 403,
-        // wenn der Nutzer in keinem Verein Freigaberechte hat, dann bleibt die Karte einfach
-        // ausgeblendet. Das ist die Warteschlange, die menu.js im Profil-Badge mitzählt
-        // (siehe hajimeAktualisiereGenehmigungsHinweis), bislang aber nirgends auf profil.html
-        // dargestellt wurde.
+        /**
+         * Zeile einer offenen Anfrage mit Rollenauswahl, „Freigeben“ und „Ablehnen“.
+         * @param {object} p Anfrage aus /api/vereine/pending bzw. /super/pending
+         * @param {{ pfad: string, vorbelegt: string, nachher: Function, freigabeText: string }} o
+         */
+        function anfrageZeile(p, { pfad, vorbelegt, nachher, freigabeText }) {
+            const name = `${p.vorname || ''} ${p.nachname || ''}`.trim();
+            const auswahl = rollenAuswahl(vorbelegt, `Rolle für ${name}`);
+            const freigeben = kleinerKnopf('Freigeben', 'btn-raised');
+            freigeben.dataset.action = 'approve';
+            const ablehnen = kleinerKnopf('Ablehnen', 'btn-outlined');
+            ablehnen.dataset.action = 'reject';
+
+            const entscheide = async (aktion) => {
+                freigeben.disabled = ablehnen.disabled = true;
+                try {
+                    const daten = { userId: p.id, vereinId: p.verein_id };
+                    if (aktion === 'approve') daten.rolle = auswahl.value;
+                    await sendePost(`/api/vereine/${pfad}${aktion}`, daten);
+                    meldeErfolg(aktion === 'approve' ? freigabeText : 'Anfrage abgelehnt.');
+                    nachher();
+                    if (window.hajimeAktualisiereGenehmigungsHinweis) window.hajimeAktualisiereGenehmigungsHinweis();
+                } catch (err) {
+                    freigeben.disabled = ablehnen.disabled = false;
+                    meldeFehler(err.message);
+                }
+            };
+            freigeben.addEventListener('click', () => entscheide('approve'));
+            ablehnen.addEventListener('click', () => entscheide('reject'));
+
+            return el('div', { class: 'erstregistrierung-row', 'data-user-id': String(p.id) },
+                el('div', {},
+                    el('div', { class: 'erstregistrierung-name', text: name }),
+                    el('div', { class: 'erstregistrierung-meta', text: `${p.email} · ${p.verein_name}` })),
+                el('div', { class: 'erstregistrierung-actions' }, auswahl, freigeben, ablehnen));
+        }
+
+        // --- BEITRITTSANFRAGEN: Admins sehen die offenen Anfragen ihrer Vereine ---
+        // /api/vereine/pending liefert 403, wenn das Konto in keinem Verein Admin ist; dann bleibt die Karte
+        // ausgeblendet. Die Rolle ist vorbelegt (Helfer-App → Helfer, sonst Benutzer), der Admin entscheidet.
         async function ladeUndRendereBeitrittsanfragen() {
             const card = document.getElementById('beitrittsanfragenCard');
             const liste = document.getElementById('beitrittsanfragenListe');
             try {
                 const resp = await fetch('/api/vereine/pending');
-                if (!resp.ok) {
-                    card.style.display = 'none';
-                    return;
-                }
-                const pending = await resp.json();
-
+                const pending = resp.ok ? await resp.json() : [];
                 if (!Array.isArray(pending) || pending.length === 0) {
                     card.style.display = 'none';
                     return;
                 }
-
                 card.style.display = 'block';
-                liste.innerHTML = pending.map(p => `
-                    <div class="erstregistrierung-row">
-                        <div>
-                            <div class="erstregistrierung-name">${p.vorname} ${p.nachname}</div>
-                            <div class="erstregistrierung-meta">${p.email} &middot; ${p.verein_name}</div>
-                        </div>
-                        <div class="erstregistrierung-actions">
-                            <button type="button" class="btn btn-raised" data-action="approve" data-user-id="${p.id}" data-verein-id="${p.verein_id}" style="padding: 6px 12px; font-size: 11px;">Freigeben</button>
-                            <button type="button" class="btn btn-outlined" data-action="reject" data-user-id="${p.id}" data-verein-id="${p.verein_id}" style="padding: 6px 12px; font-size: 11px;">Ablehnen</button>
-                        </div>
-                    </div>
-                `).join('');
-
-                liste.querySelectorAll('button[data-action]').forEach(btn => {
-                    btn.addEventListener('click', async () => {
-                        const userId = btn.getAttribute('data-user-id');
-                        const vereinId = btn.getAttribute('data-verein-id');
-                        const action = btn.getAttribute('data-action');
-                        try {
-                            const response = await fetch(`/api/vereine/${action}`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ userId, vereinId })
-                            });
-                            const data = await response.json();
-                            if (!response.ok) throw new Error(data.error || 'Aktion fehlgeschlagen');
-                            if (window.zeigeNotification) {
-                                window.zeigeNotification(action === 'approve' ? 'Mitglied freigegeben.' : 'Anfrage abgelehnt.');
-                            }
-                            ladeUndRendereBeitrittsanfragen();
-                            if (window.hajimeAktualisiereGenehmigungsHinweis) window.hajimeAktualisiereGenehmigungsHinweis();
-                        } catch (err) {
-                            window.zeigeNotification ? window.zeigeNotification(err.message, 'error') : alert(err.message);
-                        }
-                    });
-                });
+                liste.replaceChildren(...pending.map(p => anfrageZeile(p, {
+                    pfad: '',
+                    vorbelegt: vorbelegteFreigabeRolle(p.angefragt_ueber),
+                    freigabeText: 'Mitglied freigegeben.',
+                    nachher: () => { ladeUndRendereBeitrittsanfragen(); ladeUndRendereMitglieder(); }
+                })));
             } catch (err) {
                 console.error('Fehler beim Laden der Beitrittsanfragen:', err);
                 card.style.display = 'none';
@@ -452,12 +541,8 @@
 
         ladeUndRendereBeitrittsanfragen();
 
-        // --- SUPER-ADMIN: ERSTREGISTRIERUNGEN ---
-        if (aktuellerNutzer && aktuellerNutzer.ist_super_admin) {
-            document.getElementById('superAdminCard').style.display = 'block';
-            ladeUndRendereErstregistrierungen();
-        }
-
+        // --- SUPER-ADMIN: ERSTREGISTRIERUNGEN (Vereine ohne Admin) ---
+        // Standardrolle Admin: die erste freigegebene Person eines Vereins ohne Admin wird dessen Admin.
         async function ladeUndRendereErstregistrierungen() {
             const liste = document.getElementById('erstregistrierungenListe');
             try {
@@ -466,50 +551,118 @@
                 const pending = await resp.json();
 
                 if (!Array.isArray(pending) || pending.length === 0) {
-                    liste.innerHTML = '<p style="font-size: 13px; color: var(--text-muted); text-align: center;">Keine offenen Erstregistrierungen.</p>';
+                    liste.replaceChildren(el('p', {
+                        style: 'font-size: 13px; color: var(--text-muted); text-align: center;',
+                        text: 'Keine offenen Erstregistrierungen.'
+                    }));
                     return;
                 }
-
-                liste.innerHTML = pending.map(p => `
-                    <div class="erstregistrierung-row">
-                        <div>
-                            <div class="erstregistrierung-name">${p.vorname} ${p.nachname}</div>
-                            <div class="erstregistrierung-meta">${p.email} &middot; ${p.verein_name}</div>
-                        </div>
-                        <div class="erstregistrierung-actions">
-                            <button type="button" class="btn btn-raised" data-action="super/approve" data-user-id="${p.id}" data-verein-id="${p.verein_id}" style="padding: 6px 12px; font-size: 11px;">Freigeben</button>
-                            <button type="button" class="btn btn-outlined" data-action="super/reject" data-user-id="${p.id}" data-verein-id="${p.verein_id}" style="padding: 6px 12px; font-size: 11px;">Ablehnen</button>
-                        </div>
-                    </div>
-                `).join('');
-
-                liste.querySelectorAll('button[data-action]').forEach(btn => {
-                    btn.addEventListener('click', async () => {
-                        const userId = btn.getAttribute('data-user-id');
-                        const vereinId = btn.getAttribute('data-verein-id');
-                        const action = btn.getAttribute('data-action');
-                        try {
-                            const response = await fetch(`/api/vereine/${action}`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ userId, vereinId })
-                            });
-                            const data = await response.json();
-                            if (!response.ok) throw new Error(data.error || 'Aktion fehlgeschlagen');
-                            if (window.zeigeNotification) {
-                                window.zeigeNotification(action === 'super/approve' ? 'Erstregistrierung freigegeben.' : 'Anfrage abgelehnt.');
-                            }
-                            ladeUndRendereErstregistrierungen();
-                            if (window.hajimeAktualisiereGenehmigungsHinweis) window.hajimeAktualisiereGenehmigungsHinweis();
-                        } catch (err) {
-                            window.zeigeNotification ? window.zeigeNotification(err.message, 'error') : alert(err.message);
-                        }
-                    });
-                });
+                liste.replaceChildren(...pending.map(p => anfrageZeile(p, {
+                    pfad: 'super/',
+                    vorbelegt: 'admin',
+                    freigabeText: 'Erstregistrierung freigegeben.',
+                    nachher: () => { ladeUndRendereErstregistrierungen(); ladeUndRendereMitglieder(); }
+                })));
             } catch (err) {
                 console.error('Fehler beim Laden der Erstregistrierungen:', err);
             }
         }
+
+        if (aktuellerNutzer && aktuellerNutzer.ist_super_admin) {
+            document.getElementById('superAdminCard').style.display = 'block';
+            ladeUndRendereErstregistrierungen();
+        }
+
+        // --- MITGLIEDERVERWALTUNG (Admins des Vereins, Super-Admins; nur in der Cloud) ---
+        // Rolle ändern (/api/vereine/rolle) und Entfernen (/api/vereine/entfernen); der Server lehnt z. B. das
+        // Herabstufen oder Entfernen des letzten Admins ab, die Meldung erscheint als Snackbar.
+        function verwalteteVereine() {
+            if (einzelbenutzer) return [];
+            if (!aktuellerNutzer || !Array.isArray(aktuellerNutzer.vereine)) return [];
+            return aktuellerNutzer.vereine.filter(v =>
+                aktuellerNutzer.ist_super_admin || (v.freigegeben && rolleReicht(v.rolle, 'admin')));
+        }
+
+        function mitgliedZeile(verein, m, neuLaden) {
+            const name = `${m.vorname || ''} ${m.nachname || ''}`.trim();
+            let rolleZelle;
+            if (m.status === 'freigegeben') {
+                const auswahl = rollenAuswahl(m.rolle, `Rolle von ${name}`);
+                auswahl.addEventListener('change', async () => {
+                    auswahl.disabled = true;
+                    try {
+                        await sendePost('/api/vereine/rolle', { userId: m.id, vereinId: verein.verein_id, rolle: auswahl.value });
+                        meldeErfolg(`${name} ist jetzt ${ROLLEN_TEXT[auswahl.value]}.`);
+                    } catch (err) {
+                        auswahl.value = m.rolle;
+                        meldeFehler(err.message);
+                    }
+                    neuLaden();
+                });
+                rolleZelle = auswahl;
+            } else {
+                rolleZelle = '–';
+            }
+
+            const entfernen = kleinerKnopf('Entfernen', 'btn-outlined', ' color: #ef4444; border-color: #ef4444;');
+            entfernen.addEventListener('click', async () => {
+                const bestaetigt = await window.zeigeZentraleBestaetigung(
+                    `Möchten Sie ${name} wirklich aus "${verein.name}" entfernen?`, 'Mitglied entfernen', 'warning');
+                if (!bestaetigt) return;
+                try {
+                    await sendePost('/api/vereine/entfernen', { userId: m.id, vereinId: verein.verein_id });
+                    meldeErfolg(`${name} wurde entfernt.`);
+                    if (aktuellerNutzer && m.id === aktuellerNutzer.id) {
+                        setTimeout(() => window.location.reload(), 1200);
+                        return;
+                    }
+                    neuLaden();
+                    ladeUndRendereBeitrittsanfragen();
+                } catch (err) {
+                    meldeFehler(err.message);
+                }
+            });
+
+            return el('tr', { 'data-user-id': String(m.id) },
+                el('td', { text: name }),
+                el('td', { text: m.email || '' }),
+                el('td', {}, rolleZelle),
+                el('td', { text: m.status === 'freigegeben' ? 'Freigegeben' : 'Wartet auf Freigabe' }),
+                el('td', {}, entfernen));
+        }
+
+        async function rendereMitgliederVerein(verein, ziel) {
+            const neuLaden = () => rendereMitgliederVerein(verein, ziel);
+            try {
+                const resp = await fetch(`/api/vereine/mitglieder?vereinId=${encodeURIComponent(verein.verein_id)}`);
+                const daten = await resp.json().catch(() => ({}));
+                if (!resp.ok) throw new Error(daten.error || 'Mitglieder konnten nicht geladen werden.');
+                const kopf = el('tr', {}, ...['Name', 'E-Mail', 'Rolle', 'Status', ''].map(t => el('th', { text: t })));
+                ziel.replaceChildren(el('table', { class: 'mitglieder-tabelle' },
+                    el('thead', {}, kopf),
+                    el('tbody', {}, ...daten.map(m => mitgliedZeile(verein, m, neuLaden)))));
+            } catch (err) {
+                ziel.replaceChildren(el('p', { style: 'font-size: 13px; color: var(--text-muted);', text: err.message }));
+            }
+        }
+
+        function ladeUndRendereMitglieder() {
+            const vereine = verwalteteVereine();
+            const card = document.getElementById('mitgliederCard');
+            const bereich = document.getElementById('mitgliederBereich');
+            if (vereine.length === 0) {
+                card.style.display = 'none';
+                return;
+            }
+            card.style.display = 'block';
+            bereich.replaceChildren(...vereine.map(v => {
+                const ziel = el('div', { class: 'mitglieder-scroll', 'data-verein-id': String(v.verein_id) });
+                rendereMitgliederVerein(v, ziel);
+                return el('section', {}, el('h2', { class: 'mitglieder-verein', text: v.name }), ziel);
+            }));
+        }
+
+        ladeUndRendereMitglieder();
     });
 </script>
 </body>

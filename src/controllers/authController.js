@@ -1,51 +1,78 @@
 import jwt from 'jsonwebtoken';
-import crypto from 'crypto';
 import { hashPassword, verifyPassword } from '../utils/password.js';
 import { ladeBenutzerMitAktivemVerein, ladeVereineFuerBenutzer } from '../utils/vereinHelper.js';
 import * as steuerungPasswort from '../utils/steuerungPasswort.js';
+import { registriere, bestaetige, sendeBestaetigungNeu, findeKontoPerEmail, normalisiereEmail, MIN_PASSWORT_LAENGE, MAX_EMAIL_LAENGE, MELDUNG_EMAIL_ZU_LANG } from '../services/registrierung.js';
+import { ermittleBasisUrl, HINWEIS_FEHLENDE_BASIS_URL } from '../utils/basisUrl.js';
+import { hatVereinAdmin } from '../services/vereinsRollen.js';
 import dotenv from 'dotenv';
 dotenv.config({ quiet: true });
 
 const JWT_SECRET = process.env.JWT_SECRET || 'hajime_pro_secret_key_123456!';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
 
+// Registrierung mit E-Mail-Bestätigung (src/services/registrierung.js): das Konto ist erst nach der
+// Bestätigung nutzbar, deshalb gibt es hier nie ein Token zurück. Links in Mails nur mit sicherer Basis-URL
+// (src/utils/basisUrl.js): in der Cloud ohne PUBLIC_BASE_URL keine Registrierung.
 export async function register(knex, req, res) {
     try {
-        const { email, password, vorname, nachname } = req.body;
-
-        if (!email || !password || !vorname || !nachname) {
-            return res.status(400).json({ success: false, error: 'E-Mail, Passwort, Vorname und Nachname sind erforderlich.' });
+        const basisUrl = ermittleBasisUrl(req);
+        if (!basisUrl) {
+            console.error(`[Register] ${HINWEIS_FEHLENDE_BASIS_URL}`);
+            return res.status(503).json({ success: false, error: 'Die Registrierung ist derzeit nicht verfügbar.' });
         }
-
-        const existing = await knex('benutzer').where({ email }).first();
-        if (existing) {
-            return res.status(409).json({ success: false, error: 'Diese E-Mail-Adresse ist bereits registriert.' });
-        }
-
-        const id = crypto.randomUUID();
-        const password_hash = hashPassword(password);
-
-        await knex('benutzer').insert({
-            id,
-            email,
-            vorname,
-            nachname,
-            password_hash,
-            created_at: knex.fn.now(),
-            updated_at: knex.fn.now()
+        const { email, password, vorname, nachname, vereinId, quelle } = req.body || {};
+        const ergebnis = await registriere(knex, {
+            email, password, vorname, nachname, vereinId, quelle, basisUrl
         });
-
-        const token = jwt.sign({ id, email }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
-
-        return res.status(201).json({
-            success: true,
-            token,
-            user: { id, email, vorname, nachname, verein_id: null, verein_freigegeben: false, vereine: [] }
-        });
+        return res.status(ergebnis.status).json(ergebnis.body);
     } catch (error) {
         console.error('[Register-Fehler]:', error);
         return res.status(500).json({ success: false, error: 'Interner Server-Fehler bei der Registrierung.' });
     }
+}
+
+// POST /api/auth/email-bestaetigen { token } — bewusst POST (Knopf auf bestaetigen.html), damit
+// Mail-Scanner, die Links vorab abrufen, nichts bestätigen.
+export async function emailBestaetigen(knex, req, res) {
+    try {
+        const token = req.body && req.body.token;
+        const basisUrl = ermittleBasisUrl(req);
+        if (!basisUrl) console.error(`[E-Mail-Bestätigung] ${HINWEIS_FEHLENDE_BASIS_URL} Freischaltungs-Mail ohne Link.`);
+        const ergebnis = await bestaetige(knex, typeof token === 'string' ? token : '', basisUrl);
+        if (!ergebnis.ok) {
+            return res.status(ergebnis.status).json({ success: false, error: ergebnis.error });
+        }
+        return res.json({
+            success: true,
+            vereinId: ergebnis.vereinId ?? null,
+            message: ergebnis.vereinId
+                ? 'Deine Registrierung muss noch freigeschaltet werden.'
+                : 'Deine E-Mail-Adresse ist bestätigt. Du kannst dich jetzt anmelden.'
+        });
+    } catch (error) {
+        console.error('[E-Mail-Bestätigung-Fehler]:', error);
+        return res.status(500).json({ success: false, error: 'Interner Server-Fehler bei der Bestätigung.' });
+    }
+}
+
+// POST /api/auth/email-bestaetigung-erneut { email } — antwortet immer gleich, damit sich nicht prüfen lässt,
+// ob eine Adresse registriert ist.
+export async function emailBestaetigungErneut(knex, req, res) {
+    try {
+        const basisUrl = ermittleBasisUrl(req);
+        if (!basisUrl) {
+            console.error(`[E-Mail-Bestätigung-erneut] ${HINWEIS_FEHLENDE_BASIS_URL}`);
+        } else {
+            await sendeBestaetigungNeu(knex, req.body && req.body.email, basisUrl);
+        }
+    } catch (error) {
+        console.error('[E-Mail-Bestätigung-erneut-Fehler]:', error);
+    }
+    return res.json({
+        success: true,
+        message: 'Falls zu dieser Adresse ein unbestätigtes Konto gehört, haben wir eine neue Bestätigungsmail geschickt.'
+    });
 }
 
 export async function login(knex, req, res) {
@@ -55,10 +82,21 @@ export async function login(knex, req, res) {
         if (!email || !password) {
             return res.status(400).json({ success: false, error: 'Email und Passwort sind erforderlich.' });
         }
+        if (normalisiereEmail(email).length > MAX_EMAIL_LAENGE) {
+            return res.status(400).json({ success: false, error: MELDUNG_EMAIL_ZU_LANG });
+        }
 
-        const user = await knex('benutzer').where({ email }).first();
+        const user = await findeKontoPerEmail(knex, email);
         if (!user || !user.password_hash || !verifyPassword(password, user.password_hash)) {
             return res.status(401).json({ success: false, error: 'Ungültige Anmeldedaten.' });
+        }
+        // Erst nach dem Passwort prüfen, damit der Zustand eines Kontos nur mit gültigen Zugangsdaten sichtbar wird.
+        if (!user.email_bestaetigt_am) {
+            return res.status(403).json({
+                success: false,
+                code: 'email_unbestaetigt',
+                error: 'Bitte bestätigen Sie zuerst Ihre E-Mail-Adresse über den Link in der Bestätigungsmail.'
+            });
         }
 
         const token = jwt.sign(
@@ -80,6 +118,9 @@ export async function login(knex, req, res) {
                 nachname: user.nachname,
                 verein_id: aktuellerBenutzer.verein_id,
                 verein_freigegeben: !!aktuellerBenutzer.verein_freigegeben,
+                // Rolle im aktiven Verein (login.html leitet reine Helfer direkt zur Helfer-App)
+                verein_rolle: aktuellerBenutzer.verein_rolle,
+                ist_super_admin: !!user.ist_super_admin,
                 vereine
             }
         });
@@ -107,11 +148,10 @@ export async function getMe(knex, req, res) {
             const countRow = await knex('benutzer_vereine').where({ verein_id: user.verein_id }).count('* as anzahl').first();
             vereinMitgliederAnzahl = parseInt(countRow.anzahl, 10);
 
+            // Ohne freigegebenen Admin entscheidet der Super-Admin über die Anfrage (Spec 4), auch wenn
+            // andere Mitglieder (Benutzer/Helfer) schon freigegeben sind.
             if (!user.verein_freigegeben) {
-                const approvedMember = await knex('benutzer_vereine')
-                    .where({ verein_id: user.verein_id, freigegeben: 1 })
-                    .first();
-                vereinWartetAufSuperAdmin = !approvedMember;
+                vereinWartetAufSuperAdmin = !(await hatVereinAdmin(knex, user.verein_id));
             }
         }
 
@@ -127,6 +167,7 @@ export async function getMe(knex, req, res) {
                 verein_id: user.verein_id,
                 verein_name: vereinName,
                 verein_freigegeben: !!user.verein_freigegeben,
+                verein_rolle: user.verein_rolle,
                 verein_wartet_auf_super_admin: vereinWartetAufSuperAdmin,
                 verein_mitglieder_anzahl: vereinMitgliederAnzahl,
                 ist_super_admin: !!user.ist_super_admin,
@@ -142,10 +183,16 @@ export async function getMe(knex, req, res) {
 export async function updateProfile(knex, req, res) {
     try {
         const userId = req.user.id;
-        const { vorname, nachname, email, currentPassword, newPassword } = req.body;
+        const { vorname, nachname, currentPassword, newPassword } = req.body;
+        // Wie bei der Registrierung getrimmt und kleingeschrieben. Eine geänderte Adresse wird (noch) nicht erneut
+        // bestätigt.
+        const email = normalisiereEmail(req.body.email);
 
         if (!vorname || !nachname || !email) {
             return res.status(400).json({ success: false, error: 'Vorname, Nachname und E-Mail sind erforderlich.' });
+        }
+        if (email.length > MAX_EMAIL_LAENGE) {
+            return res.status(400).json({ success: false, error: MELDUNG_EMAIL_ZU_LANG });
         }
         if (!currentPassword) {
             return res.status(400).json({ success: false, error: 'Bitte geben Sie Ihr aktuelles Passwort zur Bestätigung ein.' });
@@ -161,8 +208,12 @@ export async function updateProfile(knex, req, res) {
         }
 
         if (email !== user.email) {
-            const existing = await knex('benutzer').where({ email }).whereNot({ id: userId }).first();
-            if (existing) {
+            // Dubletten ohne Beachtung der Schreibweise (Bestandskonten können noch Großbuchstaben enthalten).
+            const existing = await findeKontoPerEmail(knex, email);
+            const fremd = existing && existing.id !== userId
+                ? existing
+                : await knex('benutzer').whereRaw('lower(trim(email)) = ?', [email]).whereNot({ id: userId }).first();
+            if (fremd) {
                 return res.status(409).json({ success: false, error: 'Diese E-Mail-Adresse wird bereits von einem anderen Konto verwendet.' });
             }
         }
@@ -175,8 +226,8 @@ export async function updateProfile(knex, req, res) {
         };
 
         if (newPassword) {
-            if (newPassword.length < 6) {
-                return res.status(400).json({ success: false, error: 'Das neue Passwort muss mindestens 6 Zeichen lang sein.' });
+            if (typeof newPassword !== 'string' || newPassword.length < MIN_PASSWORT_LAENGE) {
+                return res.status(400).json({ success: false, error: `Das neue Passwort muss mindestens ${MIN_PASSWORT_LAENGE} Zeichen lang sein.` });
             }
             updateData.password_hash = hashPassword(newPassword);
         }
@@ -207,6 +258,7 @@ export async function updateProfile(knex, req, res) {
                 verein_id: aktuellerBenutzer.verein_id,
                 verein_name: vereinName,
                 verein_freigegeben: !!aktuellerBenutzer.verein_freigegeben,
+                verein_rolle: aktuellerBenutzer.verein_rolle,
                 vereine
             }
         });

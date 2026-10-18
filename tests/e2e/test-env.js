@@ -46,6 +46,8 @@ export const testServerEnv = {
     CLOUD_URL: FAKE_CLOUD_URL,
     // Teilnehmer-App (Phase 2): Ingest und App-API sind sonst nur im Modus cloud eingehängt.
     LIVE_API_AKTIV: 'true',
+    // Helfer-App (/api/helfer): sonst nur im Modus cloud eingehängt (tests/e2e/helfer-seiten.spec.js).
+    HELFER_APP_AKTIV: 'true',
     DB_HOST: '127.0.0.1',
     DB_PORT: String(TEST_PG_PORT),
     DB_USER: 'postgres',

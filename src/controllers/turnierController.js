@@ -1,6 +1,7 @@
 import { hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
 import { gueltigeFarbe } from '../shared/kampfFarbe.js';
 import { exportiereVorlagen, importiereVorlagen } from '../services/urkundenVorlagenTransfer.js';
+import { exportiereHelferplan, ersetzeHelferplan } from '../services/helferTransfer.js';
 import { entfernungZuPlzInKm } from '../utils/entfernungHelper.js';
 import { turnierHatEchteKaempfe } from './poolController.js';
 import { FachFehler } from '../utils/fachFehler.js';
@@ -51,7 +52,8 @@ export const TURNIER_SPALTEN_OHNE_PDF = [
     'id', 'bezeichnung', 'ort', 'plz', 'bundesland', 'datum', 'ausrichter',
     'nutze_gewichtsklassen', 'anzahl_kampfflaechen', 'verein_id', 'altersklassen',
     'mannschafts_altersklassen', 'status', 'anmeldeschluss', 'startgeld', 'iban',
-    'kontoinhaber', 'verwendungszweck', 'ausschreibung_dateiname', 'farbe_kaempfer2', 'created_at', 'updated_at'
+    'kontoinhaber', 'verwendungszweck', 'ausschreibung_dateiname', 'farbe_kaempfer2',
+    'beginn_min', 'ende_min', 'waagen_anzahl', 'created_at', 'updated_at'
 ];
 
 const AUSSCHREIBUNG_MAX_MB = 10;
@@ -93,6 +95,49 @@ function validiereZahlungsdaten(startgeld, iban, kontoinhaber, verwendungszweck)
     return null;
 }
 
+// Turnierzeit für den Helferplan (Spec Helferverwaltung 7): beginn_min/ende_min als ganze Minuten seit
+// Mitternacht (0..1439, also bis 23:59, optional, ende > beginn), waagen_anzahl 1..10. `bisher` = gespeicherte Werte (Update):
+// nicht mitgesendete Felder bleiben unverändert, leer ('' / null) entfernt die Uhrzeit.
+const MAX_TAGESMINUTE = 1439; // 23:59
+function leseTurnierzeit(body, bisher = null) {
+    const fragment = {};
+    const minuten = (wert, name) => {
+        if (wert === null || wert === '') return null;
+        const n = Number(wert);
+        if (!Number.isInteger(n) || n < 0 || n > MAX_TAGESMINUTE) {
+            throw new FachFehler(400, `${name} muss eine Uhrzeit zwischen 00:00 und 23:59 in ganzen Minuten sein.`);
+        }
+        return n;
+    };
+    if (body.beginn_min !== undefined) fragment.beginn_min = minuten(body.beginn_min, 'Der Turnierbeginn');
+    if (body.ende_min !== undefined) fragment.ende_min = minuten(body.ende_min, 'Das Turnierende');
+    if (body.waagen_anzahl !== undefined && body.waagen_anzahl !== null && body.waagen_anzahl !== '') {
+        const n = Number(body.waagen_anzahl);
+        if (!Number.isInteger(n) || n < 1 || n > 10) throw new FachFehler(400, 'Die Anzahl der Waagen muss zwischen 1 und 10 liegen.');
+        fragment.waagen_anzahl = n;
+    }
+    const beginn = 'beginn_min' in fragment ? fragment.beginn_min : bisher?.beginn_min ?? null;
+    const ende = 'ende_min' in fragment ? fragment.ende_min : bisher?.ende_min ?? null;
+    if (beginn != null && ende != null && ende <= beginn) {
+        throw new FachFehler(400, 'Das Turnierende muss nach dem Turnierbeginn liegen.');
+    }
+    return fragment;
+}
+
+// Turnierzeit aus einer Exportdatei, nachsichtig: ungültige oder fehlende Werte (ältere Dateien) werden
+// leer (Beginn/Ende) bzw. 1 (Waagen), statt den Import abzubrechen; ein Turnierende 24:00 (1440) wird 23:59.
+function importTurnierzeit(t) {
+    const ganz = (w) => (w === null || w === undefined || w === '' || !Number.isInteger(Number(w)) ? null : Number(w));
+    let beginn = ganz(t.beginn_min);
+    let ende = ganz(t.ende_min);
+    if (ende === 1440) ende = MAX_TAGESMINUTE;
+    if (beginn != null && (beginn < 0 || beginn > MAX_TAGESMINUTE)) beginn = null;
+    if (ende != null && (ende < 0 || ende > MAX_TAGESMINUTE)) ende = null;
+    if (beginn != null && ende != null && ende <= beginn) { beginn = null; ende = null; }
+    const waagen = ganz(t.waagen_anzahl);
+    return { beginn_min: beginn, ende_min: ende, waagen_anzahl: waagen != null && waagen >= 1 && waagen <= 10 ? waagen : 1 };
+}
+
 // Ein Turnier pro Tag (Spec mehrere Turniere): nur am Hallen-Server mit Sync, also dort, wo mehrere
 // Turniere nacheinander ausgetragen werden. Die Cloud kennt parallele Turniere verschiedener Vereine.
 async function pruefeTerminFrei(knex, sync, datum, ausserId = null) {
@@ -118,11 +163,16 @@ export async function createTurnier(knex, req, res) {
         if (ausschreibungFehler) {
             return res.status(400).json({ success: false, error: ausschreibungFehler });
         }
+        const turnierzeit = leseTurnierzeit(req.body);
 
         // Turnier wird an den Verein des anlegenden Benutzers gekoppelt (nicht mehr an
-        // den Benutzer selbst) — requireVereinFreigabe stellt sicher, dass verein_id gesetzt ist.
+        // den Benutzer selbst), und zwar an seinen aktiven Verein. requireVereinFreigabe lässt den
+        // Super-Admin auch ohne aktiven Verein durch, daher hier die Prüfung, dass einer gewählt ist.
         const user = await ladeBenutzerMitAktivemVerein(knex, userId);
         const vereinId = user ? user.verein_id : null;
+        if (!vereinId) {
+            return res.status(400).json({ success: false, error: 'Bitte zuerst einen aktiven Verein wählen.' });
+        }
 
         // Sicherer Check: Akzeptiert die Zahl 1, den String "1" oder das Boolean true
         const wertFuerDB = (nutze_gewichtsklassen === 1 || nutze_gewichtsklassen === true || nutze_gewichtsklassen === '1' || nutze_gewichtsklassen === 'true') ? 1 : 0;
@@ -154,6 +204,7 @@ export async function createTurnier(knex, req, res) {
             kontoinhaber: kontoinhaber || null,
             verwendungszweck: verwendungszweck || null,
             farbe_kaempfer2: gueltigeFarbe(farbe_kaempfer2) || 'blau',
+            ...turnierzeit,
             ...ausschreibungFragment
         }).returning('id');
 
@@ -189,6 +240,7 @@ export async function updateTurnier(knex, req, res) {
         if (bestehendesTurnier.status === 'abgeschlossen') {
             return res.status(403).json({ success: false, error: 'Ein abgeschlossenes Turnier befindet sich im schreibgeschützten Archiv-Zustand.' });
         }
+        const turnierzeit = leseTurnierzeit(req.body, bestehendesTurnier);
 
         if (datum) await pruefeTerminFrei(knex, req.app.get('sync'), datum, id);
 
@@ -220,6 +272,7 @@ export async function updateTurnier(knex, req, res) {
             verwendungszweck: verwendungszweck || null,
             // Nicht mitgesendet -> unverändert lassen
             ...(gueltigeFarbe(farbe_kaempfer2) ? { farbe_kaempfer2 } : {}),
+            ...turnierzeit,
             ...ausschreibungFragment,
             updated_at: knex.fn.now()
         });
@@ -778,6 +831,8 @@ export async function importiereTurnierDaten(knex, sync, daten) {
                 kontoinhaber: t.kontoinhaber || null,
                 verwendungszweck: t.verwendungszweck || null,
                 farbe_kaempfer2: gueltigeFarbe(t.farbe_kaempfer2) || 'blau',
+                // Turnierzeit und Waagenanzahl (Helferplan); ältere Dateien ohne diese Felder: leer bzw. 1
+                ...importTurnierzeit(t),
                 verein_id: verein.id,
                 // Hält die ID des Quell-Turniers fest, damit ein späterer Online-Reimport
                 // (importTurnierErgebnisse) dieses (neu angelegte, lokal andere) Offline-Turnier
@@ -791,6 +846,8 @@ export async function importiereTurnierDaten(knex, sync, daten) {
 
             await importWettkampfdaten(trx, turnierId, { kampfflaechen, pools, teilnehmer, kaempfe, mannschaften, mannschaftMitglieder });
             await importiereVorlagen(trx, verein.id, daten.urkunden_vorlagen);
+            // Helferplan gehört zum neu angelegten Turnier (Einsätze als name_manuell); fehlt er, bleibt er leer
+            if (daten.helferplan) await ersetzeHelferplan(trx, turnierId, daten.helferplan);
 
             return turnierId;
         });
@@ -929,6 +986,26 @@ export async function exportTurnier(knex, req, res) {
             return res.status(403).json({ success: false, error: 'Nur freigegebene Mitglieder des ausrichtenden Vereins dürfen das Turnier exportieren.' });
         }
 
+        const exportData = await baueTurnierExport(knex, turnierId, turnier);
+
+        const dateiname = `turnier_${turnierId}_export_${new Date().toISOString().slice(0, 10)}.json`;
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Disposition', `attachment; filename="${dateiname}"`);
+        res.send(JSON.stringify(exportData, null, 2));
+    } catch (error) {
+        console.error('[Turnier-Export-Fehler]:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+/**
+ * Inhalt der Turnier-Exportdatei (ohne Zugriffs- und Statusprüfung, die macht exportTurnier).
+ * Enthält seit der Helferverwaltung auch `helferplan` (nur Anzeigenamen, siehe services/helferTransfer.js).
+ */
+export async function baueTurnierExport(knex, turnierId, turnierZeile = null) {
+        const turnier = turnierZeile || await knex('turniere').where({ id: turnierId }).first();
+        if (!turnier) throw new FachFehler(404, 'Turnier nicht gefunden.');
+
         const kampfflaechen = await knex('kampfflaechen').where({ turnier_id: turnierId }).orderBy('id', 'asc');
         const pools = await knex('pools').where({ turnier_id: turnierId }).orderBy('id', 'asc');
         const teilnehmer = await knex('turnier_teilnehmer').where({ turnier_id: turnierId }).orderBy('id', 'asc');
@@ -987,17 +1064,10 @@ export async function exportTurnier(knex, req, res) {
             kaempfe,
             mannschaften,
             mannschaft_mitglieder: mannschaftMitglieder,
-            urkunden_vorlagen: await exportiereVorlagen(knex, turnier.verein_id)
+            urkunden_vorlagen: await exportiereVorlagen(knex, turnier.verein_id),
+            helferplan: await exportiereHelferplan(knex, turnierId, kampfflaechen)
         };
-
-        const dateiname = `turnier_${turnierId}_export_${new Date().toISOString().slice(0, 10)}.json`;
-        res.setHeader('Content-Type', 'application/json');
-        res.setHeader('Content-Disposition', `attachment; filename="${dateiname}"`);
-        res.send(JSON.stringify(exportData, null, 2));
-    } catch (error) {
-        console.error('[Turnier-Export-Fehler]:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
+        return exportData;
 }
 
 async function synchronisiereKampfflaechen(knex, turnierId, anzahl) {
