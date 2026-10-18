@@ -13,13 +13,14 @@ Hintergrund und Entscheidungen: `docs/specs/2026-09-25-couchdb-umbau-design.md`,
 Frisches Debian 12/13 oder Ubuntu 22.04+ ohne Desktop, Internetzugang für die Installation:
 
 ```bash
-git clone <repo-url> Hajime-Pro && cd Hajime-Pro && sudo bash deploy/linux/install.sh
+curl -fsSL https://github.com/oensel/Hajime-Pro-Releases/releases/latest/download/hajime-holen.sh | sudo bash
+cd /opt/hajime-quelle && sudo bash deploy/linux/install.sh
 ```
 
 `install.sh` installiert Node.js 22 und PostgreSQL, legt Systembenutzer `hajime`, Datenbank,
 `/opt/hajime-pro/.env` (mit zufälligen Passwörtern/Geheimnissen), Migrationen, systemd-Dienst
 (Autostart) und ufw-Regeln an und zeigt am Ende Adresse und Passwörter an. Erneutes Ausführen
-nach `git pull` = Update (`.env` und Daten bleiben). **Automatisch:** der Dienst prüft bei jedem Start auf ein neueres GitHub-Release und installiert es selbst (Paket laden, Signatur prüfen, `npm ci`, Migration, Neustart; vorherige Version unter `/opt/hajime-pro/.update/alt-<version>/`). Im Cluster aus, dort per Knopf „Update“ auf `cluster.html` oder von Hand mit `sudo bash update.sh` (siehe unten); abschalten mit `HAJIME_SELBSTUPDATE=false` in der `.env`; privates Repository: `CLIENT_RELEASE_TOKEN`. CouchDB ist nicht nötig: die Dokument-DB
+nach `sudo bash update.sh` = Update (`.env` und Daten bleiben). **Automatisch:** der Dienst prüft bei jedem Start auf ein neueres GitHub-Release und installiert es selbst (Paket laden, Signatur prüfen, `npm ci`, Migration, Neustart; vorherige Version unter `/opt/hajime-pro/.update/alt-<version>/`). Im Cluster aus, dort per Knopf „Update“ auf `cluster.html` oder von Hand mit `sudo bash update.sh` (siehe unten); abschalten mit `HAJIME_SELBSTUPDATE=false` in der `.env`; privates Repository: `CLIENT_RELEASE_TOKEN`. CouchDB ist nicht nötig: die Dokument-DB
 für die Client-Geräte ist in die App eingebaut. Den Zwei-Server-Cluster richtet das nächste Skript ein.
 
 ## Schnellstart: Zwei-Server-Cluster (drei Befehle je Server)
@@ -29,8 +30,9 @@ Beide Server: frisches Debian 12/13 (oder Ubuntu 24.04+) ohne Desktop, als `root
 
 ```bash
 # server1 (Master) – eigene IP und Netzwerkschnittstelle erkennt das Skript selbst
-apt-get update && apt-get install -y git
-git clone https://github.com/oensel/Hajime-Pro.git && cd Hajime-Pro
+apt-get update && apt-get install -y curl ca-certificates
+curl -fsSL https://github.com/oensel/Hajime-Pro-Releases/releases/latest/download/hajime-holen.sh | bash
+cd /opt/hajime-quelle
 bash deploy/linux/install-cluster.sh --partner-ip 192.168.10.12 --vip 192.168.10.10
 ```
 
@@ -39,9 +41,9 @@ Am Ende gibt server1 die drei Zeilen für server2 samt **Kopplungscode** aus (au
 nach dem Code (einfügen, Enter, die Eingabe bleibt unsichtbar):
 
 ```bash
-apt-get update && apt-get install -y git
-git clone https://github.com/oensel/Hajime-Pro.git && cd Hajime-Pro
-bash deploy/linux/install-cluster.sh --kopplungscode -
+apt-get update && apt-get install -y curl ca-certificates
+curl -fsSL https://github.com/oensel/Hajime-Pro-Releases/releases/latest/download/hajime-holen.sh | VERSION=<version von server1> bash
+cd /opt/hajime-quelle && bash deploy/linux/install-cluster.sh --kopplungscode -
 ```
 
 Der Kopplungscode enthält die Adresse von server1, VIP, Zeuge und alle Geheimnisse und steht deshalb nicht in der
@@ -165,7 +167,7 @@ Test: `http://turnier.local/download` öffnet ohne Portangabe die Download-Seite
 
 **Client-Dateien (Windows, macOS, Linux, Android):** Der Server holt sie beim Start selbst aus dem GitHub-Release
 zur eigenen Version (`src/sync/clientDateien.js`, Prüfung der Signatur, Wiederholung alle 15 Minuten) — dafür braucht
-er Internet. Ist das Repository privat, einmal ein Token mit Leserecht auf Releases mitgeben:
+er Internet. Die Releases liegen im öffentlichen Repository `oensel/Hajime-Pro-Releases` (kein Token nötig; der Quellcode bleibt im privaten Repository). Nur bei einem abweichenden, privaten `CLIENT_RELEASE_REPO` ein Token mit Leserecht mitgeben:
 `sudo CLIENT_RELEASE_TOKEN=ghp_… bash deploy/linux/install.sh` (bzw. `install-cluster.sh`; steht danach in der `.env`).
 Bis die Dateien da sind, zeigt `/download` den Stand an; `curl http://localhost:3000/api/client/version` liefert
 bis dahin 404 samt `status`. Das fertige Server-Paket (Notebook) braucht das nicht: es bringt die Dateien mit.
@@ -223,7 +225,12 @@ des ersten Servers muss das Update des zweiten **von Hand angestoßen** werden (
 klicken). Am Master löst der Knopf erst die geplante Übergabe aus und aktualisiert den Server danach als Standby.
 
 Technik: Die App ruft über sudoers genau `/usr/local/bin/hajime-update.sh <x.y.z>` auf; das Skript startet `update.sh` im
-Klon (`KLON` in `/etc/hajime/cluster.env`, Release-Tag `v<x.y.z>`) als eigene systemd-Einheit. Status:
-`/var/lib/hajime/update-status.json`, Log: `/var/log/hajime-update.log`. Voraussetzung sind Internet (GitHub) und der Klon;
-die erste Version mit diesem Feature muss einmal von Hand mit `sudo bash update.sh` eingespielt werden. Der Klon steht
-danach auf dem Tag (losgelöster HEAD); `update.sh` wechselt beim nächsten Lauf wieder auf `main`.
+Quellordner (`KLON` in `/etc/hajime/cluster.env`, Standard `/opt/hajime-quelle`, `VERSION=<x.y.z>`) als eigene systemd-Einheit.
+`update.sh` holt über `deploy/linux/holen.sh` das Dienst-Paket des Releases aus dem öffentlichen Release-Repository
+(Prüfsumme aus `SHA256SUMS-Server.txt`) und spielt es ein. Status: `/var/lib/hajime/update-status.json`, Log:
+`/var/log/hajime-update.log`. Voraussetzung sind Internet (GitHub) und der Quellordner.
+
+**Umstellung einer älteren Installation (Git-Klon):** einmal von Hand `curl -fsSL
+https://github.com/oensel/Hajime-Pro-Releases/releases/latest/download/hajime-holen.sh | QUELLE_DIR=<Klon> bash` ausführen
+(ersetzt den Inhalt des Klons durch das Paket; `.git` bleibt unberührt) und danach `sudo bash <Klon>/update.sh`. `KLON` in
+`/etc/hajime/cluster.env` zeigt weiter auf diesen Ordner.

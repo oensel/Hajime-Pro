@@ -84,7 +84,7 @@ if (dienstUpdateAktiv()) {
     const ergebnis = await pruefeUndAktualisiereDienst({
         installDir, aktuelleVersion,
         schluessel: liesOeffentlichenSchluessel(),
-        repo: process.env.CLIENT_RELEASE_REPO || 'oensel/Hajime-Pro',
+        repo: process.env.CLIENT_RELEASE_REPO || 'oensel/Hajime-Pro-Releases',
         token: process.env.CLIENT_RELEASE_TOKEN || process.env.GITHUB_TOKEN || ''
     });
     if (ergebnis === 'neustart') process.exit(0);
@@ -257,7 +257,7 @@ if (syncKonfig.istClient) {
             downloadsVerzeichnis,
             version: serverVersion,
             mitgeliefert: process.env.CLIENT_DATEIEN_MITGELIEFERT || '',
-            repo: process.env.CLIENT_RELEASE_REPO || 'oensel/Hajime-Pro',
+            repo: process.env.CLIENT_RELEASE_REPO || 'oensel/Hajime-Pro-Releases',
             token: process.env.CLIENT_RELEASE_TOKEN || process.env.GITHUB_TOKEN || '',
             autoHolen: process.env.CLIENT_AUTO_HOLEN ? process.env.CLIENT_AUTO_HOLEN !== 'false' : process.env.NODE_ENV !== 'test'
         });

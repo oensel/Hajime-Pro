@@ -92,7 +92,7 @@ export async function installiereDienstPaket({
  * (der Aufrufer beendet den Prozess), sonst 'weiter'. Wirft nie.
  */
 export async function pruefeUndAktualisiereDienst({
-    installDir, aktuelleVersion, schluessel, repo = 'oensel/Hajime-Pro', token = '', fehlerAusgabe = null,
+    installDir, aktuelleVersion, schluessel, repo = 'oensel/Hajime-Pro-Releases', token = '', fehlerAusgabe = null,
     pruefeUndLadeFn = null, installiere = installiereDienstPaket, log = console,
     anzeige = erzeugeKonsolenAnzeige(), neustartSekunden = 3, warte = (ms) => new Promise((r) => setTimeout(r, ms))
 }) {

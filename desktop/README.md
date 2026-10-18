@@ -59,8 +59,8 @@ abzustürzen.
 4. **Am Hallen-Server ist nichts zu tun:** Das Server-Paket kopiert die mitgelieferten Client-Dateien beim ersten Start
    nach `client-downloads/<version>/` (`src/sync/clientDateien.js`, prüft jede Datei gegen die Signatur) — `/download`
    bietet danach Windows, macOS, Linux und Android an, ohne Internet. Ein Server aus dem Quellcode (`deploy/linux/install.sh`,
-   Entwicklung) holt sich die Dateien stattdessen aus dem GitHub-Release zur eigenen Version, bei privatem Repository mit
-   `CLIENT_RELEASE_TOKEN` (Leserecht auf Releases; `install.sh` übernimmt ihn aus der Umgebung in die `.env`); `CLIENT_AUTO_HOLEN=false`
+   Entwicklung) holt sich die Dateien stattdessen aus dem GitHub-Release zur eigenen Version (öffentliches Repository `oensel/Hajime-Pro-Releases`, `CLIENT_RELEASE_REPO`; nur bei privatem Repository mit
+   `CLIENT_RELEASE_TOKEN`, Leserecht auf Releases; `install.sh` übernimmt ihn aus der Umgebung in die `.env`); `CLIENT_AUTO_HOLEN=false`
    schaltet das ab. Manueller Abruf: `npm run client:holen`.
 
 ## Lokal entwickeln

@@ -222,7 +222,7 @@ jobs:
           mkdir -p dienst
           tar czf "dienst/Hajime-Pro-Dienst-${VERSION}.tar.gz" --transform 's,^,hajime-pro/,' \
             src public migrations knexfile.cjs package.json package-lock.json deploy \
-            desktop/updateLogik.js desktop/update-schluessel.pub desktop/server/selbstUpdate.js
+            update.sh desktop/updateLogik.js desktop/update-schluessel.pub desktop/server/selbstUpdate.js
       - uses: actions/upload-artifact@v4
         with:
           name: server-Dienst
@@ -252,7 +252,23 @@ jobs:
         env: { CLIENT_SIGNATUR_SCHLUESSEL: '${{ secrets.CLIENT_SIGNATUR_SCHLUESSEL }}' }
       - name: Prüfsummen der Server-Installer
         run: (cd release-server && sha256sum * > SHA256SUMS-Server.txt)
-      - name: GitHub-Release anlegen
-        # --target: beim manuellen Start entsteht der Tag hier, auf genau dem Commit, der getestet und gebaut wurde.
-        run: gh release create "$RELEASE_TAG" release/* release-server/* --title "Hajime Pro $RELEASE_TAG" --generate-notes --target "$GITHUB_SHA"
+      # holen.sh liegt als eigenes Asset im Release (Einzeiler-Installation, siehe deploy/linux/holen.sh).
+      - name: Hol-Skript beilegen
+        run: cp deploy/linux/holen.sh release-server/hajime-holen.sh
+      # Der Quellcode bleibt im privaten Repository; die Installer und Update-Pakete erscheinen im öffentlichen
+      # (Secret RELEASES_REPO_TOKEN: fine-grained Token nur für dieses Repository, Contents: write). Der Tag entsteht dort
+      # auf dem Standard-Branch; welcher Quellstand gebaut wurde, steht in den Release-Notes.
+      - name: GitHub-Release im öffentlichen Repository anlegen
+        run: |
+          gh release create "$RELEASE_TAG" release/* release-server/* --repo "$RELEASES_REPO" \
+            --title "Hajime Pro $RELEASE_TAG" --latest \
+            --notes "Hajime Pro $RELEASE_TAG (Quellstand $GITHUB_SHA). Installation und Update: siehe README."
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
+          RELEASES_REPO: oensel/Hajime-Pro-Releases
+      # Beim manuellen Start entsteht der Tag im privaten Repository erst hier, auf dem getesteten Commit (ein per API
+      # angelegter Tag löst den Tag-Trigger dieses Workflows mit GITHUB_TOKEN nicht erneut aus).
+      - name: Quell-Tag im privaten Repository setzen
+        if: github.event_name == 'workflow_dispatch'
+        run: gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$RELEASE_TAG" -f sha="$GITHUB_SHA"
         env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }

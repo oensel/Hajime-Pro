@@ -120,7 +120,7 @@ export function starteClusterDienst({ knex, clusterKonfig, syncKonfig, sync, ver
     }
 
     const update = erzeugeUpdateDienst({
-        repo: updateEnv.CLIENT_RELEASE_REPO || 'oensel/Hajime-Pro',
+        repo: updateEnv.CLIENT_RELEASE_REPO || 'oensel/Hajime-Pro-Releases',
         token: updateEnv.CLIENT_RELEASE_TOKEN || updateEnv.GITHUB_TOKEN || '',
         statusDatei: clusterKonfig.updateStatusDatei,
         updateBefehl: clusterKonfig.updateBefehl,

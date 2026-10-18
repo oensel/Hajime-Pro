@@ -252,7 +252,7 @@ async function pruefeSelbstUpdate({ manuell = false, beiStart = false } = {}) {
     try {
         const { liesOeffentlichenSchluessel } = await import(pathToFileURL(path.join(WURZEL, 'src/sync/clientDateien.js')).href);
         ergebnis = await pruefeUndLade({
-            repo: process.env.CLIENT_RELEASE_REPO || konfig.repo || 'oensel/Hajime-Pro',
+            repo: process.env.CLIENT_RELEASE_REPO || konfig.repo || 'oensel/Hajime-Pro-Releases',
             token: process.env.CLIENT_RELEASE_TOKEN || konfig.token || '',
             aktuelleVersion: app.getVersion(),
             schluessel: liesOeffentlichenSchluessel(),
