@@ -11,6 +11,7 @@ import { berechneStatus } from '../shared/orgaStatus.js';
 import { berechneFaelligkeit } from '../shared/orgaFrist.js';
 import { ORGA_VORLAGE, ORGA_PHASEN } from '../shared/orgaVorlage.js';
 import { datumAlsText, heuteBerlin } from './helferPlan.js';
+import { istFreigegebenesMitglied } from '../utils/vereinHelper.js';
 
 const ARTEN = ['aufgabe', 'posten', 'mitbringen'];
 const ANKER = ['turnier', 'anmeldeschluss'];
@@ -44,9 +45,17 @@ async function sperreTurnier(trx, turnierId) {
 
 // Zuständige müssen freigegebene Mitglieder des ausrichtenden Vereins sein (sonst 400).
 async function pruefeZustaendigen(trx, benutzerId, vereinId) {
-    const ok = benutzerId != null && vereinId != null && await trx('benutzer_vereine')
-        .where({ benutzer_id: String(benutzerId), verein_id: vereinId, freigegeben: 1 }).first('benutzer_id');
-    if (!ok) throw fehler(400, 'Diese Person ist kein freigegebenes Mitglied des Vereins.');
+    if (!(await istFreigegebenesMitglied(trx, benutzerId, vereinId))) {
+        throw fehler(400, 'Diese Person ist kein freigegebenes Mitglied des Vereins.');
+    }
+}
+
+// Menge: ganze Zahl 1..99999 oder leer.
+function pruefeMenge(wert) {
+    if (wert == null || wert === '') return null;
+    const n = Number(wert);
+    if (!Number.isInteger(n) || n < 1 || n > 99999) throw fehler(400, 'Die Menge muss eine ganze Zahl zwischen 1 und 99999 sein.');
+    return n;
 }
 
 function pruefeTitel(titel) {
@@ -190,7 +199,7 @@ export async function legeAufgabeAn(knex, turnierId, felder = {}) {
         const max = await trx('orga_aufgaben').where({ turnier_id: turnierId }).max('reihenfolge as m').first();
         const idNeu = idAus((await trx('orga_aufgaben').insert({
             turnier_id: turnierId, eltern_id: felder.eltern_id ?? null, phase, art, titel,
-            notiz: felder.notiz ?? null, menge: felder.menge ?? null, reihenfolge: (max?.m ?? 0) + 1,
+            notiz: felder.notiz ?? null, menge: pruefeMenge(felder.menge), reihenfolge: (max?.m ?? 0) + 1,
             ...frist, faellig_am: faellig, faellig_manuell: explizit != null,
             link: felder.link ?? null, benutzer_id: felder.benutzer_id ?? null,
             name_frei: felder.name_frei ?? null, email_frei: felder.email_frei ?? null,
@@ -213,6 +222,7 @@ export async function aendereAufgabe(knex, aufgabeId, felder = {}) {
         const update = {};
         for (const k of AENDERBAR) if (k in felder) update[k] = felder[k] === '' ? null : felder[k];
         if ('titel' in felder) update.titel = pruefeTitel(felder.titel);
+        if ('menge' in felder) update.menge = pruefeMenge(felder.menge);
         if (update.benutzer_id != null) await pruefeZustaendigen(trx, update.benutzer_id, turnier.verein_id);
         if ('phase' in update) {
             if (aufgabe.eltern_id != null) throw fehler(400, 'Die Phase einer Unteraufgabe folgt der übergeordneten Aufgabe.');

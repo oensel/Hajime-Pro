@@ -7,6 +7,7 @@ import { sendeMail } from '../utils/mailer.js';
 import { HINWEIS_FEHLENDE_BASIS_URL } from '../utils/basisUrl.js';
 import { findeKontoPerEmail, normalisiereEmail, MAX_EMAIL_LAENGE, MELDUNG_EMAIL_ZU_LANG } from './registrierung.js';
 import { erzeugeEinladung } from './orgaEinladung.js';
+import { istFreigegebenesMitglied } from '../utils/vereinHelper.js';
 
 const MAX_NAME = 255;
 
@@ -31,8 +32,7 @@ async function ladeKontext(knex, aufgabeId) {
     return { aufgabe, turnier, vereinName: verein ? verein.name : '' };
 }
 
-const hatMitgliedschaft = async (knex, benutzerId, vereinId) => !!(await knex('benutzer_vereine')
-    .where({ benutzer_id: benutzerId, verein_id: vereinId, freigegeben: 1 }).first());
+const hatMitgliedschaft = istFreigegebenesMitglied;
 
 async function sendeSicher(sende, mail) {
     try {
@@ -90,7 +90,7 @@ async function findeMitglied(knex, email, vereinId) {
  * @param {{ basisUrl: string|null, sende?: Function }} optionen
  * @returns {Promise<{ modus: 'konto'|'frei'|'einladung'|null }>} null bei aufgehobener Zuweisung
  */
-export async function weiseZu(knex, aufgabeId, ziel = {}, { basisUrl, sende = sendeMail } = {}) {
+export async function weiseZu(knex, aufgabeId, ziel = {}, { basisUrl, sende = sendeMail, mitMail = true } = {}) {
     const { aufgabe, turnier, vereinName } = await ladeKontext(knex, aufgabeId);
     const vereinId = turnier.verein_id;
 
@@ -104,9 +104,9 @@ export async function weiseZu(knex, aufgabeId, ziel = {}, { basisUrl, sende = se
         if (!konto || !(await hatMitgliedschaft(knex, konto.id, vereinId))) {
             throw fehler(400, 'Diese Person ist kein freigegebenes Mitglied des Vereins.');
         }
-        const b = basis(basisUrl);
+        const b = mitMail ? basis(basisUrl) : null;
         await knex('orga_aufgaben').where({ id: aufgabeId }).update({ benutzer_id: konto.id, name_frei: null, email_frei: null });
-        await sendeKontoMail(sende, konto, aufgabe, turnier, vereinName, b);
+        if (mitMail) await sendeKontoMail(sende, konto, aufgabe, turnier, vereinName, b);
         return { modus: 'konto' };
     }
 
@@ -121,6 +121,11 @@ export async function weiseZu(knex, aufgabeId, ziel = {}, { basisUrl, sende = se
     if (email.length > MAX_EMAIL_LAENGE) throw fehler(400, MELDUNG_EMAIL_ZU_LANG);
     if (!/^[^\s@<>,;"]+@[^\s@<>,;"]+\.[^\s@<>,;".]+$/.test(email)) throw fehler(400, 'Bitte eine gültige E-Mail-Adresse angeben.');
 
+    if (!mitMail) {
+        // Hallen-Server: keine Einladungen und keine Mails, die Angaben werden nur gespeichert.
+        await knex('orga_aufgaben').where({ id: aufgabeId }).update({ benutzer_id: null, name_frei: name, email_frei: email });
+        return { modus: 'frei' };
+    }
     const b = basis(basisUrl);
     const mitglied = await findeMitglied(knex, email, vereinId);
     if (mitglied) {

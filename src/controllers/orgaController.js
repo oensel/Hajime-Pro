@@ -7,7 +7,7 @@ import { FachFehler } from '../utils/fachFehler.js';
 import { sendeFehler } from './helferPlanController.js';
 import { ermittleBasisUrl } from '../utils/basisUrl.js';
 import { ermittleOrgaTurnierId } from '../middleware/auth.js';
-import { hatHelferZugriffAufVerein, ladeVereinIdsMitRolle } from '../utils/vereinHelper.js';
+import { hatHelferZugriffAufVerein, ladeVereinIdsMitRolle, MITGLIED_ROLLEN } from '../utils/vereinHelper.js';
 import { berechneStatus } from '../shared/orgaStatus.js';
 import {
     ladeOrga, legeAusVorlageAn, legeAufgabeAn, aendereAufgabe, loescheAufgabe, setzeErledigt, ladeZaehlung,
@@ -18,7 +18,8 @@ import { datumAlsText } from '../services/helferPlan.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 const { istEinzelbenutzerBetrieb } = betriebsmodus;
 
-const ganzzahl = (w) => (/^\d+$/.test(String(w)) ? parseInt(w, 10) : null);
+// ganze Zahl im int4-Bereich (größere Werte würden in PostgreSQL einen Fehler statt 404 auslösen)
+const ganzzahl = (w) => (/^\d+$/.test(String(w)) && Number(w) <= 2147483647 ? parseInt(w, 10) : null);
 
 /** Vor dem Gate: unbekannte Aufgaben-ID als 404 statt "Turnier-ID konnte nicht ermittelt werden". */
 export function pruefeAufgabeVorhanden(knex) {
@@ -99,6 +100,7 @@ export async function legeAufgabeAnRoute(knex, req, res) {
         const turnierId = await autorisiertesTurnierId(knex, req);
         if (turnierId == null) throw new FachFehler(400, 'Turnier-ID fehlt.');
         const b = req.body || {};
+        if (b.eltern_id != null && ganzzahl(b.eltern_id) == null) throw new FachFehler(404, 'Übergeordnete Aufgabe nicht gefunden.');
         const ergebnis = await legeAufgabeAn(knex, turnierId, {
             titel: b.titel, phase: b.phase, eltern_id: b.eltern_id ?? null, art: b.art, notiz: b.notiz, menge: b.menge,
             link: b.link, frist_anker: b.frist_anker, frist_tage: b.frist_tage, faellig_am: b.faellig_am,
@@ -110,10 +112,10 @@ export async function legeAufgabeAnRoute(knex, req, res) {
     }
 }
 
-const PUT_FELDER = ['titel', 'notiz', 'menge', 'phase', 'link', 'benutzer_id', 'name_frei', 'email_frei', 'reihenfolge',
-    'faellig_am', 'frist_anker', 'frist_tage'];
+// Zuständige (benutzer_id, name_frei, email_frei) gehen bewusst nur über /zuweisen, das sie prüft.
+const PUT_FELDER = ['titel', 'notiz', 'menge', 'phase', 'link', 'reihenfolge', 'faellig_am', 'frist_anker', 'frist_tage'];
 
-/** PUT /aufgaben/:id — beliebige der Felder aus PUT_FELDER; frist_anker:null löscht die Frist, faellig_am:null berechnet neu. */
+/** PUT /aufgaben/:id — Felder aus PUT_FELDER (keine Zuständigen); frist_anker:null löscht die Frist, faellig_am:null berechnet neu. */
 export async function aendereAufgabeRoute(knex, req, res) {
     try {
         await pruefeZugehoerigkeit(knex, req);
@@ -156,7 +158,10 @@ export async function weiseZuRoute(knex, req, res, { sende } = {}) {
         await pruefeZugehoerigkeit(knex, req);
         const b = req.body || {};
         const ziel = b.frei === false ? { frei: false } : b.benutzerId ? { benutzerId: String(b.benutzerId) } : { name: b.name, email: b.email };
-        const ergebnis = await weiseZu(knex, parseInt(req.params.id, 10), ziel, { basisUrl: ermittleBasisUrl(req), ...(sende ? { sende } : {}) });
+        // Hallen-Server (Einzelbenutzerbetrieb): keine Einladungen, keine Mails, kein Host-Header-Link.
+        const ergebnis = await weiseZu(knex, parseInt(req.params.id, 10), ziel, {
+            basisUrl: ermittleBasisUrl(req), mitMail: !istEinzelbenutzerBetrieb(), ...(sende ? { sende } : {})
+        });
         res.json({ success: true, modus: ergebnis.modus });
     } catch (error) {
         sendeFehler(res, error, 'Orga-Zuweisen');
@@ -167,6 +172,7 @@ export async function weiseZuRoute(knex, req, res, { sende } = {}) {
 export async function einladungErneutRoute(knex, req, res, { sende } = {}) {
     try {
         await pruefeZugehoerigkeit(knex, req);
+        if (istEinzelbenutzerBetrieb()) throw new FachFehler(409, 'Einladungen gibt es nur in der Cloud.');
         const ergebnis = await sendeEinladungNeu(knex, parseInt(req.params.id, 10), ermittleBasisUrl(req), sende ? { sende } : {});
         res.json({ success: true, modus: ergebnis.modus });
     } catch (error) {
@@ -195,7 +201,7 @@ export async function ladeMitgliederRoute(knex, req, res) {
         const zeilen = await knex('benutzer_vereine as bv')
             .join('benutzer as b', 'b.id', 'bv.benutzer_id')
             .where({ 'bv.verein_id': turnier.verein_id, 'bv.freigegeben': 1 })
-            .whereNotNull('bv.rolle')
+            .whereIn('bv.rolle', MITGLIED_ROLLEN)
             .orderBy([{ column: 'b.nachname' }, { column: 'b.vorname' }])
             .select('b.id', 'b.vorname', 'b.nachname', 'b.email');
         res.json(zeilen);
@@ -295,7 +301,7 @@ async function ladeEintrag(knex, idText) {
 export async function mitbringlisteAnlegenRoute(knex, req, res) {
     try {
         const turnierId = ganzzahl(req.body?.turnierId);
-        if (turnierId == null) throw new FachFehler(400, 'Turnier-ID fehlt.');
+        if (turnierId == null) throw new FachFehler(req.body?.turnierId == null ? 400 : 404, req.body?.turnierId == null ? 'Turnier-ID fehlt.' : 'Turnier nicht gefunden.');
         const turnier = await knex('turniere').where({ id: turnierId }).first('id', 'verein_id', 'status');
         if (!turnier || !(await darfMitbringen(knex, req.user.id, turnier.verein_id))) {
             throw new FachFehler(403, 'Kein Zugriff auf dieses Turnier.');

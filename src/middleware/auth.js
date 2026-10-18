@@ -96,7 +96,7 @@ export async function ermittleHelferplanTurnierId(knex, { taetigkeitId, slotId, 
  * @returns {Promise<number|null>}
  */
 export async function ermittleOrgaTurnierId(knex, aufgabeId) {
-    if (!/^\d+$/.test(String(aufgabeId))) return null;
+    if (!/^\d+$/.test(String(aufgabeId)) || Number(aufgabeId) > 2147483647) return null;
     const zeile = await knex('orga_aufgaben').where({ id: parseInt(aufgabeId, 10) }).first('turnier_id');
     return zeile ? zeile.turnier_id : null;
 }

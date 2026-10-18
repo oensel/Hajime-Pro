@@ -124,3 +124,24 @@ test('ersetzeOrga ersetzt vorhandene Aufgaben und überspringt ungültige Eintr�
         await db.stoppe();
     }
 });
+
+test('ersetzeOrga: keine dritte Ebene, Mitbringen nur unter der Mitbringliste', async () => {
+    const db = await starteTestPostgres();
+    try {
+        const { knex } = db;
+        const tid = id((await knex('turniere').insert({ bezeichnung: 'T', ort: 'O', datum: '2031-05-05', ausrichter: 'A' }).returning('id'))[0]);
+        const r = await knex.transaction((trx) => ersetzeOrga(trx, tid, { aufgaben: [
+            { ref: 0, eltern_ref: null, phase: 'meldephase', art: 'aufgabe', titel: 'Cat', vorlage_key: 'catering' },
+            { ref: 1, eltern_ref: null, phase: 'turniertag', art: 'aufgabe', titel: 'Normal', vorlage_key: 'wiegen' },
+            { ref: 2, eltern_ref: 0, phase: 'meldephase', art: 'mitbringen', titel: 'Kuchen' },
+            { ref: 3, eltern_ref: 1, phase: 'turniertag', art: 'mitbringen', titel: 'Falsch' },
+            { ref: 4, eltern_ref: 2, phase: 'meldephase', art: 'posten', titel: 'Enkel' },
+            { ref: 5, eltern_ref: 0, phase: 'meldephase', art: 'posten', titel: 'Posten' }
+        ] }));
+        assert.deepEqual(r, { aufgaben: 4 });
+        const z = await knex('orga_aufgaben').where({ turnier_id: tid }).orderBy('id');
+        assert.deepEqual(z.map((x) => x.titel).sort(), ['Cat', 'Kuchen', 'Normal', 'Posten']);
+    } finally {
+        await db.stoppe();
+    }
+});

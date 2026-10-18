@@ -104,7 +104,18 @@ test('Orga-API: Rechte, Turnierbindung der Aufgaben-IDs, Helfer-Routen, Mitbring
         const neu = await post('u-benutzer', '/api/orga/aufgaben', { turnierId: tA, titel: 'Eigene', phase: 'turniertag', faellig_am: '2033-05-03' });
         assert.equal(neu.status, 201);
         assert.equal((await put('u-benutzer', `/api/orga/aufgaben/${neu.daten.id}`, { titel: 'Eigene 2' })).status, 200);
-        assert.equal((await put('u-benutzer', `/api/orga/aufgaben/${neu.daten.id}`, { benutzer_id: 'u-fremd' })).status, 400);
+        // Zuständige gehen nicht über PUT (ignoriert), Menge wird geprüft, riesige IDs sind 404
+        await put('u-benutzer', `/api/orga/aufgaben/${neu.daten.id}`, { benutzer_id: 'u-helfer', name_frei: 'X', email_frei: 'x@y.de' });
+        const unveraendert = await knex('orga_aufgaben').where({ id: neu.daten.id }).first();
+        assert.deepEqual([unveraendert.benutzer_id, unveraendert.name_frei, unveraendert.email_frei], [null, null, null]);
+        assert.equal((await put('u-benutzer', `/api/orga/aufgaben/${neu.daten.id}`, { menge: 0 })).status, 400);
+        assert.equal((await put('u-benutzer', `/api/orga/aufgaben/${neu.daten.id}`, { menge: 'abc' })).status, 400);
+        assert.equal((await post('u-benutzer', '/api/orga/aufgaben', { turnierId: tA, titel: 'M', phase: 'turniertag', menge: 100000 })).status, 400);
+        assert.equal((await put('u-benutzer', '/api/orga/aufgaben/99999999999', { titel: 'x' })).status, 404);
+        assert.equal((await get('u-benutzer', '/api/orga?turnierId=99999999999')).status, 404);
+        assert.equal((await post('u-benutzer', '/api/orga/aufgaben', { turnierId: tA, titel: 'P', eltern_id: 99999999999 })).status, 404);
+        assert.equal((await post('u-helfer', '/api/helfer/orga/aufgaben/99999999999/erledigt', { erledigt: true })).status, 404);
+        assert.equal((await post('u-helfer', '/api/helfer/orga/mitbringliste', { turnierId: 99999999999, titel: 'x' })).status, 404);
         assert.equal((await post('u-benutzer', `/api/orga/aufgaben/${neu.daten.id}/erledigt`, { erledigt: 'ja' })).status, 400);
         assert.equal((await post('u-benutzer', `/api/orga/aufgaben/${neu.daten.id}/erledigt`, { erledigt: true })).status, 200);
         assert.equal((await del('u-benutzer', `/api/orga/aufgaben/${neu.daten.id}`)).status, 200);
@@ -171,6 +182,51 @@ test('Orga-API: Rechte, Turnierbindung der Aufgaben-IDs, Helfer-Routen, Mitbring
         assert.equal((await get(null, `/api/einladung/${token}`)).status, 404, 'Token verbraucht');
         assert.equal((await get(ein.daten.user.id, '/api/helfer/orga/meine')).status, 200);
     } finally {
+        server.close();
+        await db.stoppe();
+    }
+});
+
+test('Hallen-Server (Einzelbenutzerbetrieb): Zuweisen ohne Einladung und ohne Mail, Einladung erneut 409', async () => {
+    const db = await starteTestPostgres();
+    const { knex } = db;
+    const mails = [];
+    const vorher = process.env.BETRIEBSMODUS;
+    process.env.BETRIEBSMODUS = 'server';
+    const app = express();
+    app.set('knex', knex);
+    app.use(express.json());
+    app.use('/api/orga', getOrgaRoutes(knex, { sende: async (m) => { mails.push(m); } }));
+    const server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
+    const basis = `http://127.0.0.1:${server.address().port}`;
+    const aufruf = async (methode, pfad, body) => {
+        const res = await fetch(basis + pfad, { method: methode, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+        let daten = null;
+        try { daten = await res.json(); } catch { /* leer */ }
+        return { status: res.status, daten };
+    };
+    try {
+        const verein = id((await knex('vereine').insert({ name: 'Offline Club' }).returning('id'))[0]);
+        await knex('benutzer').insert({ id: 'u-halle', email: 'halle@test.de', vorname: 'Hal', nachname: 'Le', email_bestaetigt_am: knex.fn.now() });
+        await knex('benutzer_vereine').insert({ benutzer_id: 'u-halle', verein_id: verein, freigegeben: 1, rolle: 'helfer' });
+        const tid = id((await knex('turniere').insert({ bezeichnung: 'Halle', ort: 'O', datum: '2033-05-04', ausrichter: 'JC', verein_id: verein }).returning('id'))[0]);
+        const o = await aufruf('GET', `/api/orga?turnierId=${tid}`);
+        assert.equal(o.status, 200);
+        const aufgabe = alle(o.daten).find((a) => a.vorlage_key === 'wiegen');
+        const frei = await aufruf('POST', `/api/orga/aufgaben/${aufgabe.id}/zuweisen`, { name: 'Gast', email: 'gast@extern.de' });
+        assert.deepEqual([frei.status, frei.daten.modus], [200, 'frei']);
+        const z = await knex('orga_aufgaben').where({ id: aufgabe.id }).first();
+        assert.deepEqual([z.benutzer_id, z.name_frei, z.email_frei], [null, 'Gast', 'gast@extern.de']);
+        assert.equal((await knex('orga_einladungen').count('* as n').first()).n, '0');
+        const konto = await aufruf('POST', `/api/orga/aufgaben/${aufgabe.id}/zuweisen`, { benutzerId: 'u-halle' });
+        assert.deepEqual([konto.status, konto.daten.modus], [200, 'konto']);
+        assert.equal((await knex('orga_aufgaben').where({ id: aufgabe.id }).first()).benutzer_id, 'u-halle');
+        const erneut = await aufruf('POST', `/api/orga/aufgaben/${aufgabe.id}/einladung-erneut`, {});
+        assert.equal(erneut.status, 409);
+        assert.match(erneut.daten.error, /nur in der Cloud/);
+        assert.equal(mails.length, 0);
+    } finally {
+        process.env.BETRIEBSMODUS = vorher;
         server.close();
         await db.stoppe();
     }

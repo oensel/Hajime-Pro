@@ -5,6 +5,7 @@
 // bleibt alles unberührt.
 import { datumAlsText } from './helferPlan.js';
 import { ORGA_PHASEN } from '../shared/orgaVorlage.js';
+import { MITBRINGLISTEN_KEYS } from './orgaPlan.js';
 
 const ARTEN = ['aufgabe', 'posten', 'mitbringen'];
 const ANKER = ['turnier', 'anmeldeschluss'];
@@ -73,7 +74,8 @@ const ganzzahl = (w) => (w != null && w !== '' && Number.isInteger(Number(w)) ? 
 export async function ersetzeOrga(trx, turnierId, orga) {
     if (orga == null || !Array.isArray(orga.aufgaben)) return null;
     await trx('orga_aufgaben').where({ turnier_id: turnierId }).del();
-    const neueId = new Map(); // ref -> neue id
+    const neueId = new Map(); // ref -> neue id (nur oberste Ebene)
+    const elternKey = new Map(); // ref -> vorlage_key der obersten Aufgabe
     let anzahl = 0;
     const roh = orga.aufgaben.filter((a) => a && typeof a === 'object');
     // Eltern zuerst, damit die Kinder ihre neue id kennen
@@ -86,7 +88,8 @@ export async function ersetzeOrga(trx, turnierId, orga) {
             let elternId = null;
             if (istKind) {
                 elternId = neueId.get(a.eltern_ref) ?? null;
-                if (elternId == null) continue;
+                if (elternId == null) continue; // Eltern nur oberste Ebene: keine dritte Ebene, keine Waisen
+                if (a.art === 'mitbringen' && !MITBRINGLISTEN_KEYS.has(elternKey.get(a.eltern_ref))) continue;
             }
             const art = ARTEN.includes(a.art) ? a.art : (istKind ? 'posten' : 'aufgabe');
             if ((art === 'aufgabe') === istKind) continue; // Aufgaben liegen oben, Posten/Mitbringen darunter
@@ -103,7 +106,10 @@ export async function ersetzeOrga(trx, turnierId, orga) {
                 benutzer_id: null, name_frei: text(a.name_frei, 255), email_frei: text(a.email_frei, 255),
                 erledigt_am: erledigt && !Number.isNaN(erledigt.getTime()) ? erledigt : null
             }).returning('id'))[0]);
-            if (a.ref != null) neueId.set(a.ref, id);
+            if (a.ref != null && !istKind) {
+                neueId.set(a.ref, id);
+                elternKey.set(a.ref, text(a.vorlage_key, 255));
+            }
             anzahl += 1;
         }
     }

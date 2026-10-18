@@ -16,6 +16,14 @@ import {
 export function getOrgaRoutes(knex, { sende } = {}) {
     const router = express.Router();
     router.use(erzeugeApiRatenbegrenzung(), requireAuth);
+    // turnierId außerhalb des int4-Bereichs: 404 statt Datenbankfehler im Gate
+    router.use((req, res, next) => {
+        const t = req.query.turnierId ?? req.body?.turnierId ?? req.body?.turnier_id;
+        if (t != null && !(/^\d+$/.test(String(t)) && Number(t) <= 2147483647)) {
+            return res.status(404).json({ success: false, error: 'Turnier nicht gefunden.' });
+        }
+        next();
+    });
 
     const gate = requireTournamentEditAccess(knex);
     const mitAufgabe = [pruefeAufgabeVorhanden(knex), gate];
