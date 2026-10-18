@@ -1,6 +1,6 @@
 {
   "name": "hajime-pro",
-  "version": "1.0.22",
+  "version": "1.0.23",
   "type": "module",
   "main": "desktop/main.js",
   "scripts": {
