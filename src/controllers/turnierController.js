@@ -6,6 +6,8 @@ import { entfernungZuPlzInKm } from '../utils/entfernungHelper.js';
 import { turnierHatEchteKaempfe } from './poolController.js';
 import { FachFehler } from '../utils/fachFehler.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
+import { legeAusVorlageAn, berechneFaelligkeitenNeu } from '../services/orgaPlan.js';
+import { datumAlsText } from '../services/helferPlan.js';
 import { findeTerminKonflikt, ermittleAktivierbarkeit, kopiereTeilnehmerFuerNeuesTurnier, datumAlsIso } from '../shared/turnierAktivierung.js';
 const { istEinzelbenutzerBetrieb } = betriebsmodus;
 
@@ -210,6 +212,12 @@ export async function createTurnier(knex, req, res) {
 
         const turnierId = typeof idObj === 'object' ? idObj.id : idObj;
         await synchronisiereKampfflaechen(knex, turnierId, parseInt(anzahl_kampfflaechen) || 1);
+        // Orga-Planer: Standardvorlage anlegen (Best-Effort, ein Fehler darf das Anlegen nicht scheitern lassen).
+        try {
+            await legeAusVorlageAn(knex, turnierId);
+        } catch (orgaFehler) {
+            console.error('Orga-Planer: Vorlage konnte nicht angelegt werden:', orgaFehler);
+        }
         res.status(201).json({ success: true, turnierId });
     } catch (error) {
         if (error instanceof FachFehler) return res.status(error.statusCode).json({ success: false, error: error.message });
@@ -278,6 +286,16 @@ export async function updateTurnier(knex, req, res) {
         });
 
         await synchronisiereKampfflaechen(knex, parseInt(id), parseInt(anzahl_kampfflaechen) || 1);
+
+        // Orga-Planer: Fälligkeiten folgen Turniertag/Anmeldeschluss (Best-Effort).
+        if (datumAlsText(bestehendesTurnier.datum) !== datumAlsText(datum)
+            || datumAlsText(bestehendesTurnier.anmeldeschluss) !== datumAlsText(anmeldeschluss || null)) {
+            try {
+                await berechneFaelligkeitenNeu(knex, parseInt(id));
+            } catch (orgaFehler) {
+                console.error('Orga-Planer: Fälligkeiten konnten nicht neu berechnet werden:', orgaFehler);
+            }
+        }
 
         res.json({ success: true, message: 'Turnier erfolgreich aktualisiert.' });
     } catch (error) {
