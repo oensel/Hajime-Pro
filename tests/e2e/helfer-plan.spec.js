@@ -182,3 +182,23 @@ test('bei 375 px Breite bricht die Seite nicht horizontal', async ({ page }) => 
     const scrollKarte = await page.locator('.helfer-plan-card').evaluate(k => k.scrollWidth <= k.clientWidth + 1);
     expect(scrollKarte).toBeTruthy();
 });
+
+test('Ersthelfer und Aufbau: Aufbau liegt im Streifen „Vortag“ und lässt sich auf den Turniertag legen', async ({ page, request }) => {
+    const plan = await ladePlan(request);
+    expect(taetigkeit(plan, 'Ersthelfer/Sanitäter').tag_versatz).toBe(0);
+    expect(taetigkeit(plan, 'Mattenaufbau').tag_versatz).toBe(-1);
+
+    await page.goto(`/helfer-plan.html?turnierId=${turnierId}`);
+    await expect(zeile(page, 'Ersthelfer/Sanitäter')).toBeVisible();
+    await expect(page.locator('.hp-vortag-kopf')).toContainText('Vortag');
+    // Reihenfolge: Turniertag-Zeilen vor dem Vortag-Kopf, Aufbau danach
+    const vortagY = (await page.locator('.hp-vortag-kopf').boundingBox()).y;
+    expect((await zeile(page, 'Waage 1').boundingBox()).y).toBeLessThan(vortagY);
+    expect((await zeile(page, 'Mattenaufbau').boundingBox()).y).toBeGreaterThan(vortagY);
+    await expect(zeile(page, 'Mattenaufbau').locator('.hp-slot')).toContainText('17:00–19:00 · 0/4');
+
+    await zeile(page, 'Tribünenaufbau').getByRole('button', { name: /auf den Turniertag/ }).click();
+    await expect.poll(async () => taetigkeit(await ladePlan(request), 'Tribünenaufbau').tag_versatz).toBe(0);
+    await zeile(page, 'Tribünenaufbau').getByRole('button', { name: /auf den Vortag/ }).click();
+    await expect.poll(async () => taetigkeit(await ladePlan(request), 'Tribünenaufbau').tag_versatz).toBe(-1);
+});

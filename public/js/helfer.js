@@ -77,7 +77,7 @@ export function leer(titel, hinweis) {
     return el('div', { class: 'hf-leer' }, el('h2', { text: titel }), hinweis ? el('p', { text: hinweis }) : null);
 }
 
-const zeitraum = (von, bis) => `${formatiereMinuten(von)} – ${formatiereMinuten(bis)}`;
+const zeitraum = (von, bis, versatz = 0) => `${versatz < 0 ? 'Vortag ' : ''}${formatiereMinuten(von)} – ${formatiereMinuten(bis)}`;
 
 function fehlerAnzeige(meldung, zurueck) {
     return el('div', {},
@@ -163,7 +163,7 @@ function slotZeile(slot, fristAbgelaufen) {
     }
     return el('li', { class: 'hf-slot' + (slot.eingetragen ? ' hf-slot-eigen' : ''), 'data-slot-id': slot.slotId, tabindex: '-1' },
         el('div', { class: 'hf-slot-text' },
-            el('span', { class: 'hf-slot-zeit', text: zeitraum(slot.von_min, slot.bis_min) }),
+            el('span', { class: 'hf-slot-zeit', text: zeitraum(slot.von_min, slot.bis_min, slot.tag_versatz) }),
             el('span', { class: 'hf-slot-info', text: slot.eingetragen ? 'Du bist eingetragen' : platzText(slot.frei) })),
         aktion,
         fehlerZeile);
@@ -217,7 +217,7 @@ function dienstZeile(dienst) {
     }
     return el('li', { class: 'hf-dienst' },
         el('div', { class: 'hf-slot-text' },
-            el('span', { class: 'hf-slot-zeit', text: zeitraum(dienst.von_min, dienst.bis_min) }),
+            el('span', { class: 'hf-slot-zeit', text: zeitraum(dienst.von_min, dienst.bis_min, dienst.tag_versatz) }),
             el('span', { class: 'hf-slot-info', text: dienst.taetigkeit })),
         aktion,
         fehlerZeile);
@@ -232,7 +232,7 @@ async function ansichtMeine() {
     }
     // Server liefert aufsteigend nach Datum und Uhrzeit; gruppiert je Tag und Turnier (Reihenfolge bleibt)
     const sortiert = dienste.slice().sort((a, b) =>
-        String(a.turnier.datum || '').localeCompare(String(b.turnier.datum || '')) || a.von_min - b.von_min || a.einsatzId - b.einsatzId);
+        String(a.turnier.datum || '').localeCompare(String(b.turnier.datum || '')) || ((a.tag_versatz || 0) * 1440 + a.von_min) - ((b.tag_versatz || 0) * 1440 + b.von_min) || a.einsatzId - b.einsatzId);
     const gruppen = new Map();
     for (const d of sortiert) {
         const schluessel = `${d.turnier.datum}|${d.turnier.id}`;

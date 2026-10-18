@@ -42,7 +42,7 @@ test('Offene Dienste sind nach Tätigkeit gruppiert, Slots nach Uhrzeit', async 
     await expect(page).toHaveURL(new RegExp(`#turnier=${turnierId}$`));
     await expect(page.locator('.hf-titel')).toContainText(NAME);
     const titel = await page.locator('.hf-gruppe-titel').allTextContents();
-    expect(titel).toEqual(['Kampfgericht Matte 1', 'Kampfrichter Matte 1', 'Waage 1']);
+    expect(titel).toEqual(['Ersthelfer/Sanitäter', 'Kampfgericht Matte 1', 'Kampfrichter Matte 1', 'Mattenaufbau', 'Tribünenaufbau', 'Waage 1']);
     const waage = gruppe(page, 'Waage 1');
     await expect(waage.locator('.hf-slot-zeit')).toHaveText(['09:00 – 11:00', '11:00 – 13:00']);
     await expect(waage.locator('.hf-slot').first()).toContainText(/noch \d+ Pl(atz|ätze) frei/);

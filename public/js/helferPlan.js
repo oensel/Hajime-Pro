@@ -13,6 +13,9 @@ import {
 const parameter = new URLSearchParams(window.location.search);
 const turnierId = parameter.get('turnierId') || parameter.get('id') || localStorage.getItem('aktiveTurnierId');
 
+// Der Vortag (tag_versatz -1: Aufbau u. Ä.) hat einen eigenen Streifen mit festem Bereich 06:00–24:00.
+const BEREICH_VORTAG = Object.freeze({ von: 360, bis: 1440 });
+
 const state = { plan: null, bereich: null, slotId: null };
 
 const meldungEl = document.getElementById('hpMeldung');
@@ -69,35 +72,65 @@ function render() {
     zeigeMeldung();
     state.bereich = zeitstrahlBereich(turnier.beginn_min, turnier.ende_min);
     renderAchse();
-    zeilenEl.replaceChildren(...state.plan.taetigkeiten.map(baueZeile));
+    const turniertag = state.plan.taetigkeiten.filter(t => (t.tag_versatz || 0) === 0);
+    const vortag = state.plan.taetigkeiten.filter(t => (t.tag_versatz || 0) < 0);
+    const zeilen = turniertag.map(t => baueZeile(t, state.bereich));
+    if (vortag.length) zeilen.push(baueVortagKopf(), ...vortag.map(t => baueZeile(t, BEREICH_VORTAG)));
+    zeilenEl.replaceChildren(...zeilen);
     if (state.slotId != null && !zeilenEl.querySelector(`.hp-slot[data-slot-id="${state.slotId}"]`)) state.slotId = null;
     markiereAuswahl();
     scrollEl.hidden = false;
 }
 
-function positioniere(element, von, bis) {
-    const links = minutenZuProzent(von, state.bereich);
+function positioniere(element, von, bis, bereich = state.bereich) {
+    const links = minutenZuProzent(von, bereich);
     element.style.left = `${links}%`;
-    element.style.width = `${minutenZuProzent(bis, state.bereich) - links}%`;
+    element.style.width = `${minutenZuProzent(bis, bereich) - links}%`;
 }
 
-// Turnierzeit hinterlegt, gestrichelte Linie je volle Stunde
-function hintergrund(container, mitBeschriftung) {
+// Turnierzeit hinterlegt (nur am Turniertag), gestrichelte Linie je volle Stunde
+function hintergrund(container, mitBeschriftung, bereich = state.bereich, mitTurnierzeit = true) {
     const { turnier } = state.plan;
-    const { von, bis } = state.bereich;
-    const zeit = el('div', 'hp-turnierzeit');
-    positioniere(zeit, turnier.beginn_min, turnier.ende_min);
-    container.append(zeit);
+    const { von, bis } = bereich;
+    if (mitTurnierzeit) {
+        const zeit = el('div', 'hp-turnierzeit');
+        positioniere(zeit, turnier.beginn_min, turnier.ende_min, bereich);
+        container.append(zeit);
+    }
     for (let h = von; h <= bis; h += 60) {
         const linie = el('div', 'hp-stundenlinie');
-        linie.style.left = `${minutenZuProzent(h, state.bereich)}%`;
+        linie.style.left = `${minutenZuProzent(h, bereich)}%`;
         container.append(linie);
         if (mitBeschriftung && h > von && h < bis) {
             const marke = el('span', 'hp-stunde', formatiereMinuten(h));
-            marke.style.left = `${minutenZuProzent(h, state.bereich)}%`;
+            marke.style.left = `${minutenZuProzent(h, bereich)}%`;
             container.append(marke);
         }
     }
+}
+
+// Überschriftszeile des Vortag-Streifens mit eigener Zeitachse
+function baueVortagKopf() {
+    const kopf = el('div', 'hp-kopf hp-vortag-kopf');
+    kopf.append(el('div', 'hp-label hp-label-kopf', 'Vortag'));
+    const achse = el('div', 'hp-achse');
+    hintergrund(achse, true, BEREICH_VORTAG, false);
+    kopf.append(achse);
+    return kopf;
+}
+
+// Knopf „auf Vortag / auf Turniertag legen“ (Aufbau und eigene Tätigkeiten)
+function baueVersatzKnopf(taetigkeit) {
+    const aufVortag = (taetigkeit.tag_versatz || 0) === 0;
+    const knopf = el('button', 'hp-versatz-knopf', aufVortag ? 'auf Vortag' : 'auf Turniertag');
+    knopf.type = 'button';
+    knopf.title = aufVortag ? 'Diese Tätigkeit auf den Vortag legen' : 'Diese Tätigkeit auf den Turniertag legen';
+    knopf.setAttribute('aria-label', `${taetigkeit.bezeichnung} ${aufVortag ? 'auf den Vortag' : 'auf den Turniertag'} legen`);
+    knopf.addEventListener('click', async () => {
+        await sendeMitBestaetigung('PUT', `/api/helfer-plan/taetigkeiten/${taetigkeit.id}`, { tag_versatz: aufVortag ? -1 : 0 });
+        await neuLaden();
+    });
+    return knopf;
 }
 
 function renderAchse() {
@@ -105,7 +138,7 @@ function renderAchse() {
     hintergrund(achseEl, true);
 }
 
-function baueZeile(taetigkeit) {
+function baueZeile(taetigkeit, bereich) {
     const zeile = el('div', 'hp-zeile');
     zeile.dataset.taetigkeitId = String(taetigkeit.id);
 
@@ -117,12 +150,13 @@ function baueZeile(taetigkeit) {
     text.append(name, bedarf);
     label.append(text);
     if (taetigkeit.art === 'frei') label.append(baueLabelMenue(taetigkeit));
+    if (taetigkeit.art === 'frei' || taetigkeit.art === 'aufbau') text.append(baueVersatzKnopf(taetigkeit));
 
     const spur = el('div', 'hp-spur');
     spur.dataset.taetigkeitId = String(taetigkeit.id);
-    hintergrund(spur, false);
-    for (const slot of taetigkeit.slots) spur.append(baueSlot(taetigkeit, slot));
-    spur.addEventListener('dblclick', (e) => legeSlotPerDoppelklickAn(e, taetigkeit, spur));
+    hintergrund(spur, false, bereich, (taetigkeit.tag_versatz || 0) === 0);
+    for (const slot of taetigkeit.slots) spur.append(baueSlot(taetigkeit, slot, bereich));
+    spur.addEventListener('dblclick', (e) => legeSlotPerDoppelklickAn(e, taetigkeit, spur, bereich));
 
     zeile.append(label, spur);
     return zeile;
@@ -132,19 +166,19 @@ function slotText(slot, von = slot.von_min, bis = slot.bis_min) {
     return `${formatiereMinuten(von)}–${formatiereMinuten(bis)} · ${slot.einsaetze.length}/${slot.bedarf}`;
 }
 
-function baueSlot(taetigkeit, slot) {
+function baueSlot(taetigkeit, slot, bereich) {
     const s = el('div', `hp-slot hp-${slotZustand(slot.einsaetze.length, slot.bedarf)}`);
     s.dataset.slotId = String(slot.id);
     s.tabIndex = 0;
     s.setAttribute('role', 'button');
     s.setAttribute('aria-label', `${taetigkeit.bezeichnung} ${slotText(slot)}`);
-    positioniere(s, slot.von_min, slot.bis_min);
+    positioniere(s, slot.von_min, slot.bis_min, bereich);
     const links = el('span', 'hp-griff links');
     links.title = 'Beginn ziehen';
     const rechts = el('span', 'hp-griff rechts');
     rechts.title = 'Ende ziehen';
     s.append(links, el('span', 'hp-slot-text', slotText(slot)), rechts);
-    s.addEventListener('pointerdown', (e) => starteZiehen(e, taetigkeit, slot, s));
+    s.addEventListener('pointerdown', (e) => starteZiehen(e, taetigkeit, slot, s, bereich));
     s.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); waehleSlot(slot.id); }
     });
@@ -153,7 +187,7 @@ function baueSlot(taetigkeit, slot) {
 
 // ---------------------------------------------------------------- Ziehen und Anlegen
 
-function starteZiehen(e, taetigkeit, slot, element) {
+function starteZiehen(e, taetigkeit, slot, element, bereich) {
     if (e.button !== 0) return;
     e.preventDefault();
     const modus = e.target.classList.contains('links') ? 'links'
@@ -171,8 +205,8 @@ function starteZiehen(e, taetigkeit, slot, element) {
         const dx = ev.clientX - startX;
         if (!bewegt && Math.abs(dx) < 4) return;
         bewegt = true;
-        neu = ziehe(slot, modus, pixelZuMinuten(dx, breite, state.bereich), state.bereich, nachbarn);
-        positioniere(element, neu.von_min, neu.bis_min);
+        neu = ziehe(slot, modus, pixelZuMinuten(dx, breite, bereich), bereich, nachbarn);
+        positioniere(element, neu.von_min, neu.bis_min, bereich);
         textEl.textContent = slotText(slot, neu.von_min, neu.bis_min);
     };
     const ende = async (ev) => {
@@ -192,12 +226,12 @@ function starteZiehen(e, taetigkeit, slot, element) {
     element.addEventListener('pointercancel', ende);
 }
 
-async function legeSlotPerDoppelklickAn(e, taetigkeit, spur) {
+async function legeSlotPerDoppelklickAn(e, taetigkeit, spur, bereich) {
     if (e.target.closest('.hp-slot')) return;
     const rect = spur.getBoundingClientRect();
-    const { von, bis } = state.bereich;
+    const { von, bis } = bereich;
     const minuten = von + ((e.clientX - rect.left) / rect.width) * (bis - von);
-    const position = freiePositionFuerNeuenSlot(minuten, taetigkeit.slots, state.bereich);
+    const position = freiePositionFuerNeuenSlot(minuten, taetigkeit.slots, bereich);
     if (!position) {
         melde('Hier ist kein Platz für einen neuen Slot (mindestens 30 Minuten).');
         return;

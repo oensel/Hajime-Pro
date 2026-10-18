@@ -49,7 +49,7 @@ export function gruppiereNachBezeichnung(slots) {
         .sort(([a], [b]) => vergleich(a, b))
         .map(([bezeichnung, liste]) => ({
             bezeichnung,
-            slots: liste.slice().sort((a, b) => a.von_min - b.von_min || (a.slotId ?? 0) - (b.slotId ?? 0))
+            slots: liste.slice().sort((a, b) => ((a.tag_versatz || 0) * 1440 + a.von_min) - ((b.tag_versatz || 0) * 1440 + b.von_min) || (a.slotId ?? 0) - (b.slotId ?? 0))
         }));
 }
 

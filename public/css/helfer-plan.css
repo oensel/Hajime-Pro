@@ -156,3 +156,10 @@
 
     .helfer-plan-card { padding: 12px 8px; }
 }
+
+/* Vortag-Streifen (Aufbau u. Ä.) und Knopf zum Verschieben zwischen Vortag und Turniertag */
+.hp-vortag-kopf { border-top: 2px solid var(--hp-linie); }
+.hp-versatz-knopf {
+    margin-top: 2px; padding: 0; border: none; background: none; cursor: pointer;
+    font: inherit; font-size: 11px; color: var(--primary, #1d4ed8); text-decoration: underline;
+}

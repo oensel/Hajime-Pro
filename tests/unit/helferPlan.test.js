@@ -65,9 +65,12 @@ test('Helferplan: Standard-Tätigkeiten, Slots, Eintragen und Austragen', async 
             ['matte', 'Kampfgericht Matte 2', 2],
             ['kampfrichter', 'Kampfrichter Matte 1', 1],
             ['kampfrichter', 'Kampfrichter Matte 2', 1],
-            ['waage', 'Waage 1', 2]
+            ['waage', 'Waage 1', 2],
+            ['ersthelfer', 'Ersthelfer/Sanitäter', 1],
+            ['aufbau', 'Mattenaufbau', 4],
+            ['aufbau', 'Tribünenaufbau', 2]
         ]);
-        for (const t of liste) {
+        for (const t of liste.filter(x => x.art !== 'aufbau')) {
             assert.deepEqual(t.slots.map(s => [s.von_min, s.bis_min, s.bedarf]), [
                 [540, 660, t.bedarf], [660, 780, t.bedarf], [780, 900, t.bedarf], [900, 1020, t.bedarf], [1020, 1080, t.bedarf]
             ]);
@@ -85,7 +88,8 @@ test('Helferplan: Standard-Tätigkeiten, Slots, Eintragen und Austragen', async 
         await plan.synchronisiereStandardTaetigkeiten(knex, turnier);
         liste = await zeilen(knex, turnier);
         assert.deepEqual(liste.map(t => t.bezeichnung),
-            ['Kampfgericht Matte 1', 'Kampfgericht Matte 2', 'Kampfrichter Matte 1', 'Kampfrichter Matte 2', 'Waage 1', 'Waage 2']);
+            ['Kampfgericht Matte 1', 'Kampfgericht Matte 2', 'Kampfrichter Matte 1', 'Kampfrichter Matte 2', 'Waage 1', 'Waage 2',
+                'Ersthelfer/Sanitäter', 'Mattenaufbau', 'Tribünenaufbau']);
         assert.equal((await finde(knex, turnier, 'Waage 1')).id, waage1Vorher.id);
 
         // --- Slots: Raster, Mindestlänge, Überlappung
@@ -308,13 +312,13 @@ test('Helferplan: Matten und Waagen bekommen 2-Stunden-Schichten, sobald die Tur
         const turnier = await legeTurnierAn(knex, { vereinId: verein, datum: '2026-11-01', matten: 1, beginn: null, ende: null });
         await plan.synchronisiereStandardTaetigkeiten(knex, turnier);
         let liste = await zeilen(knex, turnier);
-        assert.deepEqual(liste.map(t => [t.bezeichnung, t.slots.length]), [['Kampfgericht Matte 1', 0], ['Kampfrichter Matte 1', 0], ['Waage 1', 0]]);
+        assert.deepEqual(liste.map(t => [t.bezeichnung, t.slots.length]), [['Kampfgericht Matte 1', 0], ['Kampfrichter Matte 1', 0], ['Waage 1', 0], ['Ersthelfer/Sanitäter', 0], ['Mattenaufbau', 1], ['Tribünenaufbau', 1]]);
 
         // Zeiten werden später am Turnier eingetragen: der nächste Abgleich füllt die leeren Tätigkeiten auf
         await knex('turniere').where({ id: turnier }).update({ beginn_min: 540, ende_min: 960 });
         await plan.synchronisiereStandardTaetigkeiten(knex, turnier);
         liste = await zeilen(knex, turnier);
-        for (const t of liste) {
+        for (const t of liste.filter(x => x.art !== 'aufbau')) {
             assert.deepEqual(t.slots.map(s => [s.von_min, s.bis_min, s.bedarf]), [[540, 660, t.bedarf], [660, 780, t.bedarf], [780, 900, t.bedarf], [900, 960, t.bedarf]], t.bezeichnung);
         }
 
@@ -328,6 +332,71 @@ test('Helferplan: Matten und Waagen bekommen 2-Stunden-Schichten, sobald die Tur
         await knex('helfer_slots').where({ taetigkeit_id: frei }).del();
         await plan.synchronisiereStandardTaetigkeiten(knex, turnier);
         assert.equal((await knex('helfer_slots').where({ taetigkeit_id: frei })).length, 0);
+    } finally {
+        await db.stoppe();
+    }
+});
+
+test('Helferplan: Ersthelfer und Aufbau am Vortag (tag_versatz)', async () => {
+    const db = await starteTestPostgres();
+    const { knex } = db;
+    try {
+        const verein = id((await knex('vereine').insert({ name: 'JC Vortag' }).returning('id'))[0]);
+        await knex('benutzer').insert({ id: 'u-vera', email: 'vera@test.de', vorname: 'vera', nachname: 'Test' });
+        await knex('benutzer_vereine').insert({ benutzer_id: 'u-vera', verein_id: verein, freigegeben: 1, rolle: 'helfer' });
+        const turnier = await legeTurnierAn(knex, { vereinId: verein, datum: '2026-11-01', matten: 1 });
+        await plan.synchronisiereStandardTaetigkeiten(knex, turnier);
+
+        const eh = await finde(knex, turnier, 'Ersthelfer/Sanitäter');
+        assert.deepEqual([eh.art, eh.bedarf, eh.tag_versatz], ['ersthelfer', 1, 0]);
+        assert.deepEqual(eh.slots.map(s => [s.von_min, s.bis_min, s.bedarf]),
+            [[540, 660, 1], [660, 780, 1], [780, 900, 1], [900, 1020, 1], [1020, 1080, 1]]);
+        const mattenaufbau = await finde(knex, turnier, 'Mattenaufbau');
+        const tribuene = await finde(knex, turnier, 'Tribünenaufbau');
+        for (const [t, bedarf] of [[mattenaufbau, 4], [tribuene, 2]]) {
+            assert.deepEqual([t.art, t.bedarf, t.tag_versatz], ['aufbau', bedarf, -1]);
+            assert.deepEqual(t.slots.map(s => [s.von_min, s.bis_min, s.bedarf]), [[1020, 1140, bedarf]]);
+        }
+        // Matte hat tag_versatz 0
+        assert.equal((await finde(knex, turnier, 'Kampfgericht Matte 1')).tag_versatz, 0);
+
+        // idempotent, auch nach Verschieben: keine Duplikate, tag_versatz bleibt
+        await plan.aendereTaetigkeit(knex, tribuene.id, { tag_versatz: 0 });
+        const davor = JSON.stringify(await zeilen(knex, turnier));
+        await plan.synchronisiereStandardTaetigkeiten(knex, turnier);
+        assert.equal(JSON.stringify(await zeilen(knex, turnier)), davor);
+        assert.equal((await finde(knex, turnier, 'Tribünenaufbau')).tag_versatz, 0);
+        await plan.aendereTaetigkeit(knex, tribuene.id, { tag_versatz: -1 });
+
+        // nicht umbenennbar/löschbar, tag_versatz nur 0|-1
+        await erwarteFehler(plan.aendereTaetigkeit(knex, mattenaufbau.id, { bezeichnung: 'Anders' }), 409);
+        await erwarteFehler(plan.loescheTaetigkeit(knex, mattenaufbau.id, { bestaetigt: true }), 409);
+        await erwarteFehler(plan.aendereTaetigkeit(knex, mattenaufbau.id, { tag_versatz: -2 }), 400);
+        await erwarteFehler(plan.aendereTaetigkeit(knex, mattenaufbau.id, { tag_versatz: 1 }), 400);
+        await erwarteFehler(plan.aendereTaetigkeit(knex, mattenaufbau.id, { tag_versatz: 'x' }), 400);
+        // Ersthelfer: nicht umbenennbar/löschbar
+        await erwarteFehler(plan.aendereTaetigkeit(knex, eh.id, { bezeichnung: 'Anders' }), 409);
+        await erwarteFehler(plan.loescheTaetigkeit(knex, eh.id, { bestaetigt: true }), 409);
+
+        // eigene Tätigkeit auf den Vortag legen
+        const frei = await plan.legeTaetigkeitAn(knex, turnier, { bezeichnung: 'Hallenschmuck', bedarf: 1 });
+        assert.equal((await finde(knex, turnier, 'Hallenschmuck')).tag_versatz, 0);
+        await plan.aendereTaetigkeit(knex, frei.id, { tag_versatz: -1 });
+        assert.equal((await finde(knex, turnier, 'Hallenschmuck')).tag_versatz, -1);
+
+        // Überlappung in absoluten Minuten: Vortag 17-19 vs. Turniertag 17-18 kein Konflikt, aber Vortag vs. Vortag
+        const vera = (slotId) => ({ slotId, benutzerId: 'u-vera', durchId: 'u-vera', jetzt: VOR_FRIST });
+        await plan.traegeEin(knex, vera(mattenaufbau.slots[0].id));
+        await plan.traegeEin(knex, vera(eh.slots[4].id)); // Turniertag 17:00-18:00
+        await erwarteFehler(plan.traegeEin(knex, vera(tribuene.slots[0].id)), 409, null, 'ueberlappung'); // beide Vortag 17-19
+        // Frist bleibt Turniertag 08:00: nach Turniertag 08:00 darf nur die Orga eintragen
+        await erwarteFehler(plan.traegeEin(knex, { slotId: tribuene.slots[0].id, benutzerId: 'u-vera', durchId: 'u-vera', jetzt: NACH_FRIST }),
+            403, null, 'frist');
+
+        // ladeOffeneSlots liefert tag_versatz
+        const offen = await plan.ladeOffeneSlots(knex, turnier, 'u-vera');
+        assert.equal(offen.find(s => s.taetigkeit === 'Mattenaufbau').tag_versatz, -1);
+        assert.equal(offen.find(s => s.taetigkeit === 'Ersthelfer/Sanitäter').tag_versatz, 0);
     } finally {
         await db.stoppe();
     }

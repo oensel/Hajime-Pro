@@ -99,7 +99,7 @@ test('Helfer-API und Helferplan-API: Rechte, Eintragen, Frist, Fremdturniere, Ma
         // --- Orga (Benutzer) öffnet den Plan: Standard-Tätigkeiten entstehen
         const planRes = await get('u-benutzer', `/api/helfer-plan/${tA}`);
         assert.equal(planRes.status, 200, JSON.stringify(planRes.daten));
-        assert.deepEqual(planRes.daten.taetigkeiten.map(t => t.bezeichnung), ['Kampfgericht Matte 1', 'Kampfrichter Matte 1', 'Waage 1']);
+        assert.deepEqual(planRes.daten.taetigkeiten.map(t => t.bezeichnung), ['Kampfgericht Matte 1', 'Kampfrichter Matte 1', 'Waage 1', 'Ersthelfer/Sanitäter', 'Mattenaufbau', 'Tribünenaufbau']);
         const matte = planRes.daten.taetigkeiten[0];
         const slot1 = matte.slots[0].id; // 09:00–11:00
         const slot2 = matte.slots[1].id; // 11:00–13:00
@@ -113,7 +113,7 @@ test('Helfer-API und Helferplan-API: Rechte, Eintragen, Frist, Fremdturniere, Ma
         assert.deepEqual(listeHelfer.daten.map(t => t.id), [tA]);
         assert.equal(listeHelfer.daten[0].bezeichnung, 'Pokal A');
         assert.equal(listeHelfer.daten[0].datum, DATUM);
-        assert.equal(listeHelfer.daten[0].offeneDienste, 12, '4 Slots Matte + 4 Slots Kampfrichter + 4 Slots Waage, alle offen');
+        assert.equal(listeHelfer.daten[0].offeneDienste, 18, '4 Slots Matte + Kampfrichter + Waage + Ersthelfer sowie 2 Aufbau-Slots, alle offen');
         assert.deepEqual((await get('u-fremdhelfer', '/api/helfer/turniere')).daten.map(t => t.id), [tB]);
         assert.deepEqual((await get('u-offen', '/api/helfer/turniere')).daten, []);
         assert.deepEqual((await get('u-super', '/api/helfer/turniere')).daten.map(t => t.id).sort((a, b) => a - b), [tA, tB].sort((a, b) => a - b));

@@ -4,6 +4,7 @@
 export const RASTER_MIN = 15;
 export const MIN_LAENGE = 30;
 export const STANDARD_SLOT = 120;
+export const MIN_PRO_TAG = 1440;
 
 // Versatz von Europe/Berlin gegenüber UTC (in Minuten) zum Instant `instant`.
 function berlinOffsetMinuten(instant) {
@@ -32,8 +33,12 @@ export function darfHelferAendern(datum, jetzt) {
   return jetzt.getTime() < fristEndeBerlin(datum).getTime();
 }
 
+// Überlappung zweier Zeiträume. Optionales `tag_versatz` (0 = Turniertag, -1 = Vortag) verschiebt um ganze Tage:
+// verglichen wird in absoluten Minuten tag_versatz * 1440 + min.
 export function ueberlappt(a, b) {
-  return a.von_min < b.bis_min && b.von_min < a.bis_min;
+  const va = (a.tag_versatz ?? 0) * MIN_PRO_TAG;
+  const vb = (b.tag_versatz ?? 0) * MIN_PRO_TAG;
+  return va + a.von_min < vb + b.bis_min && vb + b.von_min < va + a.bis_min;
 }
 
 export function rasterRunde(min) {

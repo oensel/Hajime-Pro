@@ -4,6 +4,11 @@
 //   - Je Kampffläche „Kampfgericht Matte n“ (art 'matte', Bedarf 2) und „Kampfrichter Matte n“ (art 'kampfrichter',
 //     Bedarf 1, mindestens ein Kampfrichter je Matte) und je Waage „Waage n“ (art 'waage', Bedarf 2),
 //     nicht umbenennbar/löschbar; eigene Tätigkeiten (art 'frei') frei änderbar.
+//   - Weitere Standarddienste (ebenfalls nicht umbenennbar/löschbar): „Ersthelfer/Sanitäter“ (art 'ersthelfer', Bedarf 1,
+//     2-Stunden-Schichten über die Turnierzeit) sowie „Mattenaufbau“ (Bedarf 4) und „Tribünenaufbau“ (Bedarf 2)
+//     (art 'aufbau', `tag_versatz` -1 = Vortag, ein Slot 17:00–19:00). `tag_versatz` (0 Turniertag | -1 Vortag) ist für
+//     art 'aufbau' und 'frei' änderbar; Überlappungsprüfungen rechnen mit tag_versatz * 1440 + Minuten, die Frist
+//     (Turniertag 08:00) bleibt für alle Dienste gleich.
 //   - Slots im 15-Minuten-Raster, mindestens 30 Minuten, keine Überlappung innerhalb einer Tätigkeit.
 //   - Eintragen: freigegebene Mitgliedschaft im ausrichtenden Verein, kein überlappender eigener Dienst im
 //     selben Turnier, Platz frei (Zählen und Einfügen in einer Transaktion mit Sperre des Slots), Frist
@@ -14,6 +19,17 @@ import { RASTER_MIN, MIN_LAENGE, darfHelferAendern, ueberlappt, erzeugeStandardS
 
 const STANDARD_BEDARF = 2;
 const KAMPFRICHTER_BEDARF = 1;
+const ERSTHELFER_BEDARF = 1;
+const ERSTHELFER_BEZEICHNUNG = 'Ersthelfer/Sanitäter';
+// Aufbaudienste am Vortag: reihenfolge bestimmt die Zeile (nicht umbenennbar), ein Slot 17:00–19:00.
+const AUFBAU_DIENSTE = Object.freeze([
+    { reihenfolge: 1, bezeichnung: 'Mattenaufbau', bedarf: 4 },
+    { reihenfolge: 2, bezeichnung: 'Tribünenaufbau', bedarf: 2 }
+]);
+const AUFBAU_SLOT = Object.freeze({ von_min: 1020, bis_min: 1140 });
+const STANDARD_ARTEN = ['matte', 'kampfrichter', 'waage', 'ersthelfer', 'aufbau'];
+const NICHT_AENDERBAR_ARTEN = ['matte', 'kampfrichter', 'waage', 'ersthelfer', 'aufbau'];
+const ARTEN_MIT_TAG_VERSATZ = ['aufbau', 'frei'];
 const FRIST_MELDUNG = 'Die Frist ist abgelaufen (Turniertag 08:00 Uhr). Bitte melde dich bei der Turnierleitung.';
 
 // Maschinenlesbare Fehlerarten (FachFehler.code) für die Routen/Oberfläche.
@@ -110,6 +126,13 @@ function pruefeZeitraum(von, bis) {
     if (bis - von < MIN_LAENGE) throw fehler(400, `Ein Slot dauert mindestens ${MIN_LAENGE} Minuten.`);
 }
 
+// Nur Turniertag (0) oder Vortag (-1).
+function pruefeTagVersatz(wert) {
+    const n = typeof wert === 'string' && wert.trim() === '' ? NaN : Number(wert);
+    if (n !== 0 && n !== -1) throw fehler(400, 'Eine Tätigkeit liegt am Turniertag (0) oder am Vortag (-1).');
+    return n === 0 ? 0 : -1;
+}
+
 async function pruefeKeineUeberlappung(knex, taetigkeitId, zeitraum, ohneSlotId = null) {
     let abfrage = knex('helfer_slots').where({ taetigkeit_id: taetigkeitId });
     if (ohneSlotId != null) abfrage = abfrage.whereNot({ id: ohneSlotId });
@@ -140,9 +163,13 @@ async function fuegeStandardSlotsEin(knex, turnier, taetigkeitId, bedarf) {
     if (slots.length) await knex('helfer_slots').insert(slots);
 }
 
-async function legeTaetigkeitMitSlotsAn(knex, turnier, felder) {
+async function legeTaetigkeitMitSlotsAn(knex, turnier, felder, feste = null) {
     const taetigkeitId = idAus((await knex('helfer_taetigkeiten').insert(felder).returning('id'))[0]);
-    await fuegeStandardSlotsEin(knex, turnier, taetigkeitId, felder.bedarf);
+    if (feste) {
+        await knex('helfer_slots').insert({ taetigkeit_id: taetigkeitId, ...feste, bedarf: felder.bedarf });
+    } else {
+        await fuegeStandardSlotsEin(knex, turnier, taetigkeitId, felder.bedarf);
+    }
     return taetigkeitId;
 }
 
@@ -183,7 +210,7 @@ export async function synchronisiereStandardTaetigkeiten(knex, turnierId) {
         // Turnier sperren: gleichzeitige Läufe legen nichts doppelt an.
         const turnier = await trx('turniere').where({ id: turnierId }).forUpdate().first();
         if (!turnier) throw fehler(404, 'Turnier nicht gefunden.');
-        const vorhandene = await trx('helfer_taetigkeiten').where({ turnier_id: turnierId }).whereIn('art', ['matte', 'kampfrichter', 'waage']);
+        const vorhandene = await trx('helfer_taetigkeiten').where({ turnier_id: turnierId }).whereIn('art', STANDARD_ARTEN);
 
         // Matten
         const flaechen = await trx('kampfflaechen').where({ turnier_id: turnierId }).orderBy('id');
@@ -227,11 +254,29 @@ export async function synchronisiereStandardTaetigkeiten(knex, turnierId) {
             if (t.reihenfolge > anzahl) await loescheWennLeer(trx, t.id);
         }
 
+        // Ersthelfer/Sanitäter (ein Dienst je Turnier, 2-Stunden-Schichten über die Turnierzeit)
+        if (!vorhandene.some(t => t.art === 'ersthelfer')) {
+            await legeTaetigkeitMitSlotsAn(trx, turnier, {
+                turnier_id: turnierId, art: 'ersthelfer', kampfflaeche_id: null,
+                bezeichnung: ERSTHELFER_BEZEICHNUNG, bedarf: ERSTHELFER_BEDARF, reihenfolge: 1
+            });
+        }
+
+        // Aufbau am Vortag: je Dienst ein Slot 17:00–19:00 (unabhängig von der Turnierzeit)
+        const aufbauten = vorhandene.filter(t => t.art === 'aufbau');
+        for (const dienst of AUFBAU_DIENSTE) {
+            if (aufbauten.some(t => t.reihenfolge === dienst.reihenfolge)) continue;
+            await legeTaetigkeitMitSlotsAn(trx, turnier, {
+                turnier_id: turnierId, art: 'aufbau', kampfflaeche_id: null, tag_versatz: -1,
+                bezeichnung: dienst.bezeichnung, bedarf: dienst.bedarf, reihenfolge: dienst.reihenfolge
+            }, AUFBAU_SLOT);
+        }
+
         // Standen Beginn/Ende beim Anlegen noch nicht fest, bekommen Matten und Waagen ohne jede Schicht
         // die 2-Stunden-Schichten jetzt nachträglich (eigene Tätigkeiten bleiben unangetastet).
         const ohneSlots = await trx('helfer_taetigkeiten as t')
             .where({ 't.turnier_id': turnierId })
-            .whereIn('t.art', ['matte', 'kampfrichter', 'waage'])
+            .whereIn('t.art', ['matte', 'kampfrichter', 'waage', 'ersthelfer'])
             .whereNotExists(trx('helfer_slots as s').whereRaw('s.taetigkeit_id = t.id').select(trx.raw('1')))
             .select('t.id', 't.bedarf');
         for (const t of ohneSlots) await fuegeStandardSlotsEin(trx, turnier, t.id, t.bedarf);
@@ -260,15 +305,22 @@ export async function legeTaetigkeitAn(knex, turnierId, { bezeichnung, bedarf } 
  * daten.anzahl = höchste Belegung der betroffenen Slots).
  * @returns {Promise<{ betroffeneBenutzerIds: string[] }>} Eingetragene der Slots, die nun überbucht sind
  */
-export async function aendereTaetigkeit(knex, id, { bezeichnung, bedarf, bestaetigt } = {}) {
+export async function aendereTaetigkeit(knex, id, { bezeichnung, bedarf, bestaetigt, tag_versatz } = {}) {
+    const neuerVersatz = tag_versatz === undefined ? undefined : pruefeTagVersatz(tag_versatz);
     return transaktion(knex, async (trx) => {
         const t = await sperreTaetigkeit(trx, id);
         const aenderung = {};
+        if (neuerVersatz !== undefined && neuerVersatz !== t.tag_versatz) {
+            if (!ARTEN_MIT_TAG_VERSATZ.includes(t.art)) {
+                throw fehler(409, 'Nur Aufbau und eigene Tätigkeiten lassen sich zwischen Vortag und Turniertag verschieben.');
+            }
+            aenderung.tag_versatz = neuerVersatz;
+        }
         let betroffeneBenutzerIds = [];
         if (bezeichnung !== undefined) {
             const name = pruefeBezeichnung(bezeichnung);
             if (name !== t.bezeichnung) {
-                if (t.art !== 'frei') throw fehler(409, 'Matten-, Kampfrichter- und Waagenzeilen lassen sich nicht umbenennen.');
+                if (NICHT_AENDERBAR_ARTEN.includes(t.art)) throw fehler(409, 'Standarddienste (Matte, Kampfrichter, Waage, Ersthelfer, Aufbau) lassen sich nicht umbenennen.');
                 aenderung.bezeichnung = name;
             }
         }
@@ -304,7 +356,7 @@ export async function aendereTaetigkeit(knex, id, { bezeichnung, bedarf, bestaet
 export async function loescheTaetigkeit(knex, id, { bestaetigt } = {}) {
     return transaktion(knex, async (trx) => {
         const t = await sperreTaetigkeit(trx, id);
-        if (t.art !== 'frei') throw fehler(409, 'Matten-, Kampfrichter- und Waagenzeilen lassen sich nicht löschen.');
+        if (t.art !== 'frei') throw fehler(409, 'Standarddienste (Matte, Kampfrichter, Waage, Ersthelfer, Aufbau) lassen sich nicht löschen.');
         const slots = await trx('helfer_slots').where({ taetigkeit_id: id }).orderBy('id').forUpdate().select('id');
         const einsaetze = await trx('helfer_einsaetze').whereIn('slot_id', slots.map(s => s.id)).select('benutzer_id');
         if (einsaetze.length > 0 && bestaetigt !== true) {
@@ -384,7 +436,7 @@ async function sperreSlotMitTurnier(trx, slotId) {
         .join('helfer_taetigkeiten as t', 't.id', 's.taetigkeit_id')
         .join('turniere as tu', 'tu.id', 't.turnier_id')
         .where('s.id', slotId)
-        .select('s.id', 's.von_min', 's.bis_min', 's.bedarf', 't.turnier_id', 'tu.verein_id', 'tu.datum', 'tu.status')
+        .select('s.id', 's.von_min', 's.bis_min', 's.bedarf', 't.tag_versatz', 't.turnier_id', 'tu.verein_id', 'tu.datum', 'tu.status')
         .forUpdate('s')
         .first();
     if (!zeile) throw fehler(404, 'Slot nicht gefunden.');
@@ -431,7 +483,7 @@ export async function traegeEin(knex, { slotId, benutzerId, durchId, jetzt = new
             .join('helfer_slots as s', 's.id', 'e.slot_id')
             .join('helfer_taetigkeiten as t', 't.id', 's.taetigkeit_id')
             .where({ 'e.benutzer_id': benutzerId, 't.turnier_id': slot.turnier_id })
-            .select('s.von_min', 's.bis_min');
+            .select('s.von_min', 's.bis_min', 't.tag_versatz');
         if (eigene.some(d => ueberlappt(d, slot))) {
             throw fehler(409, 'Du bist zu dieser Zeit schon für einen anderen Dienst eingetragen.', { code: FEHLER_CODES.UEBERLAPPUNG });
         }
@@ -482,7 +534,7 @@ export async function traegeManuellEin(knex, { slotId, name, durchId }) {
     });
 }
 
-const ART_REIHENFOLGE = { matte: 0, kampfrichter: 1, waage: 2, frei: 3 };
+const ART_REIHENFOLGE = { matte: 0, kampfrichter: 1, waage: 2, ersthelfer: 3, aufbau: 4, frei: 5 };
 
 function anzeigename(e) {
     if (!e.benutzer_id) return e.name_manuell || '';
@@ -496,7 +548,7 @@ export async function ladePlan(knex, turnierId) {
     const taetigkeiten = await knex('helfer_taetigkeiten').where({ turnier_id: turnierId }).orderBy([
         { column: 'reihenfolge' }, { column: 'id' }
     ]);
-    taetigkeiten.sort((a, b) => (ART_REIHENFOLGE[a.art] ?? 4) - (ART_REIHENFOLGE[b.art] ?? 4));
+    taetigkeiten.sort((a, b) => (ART_REIHENFOLGE[a.art] ?? 6) - (ART_REIHENFOLGE[b.art] ?? 6));
     const ids = taetigkeiten.map(t => t.id);
     const slots = ids.length
         ? await knex('helfer_slots').whereIn('taetigkeit_id', ids).orderBy([{ column: 'von_min' }, { column: 'id' }])
@@ -521,6 +573,7 @@ export async function ladePlan(knex, turnierId) {
             art: t.art,
             bezeichnung: t.bezeichnung,
             bedarf: t.bedarf,
+            tag_versatz: t.tag_versatz,
             slots: slots.filter(s => s.taetigkeit_id === t.id).map(s => ({
                 id: s.id,
                 von_min: s.von_min,
@@ -542,8 +595,8 @@ export async function ladeOffeneSlots(knex, turnierId, benutzerId) {
         .join('helfer_taetigkeiten as t', 't.id', 's.taetigkeit_id')
         .leftJoin('helfer_einsaetze as e', 'e.slot_id', 's.id')
         .where('t.turnier_id', turnierId)
-        .groupBy('s.id', 't.bezeichnung')
-        .select('s.id', 's.von_min', 's.bis_min', 's.bedarf', 't.bezeichnung')
+        .groupBy('s.id', 't.bezeichnung', 't.tag_versatz')
+        .select('s.id', 's.von_min', 's.bis_min', 's.bedarf', 't.bezeichnung', 't.tag_versatz')
         .select(knex.raw('count(e.id)::int as belegt'))
         .select(knex.raw('bool_or(e.benutzer_id = ?) as eigen', [benutzerId]));
 
@@ -553,11 +606,12 @@ export async function ladeOffeneSlots(knex, turnierId, benutzerId) {
             slotId: z.id,
             von_min: z.von_min,
             bis_min: z.bis_min,
+            tag_versatz: z.tag_versatz,
             frei: Math.max(0, z.bedarf - z.belegt),
             eingetragen: z.eigen === true
         }))
         .filter(z => z.frei > 0 || z.eingetragen)
-        .sort((a, b) => a.taetigkeit.localeCompare(b.taetigkeit, 'de', { numeric: true }) || a.von_min - b.von_min || a.slotId - b.slotId);
+        .sort((a, b) => a.taetigkeit.localeCompare(b.taetigkeit, 'de', { numeric: true }) || (a.tag_versatz * 1440 + a.von_min) - (b.tag_versatz * 1440 + b.von_min) || a.slotId - b.slotId);
 }
 
 /** Alle Dienste eines Kontos, aufsteigend nach Datum und Uhrzeit. */
@@ -567,13 +621,14 @@ export async function ladeMeineDienste(knex, benutzerId) {
         .join('helfer_taetigkeiten as t', 't.id', 's.taetigkeit_id')
         .join('turniere as tu', 'tu.id', 't.turnier_id')
         .where('e.benutzer_id', benutzerId)
-        .orderBy([{ column: 'tu.datum' }, { column: 's.von_min' }, { column: 'e.id' }])
+        .orderBy([{ column: 'tu.datum' }, { column: 't.tag_versatz' }, { column: 's.von_min' }, { column: 'e.id' }])
         .select('e.id as einsatz_id', 'tu.id as turnier_id', 'tu.bezeichnung as turnier_name', 'tu.datum',
-            't.bezeichnung as taetigkeit', 's.von_min', 's.bis_min');
+            't.bezeichnung as taetigkeit', 't.tag_versatz', 's.von_min', 's.bis_min');
     return zeilen.map(z => ({
         einsatzId: z.einsatz_id,
         turnier: { id: z.turnier_id, name: z.turnier_name, datum: datumAlsText(z.datum) },
         taetigkeit: z.taetigkeit,
+        tag_versatz: z.tag_versatz,
         von_min: z.von_min,
         bis_min: z.bis_min
     }));

@@ -141,8 +141,8 @@ export async function aendereTaetigkeitRoute(knex, req, res) {
     try {
         const taetigkeitId = parseInt(req.params.taetigkeitId, 10);
         await pruefeZugehoerigkeit(knex, req, { taetigkeitId });
-        const { bezeichnung, bedarf } = req.body || {};
-        await plan.aendereTaetigkeit(knex, taetigkeitId, { bezeichnung, bedarf, bestaetigt: istBestaetigt(req) });
+        const { bezeichnung, bedarf, tag_versatz } = req.body || {};
+        await plan.aendereTaetigkeit(knex, taetigkeitId, { bezeichnung, bedarf, tag_versatz, bestaetigt: istBestaetigt(req) });
         res.json({ success: true });
     } catch (error) {
         sendeFehler(res, error, 'Helferplan-Taetigkeit-Aendern');
