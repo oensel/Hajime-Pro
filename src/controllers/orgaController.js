@@ -302,6 +302,35 @@ async function ladeEintrag(knex, idText) {
     return { eintrag, turnier };
 }
 
+/**
+ * GET /mitbringliste?turnierId= — die Einträge der Mitbringliste für Helfer (Verein des Turniers, rolle helfer+).
+ * Legt nichts an: ohne vorhandene Mitbringliste (Vorlage nie angelegt) 404.
+ */
+export async function mitbringlisteLesenRoute(knex, req, res) {
+    try {
+        const turnierId = ganzzahl(req.query.turnierId);
+        if (turnierId == null) throw new FachFehler(req.query.turnierId == null ? 400 : 404, req.query.turnierId == null ? 'Turnier-ID fehlt.' : 'Turnier nicht gefunden.');
+        const turnier = await knex('turniere').where({ id: turnierId }).first('id', 'verein_id');
+        if (!turnier || !(await darfMitbringen(knex, req.user.id, turnier.verein_id))) {
+            throw new FachFehler(403, 'Kein Zugriff auf dieses Turnier.');
+        }
+        const eltern = await knex('orga_aufgaben').where({ turnier_id: turnierId, eltern_id: null })
+            .whereIn('vorlage_key', [...MITBRINGLISTEN_KEYS]).orderBy('id').first('id');
+        if (!eltern) throw new FachFehler(404, 'Für dieses Turnier gibt es keine Mitbringliste.');
+        const zeilen = await knex('orga_aufgaben').where({ eltern_id: eltern.id, art: 'mitbringen' })
+            .orderBy([{ column: 'reihenfolge' }, { column: 'id' }])
+            .select('id', 'titel', 'menge', 'name_frei', 'erstellt_von');
+        res.json({
+            success: true, turnierId,
+            eintraege: zeilen.map((z) => ({
+                id: z.id, titel: z.titel, menge: z.menge, name: z.name_frei, eigen: z.erstellt_von != null && z.erstellt_von === req.user.id
+            }))
+        });
+    } catch (error) {
+        sendeFehler(res, error, 'Orga-Mitbringliste-Lesen');
+    }
+}
+
 /** POST /mitbringliste — Body { turnierId, titel, menge? }; legt einen Eintrag unter dem Catering des Turniers an. */
 export async function mitbringlisteAnlegenRoute(knex, req, res) {
     try {

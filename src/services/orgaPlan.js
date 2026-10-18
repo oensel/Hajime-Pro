@@ -223,6 +223,11 @@ export async function aendereAufgabe(knex, aufgabeId, felder = {}) {
         for (const k of AENDERBAR) if (k in felder) update[k] = felder[k] === '' ? null : felder[k];
         if ('titel' in felder) update.titel = pruefeTitel(felder.titel);
         if ('menge' in felder) update.menge = pruefeMenge(felder.menge);
+        if ('reihenfolge' in felder) {
+            const r = felder.reihenfolge;
+            if (!Number.isInteger(r) || r < 0 || r > 2147483647) throw fehler(400, 'Die Reihenfolge muss eine ganze Zahl sein.');
+            update.reihenfolge = r;
+        }
         if (update.benutzer_id != null) await pruefeZustaendigen(trx, update.benutzer_id, turnier.verein_id);
         if ('phase' in update) {
             if (aufgabe.eltern_id != null) throw fehler(400, 'Die Phase einer Unteraufgabe folgt der übergeordneten Aufgabe.');
