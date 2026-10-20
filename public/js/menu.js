@@ -1234,6 +1234,11 @@ async function initialisiereMenue() {
                         versteckeMenuePunkte(['nav-mannschaften']);
                     }
 
+                    // --- PLANUNGS-TOOLS: ohne den Haken im Turnier gibt es keinen Helferplan im Menü ---
+                    if (turnier.planungs_tools === false) {
+                        versteckeMenuePunkte(['nav-helfer']);
+                    }
+
                     // --- VEREINS-SICHTBARKEIT: Nutzer außerhalb des ausrichtenden Vereins ---
                     // dürfen nur die Teilnehmer-Ansicht (gefiltert auf den eigenen Verein) sehen.
                     if (currentUser && !istOffline) {

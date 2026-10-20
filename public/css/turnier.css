@@ -6,102 +6,42 @@
 .turnier-page {
     width: 100%;
     max-width: 1280px;
+    padding: 20px 24px;
 }
 
-/* Fixierte Aktionsleiste unten beansprucht Platz — Body braucht daher etwas mehr
-   Bodenfreiraum als der globale Standard aus common.css (Kaskade: diese Datei lädt danach). */
-body { padding-bottom: 96px; }
-
-/* --- SEITENKOPF: TITEL LINKS, LEBENSZYKLUS-AKTIONEN RECHTS --- */
-.turnier-page-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    flex-wrap: wrap;
-    width: 100%;
-    margin-bottom: 24px;
-}
-
-.turnier-page-header-title {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.turnier-page-header-title h1 {
-    margin: 0;
-    font-size: 26px;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.turnier-page-header-title .material-icons {
-    font-size: 28px;
-    color: var(--primary);
-}
-
-.turnier-page-header-actions {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-}
-
-.turnier-header-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    margin: 0;
-}
-
-.turnier-header-btn .material-icons { font-size: 18px; }
-
-/* Umschalter Blau/Rot für die Farbe von Kämpfer 2 */
-.farb-schalter {
-    position: relative;
-    display: inline-grid;
-    grid-template-columns: 1fr 1fr;
-    width: 120px;
-    height: 26px;
-    padding: 2px;
-    border-radius: 13px;
-    border: 1px solid #c9ccd1;
-    background: #f1f2f4;
-    cursor: pointer;
-    user-select: none;
-    box-sizing: border-box;
-}
-.farb-schalter-knopf {
+/* Auswahl der Farbe von Kämpfer 2: Selectbox mit farbigem Kreis davor */
+.farb-auswahl { position: relative; }
+.farb-auswahl select { padding-left: 24px; }
+.farb-auswahl-punkt {
     position: absolute;
-    top: 2px;
-    left: 2px;
-    width: calc(50% - 2px);
-    height: calc(100% - 4px);
-    border-radius: 11px;
+    left: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
     background: #185FA5;
-    transition: transform .2s, background .2s;
+    pointer-events: none;
 }
-.farb-schalter.rot .farb-schalter-knopf { transform: translateX(100%); background: #A32D2D; }
-.farb-schalter span {
-    position: relative;
-    z-index: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    font-size: 12px;
-    font-weight: 700;
-    color: #5f6368;
-    transition: color .2s;
-}
-.farb-schalter span.aktiv { color: #fff; }
-.farb-schalter-punkt { width: 7px; height: 7px; border-radius: 50%; background: #fff; }
+.farb-auswahl.rot .farb-auswahl-punkt { background: #A32D2D; }
 
-.turnier-header-btn-danger {
-    color: #c62828;
-    border-color: #c62828;
+/* Uhrzeitfelder wie die übrigen Eingabefelder (common.css stylt type="time" nicht) */
+#turnierForm input[type="time"] {
+    width: 100%;
+    height: 28px;
+    padding: 2px 6px;
+    border: 2px solid var(--border);
+    border-radius: 4px;
+    font-size: 14px;
+    background-color: var(--bg-card);
+    color: var(--text-main);
+    box-sizing: border-box;
+    transition: all 0.2s;
+}
+[data-theme="dark"] #turnierForm input[type="time"] { color-scheme: dark; }
+#turnierForm input[type="time"]:focus {
+    outline: none;
+    border-color: var(--primary);
 }
 
 /* --- ZWEISPALTEN-LAYOUT: SCHMALE STAMMDATEN-SPALTE + BREITE ALTERSKLASSEN-SPALTE --- */
@@ -252,8 +192,9 @@ body { padding-bottom: 96px; }
 
 .turnier-ak-mode-group {
     display: none;
-    align-items: center;
-    gap: 8px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
     flex-shrink: 0;
 }
 
@@ -281,44 +222,25 @@ body { padding-bottom: 96px; }
 
 .turnier-ak-add-btn .material-icons { font-size: 15px; }
 
-/* --- FIXIERTE AKTIONSLEISTE AM UNTEREN BILDSCHIRMRAND (Export/Abbrechen/Speichern) --- */
-.turnier-footer-bar {
-    position: fixed;
-    bottom: 0;
-    left: 260px;
-    right: 0;
+/* Haken "Planungs-Tools verwenden": Beschriftung wie die übrigen Feldnamen, Checkbox dahinter */
+#turnierForm .form-group label.planungs-haken {
     display: flex;
+    justify-content: space-between;
     align-items: center;
-    justify-content: flex-end;
-    gap: 12px;
-    padding: 14px 24px;
-    background-color: var(--bg-card);
-    border-top: 2px solid var(--border);
-    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.03);
-    z-index: 90;
-    transition: left 0.3s, background-color 0.3s, border-color 0.3s;
-}
-
-.turnier-footer-btn {
+    gap: 10px;
     margin: 0;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
+    cursor: pointer;
+}
+.planungs-haken input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    accent-color: var(--primary);
+    cursor: pointer;
 }
 
-@media (max-width: 850px) {
-    .turnier-footer-bar { left: 72px; }
-}
-
-body.sidebar-collapsed .turnier-footer-bar {
-    left: 72px;
-}
-
-@media (max-width: 600px) {
-    .turnier-footer-bar {
-        left: 0;
-        padding: 10px 12px;
-        flex-wrap: wrap;
-        justify-content: center;
-    }
+/* Kleiner Trennstrich über dem Haken */
+.planungs-gruppe {
+    border-top: 1px solid var(--border);
+    padding-top: 14px;
 }

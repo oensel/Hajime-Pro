@@ -62,5 +62,9 @@ test.describe('Turnier aus der Cloud holen', () => {
         expect(geholt).toBeTruthy();
         expect(geholt.aktiv).toBe(false); // aktiviert wird per Knopf am Wettkampftag
         expect(new URL(page.url()).searchParams.get('turnierId')).toBe(String(geholt.id));
+
+        // die Vereinsliste der Cloud steht danach auch in der lokalen Tabelle (Vorschläge im Feld "Verein")
+        const vereine = (await (await page.request.get('/api/vereine')).json()).map(v => v.name);
+        expect(vereine).toEqual(expect.arrayContaining(['Cloud-Verein Alpha', 'Cloud-Verein Beta']));
     });
 });

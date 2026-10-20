@@ -74,7 +74,8 @@ function exportFuer(t) {
             nutze_gewichtsklassen: 1, anzahl_kampfflaechen: 2, altersklassen: [], mannschafts_altersklassen: [],
             status: 'veroeffentlicht', anmeldeschluss: t.anmeldeschluss
         },
-        kampfflaechen: [], pools: [], teilnehmer: [], kaempfe: [], mannschaften: [], mannschaft_mitglieder: []
+        kampfflaechen: [], pools: [], teilnehmer: [], kaempfe: [], mannschaften: [], mannschaft_mitglieder: [],
+        vereine: ['Cloud-Verein Alpha', 'Cloud-Verein Beta']
     };
 }
 

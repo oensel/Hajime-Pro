@@ -23,6 +23,8 @@
     --hf-auswahl: #e0e7ff;
     --hf-schatten: 0 2px 10px rgba(30, 58, 138, 0.06);
     --hf-nav-hoehe: 60px;
+    --hf-logo-bg: transparent;
+    --hf-logo-pad: 0px;
     color-scheme: light;
 }
 
@@ -47,6 +49,8 @@
         --hf-fehler-rand: #7f1d1d;
         --hf-auswahl: #1e3a8a;
         --hf-schatten: 0 4px 16px rgba(0, 0, 0, 0.5);
+        --hf-logo-bg: #ffffff;
+        --hf-logo-pad: 3px;
         color-scheme: dark;
     }
 }
@@ -71,6 +75,8 @@
     --hf-fehler-rand: #7f1d1d;
     --hf-auswahl: #1e3a8a;
     --hf-schatten: 0 4px 16px rgba(0, 0, 0, 0.5);
+    --hf-logo-bg: #ffffff;
+    --hf-logo-pad: 3px;
     color-scheme: dark;
 }
 
@@ -111,7 +117,8 @@ a { color: var(--hf-primaer); }
     gap: 16px;
     min-height: 52px;
 }
-.hf-marke { font-weight: 700; font-size: 18px; color: var(--hf-primaer); white-space: nowrap; }
+.hf-logo { display: block; height: 34px; width: auto; background: var(--hf-logo-bg); padding: var(--hf-logo-pad) 6px; border-radius: 6px; box-sizing: content-box; }
+.hf-marke { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; color: var(--hf-primaer); white-space: nowrap; }
 .hf-marke-zusatz { font-weight: 500; color: var(--hf-leise); }
 
 .hf-nav {

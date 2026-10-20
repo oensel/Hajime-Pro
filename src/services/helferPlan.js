@@ -170,8 +170,8 @@ function mattenBezeichnung(kampfflaeche, nummer, vorsatz = 'Kampfgericht') {
  * @returns {Promise<boolean>} ob abgeglichen wurde
  */
 export async function synchronisiereWennAktiv(knex, turnierId, { jetzt = new Date() } = {}) {
-    const turnier = await knex('turniere').where({ id: turnierId }).first('status', 'datum');
-    if (!turnier || !AKTIVE_TURNIER_STATUS.includes(turnier.status)) return false;
+    const turnier = await knex('turniere').where({ id: turnierId }).first('status', 'datum', 'planungs_tools');
+    if (!turnier || turnier.planungs_tools === false || !AKTIVE_TURNIER_STATUS.includes(turnier.status)) return false;
     const datum = datumAlsText(turnier.datum);
     if (!datum || datum < heuteBerlin(jetzt)) return false;
     await synchronisiereStandardTaetigkeiten(knex, turnierId);

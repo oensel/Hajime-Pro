@@ -25,7 +25,7 @@ function heuteBerlin(jetzt) {
 async function ladeSichtbaresTurnier(knex, turnierId, benutzerId) {
     const tid = /^\d+$/.test(String(turnierId)) ? parseInt(turnierId, 10) : null;
     const turnier = tid == null ? null : await knex('turniere').where({ id: tid }).first();
-    if (!turnier || turnier.status === 'entwurf') throw new FachFehler(404, 'Turnier nicht gefunden.');
+    if (!turnier || turnier.status === 'entwurf' || turnier.planungs_tools === false) throw new FachFehler(404, 'Turnier nicht gefunden.');
     if (!(await hatHelferZugriffAufVerein(knex, benutzerId, turnier.verein_id))) {
         throw new FachFehler(403, 'Kein Zugriff: Du bist kein freigeschaltetes Mitglied des ausrichtenden Vereins.');
     }
@@ -62,7 +62,8 @@ export async function listeTurniere(knex, req, res, { jetzt = () => new Date() }
         let abfrage = knex('turniere as tu')
             .leftJoin('vereine as v', 'v.id', 'tu.verein_id')
             .where('tu.status', SICHTBARER_STATUS)
-            .where('tu.datum', '>=', heuteBerlin(jetzt()));
+            .where('tu.datum', '>=', heuteBerlin(jetzt()))
+            .where('tu.planungs_tools', true);
         // Super-Admin: alle Vereine (wie hatHelferZugriffAufVerein)
         if (!benutzer.ist_super_admin) {
             const vereinIds = await ladeVereinIdsMitRolle(knex, req.user.id, 'helfer');

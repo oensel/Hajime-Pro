@@ -13,7 +13,7 @@ const gruppe = (page, name) => page.locator('.hf-gruppe').filter({ has: page.loc
 test.beforeAll(async ({ request }) => {
     const resp = await request.post('/api/turniere', {
         data: {
-            bezeichnung: NAME, ort: 'Sporthalle Nord', datum: '2031-11-15', ausrichter: 'Offline Club',
+            planungs_tools: true, bezeichnung: NAME, ort: 'Sporthalle Nord', datum: '2031-11-15', ausrichter: 'Offline Club',
             anzahl_kampfflaechen: 1, beginn_min: 540, ende_min: 780
         }
     });
