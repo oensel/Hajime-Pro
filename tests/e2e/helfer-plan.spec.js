@@ -19,7 +19,7 @@ const zeile = (page, name) => page.locator('.hp-zeile').filter({ has: page.locat
 test.beforeAll(async ({ request }) => {
     const resp = await request.post('/api/turniere', {
         data: {
-            bezeichnung: `Helferplan ${Date.now()}`, ort: 'Halle', datum: '2031-10-04', ausrichter: 'JC Helfer',
+            planungs_tools: true, bezeichnung: `Helferplan ${Date.now()}`, ort: 'Halle', datum: '2031-10-04', ausrichter: 'JC Helfer',
             anzahl_kampfflaechen: 2, beginn_min: 540, ende_min: 960
         }
     });
@@ -165,7 +165,7 @@ test('Knopf „Helferausweise drucken“: ohne Einsätze Fehlermeldung, mit Eins
 
 test('ohne Beginn/Ende erscheint ein Hinweis mit Link zur Turnierverwaltung', async ({ page, request }) => {
     const resp = await request.post('/api/turniere', {
-        data: { bezeichnung: `Helferplan ohne Zeit ${Date.now()}`, ort: 'Halle', datum: '2031-10-05', ausrichter: 'JC Helfer', anzahl_kampfflaechen: 1 }
+        data: { planungs_tools: true, bezeichnung: `Helferplan ohne Zeit ${Date.now()}`, ort: 'Halle', datum: '2031-10-05', ausrichter: 'JC Helfer', anzahl_kampfflaechen: 1 }
     });
     const ohneZeit = (await resp.json()).turnierId;
     await page.goto(`/helfer-plan.html?turnierId=${ohneZeit}`);

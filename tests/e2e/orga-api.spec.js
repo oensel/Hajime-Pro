@@ -9,7 +9,7 @@ let aufgaben;
 
 test.beforeAll(async ({ request }) => {
     const resp = await request.post('/api/turniere', {
-        data: { bezeichnung: `Orga-API ${Date.now()}`, ort: 'Halle', datum: '2032-06-12', ausrichter: 'Offline Club', anzahl_kampfflaechen: 1 }
+        data: { planungs_tools: true, bezeichnung: `Orga-API ${Date.now()}`, ort: 'Halle', datum: '2032-06-12', ausrichter: 'Offline Club', anzahl_kampfflaechen: 1 }
     });
     expect(resp.ok(), await resp.text()).toBeTruthy();
     turnierId = (await resp.json()).turnierId;

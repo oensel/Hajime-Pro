@@ -15,7 +15,7 @@
     width: fit-content;
     max-width: 100%;
     padding: 20px 24px;
-    height: calc(100vh - 112px);
+    height: calc(100vh - 88px);
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
@@ -30,12 +30,6 @@
    Tabelle darf wachsen/schrumpfen und scrollt bei Bedarf. */
 #teilnehmerHauptkarte > *:not(.table-responsive):not(.teilnehmer-stats-grid) {
     flex-shrink: 0;
-}
-
-/* Kompakterer Titelbereich, damit auf dieser Liste mehr Platz für Tabellenzeilen bleibt */
-.form-title-area {
-    margin-bottom: 14px;
-    padding-bottom: 8px;
 }
 
 /* Suche links in der Titelzeile (statt des Icons), Icon-Leiste rechts */

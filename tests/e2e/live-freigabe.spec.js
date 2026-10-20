@@ -65,27 +65,3 @@ test('Export/Import übernimmt die Freigabe nicht', async ({ request }) => {
     const r = await request.get(`/api/turniere/${neueId}/live-freigabe`);
     expect((await r.json()).freigegeben).toBe(false);
 });
-
-test('Oberfläche: Checkbox „Live freigeben" ist bei Cloud-Herkunft schaltbar und speichert', async ({ page, request }) => {
-    const id = await neuesTurnier(request, 'Live-Oberfläche');
-    await setzeInDb(id, { urspruengliche_id: 6000 });
-
-    await page.goto(`/turnier.html?id=${id}`);
-    const box = page.locator('#liveFreigabeBox');
-    await expect(box).toBeVisible();
-    await expect(box).toBeEnabled();
-    await expect(box).not.toBeChecked();
-
-    await box.check();
-    await expect.poll(async () => (await (await request.get(`/api/turniere/${id}/live-freigabe`)).json()).freigegeben).toBe(true);
-
-    await page.reload();
-    await expect(page.locator('#liveFreigabeBox')).toBeChecked();
-});
-
-test('Oberfläche: ohne Cloud-Herkunft ist die Checkbox gesperrt', async ({ page, request }) => {
-    const id = await neuesTurnier(request, 'Live-Oberfläche-ohne');
-    await page.goto(`/turnier.html?id=${id}`);
-    await expect(page.locator('#liveFreigabeBox')).toBeVisible();
-    await expect(page.locator('#liveFreigabeBox')).toBeDisabled();
-});

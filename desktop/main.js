@@ -1,7 +1,7 @@
 // Electron-Hauptprozess des Desktop-Clients (Spec Desktop-Client Abschnitte 3, 4): Server per mDNS
 // suchen, ggf. selbst aktualisieren, einmalig koppeln, dann den bestehenden Client-Knoten
 // (src/app.js mit SYNC_ROLLE=client) auf einem freien localhost-Port starten und client.html zeigen.
-import { app, BrowserWindow, ipcMain, session, shell, systemPreferences } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, session, shell, systemPreferences } from 'electron';
 import net from 'net';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -203,6 +203,22 @@ function oeffneExtern(url) {
 
 function sichereFenster() {
     app.on('web-contents-created', (_e, wc) => {
+        // Seiten wie die Steuerung sperren Neuladen/Schließen per beforeunload (Browser zeigt dazu einen
+        // Dialog). Electron zeigt keinen und bricht das Schließen still ab – das Fenster ließe sich dann
+        // nicht mehr beenden. Stattdessen selbst fragen; "Schließen" lässt das Fenster zu.
+        wc.on('will-prevent-unload', (e) => {
+            const parent = BrowserWindow.fromWebContents(wc) || undefined;
+            const wahl = dialog.showMessageBoxSync(parent, {
+                type: 'question',
+                buttons: ['Schließen', 'Abbrechen'],
+                defaultId: 1,
+                cancelId: 1,
+                title: 'Hajime Pro',
+                message: 'Seite wirklich verlassen?',
+                detail: 'Laufende Eingaben (z.B. ein geladener Kampf) können verloren gehen.'
+            });
+            if (wahl === 0) e.preventDefault(); // preventDefault = beforeunload ignorieren, Fenster schließt
+        });
         wc.on('will-navigate', (e, url) => {
             if (istLokal(url)) return;
             e.preventDefault();

@@ -7,7 +7,7 @@ import { entfernungZuPlzInKm } from '../utils/entfernungHelper.js';
 import { turnierHatEchteKaempfe } from './poolController.js';
 import { FachFehler } from '../utils/fachFehler.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
-import { legeAusVorlageAn, berechneFaelligkeitenNeu } from '../services/orgaPlan.js';
+import { legeAusVorlageAn, berechneFaelligkeitenNeu, ladeOrga } from '../services/orgaPlan.js';
 import { datumAlsText } from '../services/helferPlan.js';
 import { findeTerminKonflikt, ermittleAktivierbarkeit, kopiereTeilnehmerFuerNeuesTurnier, datumAlsIso } from '../shared/turnierAktivierung.js';
 const { istEinzelbenutzerBetrieb } = betriebsmodus;
@@ -56,7 +56,7 @@ export const TURNIER_SPALTEN_OHNE_PDF = [
     'nutze_gewichtsklassen', 'anzahl_kampfflaechen', 'verein_id', 'altersklassen',
     'mannschafts_altersklassen', 'status', 'anmeldeschluss', 'startgeld', 'iban',
     'kontoinhaber', 'verwendungszweck', 'ausschreibung_dateiname', 'farbe_kaempfer2',
-    'beginn_min', 'ende_min', 'waagen_anzahl', 'created_at', 'updated_at'
+    'beginn_min', 'ende_min', 'waagen_anzahl', 'planungs_tools', 'created_at', 'updated_at'
 ];
 
 const AUSSCHREIBUNG_MAX_MB = 10;
@@ -125,6 +125,13 @@ function leseTurnierzeit(body, bisher = null) {
         throw new FachFehler(400, 'Das Turnierende muss nach dem Turnierbeginn liegen.');
     }
     return fragment;
+}
+
+// Planungs-Tools (Helfer-Dienste/Vorbereitung): Standard beim Anlegen in der Cloud an, am Hallen-Server aus.
+// Update: nicht mitgesendet -> unverändert.
+function planungsToolsWert(wert, standard) {
+    if (wert === undefined || wert === null || wert === '') return standard;
+    return wert === true || wert === 1 || wert === '1' || wert === 'true';
 }
 
 // Turnierzeit aus einer Exportdatei, nachsichtig: ungültige oder fehlende Werte (ältere Dateien) werden
@@ -208,16 +215,19 @@ export async function createTurnier(knex, req, res) {
             verwendungszweck: verwendungszweck || null,
             farbe_kaempfer2: gueltigeFarbe(farbe_kaempfer2) || 'blau',
             ...turnierzeit,
+            planungs_tools: planungsToolsWert(req.body.planungs_tools, !istEinzelbenutzerBetrieb()),
             ...ausschreibungFragment
         }).returning('id');
 
         const turnierId = typeof idObj === 'object' ? idObj.id : idObj;
         await synchronisiereKampfflaechen(knex, turnierId, parseInt(anzahl_kampfflaechen) || 1);
-        // Orga-Planer: Standardvorlage anlegen (Best-Effort, ein Fehler darf das Anlegen nicht scheitern lassen).
-        try {
-            await legeAusVorlageAn(knex, turnierId);
-        } catch (orgaFehler) {
-            console.error('Orga-Planer: Vorlage konnte nicht angelegt werden:', orgaFehler);
+        // Orga-Planer: Standardvorlage anlegen (nur mit Planungs-Tools; Best-Effort, ein Fehler darf das Anlegen nicht scheitern lassen).
+        if (planungsToolsWert(req.body.planungs_tools, !istEinzelbenutzerBetrieb())) {
+            try {
+                await legeAusVorlageAn(knex, turnierId);
+            } catch (orgaFehler) {
+                console.error('Orga-Planer: Vorlage konnte nicht angelegt werden:', orgaFehler);
+            }
         }
         res.status(201).json({ success: true, turnierId });
     } catch (error) {
@@ -282,11 +292,23 @@ export async function updateTurnier(knex, req, res) {
             // Nicht mitgesendet -> unverändert lassen
             ...(gueltigeFarbe(farbe_kaempfer2) ? { farbe_kaempfer2 } : {}),
             ...turnierzeit,
+            ...(req.body.planungs_tools !== undefined ? { planungs_tools: planungsToolsWert(req.body.planungs_tools, true) } : {}),
             ...ausschreibungFragment,
             updated_at: knex.fn.now()
         });
 
         await synchronisiereKampfflaechen(knex, parseInt(id), parseInt(anzahl_kampfflaechen) || 1);
+
+        // Planungs-Tools eingeschaltet: Standarddienste (Matten, Waagen) und Orga-Vorlage jetzt anlegen
+        if (planungsToolsWert(req.body.planungs_tools, false)) {
+            try {
+                const { synchronisiereWennAktiv } = await import('../services/helferPlan.js');
+                await synchronisiereWennAktiv(knex, parseInt(id));
+                await legeAusVorlageAn(knex, parseInt(id));
+            } catch (err) {
+                console.error('[Planungs-Tools-Anlegen]:', err.message);
+            }
+        }
 
         // Orga-Planer: Fälligkeiten folgen Turniertag/Anmeldeschluss (Best-Effort).
         if (datumAlsText(bestehendesTurnier.datum) !== datumAlsText(datum)
@@ -452,6 +474,36 @@ export async function getTurniere(knex, req, res) {
         const countMap = {};
         counts.forEach(c => { countMap[c.turnier_id] = parseInt(c.anzahl, 10); });
 
+        // Fortschritt der Planungs-Tools je Turnier: Helfer-Plätze (belegt/Bedarf, ein Slot zählt höchstens mit seinem
+        // Bedarf) und Orga-Hauptaufgaben (erledigt/gesamt). Turniere ohne Planungs-Tools bekommen nichts.
+        const helferMap = {};
+        const orgaMap = {};
+        const mitTools = turniere.filter(t => t.planungs_tools !== false).map(t => t.id);
+        if (mitTools.length > 0) {
+            const slots = await knex('helfer_slots as s')
+                .join('helfer_taetigkeiten as t', 't.id', 's.taetigkeit_id')
+                .whereIn('t.turnier_id', mitTools)
+                .select('s.id as slot_id', 's.bedarf', 't.turnier_id');
+            const belegtJeSlot = {};
+            if (slots.length > 0) {
+                const e = await knex('helfer_einsaetze').whereIn('slot_id', slots.map(x => x.slot_id)).groupBy('slot_id').select('slot_id').count('* as anzahl');
+                e.forEach(x => { belegtJeSlot[x.slot_id] = parseInt(x.anzahl, 10); });
+            }
+            slots.forEach(sl => {
+                const h = helferMap[sl.turnier_id] || (helferMap[sl.turnier_id] = { bedarf: 0, belegt: 0 });
+                h.bedarf += sl.bedarf;
+                h.belegt += Math.min(belegtJeSlot[sl.slot_id] || 0, sl.bedarf);
+            });
+            await Promise.all(mitTools.map(async (tid) => {
+                try {
+                    const { kennzahlen } = await ladeOrga(knex, tid);
+                    if (kennzahlen.gesamt > 0) orgaMap[tid] = { erledigt: kennzahlen.erledigt, gesamt: kennzahlen.gesamt };
+                } catch (err) {
+                    // ohne Orga-Daten (z. B. Secondary) einfach keine Anzeige
+                }
+            }));
+        }
+
         // Altersklassen parsen
         const turniereMitParsen = turniere.map(t => {
             let ak = t.altersklassen;
@@ -480,6 +532,10 @@ export async function getTurniere(knex, req, res) {
                 altersklassen: ak || [],
                 mannschafts_altersklassen: mak || [],
                 teilnehmer_anzahl: countMap[t.id] || 0,
+                helfer_bedarf: helferMap[t.id] ? helferMap[t.id].bedarf : 0,
+                helfer_belegt: helferMap[t.id] ? helferMap[t.id].belegt : 0,
+                orga_gesamt: orgaMap[t.id] ? orgaMap[t.id].gesamt : 0,
+                orga_erledigt: orgaMap[t.id] ? orgaMap[t.id].erledigt : 0,
                 status_effektiv: ermittleEffektivenStatus(t),
                 // Hallen-Server: darf das Turnier jetzt aktiviert werden (Knopf "Aktivieren")?
                 ...(istEinzelbenutzerBetrieb() ? (() => {
@@ -830,6 +886,19 @@ export async function importiereTurnierDaten(knex, sync, daten) {
                 verein = { id: typeof insertedId === 'object' ? insertedId.id : insertedId };
             }
 
+            // Vereinsliste der Quelle (Cloud) in die lokale Tabelle übernehmen, damit die Vorschläge im
+            // Feld "Verein" auch hier alle bekannten Vereine kennen. Vorhandene Namen bleiben unberührt;
+            // ältere Exporte ohne Liste werden einfach übersprungen.
+            const vereinsNamen = [...new Set((Array.isArray(daten.vereine) ? daten.vereine : [])
+                .map(n => (typeof n === 'string' ? n : n && n.name))
+                .map(n => (n || '').trim())
+                .filter(Boolean))];
+            for (let i = 0; i < vereinsNamen.length; i += 200) {
+                await trx('vereine')
+                    .insert(vereinsNamen.slice(i, i + 200).map(name => ({ name })))
+                    .onConflict('name').ignore();
+            }
+
             const [turnierIdObj] = await trx('turniere').insert({
                 bezeichnung: t.bezeichnung,
                 ort: t.ort,
@@ -852,6 +921,7 @@ export async function importiereTurnierDaten(knex, sync, daten) {
                 farbe_kaempfer2: gueltigeFarbe(t.farbe_kaempfer2) || 'blau',
                 // Turnierzeit und Waagenanzahl (Helferplan); ältere Dateien ohne diese Felder: leer bzw. 1
                 ...importTurnierzeit(t),
+                planungs_tools: planungsToolsWert(t.planungs_tools, !istEinzelbenutzerBetrieb()),
                 verein_id: verein.id,
                 // Hält die ID des Quell-Turniers fest, damit ein späterer Online-Reimport
                 // (importTurnierErgebnisse) dieses (neu angelegte, lokal andere) Offline-Turnier
@@ -1085,6 +1155,8 @@ export async function baueTurnierExport(knex, turnierId, turnierZeile = null) {
             kaempfe,
             mannschaften,
             mannschaft_mitglieder: mannschaftMitglieder,
+            // Namen aller bekannten Vereine, damit der Import die lokale Vereinsliste auffüllt
+            vereine: (await knex('vereine').orderBy('name', 'asc').select('name')).map(v => v.name),
             urkunden_vorlagen: await exportiereVorlagen(knex, turnier.verein_id),
             helferplan: await exportiereHelferplan(knex, turnierId, kampfflaechen),
             orga: await exportiereOrga(knex, turnierId)

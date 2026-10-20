@@ -1469,12 +1469,46 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // --- DATEN LADEN ---
+    // Vorschläge für das Feld "Verein": Vereine der bereits angemeldeten Teilnehmer (funktioniert überall,
+    // auch auf Client-Geräten ohne relationale DB) plus die Vereinsliste der Datenbank (/api/vereine; fehlt
+    // sie, etwa am Client-Gerät, bleiben die Teilnehmer-Vereine).
+    let bekannteVereineDb = [];
+    async function ladeBekannteVereine() {
+        try {
+            const resp = await fetch('/api/vereine');
+            if (resp.ok) {
+                const liste = await resp.json();
+                if (Array.isArray(liste)) bekannteVereineDb = liste.map(v => v && v.name).filter(Boolean);
+            }
+        } catch (err) {
+            // keine Vereinsliste verfügbar: nur Vereine der Teilnehmer vorschlagen
+        }
+        aktualisiereVereinVorschlaege();
+    }
+    function aktualisiereVereinVorschlaege() {
+        const liste = document.getElementById('vereinVorschlaege');
+        if (!liste) return;
+        const namen = new Map();
+        [...athletenDaten.map(a => a.verein), ...bekannteVereineDb].forEach(name => {
+            const n = (name || '').trim();
+            if (n && !namen.has(n.toLowerCase())) namen.set(n.toLowerCase(), n);
+        });
+        liste.innerHTML = '';
+        [...namen.values()].sort((a, b) => a.localeCompare(b, 'de')).forEach(n => {
+            const o = document.createElement('option');
+            o.value = n;
+            liste.appendChild(o);
+        });
+    }
+    ladeBekannteVereine();
+
     async function ladeTeilnehmer() {
         try {
             const response = await fetch(`/api/teilnehmer?turnierId=${turnierId}`);
             if (!response.ok) throw new Error('Teilnehmer konnten nicht geladen werden.');
 
             athletenDaten = await response.json();
+            aktualisiereVereinVorschlaege();
             sortiereUndRendere();
             renderStatsKacheln();
 
@@ -1510,6 +1544,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const neu = await response.json();
             if (JSON.stringify(neu) === JSON.stringify(athletenDaten)) return;
             athletenDaten = neu;
+            aktualisiereVereinVorschlaege();
             sortiereUndRendere();
             renderStatsKacheln();
         } catch (err) {

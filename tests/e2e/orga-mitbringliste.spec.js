@@ -10,7 +10,7 @@ let mitOrga;
 
 async function neuesTurnier(request, name) {
     const resp = await request.post('/api/turniere', {
-        data: { bezeichnung: name, ort: 'Halle', datum: '2032-09-18', ausrichter: 'Offline Club', anzahl_kampfflaechen: 1, beginn_min: 540, ende_min: 780 }
+        data: { planungs_tools: true, bezeichnung: name, ort: 'Halle', datum: '2032-09-18', ausrichter: 'Offline Club', anzahl_kampfflaechen: 1, beginn_min: 540, ende_min: 780 }
     });
     expect(resp.ok(), await resp.text()).toBeTruthy();
     const id = (await resp.json()).turnierId;

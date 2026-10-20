@@ -8,44 +8,19 @@
     <style>
         .mdc-card {
             max-width: none;
-            padding: 24px 32px;
-        }
-        .header-section {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 24px;
-            border-bottom: 2px solid var(--border);
-            padding-bottom: 16px;
-        }
-        .header-title-area {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-        .header-title-area h1 {
-            font-size: 24px;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: var(--primary);
-            margin: 0;
-        }
-        .header-title-area .material-icons {
-            font-size: 28px;
-            color: var(--primary);
+            padding: 20px 24px;
         }
         .tournaments-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-            gap: 20px;
+            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+            gap: 24px;
             margin-top: 16px;
         }
         .tournament-card {
             background: var(--bg-card);
             border: 1px solid var(--border);
             border-radius: 6px;
-            padding: 20px;
+            padding: 28px;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
@@ -72,7 +47,7 @@
             box-shadow: var(--shadow);
         }
         .tournament-name {
-            font-size: 18px;
+            font-size: 21px;
             font-weight: bold;
             color: var(--text-main);
             margin: 0 0 12px 0;
@@ -81,8 +56,8 @@
         .tournament-details {
             display: flex;
             flex-direction: column;
-            gap: 8px;
-            font-size: 13px;
+            gap: 10px;
+            font-size: 14px;
             color: var(--text-muted);
             margin-bottom: 20px;
         }
@@ -96,6 +71,24 @@
             color: var(--primary);
             opacity: 0.8;
         }
+        .helfer-fortschritt {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            flex: 1;
+        }
+        .helfer-fortschritt-balken {
+            height: 6px;
+            border-radius: 3px;
+            background: var(--border);
+            overflow: hidden;
+        }
+        .helfer-fortschritt-balken > div {
+            height: 100%;
+            background: var(--primary);
+            border-radius: 3px;
+        }
+        .helfer-fortschritt-balken > div.voll { background: #2e7d32; }
         .deadline-badge {
             font-weight: bold;
             padding: 2px 6px;
@@ -184,16 +177,16 @@
             border: 1px solid rgba(198, 40, 40, 0.3);
         }
         .lokal-grid {
-            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-            gap: 12px;
+            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 18px;
         }
         .tournament-card.kompakt {
-            padding: 12px 14px;
-            gap: 8px;
+            padding: 20px 22px;
+            gap: 12px;
         }
         .tournament-card.kompakt .tournament-name {
-            font-size: 15px;
-            margin: 0 0 6px 0;
+            font-size: 19px;
+            margin: 0 0 8px 0;
         }
         .tournament-card.kompakt .card-actions {
             padding-top: 10px;
@@ -202,12 +195,12 @@
             display: flex;
             align-items: center;
             gap: 6px;
-            font-size: 12px;
+            font-size: 14px;
             color: var(--text-muted);
-            margin-bottom: 6px;
+            margin-bottom: 10px;
         }
         .kompakt-ort .material-icons { font-size: 15px; color: var(--primary); opacity: 0.8; }
-        .info-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+        .info-chips { display: flex; flex-wrap: wrap; gap: 8px; }
         .info-chip {
             font-size: 11px;
             padding: 1px 8px;
@@ -362,9 +355,9 @@
         }
         .cloud-login {
             display: grid;
-            grid-template-columns: 1fr 1fr auto;
+            grid-template-columns: minmax(0, 360px);
             gap: 12px;
-            align-items: end;
+            justify-items: stretch;
             border: 1px dashed var(--border);
             border-radius: 6px;
             padding: 16px;
@@ -377,7 +370,7 @@
             font-weight: 700;
             color: var(--text-muted);
         }
-        .cloud-login .btn { margin: 0; }
+        .cloud-login .btn { margin: 0; justify-self: start; }
         .cloud-fehler {
             margin-top: 12px;
             font-size: 13px;
@@ -401,20 +394,18 @@
 <div class="kanji-right">道</div>
 
 <div class="mdc-card">
-    <div class="header-section">
-        <div class="header-title-area">
-            <span class="material-icons">calendar_month</span>
-            <h1>anstehende Turniere</h1>
-        </div>
-        <div style="display: flex; align-items: center; gap: 10px;">
-            <button type="button" class="btn btn-outlined" id="importTurnierBtn" style="display: none; align-items: center; gap: 8px;">
+    <div class="form-title-area titel-zentriert">
+        <span class="material-icons">calendar_month</span>
+        <h1>anstehende Turniere</h1>
+        <div class="titel-icons">
+            <button type="button" class="toolbar-btn" id="importTurnierBtn" aria-label="Turnier importieren" data-tooltip="Turnier importieren" style="display: none;">
                 <span class="material-icons">upload_file</span>
-                Turnier importieren
+                <span>Turnier importieren</span>
             </button>
             <input type="file" id="importTurnierFileInput" accept=".json" style="display: none;">
-            <button type="button" class="btn btn-raised" id="createBtn" style="display: flex; align-items: center; gap: 8px;" onclick="window.location.href='/turnier.html'">
+            <button type="button" class="toolbar-btn toolbar-btn-akzent" id="createBtn" aria-label="Turnier ausrichten" data-tooltip="Turnier ausrichten" onclick="window.location.href='/turnier.html'">
                 <span class="material-icons">add_circle</span>
-                Turnier ausrichten
+                <span>Turnier ausrichten</span>
             </button>
         </div>
     </div>
@@ -672,18 +663,40 @@
 
             const GESCHLECHT_KUERZEL = { 'männlich': 'm', 'weiblich': 'w', 'mixed': 'x' };
 
-            function getAltersklassenLabels(ak) {
+            function getAltersklassenGruppen(ak) {
                 let keys = [];
                 if (Array.isArray(ak)) {
                     keys = ak;
                 } else if (ak && typeof ak === 'object') {
                     keys = Object.keys(ak);
                 }
-                if (keys.length === 0) return [];
+                if (keys.length === 0) return [[], [], []];
 
-                const labels = keys.map(k => {
+                // Aufsteigend nach Alter (U 9, U 11, ... U 21, dann Männer/Frauen/Mixed, dann Ü-Klassen, dann
+                // sonstige frei benannte Klassen), innerhalb gleichen Alters nach Geschlecht (m, w, x).
+                const GESCHLECHT_REIHENFOLGE = { 'männlich': 0, 'weiblich': 1, 'mixed': 2 };
+                const sortSchluessel = (k) => {
                     const idx = k.indexOf('_');
-                    if (idx === -1) return k;
+                    const geschlecht = idx === -1 ? '' : k.slice(0, idx);
+                    const id = idx === -1 ? k : k.slice(idx + 1);
+                    const zahl = (id.match(/\d+/) || [])[0];
+                    let alter;
+                    if (/^U\s*\d+/i.test(id)) alter = parseInt(zahl, 10);
+                    else if (['Männer', 'Frauen', 'Mixed'].includes(id)) alter = 100;
+                    else if (/^Ü\s*\d+/i.test(id)) alter = 200 + parseInt(zahl, 10);
+                    else alter = 1000;
+                    return { alter, geschlecht: GESCHLECHT_REIHENFOLGE[geschlecht] ?? 3, id };
+                };
+                keys = [...keys].sort((a, b) => {
+                    const x = sortSchluessel(a), y = sortSchluessel(b);
+                    return (x.alter - y.alter) || (x.geschlecht - y.geschlecht) || x.id.localeCompare(y.id, 'de');
+                });
+
+                // Drei Zeilen: 1. gemischt (Ux), 2. weiblich (Uw, Frauen), 3. männlich (Um, Männer), jeweils nach Alter sortiert.
+                const gruppen = [[], [], []];
+                keys.forEach(k => {
+                    const idx = k.indexOf('_');
+                    if (idx === -1) { gruppen[0].push(k); return; }
 
                     const geschlecht = k.slice(0, idx);
                     const id = k.slice(idx + 1);
@@ -693,10 +706,39 @@
                     // ein Kürzel, sonst würden z.B. männlich_Ü 30 und weiblich_Ü 30 im selben Chip
                     // "Ü 30" zusammenfallen und eine der beiden Klassen wäre in der Anzeige unsichtbar.
                     const brauchtKuerzel = !['Männer', 'Frauen', 'Mixed'].includes(id);
-                    return brauchtKuerzel ? `${id}${GESCHLECHT_KUERZEL[geschlecht] || ''}` : id;
+                    const label = brauchtKuerzel ? `${id}${GESCHLECHT_KUERZEL[geschlecht] || ''}` : id;
+                    gruppen[geschlecht === 'weiblich' ? 1 : geschlecht === 'männlich' ? 2 : 0].push(label);
                 });
 
-                return [...new Set(labels)];
+                return gruppen.map(g => [...new Set(g)]);
+            }
+
+            // Fortschritt der Planungs-Tools in Prozent: Helfer-Dienste (belegte Plätze) und Orga (erledigte Aufgaben).
+            // Beides erscheint nur, wenn es etwas zu zählen gibt.
+            function planungsFortschritt(t) {
+                const eintraege = [];
+                if ((t.helfer_bedarf || 0) > 0) {
+                    const belegt = Math.min(t.helfer_belegt || 0, t.helfer_bedarf);
+                    eintraege.push({ name: 'Helfer-Dienste', icon: 'volunteer_activism', prozent: Math.floor((belegt / t.helfer_bedarf) * 100), detail: `${belegt} von ${t.helfer_bedarf} Plätzen` });
+                }
+                if ((t.orga_gesamt || 0) > 0) {
+                    const erledigt = Math.min(t.orga_erledigt || 0, t.orga_gesamt);
+                    eintraege.push({ name: 'Vorbereitung', icon: 'checklist', prozent: Math.floor((erledigt / t.orga_gesamt) * 100), detail: `${erledigt} von ${t.orga_gesamt} Aufgaben` });
+                }
+                return eintraege;
+            }
+            function fortschrittHtml(e, kompakt) {
+                return `<div class="helfer-fortschritt" title="${escHtml(e.detail)}"${kompakt ? ' style="margin-top: 8px;"' : ''}>
+                    <span${kompakt ? ' style="font-size: 13px; color: var(--text-muted);"' : ''}>${escHtml(e.name)}: ${e.prozent} % fertig${kompakt ? '' : ` (${escHtml(e.detail)})`}</span>
+                    <div class="helfer-fortschritt-balken"><div class="${e.prozent >= 100 ? 'voll' : ''}" style="width: ${e.prozent}%"></div></div>
+                </div>`;
+            }
+
+            // Chips als bis zu drei Zeilen (nur nicht leere Gruppen)
+            function chipZeilen(gruppen) {
+                return gruppen.filter(g => g.length > 0).map(g =>
+                    `<div class="ak-chip-row">${g.map(l => `<span class="ak-chip">${escHtml(l)}</span>`).join('')}</div>`
+                ).join('');
             }
 
             const STATUS_LABELS = {
@@ -797,27 +839,21 @@
                                     <span class="material-icons">military_tech</span>
                                     <div>
                                         <span>Altersklassen:</span>
-                                        <div class="ak-chip-row">
-                                            ${(() => {
-                                                const labels = getAltersklassenLabels(t.altersklassen);
-                                                return labels.length > 0
-                                                    ? labels.map(l => `<span class="ak-chip">${escHtml(l)}</span>`).join('')
-                                                    : '<span class="ak-chip ak-chip-empty">–</span>';
-                                            })()}
-                                        </div>
+                                        ${(() => {
+                                            const zeilen = chipZeilen(getAltersklassenGruppen(t.altersklassen));
+                                            return zeilen || '<div class="ak-chip-row"><span class="ak-chip ak-chip-empty">–</span></div>';
+                                        })()}
                                     </div>
                                 </div>
                                 ${(() => {
-                                    const mannschaftLabels = getAltersklassenLabels(t.mannschafts_altersklassen);
-                                    if (mannschaftLabels.length === 0) return '';
+                                    const mannschaftGruppen = getAltersklassenGruppen(t.mannschafts_altersklassen);
+                                    if (mannschaftGruppen.every(g => g.length === 0)) return '';
                                     return `
                                 <div class="detail-item" style="align-items: flex-start;">
                                     <span class="material-icons">groups_2</span>
                                     <div>
                                         <span>Mannschaften:</span>
-                                        <div class="ak-chip-row">
-                                            ${mannschaftLabels.map(l => `<span class="ak-chip">${escHtml(l)}</span>`).join('')}
-                                        </div>
+                                        ${chipZeilen(mannschaftGruppen)}
                                     </div>
                                 </div>`;
                                 })()}
@@ -825,6 +861,11 @@
                                     <span class="material-icons">groups</span>
                                     <span>Gemeldete Teilnehmer: ${t.teilnehmer_anzahl || 0}</span>
                                 </div>
+                                ${planungsFortschritt(t).map(e => `
+                                <div class="detail-item">
+                                    <span class="material-icons">${e.icon}</span>
+                                    ${fortschrittHtml(e, false)}
+                                </div>`).join('')}
                                 <div class="detail-item">
                                     <span class="material-icons">timer</span>
                                     <span>Anmeldefrist:
@@ -852,7 +893,8 @@
                 const hallen = hallenStatus(t);
                 const o = t.datum ? new Date(t.datum) : null;
                 const dateStr = o ? `${String(o.getDate()).padStart(2, '0')}.${String(o.getMonth() + 1).padStart(2, '0')}.${o.getFullYear()}` : '';
-                const labels = [...getAltersklassenLabels(t.altersklassen), ...getAltersklassenLabels(t.mannschafts_altersklassen)];
+                const einzelG = getAltersklassenGruppen(t.altersklassen), teamG = getAltersklassenGruppen(t.mannschafts_altersklassen);
+                const chipGruppen = einzelG.map((g, i) => [...g, ...teamG[i]]);
                 const waehlen = istFreigegeben
                     ? `<button type="button" class="btn btn-raised" onclick="window.location.href='/teilnehmer.html?turnierId=${encodeURIComponent(t.id)}'">Auswählen</button>` : '';
                 return `
@@ -865,7 +907,8 @@
                                 <span class="info-chip">${escHtml(t.teilnehmer_anzahl || 0)} Teilnehmer</span>
                                 ${t.anmeldeschluss ? `<span class="info-chip">Frist ${escHtml(String(t.anmeldeschluss).slice(0, 10).split('-').reverse().join('.'))}</span>` : ''}
                             </div>
-                            ${labels.length ? `<div class="ak-chip-row">${labels.map(l => `<span class="ak-chip">${escHtml(l)}</span>`).join('')}</div>` : ''}
+                            ${chipZeilen(chipGruppen)}
+                            ${planungsFortschritt(t).map(e => fortschrittHtml(e, true)).join('')}
                         </div>
                         <div class="card-actions">
                             ${waehlen}

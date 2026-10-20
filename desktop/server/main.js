@@ -7,7 +7,7 @@
 //    den Client-Installer) UND läuft ohne jedes Netzwerk (der Browser dieser App spricht über localhost).
 //  - Wird das Fenster geschlossen, läuft der Server im Tray weiter (Clients im LAN brauchen ihn);
 //    "Beenden" stoppt Server und Datenbank sauber.
-import { app, BrowserWindow, Menu, Tray, dialog, nativeImage, session, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, Tray, dialog, nativeImage, session, shell } from 'electron';
 import { spawn } from 'child_process';
 import { accessSync, constants, readFileSync } from 'fs';
 import net from 'net';
@@ -179,6 +179,46 @@ async function starteServer() {
     await warteAufServer(`http://127.0.0.1:${port}/api/config`);
     origin = `http://localhost:${port}`;
     return expressApp;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Passwort für den Schreibzugriff
+// ---------------------------------------------------------------------------------------------
+// Ohne Passwort ist die Turnierleitung offen. Beim Start fragt ein Dialog danach und weist darauf hin, dass die
+// anderen Clients es ebenfalls brauchen. "Später" (oder Schließen) lässt den Server offen, beim nächsten Start
+// kommt die Frage erneut. Abschalten (Rauchtests): HAJIME_PASSWORT_DIALOG=false.
+async function fragePasswortAb() {
+    if (process.env.HAJIME_PASSWORT_DIALOG === 'false') return;
+    const steuerungPasswort = await import(pathToFileURL(path.join(WURZEL, 'src/utils/steuerungPasswort.js')).href);
+    await steuerungPasswort.ladeJetzt();
+    if (steuerungPasswort.istGesetzt()) return;
+
+    await new Promise((fertig) => {
+        const fenster = new BrowserWindow({
+            width: 480, height: 470, resizable: false, minimizable: false, title: 'Hajime Pro Server',
+            autoHideMenuBar: true, alwaysOnTop: true,
+            webPreferences: { preload: path.join(hier, 'fenster/passwort-preload.cjs'), contextIsolation: true, sandbox: true }
+        });
+        fenster.setMenuBarVisibility(false);
+        const aufraeumen = () => {
+            ipcMain.removeHandler('steuerung-passwort:setzen');
+            ipcMain.removeAllListeners('steuerung-passwort:spaeter');
+            if (!fenster.isDestroyed()) fenster.destroy();
+            fertig();
+        };
+        ipcMain.handle('steuerung-passwort:setzen', async (_e, neu) => {
+            try {
+                await steuerungPasswort.aendere(neu);
+                setImmediate(aufraeumen);
+                return { ok: true };
+            } catch (err) {
+                return { ok: false, fehler: err.status === 400 ? err.message : 'Das Passwort konnte nicht gespeichert werden.' };
+            }
+        });
+        ipcMain.once('steuerung-passwort:spaeter', aufraeumen);
+        fenster.on('closed', aufraeumen);
+        fenster.loadFile(path.join(hier, 'fenster/passwort.html'));
+    });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -467,6 +507,7 @@ async function start() {
         app.exit(1);
         return;
     }
+    await fragePasswortAb().catch((err) => console.warn(`[Server-App] Passwort-Dialog übersprungen: ${err.message}`));
     erzeugeTray();
     await erzeugeHauptfenster();
     hauptFenster.maximize();

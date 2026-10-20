@@ -26,6 +26,7 @@
     { "id": "Männer", "bezeichnung": "Männer", "jahrgaenge": "bis 09", "kampfzeit": "240", "gewichtsklassen": ["-60", "-66", "-73", "-81", "-90", "-100", "+100"] }
   ],
   "mixed": [
+    { "id": "U9", "bezeichnung": "U 9", "jahrgaenge": "18-20", "kampfzeit": "120" },
     { "id": "U11", "bezeichnung": "U 11", "jahrgaenge": "16-18", "kampfzeit": "120" }
   ]
 }

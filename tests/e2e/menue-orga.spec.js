@@ -11,7 +11,7 @@ const aufgabe = (key) => orga.phasen.flatMap((p) => p.aufgaben).find((a) => a.vo
 
 test.beforeAll(async ({ request }) => {
     const resp = await request.post('/api/turniere', {
-        data: { bezeichnung: `Menü-Orga ${Date.now()}`, ort: 'Halle', datum: '2033-04-09', ausrichter: 'Offline Club', anzahl_kampfflaechen: 1 }
+        data: { planungs_tools: true, bezeichnung: `Menü-Orga ${Date.now()}`, ort: 'Halle', datum: '2033-04-09', ausrichter: 'Offline Club', anzahl_kampfflaechen: 1 }
     });
     expect(resp.ok(), await resp.text()).toBeTruthy();
     turnierId = (await resp.json()).turnierId;

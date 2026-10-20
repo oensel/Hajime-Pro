@@ -33,7 +33,7 @@ const tagVerschoben = (tage) => {
 test.beforeAll(async ({ request }) => {
     db = knexLib({ client: 'pg', connection: testDbVerbindung, pool: { min: 0, max: 2 } });
     const resp = await request.post('/api/turniere', {
-        data: { bezeichnung: TURNIER, ort: 'Halle', datum: '2032-06-12', ausrichter: 'Offline Club', anzahl_kampfflaechen: 1 }
+        data: { planungs_tools: true, bezeichnung: TURNIER, ort: 'Halle', datum: '2032-06-12', ausrichter: 'Offline Club', anzahl_kampfflaechen: 1 }
     });
     expect(resp.ok(), await resp.text()).toBeTruthy();
     turnierId = (await resp.json()).turnierId;

@@ -12,7 +12,7 @@ const DB_PORT = 5650;
 
 function starteApp(userData) {
     const pfad = process.env.HAJIME_APP_PFAD;
-    const env = { ...process.env, HAJIME_PORT: String(APP_PORT), HAJIME_DB_PORT: String(DB_PORT), MDNS_AKTIV: 'false', PORT80_WEITERLEITUNG: 'false' };
+    const env = { ...process.env, HAJIME_PORT: String(APP_PORT), HAJIME_DB_PORT: String(DB_PORT), STEUERUNG_PASSWORD: '', MDNS_AKTIV: 'false', PORT80_WEITERLEITUNG: 'false' };
     return electron.launch(pfad
         ? { executablePath: pfad, args: [...SANDBOX_ARGS, `--user-data-dir=${userData}`], env }
         : { args: ['desktop/server/main.js', ...SANDBOX_ARGS, `--user-data-dir=${userData}`], env });
@@ -27,6 +27,17 @@ test('startet den Server mit eigener Datenbank, zeigt das Frontend und stoppt di
     let beendet = false;
     app.on('close', () => { beendet = true; });
     try {
+        // Ohne eingerichtetes Passwort fragt der Server beim Start danach und nennt den Grund (andere Clients brauchen es).
+        const dialog = await app.waitForEvent('window', { predicate: (w) => w.url().endsWith('passwort.html'), timeout: 200_000 });
+        await expect(dialog.locator('body')).toContainText('anderen Clients');
+        await dialog.fill('#neu', 'kurz');
+        await dialog.fill('#wiederholung', 'kurz');
+        await dialog.click('#speichern');
+        await expect(dialog.locator('#fehler')).toContainText('mindestens 8 Zeichen');
+        await dialog.fill('#neu', 'Turnier-Leitung-1');
+        await dialog.fill('#wiederholung', 'Turnier-Leitung-1');
+        await dialog.click('#speichern');
+
         // Frontend des laufenden Servers (localhost, auch ohne Netzwerk nutzbar)
         const fenster = await app.waitForEvent('window', { predicate: (w) => w.url().startsWith(`http://localhost:${APP_PORT}/`), timeout: 200_000 });
         await expect(fenster.locator('body')).toBeVisible();
@@ -38,6 +49,9 @@ test('startet den Server mit eigener Datenbank, zeigt das Frontend und stoppt di
         const turniere = await fetch(`http://localhost:${APP_PORT}/api/turniere`);
         expect(turniere.ok).toBe(true);
         expect(existsSync(postmaster)).toBe(true);
+        // Das Passwort gilt jetzt für den Schreibzugriff.
+        const modus = await (await fetch(`http://localhost:${APP_PORT}/api/auth/mode`)).json();
+        expect(modus.passwordRequired).toBe(true);
 
         // Release-Build: Das Paket bringt die signierten Client-Dateien mit (release.yml setzt die Variable). Der
         // frisch gestartete Server kopiert sie selbst — danach bietet /download alle erwarteten Plattformen an.
