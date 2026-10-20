@@ -225,12 +225,15 @@ test('Helfer-API und Helferplan-API: Rechte, Eintragen, Frist, Fremdturniere, Ma
         assert.equal(austragenSpaet.daten.code, 'frist');
         assert.equal((await post('u-helfer2', '/api/helfer/einsaetze', { slotId: slot2 })).status, 403);
         assert.equal((await get('u-helfer', '/api/helfer/meine-dienste')).daten[0].darfAustragen, false);
-        const orgaEin = await post('u-benutzer', `/api/helfer-plan/slots/${slot2}/einsaetze`, { benutzerId: 'u-helfer2' });
+        // Helfer ein-/austragen (Zuweisen von Diensten) nur für Admins bzw. Super-Admin, nicht für die Rolle "Benutzer"
+        assert.equal((await post('u-benutzer', `/api/helfer-plan/slots/${slot2}/einsaetze`, { benutzerId: 'u-helfer2' })).status, 403);
+        const orgaEin = await post('u-super', `/api/helfer-plan/slots/${slot2}/einsaetze`, { benutzerId: 'u-helfer2' });
         assert.equal(orgaEin.status, 201, JSON.stringify(orgaEin.daten));
-        const manuell = await post('u-benutzer', `/api/helfer-plan/slots/${slot2}/einsaetze`, { name: 'Oma Erna' });
+        const manuell = await post('u-super', `/api/helfer-plan/slots/${slot2}/einsaetze`, { name: 'Oma Erna' });
         assert.equal(manuell.status, 201);
-        assert.equal((await post('u-benutzer', `/api/helfer-plan/slots/${slot2}/einsaetze`, {})).status, 400);
-        assert.equal((await del('u-benutzer', `/api/helfer-plan/einsaetze/${orgaEin.daten.id}`)).status, 200);
+        assert.equal((await post('u-super', `/api/helfer-plan/slots/${slot2}/einsaetze`, {})).status, 400);
+        assert.equal((await del('u-benutzer', `/api/helfer-plan/einsaetze/${orgaEin.daten.id}`)).status, 403);
+        assert.equal((await del('u-super', `/api/helfer-plan/einsaetze/${orgaEin.daten.id}`)).status, 200);
         // Eigenen Einsatz eines anderen über die Helfer-Route austragen: 403
         uhr = VOR_FRIST;
         assert.equal((await del('u-helfer2', `/api/helfer/einsaetze/${einsatzHelfer}`)).status, 403);

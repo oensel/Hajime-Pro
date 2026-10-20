@@ -326,6 +326,38 @@ export function requireRolle(knex, mindestens) {
 }
 
 /**
+ * Orga-Planer: Aufgaben zuweisen darf nur ein Admin des Vereins (oder Super-Admin). Alle anderen dürfen
+ * sich nur selbst eintragen (eigene Konto-ID oder der eigene Name ohne E-Mail, z. B. für die Mitbringliste);
+ * Zuweisungen an andere, Namen mit E-Mail (= Einladungsmail) und das Austragen anderer bleiben den Admins.
+ * Setzt ein bereits geprüftes Turnier-Gate (requireTournamentEditAccess) voraus.
+ * @param {Object} knex - Knex instance
+ */
+export function requireAdminOderSelbstzuweisung(knex) {
+    return async (req, res, next) => {
+        if (istEinzelbenutzerBetrieb()) return next();
+        try {
+            const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
+            if (user && (user.ist_super_admin || rolleReicht(user.verein_rolle, 'admin'))) return next();
+
+            const b = req.body || {};
+            const eigenerName = user ? ([user.vorname, user.nachname].filter(Boolean).join(' ').trim() || user.email || '') : '';
+            const selbstPerKonto = b.benutzerId != null && String(b.benutzerId) === String(req.user.id);
+            const selbstPerName = b.benutzerId == null && b.frei !== false && !b.email
+                && typeof b.name === 'string' && eigenerName !== '' && b.name.trim() === eigenerName;
+            if (selbstPerKonto || selbstPerName) return next();
+
+            return res.status(403).json({
+                success: false,
+                error: 'Aufgaben zuweisen und Einladungen verschicken dürfen nur Admins des Vereins. Sie können sich selbst eintragen.'
+            });
+        } catch (error) {
+            console.error('[Zuweisungs-Check-Fehler]:', error);
+            return res.status(500).json({ success: false, error: 'Interner Server-Fehler bei der Berechtigungsprüfung.' });
+        }
+    };
+}
+
+/**
  * Middleware factory to restrict a route to the Super-Admin (Bootstrapping-Rolle, siehe
  * src/utils/superAdmin.js). Nicht an Vereinsmitgliedschaft gebunden.
  * @param {Object} knex - Knex instance

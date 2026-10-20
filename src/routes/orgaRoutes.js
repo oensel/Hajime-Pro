@@ -1,6 +1,6 @@
 import express from 'express';
 import { erzeugeApiRatenbegrenzung } from '../middleware/apiRatenbegrenzung.js';
-import { requireAuth, requireTournamentEditAccess } from '../middleware/auth.js';
+import { requireAuth, requireTournamentEditAccess, requireRolle, requireAdminOderSelbstzuweisung } from '../middleware/auth.js';
 import {
     pruefeAufgabeVorhanden, ladeOrgaRoute, legeAufgabeAnRoute, aendereAufgabeRoute, loescheAufgabeRoute,
     setzeErledigtRoute, weiseZuRoute, einladungErneutRoute, vorlageNachladenRoute, ladeMitgliederRoute
@@ -9,6 +9,7 @@ import {
 /**
  * Orga-Planer der Orga (/api/orga): Super-Admin sowie Admins/Benutzer des ausrichtenden Vereins
  * (requireTournamentEditAccess), im Einzelbenutzerbetrieb offen (Schreiben hinter requireWriteAuth, in app.js).
+ * Zuweisen (außer an sich selbst) und Einladungsmails nur für Admins des Vereins bzw. Super-Admin.
  * Bewusst ohne requireTurnierAktiv: Aufgaben der Nachbereitung fallen nach dem Turnier an.
  * @param {Object} knex
  * @param {{ sende?: Function }} [optionen] - Mailversand (Tests)
@@ -35,8 +36,8 @@ export function getOrgaRoutes(knex, { sende } = {}) {
     router.put('/aufgaben/:id', ...mitAufgabe, (req, res) => aendereAufgabeRoute(knex, req, res));
     router.delete('/aufgaben/:id', ...mitAufgabe, (req, res) => loescheAufgabeRoute(knex, req, res));
     router.post('/aufgaben/:id/erledigt', ...mitAufgabe, (req, res) => setzeErledigtRoute(knex, req, res));
-    router.post('/aufgaben/:id/zuweisen', ...mitAufgabe, (req, res) => weiseZuRoute(knex, req, res, { sende }));
-    router.post('/aufgaben/:id/einladung-erneut', ...mitAufgabe, (req, res) => einladungErneutRoute(knex, req, res, { sende }));
+    router.post('/aufgaben/:id/zuweisen', ...mitAufgabe, requireAdminOderSelbstzuweisung(knex), (req, res) => weiseZuRoute(knex, req, res, { sende }));
+    router.post('/aufgaben/:id/einladung-erneut', ...mitAufgabe, requireRolle(knex, 'admin'), (req, res) => einladungErneutRoute(knex, req, res, { sende }));
 
     return router;
 }
