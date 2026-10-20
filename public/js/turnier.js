@@ -169,8 +169,10 @@ document.addEventListener('DOMContentLoaded', () => {
         modeSelect.className = 'turnier-ak-mode-group';
 
         // Frei benannte Klassen haben keine vordefinierte DJB-Gewichtsklassen-Liste, gegen die
-        // sich Teilnehmer einordnen ließen — dafür kommt nur "Gewichtsnah" infrage.
-        if (!istFrei) {
+        // sich Teilnehmer einordnen ließen — dafür kommt nur "Gewichtsnah" infrage. Dasselbe gilt für
+        // Mixed-Klassen (Schlüssel "mixed_<AK>"): dort gibt es keine DJB-Gewichtsklassen.
+        const nurGewichtsnah = istFrei || uniqueId.startsWith('mixed_');
+        if (!nurGewichtsnah) {
             const radioDjbLbl = document.createElement('label');
             const radioDjb = document.createElement('input');
             radioDjb.type = 'radio';
@@ -187,7 +189,7 @@ document.addEventListener('DOMContentLoaded', () => {
         radioGw.type = 'radio';
         radioGw.name = `modus_${uniqueId}`;
         radioGw.value = 'gewichtsnahe';
-        radioGw.checked = istFrei;
+        radioGw.checked = nurGewichtsnah;
         radioGwLbl.appendChild(radioGw);
         radioGwLbl.appendChild(document.createTextNode('Gewichtsnah'));
         modeSelect.appendChild(radioGwLbl);
