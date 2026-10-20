@@ -137,7 +137,14 @@ test('Orga-API: Rechte, Turnierbindung der Aufgaben-IDs, Helfer-Routen, Mitbring
         assert.equal((await post('u-benutzer', `/api/orga/aufgaben/${wiegen.id}/einladung-erneut`)).status, 403);
         assert.equal(mails.length, 0);
         assert.equal((await post('u-benutzer', `/api/orga/aufgaben/${wiegen.id}/zuweisen`, { name: 'benutzer Test' })).status, 200); // eigener Name ohne E-Mail
+        // Aufheben nur für Admins (auch nicht mit eigener Konto-ID getarnt), fremde Zuweisung nicht an sich ziehen
+        assert.equal((await post('u-benutzer', `/api/orga/aufgaben/${wiegen.id}/zuweisen`, { frei: false, benutzerId: 'u-benutzer' })).status, 403);
+        assert.equal((await post('u-benutzer', `/api/orga/aufgaben/${wiegen.id}/zuweisen`, { benutzerId: 'u-benutzer' })).status, 200); // schon meine
+        await post('u-admin', `/api/orga/aufgaben/${wiegen.id}/zuweisen`, { benutzerId: 'u-helfer2' });
+        assert.equal((await post('u-benutzer', `/api/orga/aufgaben/${wiegen.id}/zuweisen`, { benutzerId: 'u-benutzer' })).status, 403); // gehört u-helfer2
+        assert.equal((await post('u-benutzer', `/api/orga/aufgaben/${wiegen.id}/zuweisen`, { name: 'benutzer Test' })).status, 403);
         await post('u-admin', `/api/orga/aufgaben/${wiegen.id}/zuweisen`, { frei: false });
+        mails.length = 0;
 
         // Zuweisen (Admin): Konto (Mail), Nichtmitglied 400
         const z = await post('u-admin', `/api/orga/aufgaben/${wiegen.id}/zuweisen`, { benutzerId: 'u-helfer' });
