@@ -163,6 +163,33 @@ body {
     text-align: left;
 }
 
+/* --- MENÜ BEIM SEITENWECHSEL (menu.js) ---
+   Solange der gemerkte Menüstand als Platzhalter dasteht, rechnet das echte Menü unsichtbar im
+   Hintergrund. Die Überblendung zwischen zwei Seiten (@view-transition, von menu.js gesetzt) bleibt
+   kurz; gleiche Bildteile wie Seiten- und Kopfleiste ändern sich dabei nicht. */
+.menue-verborgen {
+    visibility: hidden !important;
+}
+
+/* Während der Übergabe an das echte Menü keine Übergänge (.menu-item hat transition: all): sonst
+   blendet das Sichtbarwerden bzw. die Hervorhebung erst langsam ein und die Punkte flackern. */
+.menue-ohne-uebergang,
+.menue-ohne-uebergang * {
+    transition: none !important;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+    animation-duration: 120ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    ::view-transition-old(root),
+    ::view-transition-new(root) {
+        animation: none;
+    }
+}
+
 /* --- SCHMALE FIXIERTE KOPFLEISTE RECHTS NEBEN DER SIDEBAR (Profil/Theme/Logout) --- */
 .top-header-bar {
     position: fixed;
@@ -352,6 +379,9 @@ body {
     font-size: 20px;
     vertical-align: middle;
     flex-shrink: 0;
+    /* Feste Breite: solange die Icon-Schrift nach einem Seitenwechsel noch lädt, wäre das Icon so breit
+       wie sein Name ("calendar_month") und der Text daneben spränge. */
+    width: 20px;
 }
 
 /* Gelbes Achtung-Icon auf einem Menüpunkt (z.B. Pools: mind. ein Pool wartet auf
