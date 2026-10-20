@@ -16,49 +16,54 @@
 <div class="kanji-left">柔</div>
 <div class="kanji-right">道</div>
 
-<div class="turnier-page">
-    <!-- Kopfzeile: Titel links, Lebenszyklus-Aktionen rechts (nur im Edit-Modus je nach Status sichtbar) -->
-    <div class="turnier-page-header">
-        <div class="turnier-page-header-title">
-            <span class="material-icons">calendar_month</span>
-            <h1 id="formTitle">Turnier</h1>
-        </div>
-        <div class="turnier-page-header-actions">
+<div class="turnier-page mdc-card">
+    <!-- Titelzeile wie auf teilnehmer.html: Icon links, Überschrift mittig, Icon-Leiste rechts (Aktionen je nach Status) -->
+    <div class="form-title-area titel-zentriert">
+        <span class="material-icons">calendar_month</span>
+        <h1 id="formTitle">Turnier</h1>
+        <div class="titel-icons">
             <!-- "Veröffentlichen" gibt es nur in der Cloud; am Hallen-Server bleibt der Knopf ausgeblendet -->
-            <button type="button" class="btn btn-outlined turnier-header-btn" id="veroeffentlichenBtn" style="display: none;">
+            <button type="button" class="toolbar-btn" id="veroeffentlichenBtn" aria-label="Veröffentlichen" data-tooltip="Veröffentlichen" style="display: none;">
                 <span class="material-icons">publish</span>
-                Veröffentlichen
+                <span>Veröffentlichen</span>
             </button>
-            <button type="button" class="btn btn-raised turnier-header-btn" id="aktivierenBtn" style="display: none;">
+            <button type="button" class="toolbar-btn toolbar-btn-akzent" id="aktivierenBtn" aria-label="Turnier aktivieren" data-tooltip="Turnier aktivieren" style="display: none;">
                 <span class="material-icons">play_arrow</span>
-                Turnier aktivieren
+                <span>Turnier aktivieren</span>
             </button>
-            <button type="button" class="btn btn-outlined turnier-header-btn" id="duplizierenBtn" style="display: none;">
+            <button type="button" class="toolbar-btn" id="duplizierenBtn" aria-label="Duplizieren" data-tooltip="Duplizieren" style="display: none;">
                 <span class="material-icons">content_copy</span>
-                Duplizieren
+                <span>Duplizieren</span>
             </button>
-            <button type="button" class="btn btn-outlined turnier-header-btn" id="durchfuehrungBeendenBtn" style="display: none;">
+            <button type="button" class="toolbar-btn" id="durchfuehrungBeendenBtn" aria-label="Durchführung beenden" data-tooltip="Durchführung beenden" style="display: none;">
                 <span class="material-icons">flag</span>
-                Durchführung beenden
+                <span>Durchführung beenden</span>
             </button>
-            <button type="button" class="btn btn-outlined turnier-header-btn" id="importTurnierBtn" style="display: none;">
+            <button type="button" class="toolbar-btn" id="importTurnierBtn" aria-label="Ergebnisse hochladen" data-tooltip="Ergebnisse hochladen" style="display: none;">
                 <span class="material-icons">upload_file</span>
-                Ergebnisse hochladen
+                <span>Ergebnisse hochladen</span>
             </button>
             <input type="file" id="importTurnierFileInput" accept=".json" style="display: none;">
-            <button type="button" class="btn btn-outlined turnier-header-btn turnier-header-btn-danger" id="absagenBtn" style="display: none;">
+            <button type="button" class="toolbar-btn toolbar-btn-danger" id="absagenBtn" aria-label="Absagen" data-tooltip="Absagen" style="display: none;">
                 <span class="material-icons">cancel</span>
-                Absagen
+                <span>Absagen</span>
             </button>
-            <button type="button" class="btn btn-outlined turnier-header-btn turnier-header-btn-danger" id="loeschenBtn" style="display: none;">
+            <button type="button" class="toolbar-btn toolbar-btn-danger" id="loeschenBtn" aria-label="Löschen" data-tooltip="Löschen" style="display: none;">
                 <span class="material-icons">delete</span>
-                Löschen
+                <span>Löschen</span>
             </button>
-            <label class="turnier-header-btn" id="liveFreigabeGroup" style="display: none; align-items: center; gap: 6px; cursor: pointer;" title="Teilnehmer-App: Matte, Position und Push für dieses Turnier aus der Cloud anbieten">
-                <input type="checkbox" id="liveFreigabeBox">
-                <span class="material-icons">sensors</span>
-                Live freigeben
-            </label>
+            <button type="button" class="toolbar-btn" id="exportTurnierBtn" aria-label="Turnier exportieren" data-tooltip="Turnier exportieren" style="display: none;">
+                <span class="material-icons">download</span>
+                <span>Turnier exportieren</span>
+            </button>
+            <button type="button" class="toolbar-btn" id="abbrechenBtn" aria-label="Abbrechen" data-tooltip="Abbrechen">
+                <span class="material-icons">close</span>
+                <span>Abbrechen</span>
+            </button>
+            <button type="submit" form="turnierForm" class="toolbar-btn toolbar-btn-akzent" id="submitBtn" aria-label="Eintrag speichern" data-tooltip="Eintrag speichern">
+                <span class="material-icons">save</span>
+                <span>Eintrag speichern</span>
+            </button>
         </div>
     </div>
     <div id="importTurnierStatus" style="display: none; margin: 0 0 16px 0; font-size: 13px; font-weight: bold; color: var(--text-muted);"></div>
@@ -78,8 +83,20 @@
                             <input type="text" id="bezeichnung" required placeholder="z.B. Sommerturnier 2026">
                         </div>
                         <div class="form-group">
-                            <label for="datum">Wettkampftag</label>
-                            <input type="date" id="datum" required>
+                            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                                <div style="flex: 0 0 115px;">
+                                    <label for="datum">Wettkampftag</label>
+                                    <input type="date" id="datum" required>
+                                </div>
+                                <div class="planungs-feld" style="flex: 0 0 90px; margin-left: auto;">
+                                    <label for="beginn">Beginn</label>
+                                    <input type="time" id="beginn">
+                                </div>
+                                <div class="planungs-feld" style="flex: 0 0 90px;">
+                                    <label for="ende">Ende</label>
+                                    <input type="time" id="ende">
+                                </div>
+                            </div>
                         </div>
                         <div class="form-group" style="display: grid; grid-template-columns: 90px 1fr; gap: 12px;">
                             <div>
@@ -118,34 +135,25 @@
                             <input type="text" id="ausrichter" required placeholder="z.B. Judo Club Senden">
                         </div>
                         <div class="form-group">
-                            <label for="anzahl_kampfflaechen">Bereitgestellte Matten (Flächen)</label>
-                            <input type="number" id="anzahl_kampfflaechen" min="1" value="1" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="beginn">Beginn des Wettkampfs</label>
-                            <input type="time" id="beginn">
-                            <small style="color: var(--text-muted);">Wird für den Helferplan verwendet.</small>
-                        </div>
-                        <div class="form-group">
-                            <label for="ende">Ende des Wettkampfs</label>
-                            <input type="time" id="ende">
-                            <small style="color: var(--text-muted);">Wird für den Helferplan verwendet.</small>
-                        </div>
-                        <div class="form-group">
-                            <label for="waagen_anzahl">Anzahl Waagen</label>
-                            <input type="number" id="waagen_anzahl" min="1" max="10" value="1">
-                            <small style="color: var(--text-muted);">Wird für den Helferplan verwendet.</small>
-                        </div>
-                        <div class="form-group">
-                            <label for="farbe_kaempfer2">Kämpfer 2 trägt</label>
-                            <select id="farbe_kaempfer2" hidden>
-                                <option value="blau">Blau</option>
-                                <option value="rot">Rot</option>
-                            </select>
-                            <div class="farb-schalter" id="farbSchalter" role="switch" aria-checked="false" aria-label="Farbe von Kämpfer 2" tabindex="0">
-                                <div class="farb-schalter-knopf"></div>
-                                <span id="farbSchalterBlau" class="aktiv"><i class="farb-schalter-punkt"></i>Blau</span>
-                                <span id="farbSchalterRot">Rot</span>
+                            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
+                                <div>
+                                    <label for="anzahl_kampfflaechen">Matten</label>
+                                    <input type="number" id="anzahl_kampfflaechen" min="1" value="1" required>
+                                </div>
+                                <div>
+                                    <label for="waagen_anzahl">Waagen</label>
+                                    <input type="number" id="waagen_anzahl" min="1" max="10" value="1">
+                                </div>
+                                <div>
+                                    <label for="farbe_kaempfer2">Kämpfer 2</label>
+                                    <div class="farb-auswahl">
+                                        <i class="farb-auswahl-punkt" id="farbPunkt"></i>
+                                        <select id="farbe_kaempfer2">
+                                            <option value="blau">Blau</option>
+                                            <option value="rot">Rot</option>
+                                        </select>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         <div class="form-group" id="anmeldeschlussGroup" style="display: none;">
@@ -163,6 +171,12 @@
                                 <span class="material-icons" id="ausschreibungAnsehenBtn" title="Ausschreibung ansehen" style="display: none; cursor: pointer; color: var(--primary); font-size: 20px;">visibility</span>
                                 <span class="material-icons" id="ausschreibungEntfernenBtn" title="Ausschreibung entfernen" style="display: none; cursor: pointer; color: #c62828; font-size: 20px;">delete</span>
                             </div>
+                        </div>
+                        <div class="form-group planungs-gruppe">
+                            <label class="planungs-haken" for="planungs_tools" title="Helfer-Dienste und Orga (Vorbereitung) für dieses Turnier">
+                                Planungs-Tools verwenden
+                                <input type="checkbox" id="planungs_tools">
+                            </label>
                         </div>
                     </div>
                 </div>
@@ -193,7 +207,7 @@
                 </div>
             </div>
 
-            <!-- RECHTE SPALTE: Austragungs-Altersklassen je Wettkampfform -->
+            <!-- RECHTE SPALTE: Altersklassen je Wettkampfform -->
             <div class="turnier-col-right">
                 <div class="mdc-card turnier-section-card">
                     <div class="turnier-card-header">
@@ -201,7 +215,6 @@
                         <h2>Einzel</h2>
                     </div>
                     <div class="turnier-card-body">
-                        <label class="turnier-ak-label">Austragungs-Altersklassen</label>
                         <div id="altersklassenContainer">
                             <!-- Je Geschlecht dynamisch befüllt (siehe turnier.js) -->
                         </div>
@@ -214,23 +227,12 @@
                         <h2>Mannschaft</h2>
                     </div>
                     <div class="turnier-card-body">
-                        <label class="turnier-ak-label">Austragungs-Altersklassen</label>
                         <div id="mannschaftAltersklassenContainer">
                             <!-- Je Geschlecht dynamisch befüllt (siehe turnier.js) -->
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
-
-        <!-- Fixierte Aktionsleiste am unteren Bildschirmrand -->
-        <div class="turnier-footer-bar">
-            <button type="button" class="btn btn-outlined turnier-footer-btn" id="exportTurnierBtn" style="display: none;">
-                <span class="material-icons">download</span>
-                Turnier exportieren
-            </button>
-            <button type="button" class="btn btn-outlined turnier-footer-btn" id="abbrechenBtn">Abbrechen</button>
-            <button type="submit" class="btn btn-raised turnier-footer-btn" id="submitBtn">Eintrag Speichern</button>
         </div>
     </form>
 </div>

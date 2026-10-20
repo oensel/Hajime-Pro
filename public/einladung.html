@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="referrer" content="no-referrer">
+    <title>Einladung · Hajime Pro</title>
+    <script>
+        // Theme wie in der Helfer-App; ohne Wahl entscheidet prefers-color-scheme (helfer.css).
+        try {
+            var thema = localStorage.getItem('hajime-theme');
+            if (thema) document.documentElement.setAttribute('data-theme', thema);
+        } catch (e) { /* localStorage gesperrt */ }
+    </script>
+    <link rel="stylesheet" href="/css/schriften.css">
+    <link rel="stylesheet" href="/css/helfer.css">
+    <script type="module" src="/js/einladung.js"></script>
+</head>
+<body class="hf-ohne-nav">
+    <header class="hf-kopf">
+        <div class="hf-kopf-innen">
+            <span class="hf-marke">Hajime Pro <span class="hf-marke-zusatz">Einladung</span></span>
+        </div>
+    </header>
+    <main id="einladungInhalt" class="hf-inhalt hf-einladung" aria-live="polite">
+        <p class="hf-laden">Einladung wird geprüft …</p>
+    </main>
+</body>
+</html>

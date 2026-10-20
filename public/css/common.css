@@ -80,10 +80,11 @@ body {
     background: var(--gi-texture);
     color: var(--text-main);
     margin: 0;
-    /* 260px fixe Sidebar + 24px Abstand links, 88px oben (64px Kopfleiste + 24px Abstand).
+    /* 260px fixe Sidebar + 24px Abstand links, 64px oben (40px Kopfleiste + 24px Abstand): oben, links
+       und rechts ist der Abstand zum Inhalt damit überall identisch.
        Die Notification ist ohnehin fixed/floating positioniert (siehe #materialSnackbar in
        menu.js) und benötigt daher keinen eigenen reservierten Freiraum. */
-    padding-top: 88px;
+    padding-top: 64px;
     padding-right: 24px;
     padding-bottom: 24px;
     padding-left: calc(260px + 24px);
@@ -161,6 +162,33 @@ body {
     border: none;
     font-family: inherit;
     text-align: left;
+}
+
+/* --- MENÜ BEIM SEITENWECHSEL (menu.js) ---
+   Solange der gemerkte Menüstand als Platzhalter dasteht, rechnet das echte Menü unsichtbar im
+   Hintergrund. Die Überblendung zwischen zwei Seiten (@view-transition, von menu.js gesetzt) bleibt
+   kurz; gleiche Bildteile wie Seiten- und Kopfleiste ändern sich dabei nicht. */
+.menue-verborgen {
+    visibility: hidden !important;
+}
+
+/* Während der Übergabe an das echte Menü keine Übergänge (.menu-item hat transition: all): sonst
+   blendet das Sichtbarwerden bzw. die Hervorhebung erst langsam ein und die Punkte flackern. */
+.menue-ohne-uebergang,
+.menue-ohne-uebergang * {
+    transition: none !important;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+    animation-duration: 120ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    ::view-transition-old(root),
+    ::view-transition-new(root) {
+        animation: none;
+    }
 }
 
 /* --- SCHMALE FIXIERTE KOPFLEISTE RECHTS NEBEN DER SIDEBAR (Profil/Theme/Logout) --- */
@@ -352,6 +380,9 @@ body {
     font-size: 20px;
     vertical-align: middle;
     flex-shrink: 0;
+    /* Feste Breite: solange die Icon-Schrift nach einem Seitenwechsel noch lädt, wäre das Icon so breit
+       wie sein Name ("calendar_month") und der Text daneben spränge. */
+    width: 20px;
 }
 
 /* Gelbes Achtung-Icon auf einem Menüpunkt (z.B. Pools: mind. ein Pool wartet auf
@@ -396,6 +427,16 @@ body {
     background-color: rgba(59, 130, 246, 0.1);
 }
 
+/* --- ORGA-UNTERMENÜ (aufklappbare Gruppe in der Sidebar) --- */
+.menu-gruppe { display: flex; flex-direction: column; gap: 4px; }
+.menu-gruppe-kopf { background: none; border: 0; font-family: inherit; cursor: pointer; text-align: left; }
+.menu-gruppe-kopf .menu-gruppe-pfeil { margin-left: auto; font-size: 18px; }
+.menu-untermenue { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.menu-gruppe.zugeklappt .menu-untermenue { display: none; }
+.menu-subitem { padding: 7px 14px 7px 46px; font-size: 12px; font-weight: 600; text-transform: none; letter-spacing: 0.2px; }
+.menu-subitem .menu-item-badge { height: 16px; min-width: 16px; line-height: 16px; font-size: 10px; }
+.menu-gruppe-kopf:focus-visible, .menu-subitem:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+
 /* --- STABILE KANJI WASSERZEICHEN --- */
 .kanji-left, .kanji-right {
     position: fixed;
@@ -431,9 +472,9 @@ body {
     align-items: center;
     justify-content: space-between; /* Treibt die beiden Pokale bündig an die Außenränder */
     width: 100%;
-    margin-bottom: 32px;
+    margin-bottom: 14px;     /* kompakt und auf allen Seiten gleich */
     border-bottom: 2px solid var(--border);
-    padding-bottom: 16px;
+    padding-bottom: 8px;
     box-sizing: border-box;
 }
 
@@ -593,6 +634,11 @@ body {
     background-color: var(--primary-hover);
     border-color: var(--primary-hover);
     color: #ffffff;
+}
+
+.toolbar-btn-akzent {
+    border-color: var(--primary);
+    color: var(--primary);
 }
 
 .toolbar-btn-danger {
@@ -820,6 +866,7 @@ input:focus, select:focus {
     .sidebar-nav { padding: 16px 8px; }
     .menu-text { display: none; }
     .menu-item { justify-content: center; padding: 10px 8px; gap: 0; }
+    .menu-untermenue, .menu-gruppe-pfeil { display: none; }
     .top-header-bar { left: 72px; }
     body { padding-left: calc(72px + 24px); }
 }
@@ -851,6 +898,11 @@ body.sidebar-collapsed .menu-item {
     justify-content: center;
     padding: 10px 8px;
     gap: 0;
+}
+
+body.sidebar-collapsed .menu-untermenue,
+body.sidebar-collapsed .menu-gruppe-pfeil {
+    display: none;
 }
 
 body.sidebar-collapsed .top-header-bar {

@@ -56,6 +56,11 @@ export async function initialisiere(knex) {
     }
 }
 
+/** Stand sofort aus der DB holen (statt auf das nächste Nachladen zu warten). */
+export async function ladeJetzt() {
+    await lade();
+}
+
 function startPasswort() {
     return process.env.STEUERUNG_PASSWORD || '';
 }

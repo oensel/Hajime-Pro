@@ -13,7 +13,7 @@ const gruppe = (page, name) => page.locator('.hf-gruppe').filter({ has: page.loc
 test.beforeAll(async ({ request }) => {
     const resp = await request.post('/api/turniere', {
         data: {
-            bezeichnung: NAME, ort: 'Sporthalle Nord', datum: '2031-11-15', ausrichter: 'Offline Club',
+            planungs_tools: true, bezeichnung: NAME, ort: 'Sporthalle Nord', datum: '2031-11-15', ausrichter: 'Offline Club',
             anzahl_kampfflaechen: 1, beginn_min: 540, ende_min: 780
         }
     });
@@ -41,8 +41,10 @@ test('Offene Dienste sind nach Tätigkeit gruppiert, Slots nach Uhrzeit', async 
     await karte(page).click();
     await expect(page).toHaveURL(new RegExp(`#turnier=${turnierId}$`));
     await expect(page.locator('.hf-titel')).toContainText(NAME);
-    const titel = await page.locator('.hf-gruppe-titel').allTextContents();
-    expect(titel).toEqual(['Kampfgericht Matte 1', 'Kampfrichter Matte 1', 'Waage 1']);
+    // Neue Turniere haben die Orga-Vorlage samt Mitbringliste: deren Block steht als letzter Abschnitt unter den Diensten.
+    await expect(page.locator('#hfMitbringliste')).toBeVisible();
+    const titel = await page.locator('.hf-gruppe:not(.hf-mitbring) .hf-gruppe-titel').allTextContents();
+    expect(titel).toEqual(['Ersthelfer/Sanitäter', 'Kampfgericht Matte 1', 'Kampfrichter Matte 1', 'Mattenaufbau', 'Tribünenaufbau', 'Waage 1']);
     const waage = gruppe(page, 'Waage 1');
     await expect(waage.locator('.hf-slot-zeit')).toHaveText(['09:00 – 11:00', '11:00 – 13:00']);
     await expect(waage.locator('.hf-slot').first()).toContainText(/noch \d+ Pl(atz|ätze) frei/);

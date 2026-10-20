@@ -5,7 +5,7 @@
 .matten-management-card {
     width: min(1400px, 100%);
     max-width: none;
-    padding: 24px 28px;
+    padding: 20px 24px;
     box-sizing: border-box;
 }
 

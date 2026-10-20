@@ -57,6 +57,11 @@ export function planeZeilen(einsaetze, maxZeilen = MAX_ZEILEN) {
     return { anzeige: einsaetze.slice(0, maxZeilen - 1), rest: einsaetze.length - (maxZeilen - 1) };
 }
 
+/** Zeitangabe einer Ausweiszeile; Vortag-Dienste (tag_versatz < 0) tragen das Präfix „Vortag“. */
+export function einsatzZeitText(e) {
+    return `${e.vortag ? 'Vortag ' : ''}${formatiereMinuten(e.von)}–${formatiereMinuten(e.bis)}`;
+}
+
 function datumDeutsch(text) {
     const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(text || '');
     return m ? `${m[3]}.${m[2]}.${m[1]}` : (text || '');
@@ -98,7 +103,7 @@ function zeichneQr(seite, inhalt, x, y, groesse) {
 
 /**
  * Personen mit Einsätzen für die Ausweise (sortiert nach Name). Filter betrifft nur Konten.
- * @returns {Promise<{kennung:string, istKonto:boolean, name:string, einsaetze:{von:number,bis:number,taetigkeit:string}[]}[]>}
+ * @returns {Promise<{kennung:string, istKonto:boolean, name:string, einsaetze:{von:number,bis:number,taetigkeit:string,vortag:boolean}[]}[]>}
  */
 export async function baueAusweisDaten(knex, turnierId, { benutzerIds } = {}) {
     const zeilen = await knex('helfer_einsaetze as e')
@@ -106,9 +111,9 @@ export async function baueAusweisDaten(knex, turnierId, { benutzerIds } = {}) {
         .join('helfer_taetigkeiten as t', 't.id', 's.taetigkeit_id')
         .leftJoin('benutzer as b', 'b.id', 'e.benutzer_id')
         .where('t.turnier_id', turnierId)
-        .orderBy([{ column: 's.von_min' }, { column: 's.bis_min' }, { column: 'e.id' }])
+        .orderByRaw('(t.tag_versatz * 1440 + s.von_min), (t.tag_versatz * 1440 + s.bis_min), e.id')
         .select('e.benutzer_id', 'e.name_manuell', 'b.vorname', 'b.nachname',
-            's.von_min', 's.bis_min', 't.bezeichnung');
+            's.von_min', 's.bis_min', 't.bezeichnung', 't.tag_versatz');
     const personen = new Map();
     let manuell = 0;
     for (const z of zeilen) {
@@ -122,7 +127,7 @@ export async function baueAusweisDaten(knex, turnierId, { benutzerIds } = {}) {
                 einsaetze: []
             });
         }
-        personen.get(schluessel).einsaetze.push({ von: z.von_min, bis: z.bis_min, taetigkeit: z.bezeichnung });
+        personen.get(schluessel).einsaetze.push({ von: z.von_min, bis: z.bis_min, taetigkeit: z.bezeichnung, vortag: z.tag_versatz < 0 });
     }
     let liste = [...personen.values()];
     if (benutzerIds?.length) {
@@ -186,8 +191,8 @@ export async function erzeugeAusweisPdf(knex, turnierId, { benutzerIds } = {}) {
         const groesse = Math.min(11, hoeheZeile * 0.72);
         const dunkel = rgb(0.1, 0.1, 0.1);
         anzeige.forEach((e, k) => {
-            const zeit = `${formatiereMinuten(e.von)}–${formatiereMinuten(e.bis)}`;
-            const zeitBreite = fett.widthOfTextAtSize('00:00–00:00', groesse) + 8;
+            const zeit = einsatzZeitText(e);
+            const zeitBreite = fett.widthOfTextAtSize(anzeige.some(x => x.vortag) ? 'Vortag 00:00–00:00' : '00:00–00:00', groesse) + 8;
             const y = listeOben - k * hoeheZeile - groesse;
             seite.drawText(zeit, { x: x0 + RAND, y, size: groesse, font: fett, color: dunkel });
             const t = passeAn(normal, e.taetigkeit, groesse, 6, innen - zeitBreite);

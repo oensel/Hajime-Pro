@@ -75,6 +75,35 @@ export async function emailBestaetigungErneut(knex, req, res) {
     });
 }
 
+/** Antwort einer erfolgreichen Anmeldung (Token + Benutzer mit Vereinen); gemeinsam für Login und Einladung. */
+export async function baueAnmeldeAntwort(knex, user) {
+    const token = jwt.sign(
+        { id: user.id, email: user.email },
+        JWT_SECRET,
+        { expiresIn: JWT_EXPIRES_IN }
+    );
+
+    const aktuellerBenutzer = await ladeBenutzerMitAktivemVerein(knex, user.id);
+    const vereine = await ladeVereineFuerBenutzer(knex, user.id);
+
+    return {
+        success: true,
+        token,
+        user: {
+            id: user.id,
+            email: user.email,
+            vorname: user.vorname,
+            nachname: user.nachname,
+            verein_id: aktuellerBenutzer.verein_id,
+            verein_freigegeben: !!aktuellerBenutzer.verein_freigegeben,
+            // Rolle im aktiven Verein (login.html leitet reine Helfer direkt zur Helfer-App)
+            verein_rolle: aktuellerBenutzer.verein_rolle,
+            ist_super_admin: !!user.ist_super_admin,
+            vereine
+        }
+    };
+}
+
 export async function login(knex, req, res) {
     try {
         const { email, password } = req.body;
@@ -99,31 +128,7 @@ export async function login(knex, req, res) {
             });
         }
 
-        const token = jwt.sign(
-            { id: user.id, email: user.email },
-            JWT_SECRET,
-            { expiresIn: JWT_EXPIRES_IN }
-        );
-
-        const aktuellerBenutzer = await ladeBenutzerMitAktivemVerein(knex, user.id);
-        const vereine = await ladeVereineFuerBenutzer(knex, user.id);
-
-        return res.json({
-            success: true,
-            token,
-            user: {
-                id: user.id,
-                email: user.email,
-                vorname: user.vorname,
-                nachname: user.nachname,
-                verein_id: aktuellerBenutzer.verein_id,
-                verein_freigegeben: !!aktuellerBenutzer.verein_freigegeben,
-                // Rolle im aktiven Verein (login.html leitet reine Helfer direkt zur Helfer-App)
-                verein_rolle: aktuellerBenutzer.verein_rolle,
-                ist_super_admin: !!user.ist_super_admin,
-                vereine
-            }
-        });
+        return res.json(await baueAnmeldeAntwort(knex, user));
 
     } catch (error) {
         console.error('[Login-Fehler]:', error);

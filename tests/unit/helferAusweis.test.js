@@ -11,7 +11,7 @@ process.env.JWT_SECRET = 'helfer-ausweis-test-geheimnis';
 
 const jwt = (await import('jsonwebtoken')).default;
 const dienst = await import('../../src/services/helferAusweis.js');
-const { erzeugeAusweisPdf, baueAusweisDaten, planeZeilen, MAX_ZEILEN, PALETTE, kontrastVerhaeltnis, waehleTextFarbe, bereinigeText } = dienst;
+const { einsatzZeitText, erzeugeAusweisPdf, baueAusweisDaten, planeZeilen, MAX_ZEILEN, PALETTE, kontrastVerhaeltnis, waehleTextFarbe, bereinigeText } = dienst;
 const { getHelferPlanRoutes } = await import('../../src/routes/helferPlanRoutes.js');
 const { hashPassword } = await import('../../src/utils/password.js');
 
@@ -159,4 +159,22 @@ test('HTTP-Route: Helfer 403, Orga application/pdf, ohne Einsätze 404 mit deuts
     } finally {
         await new Promise(r => server.close(r));
     }
+});
+
+test('Vortag-Dienste stehen vor dem Turniertag und tragen das Präfix „Vortag“', async () => {
+    const { turnier } = await aufbau([{ konto: 'vt', vorname: 'Vera', nachname: 'Vortag' }]);
+    const vortag = id((await knex('helfer_taetigkeiten').insert({
+        turnier_id: turnier, art: 'aufbau', bezeichnung: 'Aufbau', bedarf: 2, tag_versatz: -1
+    }).returning('id'))[0]);
+    const slot = id((await knex('helfer_slots').insert({ taetigkeit_id: vortag, von_min: 1020, bis_min: 1140, bedarf: 2 }).returning('id'))[0]);
+    const konto = (await knex('benutzer').where('email', 'like', 'vt-%').first()).id;
+    await knex('helfer_einsaetze').insert({ slot_id: slot, benutzer_id: konto });
+    const [person] = await baueAusweisDaten(knex, turnier);
+    assert.equal(person.einsaetze.length, 2);
+    assert.equal(person.einsaetze[0].taetigkeit, 'Aufbau');
+    assert.equal(person.einsaetze[0].vortag, true);
+    assert.equal(person.einsaetze[1].vortag, false);
+    assert.equal(einsatzZeitText(person.einsaetze[0]), 'Vortag 17:00–19:00');
+    assert.equal(einsatzZeitText(person.einsaetze[1]), '09:00–09:30');
+    assert.equal(await seiten(await erzeugeAusweisPdf(knex, turnier)), 1);
 });

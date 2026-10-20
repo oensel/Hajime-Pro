@@ -94,7 +94,7 @@ export async function zeigeDetail(state) {
     const kopf = el('div', 'hp-detail-kopf');
     kopf.append(
         el('h2', null, taetigkeit.bezeichnung),
-        el('span', 'hp-detail-zeit', `${formatiereMinuten(slot.von_min)}–${formatiereMinuten(slot.bis_min)} Uhr`),
+        el('span', 'hp-detail-zeit', `${(taetigkeit.tag_versatz || 0) < 0 ? 'Vortag ' : ''}${formatiereMinuten(slot.von_min)}–${formatiereMinuten(slot.bis_min)} Uhr`),
         el('span', 'hp-detail-belegung', `Eingetragen: ${eingetragen} von ${slot.bedarf}`)
     );
     const schliessen = el('button', 'hp-detail-schliessen');

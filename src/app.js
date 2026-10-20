@@ -29,6 +29,9 @@ import { getKampfRoutes } from './routes/kampfRoutes.js';
 import { getMannschaftRoutes, getMannschaftskampfRoutes } from './routes/mannschaftRoutes.js';
 import { getUrkundenRoutes } from './routes/urkundenRoutes.js';
 import { getLiveRoutes } from './routes/liveRoutes.js';
+import { getOrgaRoutes } from './routes/orgaRoutes.js';
+import { getOrgaHelferRoutes } from './routes/orgaHelferRoutes.js';
+import { getEinladungRoutes } from './routes/einladungRoutes.js';
 import { getHelferRoutes } from './routes/helferRoutes.js';
 import { getHelferPlanRoutes } from './routes/helferPlanRoutes.js';
 import { starteAufbewahrung } from './liveCloud/aufbewahrung.js';
@@ -110,6 +113,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 import { requireWriteAuth } from './middleware/auth.js';
+import { startOrgaErinnerung } from './services/orgaErinnerung.js';
 
 // Express 5 lässt req.body undefined, wenn kein Body geparst wurde (Express 4: {}). Die Controller und
 // resolveTurnierId lesen req.body.<feld> direkt, daher hier wieder das gewohnte leere Objekt setzen.
@@ -331,9 +335,17 @@ if (syncKonfig.istClient) {
     app.use('/api/urkunden', requireWriteAuth, getUrkundenRoutes(knex));
     // Helferplan der Orga (Spec Helferverwaltung 6): überall, im Hallenbetrieb hinter dem Turnierleitungs-Passwort.
     app.use('/api/helfer-plan', requireWriteAuth, getHelferPlanRoutes(knex));
+    // Orga-Planer (Checkliste der Orga): überall, im Hallenbetrieb hinter dem Turnierleitungs-Passwort.
+    app.use('/api/orga', requireWriteAuth, getOrgaRoutes(knex));
     // Helfer-App (Spec 5): nur in der Cloud; HELFER_APP_AKTIV=true schaltet sie für Tests im Modus server ein.
     if (bm.istCloud || process.env.HELFER_APP_AKTIV === 'true') {
+        app.use('/api/helfer/orga', getOrgaHelferRoutes(knex));
         app.use('/api/helfer', getHelferRoutes(knex));
+        app.use('/api/einladung', getEinladungRoutes(knex));
+    }
+    // Orga-Planer: stündliche Erinnerungsmails; nur mit SMTP, nie in Testläufen (Mail-Rauschen).
+    if ((bm.istCloud || process.env.HELFER_APP_AKTIV === 'true') && process.env.SMTP_HOST && process.env.NODE_ENV !== 'test') {
+        startOrgaErinnerung(knex);
     }
     app.use('/api/cloud', requireWriteAuth, getCloudRoutes(knex, { cloud: erzeugeCloudZugriff(), holeCluster: () => app.get('cluster') }));
     app.use('/api/sync', getSyncRoutes(() => app.get('sync')));

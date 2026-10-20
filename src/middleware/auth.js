@@ -92,6 +92,16 @@ export async function ermittleHelferplanTurnierId(knex, { taetigkeitId, slotId, 
 }
 
 /**
+ * Turnier-ID zu einer Orga-Aufgabe (null bei unbekannter oder ungültiger ID).
+ * @returns {Promise<number|null>}
+ */
+export async function ermittleOrgaTurnierId(knex, aufgabeId) {
+    if (!/^\d+$/.test(String(aufgabeId)) || Number(aufgabeId) > 2147483647) return null;
+    const zeile = await knex('orga_aufgaben').where({ id: parseInt(aufgabeId, 10) }).first('turnier_id');
+    return zeile ? zeile.turnier_id : null;
+}
+
+/**
  * Resolves the turnierId a request refers to, from path parameters, query params,
  * request body, or by looking up the referenced pool/teilnehmer/kampfflaeche/kampf.
  * Used by requireTournamentEditAccess.
@@ -108,6 +118,11 @@ async function resolveTurnierId(knex, req) {
         if (taetigkeitId || slotId || einsatzId) {
             return ermittleHelferplanTurnierId(knex, { taetigkeitId, slotId, einsatzId });
         }
+    }
+
+    // Orga-Planer (/api/orga): die Aufgaben-ID im Pfad bestimmt das Turnier allein (Body/Query dürfen es nicht überstimmen).
+    if (req.baseUrl === '/api/orga' && req.params && req.params.id) {
+        return ermittleOrgaTurnierId(knex, req.params.id);
     }
 
     // Extract turnierId from path parameters, query params, or request body.

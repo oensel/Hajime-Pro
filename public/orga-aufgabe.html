@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hajime Pro - Orga-Aufgabe</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <link rel="stylesheet" href="/css/matten.css">
+    <link rel="stylesheet" href="/css/orga.css">
+    <script src="/js/menu.js"></script>
+</head>
+<body>
+
+<div class="kanji-left">柔</div>
+<div class="kanji-right">道</div>
+
+<div class="mdc-card matten-management-card orga-card">
+    <a class="btn btn-outlined og-zurueck" id="ogZurueck" href="/orga.html">
+        <span class="material-icons">arrow_back</span> Zurück zur Orga
+    </a>
+
+    <div id="ogMeldung" class="og-meldung" role="status"></div>
+
+    <div id="ogAufgabe" hidden>
+        <div class="og-kopf">
+            <div>
+                <h1 id="ogAufgabeTitel"></h1>
+                <p class="og-untertitel" id="ogAufgabeInfo"></p>
+            </div>
+            <div class="og-werkzeuge">
+                <button type="button" class="btn btn-outlined" id="ogAlleAufMich">Alle auf mich</button>
+                <button type="button" class="btn btn-raised" id="ogPostenNeu">
+                    <span class="material-icons">add</span> Posten hinzufügen
+                </button>
+            </div>
+        </div>
+
+        <div class="og-fortschritt-box">
+            <div class="og-fortschritt-zeile"><strong id="ogFortschrittText"></strong></div>
+            <div class="og-balken" role="progressbar" id="ogBalken" aria-label="Fortschritt" aria-valuemin="0" aria-valuemax="100"><span id="ogBalkenFuellung"></span></div>
+        </div>
+
+        <div id="ogPosten" class="og-liste"></div>
+
+        <section id="ogMitbringen" class="og-mitbringen" hidden>
+            <h2>Kuchen und Sonstiges</h2>
+            <p class="og-untertitel">Wer bringt was mit? Hier tragen sich Helfer und Orga ein.</p>
+            <div id="ogMitbringListe" class="og-liste"></div>
+            <form id="ogMitbringForm" class="og-mitbring-form" novalidate>
+                <label for="ogMitbringTitel">Ich bringe mit</label>
+                <input type="text" id="ogMitbringTitel" maxlength="200" autocomplete="off" placeholder="z. B. Marmorkuchen">
+                <input type="number" id="ogMitbringMenge" min="1" max="99999" step="1" placeholder="Menge" aria-label="Menge (optional)">
+                <button type="submit" class="btn btn-raised">Eintragen</button>
+            </form>
+            <div class="og-fehler" id="ogMitbringFehler" role="alert"></div>
+        </section>
+    </div>
+</div>
+
+<script type="module" src="/js/orgaAufgabe.js"></script>
+</body>
+</html>

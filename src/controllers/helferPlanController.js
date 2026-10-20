@@ -73,6 +73,15 @@ function datumDeutsch(iso) {
     return iso ? iso.split('-').reverse().join('.') : '';
 }
 
+/** Datumstext eines Dienstes: der Turniertag, bei einer Vortag-Tätigkeit (tag_versatz -1) „Vortag (TT.MM.JJJJ)“. */
+export function dienstTagText(datumIso, tagVersatz) {
+    if (!datumIso) return '';
+    if (!tagVersatz) return datumDeutsch(datumIso);
+    const d = new Date(`${datumIso}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + tagVersatz);
+    return `Vortag (${datumDeutsch(d.toISOString().slice(0, 10))})`;
+}
+
 /**
  * Mail an die Konten, deren Dienstzeit sich geändert hat. Fehler beim Versand werden nur geloggt.
  */
@@ -83,7 +92,7 @@ async function benachrichtigeUeberZeitaenderung(knex, slotId, benutzerIds, sende
             .join('helfer_taetigkeiten as t', 't.id', 's.taetigkeit_id')
             .join('turniere as tu', 'tu.id', 't.turnier_id')
             .where('s.id', slotId)
-            .first('s.von_min', 's.bis_min', 't.bezeichnung as taetigkeit', 'tu.bezeichnung as turnier', 'tu.datum');
+            .first('s.von_min', 's.bis_min', 't.tag_versatz', 't.bezeichnung as taetigkeit', 'tu.bezeichnung as turnier', 'tu.datum');
         if (!info) return;
         const konten = await knex('benutzer').whereIn('id', benutzerIds).select('id', 'email', 'vorname');
         for (const konto of konten) {
@@ -94,7 +103,7 @@ async function benachrichtigeUeberZeitaenderung(knex, slotId, benutzerIds, sende
                     subject: `Hajime Pro: Dein Helferdienst beim Turnier „${info.turnier}“ wurde geändert`,
                     text: `Hallo ${konto.vorname || ''},
 
-Dein Dienst „${info.taetigkeit}“ beim Turnier „${info.turnier}“ am ${datumDeutsch(plan.datumAlsText(info.datum))} ist jetzt von ${uhrzeit(info.von_min)} bis ${uhrzeit(info.bis_min)} Uhr.
+Dein Dienst „${info.taetigkeit}“ beim Turnier „${info.turnier}“ am ${dienstTagText(plan.datumAlsText(info.datum), info.tag_versatz)} ist jetzt von ${uhrzeit(info.von_min)} bis ${uhrzeit(info.bis_min)} Uhr.
 
 Wenn du zu dieser Zeit nicht kannst, melde dich bitte bei der Turnierleitung.`
                 });
@@ -136,13 +145,13 @@ export async function legeTaetigkeitAnRoute(knex, req, res) {
     }
 }
 
-/** PUT /taetigkeiten/:taetigkeitId — Body { bezeichnung?, bedarf?, bestaetigt? } */
+/** PUT /taetigkeiten/:taetigkeitId — Body { bezeichnung?, bedarf?, tag_versatz? (0 Turniertag | -1 Vortag), bestaetigt? } */
 export async function aendereTaetigkeitRoute(knex, req, res) {
     try {
         const taetigkeitId = parseInt(req.params.taetigkeitId, 10);
         await pruefeZugehoerigkeit(knex, req, { taetigkeitId });
-        const { bezeichnung, bedarf } = req.body || {};
-        await plan.aendereTaetigkeit(knex, taetigkeitId, { bezeichnung, bedarf, bestaetigt: istBestaetigt(req) });
+        const { bezeichnung, bedarf, tag_versatz } = req.body || {};
+        await plan.aendereTaetigkeit(knex, taetigkeitId, { bezeichnung, bedarf, tag_versatz, bestaetigt: istBestaetigt(req) });
         res.json({ success: true });
     } catch (error) {
         sendeFehler(res, error, 'Helferplan-Taetigkeit-Aendern');

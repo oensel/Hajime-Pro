@@ -6,6 +6,136 @@ try {
     document.documentElement.setAttribute('data-theme', localStorage.getItem('hajime-theme') || 'light');
 } catch (e) { /* localStorage gesperrt: helles Theme bleibt */ }
 
+// Seitenwechsel zwischen zwei Seiten mit Menü als kurze Überblendung statt hartem Neuaufbau (Chrome/Edge/
+// Electron; andere Browser ignorieren das). Seitenleiste und Kopfleiste sind auf beiden Seiten gleich und
+// bleiben dabei stehen, nur der Inhalt blendet über. Seiten ohne menu.js (Anzeige, Scoreboard) bleiben außen vor.
+try {
+    const uebergang = document.createElement('style');
+    uebergang.textContent = '@view-transition { navigation: auto; }';
+    (document.head || document.documentElement).appendChild(uebergang);
+} catch (e) { /* ohne Überblendung */ }
+
+// Icon-Schrift des Menüs sofort anfordern (common.css ist zu diesem Zeitpunkt schon geladen), nicht erst,
+// wenn die ersten Icons gezeichnet werden — sonst fehlen sie im ersten Bild nach dem Seitenwechsel.
+try { document.fonts.load('20px "Material Icons"'); } catch (e) { /* ohne Vorladen */ }
+
+// --- MENÜSTAND ÜBER DEN SEITENWECHSEL MERKEN ---
+// Die Sichtbarkeit/Sperre der Menüpunkte hängt an mehreren Serverabfragen; bis sie beantwortet sind, wäre
+// das Menü leer. Daher merkt sich jede Seite beim Verlassen den fertigen Stand von Seiten- und Kopfleiste
+// (je Turnier und Browser-Tab im sessionStorage), und die nächste Seite zeigt ihn sofort als Platzhalter
+// (ohne IDs, ohne Listener), bis das echte Menü fertig gerechnet ist (gibMenueFrei). Rechte prüft ohnehin
+// der Server; bei Abmelden, 401 und Vereinswechsel wird der Stand verworfen.
+const MENUE_STAND_PRAEFIX = 'hajime-menue:';
+let echtesMenueFrei = false;
+
+function menueStandSchluessel() {
+    const params = new URLSearchParams(window.location.search);
+    return MENUE_STAND_PRAEFIX + (params.get('id') || params.get('turnierId') || '');
+}
+
+function vergissMenueStand() {
+    echtesMenueFrei = false; // pagehide dieser Seite merkt nichts mehr
+    try {
+        for (let i = sessionStorage.length - 1; i >= 0; i--) {
+            const schluessel = sessionStorage.key(i);
+            if (schluessel && schluessel.startsWith(MENUE_STAND_PRAEFIX)) sessionStorage.removeItem(schluessel);
+        }
+    } catch (e) { /* sessionStorage gesperrt */ }
+}
+
+// Menüpunkt bzw. Kopfleisten-Knopf → Seiten, auf denen er als aktiv hervorgehoben wird.
+const MENUE_AKTIVE_SEITEN = [
+    ['nav-turniere', ['turniere.html']],
+    ['nav-turnier', ['turnier.html']],
+    ['nav-teilnehmer', ['teilnehmer.html']],
+    ['nav-pools', ['pools.html']],
+    ['nav-mannschaften', ['mannschaften.html']],
+    // Die Zeitplan-Simulation gehört zu den Matten (Button auf matten.html).
+    ['nav-matten', ['matten.html', 'zeitplan.html']],
+    ['nav-helfer', ['helfer-plan.html']],
+    ['nav-kampf', ['kampf.html']],
+    ['nav-siegerliste', ['siegerliste.html']],
+    ['nav-urkunden', ['urkunden.html']],
+    ['nav-urkunden-designer', ['urkunden-designer.html']],
+    ['nav-dashboard', ['dashboard.html']],
+    ['nav-uebersicht', ['uebersicht.html']],
+    ['nav-geraet', ['client.html']],
+    ['nav-client-konfig', ['client-konfig.html']],
+    ['nav-video-live', ['video-live.html']],
+    ['nav-videobeweis', ['videobeweis.html']],
+    ['nav-sync-konflikte', ['sync-konflikte.html']],
+    ['nav-nutzer', ['admin-nutzer.html']],
+    ['hallenServerBtn', ['cluster.html']]
+];
+
+function markiereAktivenMenuepunkt(finde) {
+    const pfad = window.location.pathname;
+    for (const [id, seiten] of MENUE_AKTIVE_SEITEN) {
+        const element = finde(id);
+        if (element) element.classList.toggle('active', seiten.some(seite => pfad.includes(seite)));
+    }
+}
+
+// Zeigt den gemerkten Menüstand als Platzhalter; false, wenn es für dieses Turnier noch keinen gibt.
+function zeigeMenuePlatzhalter() {
+    let html = null;
+    try { html = sessionStorage.getItem(menueStandSchluessel()); } catch (e) { /* sessionStorage gesperrt */ }
+    if (!html) return false;
+
+    const vorlage = document.createElement('template');
+    vorlage.innerHTML = html;
+    const teile = Array.from(vorlage.content.children);
+    if (teile.length === 0) return false;
+
+    // Hervorhebung gehört zur neuen Seite, nicht zur gemerkten.
+    markiereAktivenMenuepunkt(id => vorlage.content.querySelector(`[data-platzhalter-id="${id}"]`));
+    teile.forEach(teil => teil.classList.add('menue-platzhalter'));
+    document.body.prepend(...teile);
+    return true;
+}
+
+// Merkt den Stand des echten Menüs: IDs werden zu data-platzhalter-id, damit der Platzhalter auf der
+// nächsten Seite nicht mit dem echten Menü kollidiert (getElementById, Test-Locators).
+function merkeMenueStand() {
+    if (!echtesMenueFrei) return;
+    const teile = Array.from(document.querySelectorAll('.app-sidebar, .top-header-bar'))
+        .filter(teil => !teil.classList.contains('menue-platzhalter'));
+    if (teile.length === 0) return;
+
+    const html = teile.map(teil => {
+        const kopie = teil.cloneNode(true);
+        kopie.classList.remove('menue-verborgen');
+        for (const element of [kopie, ...kopie.querySelectorAll('[id]')]) {
+            if (!element.id) continue;
+            element.setAttribute('data-platzhalter-id', element.id);
+            element.removeAttribute('id');
+        }
+        kopie.querySelectorAll('.sidebar-nav').forEach(nav => nav.style.removeProperty('visibility'));
+        const vereinMenue = kopie.querySelector('[data-platzhalter-id="vereinSwitcherMenu"]');
+        if (vereinMenue) vereinMenue.style.display = 'none';
+        return kopie.outerHTML;
+    }).join('');
+
+    try { sessionStorage.setItem(menueStandSchluessel(), html); } catch (e) { /* sessionStorage voll/gesperrt */ }
+}
+window.addEventListener('pagehide', merkeMenueStand);
+
+// Alle Sperr-/Versteck-Entscheidungen sind getroffen: echtes Menü zeigen, Platzhalter entfernen.
+function gibMenueFrei() {
+    const teile = Array.from(document.querySelectorAll('.app-sidebar, .top-header-bar'))
+        .filter(teil => !teil.classList.contains('menue-platzhalter'));
+    teile.forEach(teil => teil.classList.add('menue-ohne-uebergang'));
+    document.getElementById('sidebarNavPrimary')?.style.removeProperty('visibility');
+    document.getElementById('sidebarNavSecondary')?.style.removeProperty('visibility');
+    document.querySelectorAll('.menue-platzhalter').forEach(teil => teil.remove());
+    teile.forEach(teil => teil.classList.remove('menue-verborgen'));
+    // Endzustand ohne Übergänge berechnen lassen, erst danach die Übergänge (Hover usw.) wieder zulassen.
+    void document.body.offsetHeight;
+    teile.forEach(teil => teil.classList.remove('menue-ohne-uebergang'));
+    echtesMenueFrei = true;
+    merkeMenueStand();
+}
+
 // Global fetch wrapper to append X-Steuerung-Password and Authorization headers if available in localStorage
 (function() {
     const originalFetch = window.fetch;
@@ -39,6 +169,7 @@ try {
             if (response.status === 401 && !url.includes('/api/auth/login') && !url.includes('/api/auth/verify') && !url.includes('/api/auth/mode') && !url.includes('/api/auth/steuerung-passwort')) {
                 localStorage.removeItem('dokume_token');
                 localStorage.removeItem('dokume_user');
+                vergissMenueStand();
                 window.location.href = '/login.html';
             }
             return response;
@@ -173,37 +304,14 @@ function zeigePasswortAenderungModal() {
     document.getElementById('passwortAenderungNeu').focus();
 }
 
-document.addEventListener('DOMContentLoaded', async () => {
-    // --- AUTHENTIFIZIERUNGSPRÜFUNG ---
-    try {
-        const resp = await fetch('/api/auth/mode');
-        const data = await resp.json();
-        if (data.passwordRequired) {
-            const savedPw = localStorage.getItem('steuerung_password');
-            if (!savedPw) {
-                showGlobalLoginModal();
-                return;
-            } else {
-                const verifyResp = await fetch('/api/auth/verify', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ password: savedPw })
-                });
-                if (!verifyResp.ok) {
-                    localStorage.removeItem('steuerung_password');
-                    showGlobalLoginModal();
-                    return;
-                }
-                const antwort = await verifyResp.json().catch(() => ({}));
-                if (antwort.aenderungErforderlich) {
-                    zeigePasswortAenderungModal();
-                    return;
-                }
-            }
-        }
-    } catch (err) {
-        console.error('Fehler bei der Berechtigungsprüfung:', err);
-    }
+// Baut Seitenleiste, Kopfleiste, Snackbar und Dialoge, sobald <body> existiert (noch vor dem ersten
+// Zeichnen der Seite), statt erst nach DOMContentLoaded und den Auth-Requests: so ist das Menü beim
+// Seitenwechsel sofort da. Ob Menüpunkte sichtbar/gesperrt sind, entscheidet danach initialisiereMenue().
+let menueGeruestGebaut = false;
+function baueMenueGeruest() {
+    if (menueGeruestGebaut) return;
+    menueGeruestGebaut = true;
+
     // 1. Die HTML-Struktur der Navigation inkl. Snackbar und Modal definieren
     const brandingBar = document.createElement('div');
     brandingBar.className = 'nav-shell-wrapper';
@@ -221,6 +329,22 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <span class="material-icons">emoji_events</span>
                     <span class="menu-text">Turnier</span>
                 </a>
+                <div class="menu-gruppe" id="nav-orga">
+                    <button type="button" class="menu-item menu-gruppe-kopf" id="nav-orga-kopf" aria-expanded="true" aria-controls="nav-orga-liste" title="Orga">
+                        <span class="material-icons">fact_check</span>
+                        <span class="menu-text">Orga</span>
+                        <span class="material-icons menu-gruppe-pfeil" id="nav-orga-pfeil" aria-hidden="true">expand_more</span>
+                    </button>
+                    <ul class="menu-untermenue" id="nav-orga-liste">
+                        <li><a href="/orga.html" class="menu-item menu-subitem" id="nav-orga-uebersicht"><span class="menu-text">Übersicht</span></a></li>
+                        <li><a href="/orga.html?ansicht=meine" class="menu-item menu-subitem" id="nav-orga-meine"><span class="menu-text">Meine Aufgaben</span><span class="menu-item-badge" id="nav-orga-meine-zaehler" style="display: none;"></span></a></li>
+                        <li><a href="/helfer-plan.html" class="menu-item menu-subitem" id="nav-helfer"><span class="menu-text">Helfer</span></a></li>
+                        <li><a href="#" class="menu-item menu-subitem" id="nav-orga-technik" data-ohne-turnier style="display: none;"><span class="menu-text">Technik</span><span class="menu-item-badge" style="display: none;"></span></a></li>
+                        <li><a href="#" class="menu-item menu-subitem" id="nav-orga-catering" data-ohne-turnier style="display: none;"><span class="menu-text">Catering</span><span class="menu-item-badge" style="display: none;"></span></a></li>
+                        <li><a href="#" class="menu-item menu-subitem" id="nav-orga-medaillen" data-ohne-turnier style="display: none;"><span class="menu-text">Medaillen und Pokale</span><span class="menu-item-badge" style="display: none;"></span></a></li>
+                        <li><a href="/urkunden-designer.html" class="menu-item menu-subitem" id="nav-urkunden-designer"><span class="menu-text">Urkunden-Designer</span></a></li>
+                    </ul>
+                </div>
                 <a href="/teilnehmer.html" class="menu-item" id="nav-teilnehmer">
                     <span class="material-icons">badge</span>
                     <span class="menu-text">Teilnehmer</span>
@@ -240,10 +364,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <span class="material-icons">layers</span>
                     <span class="menu-text">Matten</span>
                 </a>
-                <a href="/helfer-plan.html" class="menu-item" id="nav-helfer">
-                    <span class="material-icons">volunteer_activism</span>
-                    <span class="menu-text">Helfer</span>
-                </a>
                 <a href="/kampf.html" class="menu-item" id="nav-kampf">
                     <span class="material-icons">sports_kabaddi</span>
                     <span class="menu-text">Kampf</span>
@@ -255,10 +375,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <a href="/urkunden.html" class="menu-item" id="nav-urkunden">
                     <span class="material-icons">workspace_premium</span>
                     <span class="menu-text">Urkunden</span>
-                </a>
-                <a href="/urkunden-designer.html" class="menu-item" id="nav-urkunden-designer">
-                    <span class="material-icons">design_services</span>
-                    <span class="menu-text">Urkunden-Designer</span>
                 </a>
             </nav>
             <nav class="sidebar-nav" id="sidebarNavSecondary" style="visibility: hidden;">
@@ -390,8 +506,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const urlParams = new URLSearchParams(window.location.search);
-    const turnierId = urlParams.get('id') || urlParams.get('turnierId');
     const currentPath = window.location.pathname;
+    // orga-aufgabe.html führt die Aufgaben-ID in `id`; das Turnier steht dort in `turnierId`.
+    const turnierId = currentPath.includes('orga-aufgabe.html')
+        ? urlParams.get('turnierId')
+        : (urlParams.get('id') || urlParams.get('turnierId'));
 
     // Turnier-ID sofort an die Menü-Links hängen, noch bevor window.hajimeAktualisiereMenueSperren
     // existiert: Seiten-Skripte (z.B. pools.js beim ersten Laden) sperren Menüpunkte teils, während
@@ -404,10 +523,83 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (href && href !== '#') {
                 if (href.includes('turniere.html') || link.hasAttribute('data-ohne-turnier')) return;
                 const paramName = href.includes('turnier.html') ? 'id' : 'turnierId';
-                link.setAttribute('href', `${href}?${paramName}=${turnierId}`);
+                link.setAttribute('href', `${href}${href.includes('?') ? '&' : '?'}${paramName}=${turnierId}`);
             }
         });
     }
+
+    // Eingeklappte Seitenleiste sofort anwenden, sonst springt der Inhalt nach dem Laden zur Seite.
+    try {
+        document.body.classList.toggle('sidebar-collapsed', localStorage.getItem('hajime-sidebar-collapsed') === 'true');
+    } catch (e) { /* localStorage gesperrt: ausgeklappt */ }
+
+    // Bis initialisiereMenue() fertig ist, steht der zuletzt gesehene Menüstand als Platzhalter da;
+    // das echte Menü rechnet verborgen im Hintergrund und wird in gibMenueFrei() getauscht.
+    if (zeigeMenuePlatzhalter()) {
+        document.querySelectorAll('.app-sidebar:not(.menue-platzhalter), .top-header-bar:not(.menue-platzhalter)')
+            .forEach(el => el.classList.add('menue-verborgen'));
+    }
+}
+
+if (document.body) {
+    baueMenueGeruest();
+} else {
+    // menu.js steht im <head>: auf das Anlegen von <body> warten. Der Beobachter läuft als Microtask
+    // noch in derselben Parser-Aufgabe, also bevor der Browser zum ersten Mal zeichnet.
+    const bodyBeobachter = new MutationObserver(() => {
+        if (!document.body) return;
+        bodyBeobachter.disconnect();
+        baueMenueGeruest();
+    });
+    bodyBeobachter.observe(document.documentElement, { childList: true });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    baueMenueGeruest();
+    initialisiereMenue().catch((error) => {
+        console.error('Fehler beim Aufbau des Menüs:', error);
+        gibMenueFrei();
+    });
+});
+
+async function initialisiereMenue() {
+    // --- AUTHENTIFIZIERUNGSPRÜFUNG ---
+    try {
+        const resp = await fetch('/api/auth/mode');
+        const data = await resp.json();
+        if (data.passwordRequired) {
+            const savedPw = localStorage.getItem('steuerung_password');
+            if (!savedPw) {
+                showGlobalLoginModal();
+                return;
+            } else {
+                const verifyResp = await fetch('/api/auth/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: savedPw })
+                });
+                if (!verifyResp.ok) {
+                    localStorage.removeItem('steuerung_password');
+                    showGlobalLoginModal();
+                    return;
+                }
+                const antwort = await verifyResp.json().catch(() => ({}));
+                if (antwort.aenderungErforderlich) {
+                    zeigePasswortAenderungModal();
+                    return;
+                }
+            }
+        }
+    } catch (err) {
+        console.error('Fehler bei der Berechtigungsprüfung:', err);
+    }
+    const urlParams = new URLSearchParams(window.location.search);
+    const currentPath = window.location.pathname;
+    // orga-aufgabe.html führt die Aufgaben-ID in `id`; das Turnier steht dort in `turnierId`.
+    const turnierId = currentPath.includes('orga-aufgabe.html')
+        ? urlParams.get('turnierId')
+        : (urlParams.get('id') || urlParams.get('turnierId'));
+
 
     // Hilfsfunktion: Macht Menüpunkte sichtbar, aber blockiert die Klickbarkeit vollständig
     // (für Schritte, die noch nicht erreichbar sind, z.B. Pools ohne Teilnehmer)
@@ -644,6 +836,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     body: JSON.stringify({ vereinId: verwaltbar[0].verein_id })
                 });
                 if (resp.ok) {
+                    vergissMenueStand();
                     window.location.reload();
                     return;
                 }
@@ -798,6 +991,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     });
                     const data = await resp.json();
                     if (!resp.ok) throw new Error(data.error || 'Vereinswechsel fehlgeschlagen');
+                    vergissMenueStand();
                     window.location.reload();
                 } catch (err) {
                     schliesseMenu();
@@ -821,7 +1015,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // siehe src/sync/clientApi.js). Die Menü-Sperren-Prüfungen des Servers entfallen.
     if (syncRolle === 'client') {
         const clientTurnierId = turnierId || localStorage.getItem('aktiveTurnierId');
-        versteckeMenuePunkte(['nav-turniere', 'nav-turnier', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
+        versteckeMenuePunkte(['nav-turniere', 'nav-turnier', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-orga', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
         const nav = document.getElementById('sidebarNavPrimary');
         const suffix = clientTurnierId ? `?turnierId=${clientTurnierId}` : '';
         const teilnehmerLink = document.getElementById('nav-teilnehmer');
@@ -842,12 +1036,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             };
             nav.insertBefore(zusatz('nav-geraet', '/client.html', 'devices', 'Gerät'), nav.firstChild);
             nav.appendChild(zusatz('nav-scoreboard', `/steuerung.html${suffix}`, 'scoreboard', 'Scoreboard'));
-            if (currentPath.includes('client.html')) document.getElementById('nav-geraet').classList.add('active');
         }
-        if (currentPath.includes('teilnehmer.html')) document.getElementById('nav-teilnehmer')?.classList.add('active');
-        if (currentPath.includes('kampf.html')) document.getElementById('nav-kampf')?.classList.add('active');
-        document.getElementById('sidebarNavPrimary')?.style.removeProperty('visibility');
-        document.getElementById('sidebarNavSecondary')?.style.removeProperty('visibility');
+        markiereAktivenMenuepunkt(id => document.getElementById(id));
+        gibMenueFrei();
         return;
     }
 
@@ -887,16 +1078,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (syncRolle === 'server') {
         // Kopplung neuer Client-Geräte (QR-Code + 6-stelliger Code) gibt es nur am Hallen-Server.
         const clientKonfigLink = document.getElementById('nav-client-konfig');
-        if (clientKonfigLink) {
-            clientKonfigLink.style.display = '';
-            if (currentPath.includes('client-konfig.html')) clientKonfigLink.classList.add('active');
-        }
+        if (clientKonfigLink) clientKonfigLink.style.display = '';
         // Video live / Video-Archiv: nur sichtbar, wenn eine Kamera live aufnimmt bzw. Clips vorhanden sind
         // (Clips liegen nur am Hallen-Server). Auf der eigenen Seite bleibt der Punkt immer stehen.
         const videoLiveLink = document.getElementById('nav-video-live');
         const videoLink = document.getElementById('nav-videobeweis');
-        if (videoLiveLink && currentPath.includes('video-live.html')) videoLiveLink.classList.add('active');
-        if (videoLink && currentPath.includes('videobeweis.html')) videoLink.classList.add('active');
         const aktualisiereVideoMenue = async () => {
             if (document.hidden) return; // versteckter Tab fragt nicht ab
             try {
@@ -920,7 +1106,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         const syncKonflikteLink = document.getElementById('nav-sync-konflikte');
         if (syncKonflikteLink) {
             // Erst sichtbar, wenn es offene Konflikte gibt (oder auf der eigenen Seite).
-            if (currentPath.includes('sync-konflikte.html')) syncKonflikteLink.classList.add('active');
             const syncKonflikteBadge = document.getElementById('nav-sync-konflikte-badge');
             const aktualisiereSyncKonflikte = async () => {
                 try {
@@ -944,10 +1129,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Button "Hallen-Server" in der Kopfzeile (links vom Logout) führt zur Cluster-Statusseite;
         // ohne CLUSTER_KNOTEN zeigt cluster.html einen entsprechenden Hinweis.
         const hallenServerBtn = document.getElementById('hallenServerBtn');
-        if (hallenServerBtn) {
-            hallenServerBtn.style.display = '';
-            if (currentPath.includes('cluster.html')) hallenServerBtn.classList.add('active');
-        }
+        if (hallenServerBtn) hallenServerBtn.style.display = '';
         // Icon-Farbe nach Anzahl erreichbarer Server: alle online = grün, im Cluster nur einer
         // von zwei = gelb, eigener Server nicht erreichbar = rot. Ohne Cluster gibt es nur einen.
         const hallenServerIcon = hallenServerBtn?.querySelector('.material-icons');
@@ -999,7 +1181,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const wartetAufFreigabe = !!(currentUser && currentUser.verein_id && !currentUser.verein_freigegeben);
 
     if (wartetAufFreigabe) {
-        versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
+        versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-orga', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
 
         const istErlaubteSeite = currentPath.includes('turniere.html') || currentPath.includes('profil.html') || currentPath.includes('teilnehmer.html') ||
             (rechte.nutzer && currentPath.includes('admin-nutzer.html'));
@@ -1011,7 +1193,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // --- STUFEN-VALIDIERUNG DER SICHTBARKEIT ---
         // Direkt nach der Anmeldung (kein Turnier ausgewählt) darf nur "Turniere" sichtbar sein.
         if (!turnierId) {
-            versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
+            versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-orga', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
         } else {
             await Promise.all([
                 pruefePoolsMenuSperre(turnierId),
@@ -1067,6 +1249,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                         versteckeMenuePunkte(['nav-mannschaften']);
                     }
 
+                    // --- PLANUNGS-TOOLS: ohne den Haken im Turnier gibt es keinen Helferplan im Menü ---
+                    if (turnier.planungs_tools === false) {
+                        versteckeMenuePunkte(['nav-helfer', 'nav-orga']);
+                    }
+
                     // --- VEREINS-SICHTBARKEIT: Nutzer außerhalb des ausrichtenden Vereins ---
                     // dürfen nur die Teilnehmer-Ansicht (gefiltert auf den eigenen Verein) sehen.
                     if (currentUser && !istOffline) {
@@ -1079,9 +1266,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                             // darüber selbst an bzw. bearbeiten sie (siehe "Bearbeiten"/"Hinzufügen" in
                             // teilnehmer.js) — der Zugriff auf fremde Teilnehmer wird dabei serverseitig
                             // in teilnehmerController.js verhindert.
-                            versteckeMenuePunkte(['nav-turnier', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
+                            versteckeMenuePunkte(['nav-turnier', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-orga', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
 
-                            const eingeschraenkteSeiten = ['turnier.html', 'pools.html', 'matten.html', 'zeitplan.html', 'helfer-plan.html', 'kampf.html', 'siegerliste.html', 'urkunden.html', 'urkunden-designer.html', 'dashboard.html', 'uebersicht.html'];
+                            const eingeschraenkteSeiten = ['turnier.html', 'pools.html', 'matten.html', 'zeitplan.html', 'helfer-plan.html', 'orga.html', 'orga-aufgabe.html', 'kampf.html', 'siegerliste.html', 'urkunden.html', 'urkunden-designer.html', 'dashboard.html', 'uebersicht.html'];
                             if (eingeschraenkteSeiten.some(seite => currentPath.includes(seite))) {
                                 window.location.href = `/teilnehmer.html?turnierId=${turnierId}`;
                                 return;
@@ -1099,38 +1286,99 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Ohne Verwaltungsrecht (reiner Helfer) bleibt nur die Helfer-App; „Helfer“ (Helferplan) ab Rolle Benutzer,
     // „Nutzer“ nur für Super-Admins.
     if (!rechte.verwaltung) {
-        versteckeMenuePunkte(['nav-turniere', 'nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
+        versteckeMenuePunkte(['nav-turniere', 'nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-orga', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
     }
-    if (!rechte.helferPlan) versteckeMenuePunkte(['nav-helfer']);
+    if (!rechte.helferPlan) versteckeMenuePunkte(['nav-helfer', 'nav-orga']);
     const helferAppLink = document.getElementById('nav-helfer-app');
     if (helferAppLink && rechte.helferApp) helferAppLink.style.display = '';
     const nutzerLink = document.getElementById('nav-nutzer');
     if (nutzerLink && rechte.nutzer) {
         nutzerLink.style.display = '';
-        if (currentPath.includes('admin-nutzer.html')) nutzerLink.classList.add('active');
     }
+
+    // --- AKTIVEN REITER HERVORHEBEN ---
+    markiereAktivenMenuepunkt(id => document.getElementById(id));
 
     // Erst jetzt sind alle Sperr-/Versteck-Entscheidungen (Freigabe, Turnierauswahl, Vereins-
     // zugehörigkeit, Stufen-Voraussetzungen) getroffen — die Menüpunkte waren bis hierhin bewusst
-    // unsichtbar, damit sie nicht kurz erscheinen und sofort wieder verschwinden.
-    document.getElementById('sidebarNavPrimary')?.style.removeProperty('visibility');
-    document.getElementById('sidebarNavSecondary')?.style.removeProperty('visibility');
+    // unsichtbar (bzw. stand der gemerkte Stand als Platzhalter da), damit sie nicht kurz erscheinen
+    // und sofort wieder verschwinden.
+    gibMenueFrei();
 
-    // --- AKTIVEN REITER HERVORHEBEN ---
-    if (currentPath.includes('turniere.html')) document.getElementById('nav-turniere')?.classList.add('active');
-    if (currentPath.includes('turnier.html')) document.getElementById('nav-turnier')?.classList.add('active');
-    if (currentPath.includes('teilnehmer.html')) document.getElementById('nav-teilnehmer')?.classList.add('active');
-    if (currentPath.includes('pools.html')) document.getElementById('nav-pools')?.classList.add('active');
-    if (currentPath.includes('mannschaften.html')) document.getElementById('nav-mannschaften')?.classList.add('active');
-    // Die Zeitplan-Simulation gehört zu den Matten (Button auf matten.html).
-    if (currentPath.includes('matten.html') || currentPath.includes('zeitplan.html')) document.getElementById('nav-matten')?.classList.add('active');
-    if (currentPath.includes('helfer-plan.html')) document.getElementById('nav-helfer')?.classList.add('active');
-    if (currentPath.includes('kampf.html')) document.getElementById('nav-kampf')?.classList.add('active');
-    if (currentPath.includes('siegerliste.html')) document.getElementById('nav-siegerliste')?.classList.add('active');
-    if (currentPath.includes('urkunden.html')) document.getElementById('nav-urkunden')?.classList.add('active');
-    if (currentPath.includes('urkunden-designer.html')) document.getElementById('nav-urkunden-designer')?.classList.add('active');
-    if (currentPath.includes('dashboard.html')) document.getElementById('nav-dashboard')?.classList.add('active');
-    if (currentPath.includes('uebersicht.html')) document.getElementById('nav-uebersicht')?.classList.add('active');
+    initialisiereOrgaMenue();
+
+    // --- ORGA-UNTERMENÜ (aufklappbar, Zähler aus /api/orga und /api/helfer/orga/meine) ---
+    function initialisiereOrgaMenue() {
+        const gruppe = document.getElementById('nav-orga');
+        const kopf = document.getElementById('nav-orga-kopf');
+        const liste = document.getElementById('nav-orga-liste');
+        if (!gruppe || !kopf || !liste) return;
+        const SPEICHER_KEY = 'hajime-orga-menue-offen';
+        const suche = new URLSearchParams(window.location.search);
+        const ansichtMeine = suche.get('ansicht') === 'meine';
+        const aufgabeId = currentPath.includes('orga-aufgabe.html') ? suche.get('id') : null;
+        const seiteIstOrga = currentPath.includes('orga.html') || currentPath.includes('orga-aufgabe.html')
+            || currentPath.includes('helfer-plan.html') || currentPath.includes('urkunden-designer.html');
+
+        let offen = true;
+        try { if (localStorage.getItem(SPEICHER_KEY) === 'false') offen = false; } catch { /* ohne Speicher: offen */ }
+        if (seiteIstOrga) offen = true;
+        const zeige = (o) => {
+            kopf.setAttribute('aria-expanded', String(o));
+            gruppe.classList.toggle('zugeklappt', !o);
+            document.getElementById('nav-orga-pfeil').textContent = o ? 'expand_more' : 'chevron_right';
+        };
+        zeige(offen);
+        kopf.addEventListener('click', () => {
+            // Eingeklappte Seitenleiste (nur Icons): kein Untermenü, der Klick öffnet die Orga-Übersicht.
+            if (document.body.classList.contains('sidebar-collapsed') || window.matchMedia('(max-width: 850px)').matches) {
+                window.location.href = document.getElementById('nav-orga-uebersicht').getAttribute('href');
+                return;
+            }
+            const neu = kopf.getAttribute('aria-expanded') !== 'true';
+            zeige(neu);
+            try { localStorage.setItem(SPEICHER_KEY, String(neu)); } catch { /* ohne Speicher */ }
+        });
+
+        // Aktiv-Markierung (Technik & Co. folgen nach dem Laden der Aufgaben)
+        if (seiteIstOrga) kopf.classList.add('active');
+        if (currentPath.includes('orga.html')) {
+            document.getElementById(ansichtMeine ? 'nav-orga-meine' : 'nav-orga-uebersicht').classList.add('active');
+        }
+
+        if (!turnierId || gruppe.style.display === 'none') return;
+        const setzeZaehler = (a, text) => {
+            const z = a && a.querySelector('.menu-item-badge');
+            if (!z) return;
+            z.textContent = text;
+            z.style.display = text ? '' : 'none';
+        };
+        const ZIELE = { technik_bereitstellen: 'nav-orga-technik', catering: 'nav-orga-catering', medaillen: 'nav-orga-medaillen' };
+
+        fetch(`/api/orga?turnierId=${encodeURIComponent(turnierId)}&nurLesen=1`).then((r) => (r.ok ? r.json() : null)).then((daten) => {
+            if (!daten || !Array.isArray(daten.phasen)) return;
+            for (const aufgabe of daten.phasen.flatMap((p) => p.aufgaben || [])) {
+                const a = document.getElementById(ZIELE[aufgabe.vorlage_key]);
+                if (!a) continue;
+                a.setAttribute('href', `/orga-aufgabe.html?id=${aufgabe.id}&turnierId=${encodeURIComponent(turnierId)}`);
+                a.style.display = '';
+                const st = aufgabe.status;
+                if (st && st.gesamt > 0) setzeZaehler(a, `${st.erledigt}/${st.gesamt}`);
+                if (aufgabeId && String(aufgabe.id) === String(aufgabeId)) a.classList.add('active');
+            }
+            if (aufgabeId && !liste.querySelector('.menu-subitem.active')) {
+                document.getElementById('nav-orga-uebersicht').classList.add('active');
+            }
+        }).catch(() => { /* ohne Zähler weiter */ });
+
+        // Eigene offene Aufgaben (nur wo die Helfer-API gemountet ist; sonst 404 -> kein Zähler)
+        if (!rechte.helferApp) return;
+        fetch('/api/helfer/orga/meine').then((r) => (r.ok ? r.json() : null)).then((daten) => {
+            if (!daten || !Array.isArray(daten.aufgaben)) return;
+            const offene = daten.aufgaben.filter((a) => String(a.turnier_id) === String(turnierId) && a.status && a.status.status !== 'erledigt').length;
+            setzeZaehler(document.getElementById('nav-orga-meine'), offene > 0 ? String(offene) : '');
+        }).catch(() => { /* ohne Zähler weiter */ });
+    }
 
     // --- GLOBALER DARKMODE TOGGLE ---
     const themeToggle = document.getElementById('themeToggle');
@@ -1183,10 +1431,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         logoutBtn.addEventListener('click', () => {
             localStorage.removeItem('dokume_token');
             localStorage.removeItem('dokume_user');
+            vergissMenueStand();
             window.location.href = '/login.html';
         });
     }
-});
+}
 
 // --- GLOBALE WINDOW EXPORTS FÜR ALLE SKRIPTE ---
 let snackbarHideTimeout = null;

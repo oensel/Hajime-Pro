@@ -1,4 +1,4 @@
-import { istGueltigeRolle, rolleReicht } from '../shared/rollen.js';
+import { istGueltigeRolle, rolleReicht, ROLLEN } from '../shared/rollen.js';
 
 /**
  * Resolves a user's club name via the vereine table (verein_id) — the single source of
@@ -153,3 +153,14 @@ export async function ladeVereinIdsMitRolle(knex, benutzerId, mindestens) {
         .select('verein_id', 'rolle');
     return zeilen.filter(z => rolleReicht(z.rolle, mindestens)).map(z => z.verein_id);
 }
+
+/** Freigegebenes Mitglied des Vereins mit gültiger Rolle (gemeinsames Prädikat für Zuweisen und Mitgliederliste). */
+export async function istFreigegebenesMitglied(knex, benutzerId, vereinId) {
+    if (benutzerId == null || vereinId == null) return false;
+    const m = await knex('benutzer_vereine')
+        .where({ benutzer_id: String(benutzerId), verein_id: vereinId, freigegeben: 1 }).first('rolle');
+    return !!(m && istGueltigeRolle(m.rolle));
+}
+
+/** Rollen, die ein freigegebenes Mitglied haben kann (für whereIn in Mitgliederlisten). */
+export const MITGLIED_ROLLEN = ROLLEN;

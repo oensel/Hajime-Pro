@@ -5,6 +5,11 @@
     padding: 36px;
 }
 
+/* Hauptkarte: gleicher Innenabstand wie die übrigen Verwaltungsseiten (Teilnehmer, Pools, Matten) */
+body > .mdc-card {
+    padding: 20px 24px;
+}
+
 .no-data {
     text-align: center;
     color: var(--text-muted);

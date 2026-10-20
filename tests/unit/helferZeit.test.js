@@ -30,6 +30,17 @@ test('ueberlappt: Grenzen zählen nicht', () => {
   assert.equal(ueberlappt({ von_min: 600, bis_min: 780 }, { von_min: 540, bis_min: 660 }), true);
 });
 
+test('ueberlappt: tag_versatz verschiebt um ganze Tage (Vortag 17-19 Uhr kollidiert nicht mit Turniertag 17-19 Uhr)', () => {
+  const vortag = { von_min: 1020, bis_min: 1140, tag_versatz: -1 };
+  const turniertag = { von_min: 1020, bis_min: 1140, tag_versatz: 0 };
+  assert.equal(ueberlappt(vortag, turniertag), false);
+  assert.equal(ueberlappt(vortag, { ...vortag, von_min: 1080, bis_min: 1200 }), true);
+  // ohne tag_versatz = Turniertag (bestehendes Verhalten)
+  assert.equal(ueberlappt({ von_min: 1020, bis_min: 1140 }, turniertag), true);
+  // spätes Ende des Vortags reicht nicht in den Turniertag: 23:00-24:00 Vortag vs. 00:00-01:00 Turniertag
+  assert.equal(ueberlappt({ von_min: 1380, bis_min: 1440, tag_versatz: -1 }, { von_min: 0, bis_min: 60, tag_versatz: 0 }), false);
+});
+
 test('rasterRunde', () => {
   assert.equal(rasterRunde(547), 540);
   assert.equal(rasterRunde(540), 540);

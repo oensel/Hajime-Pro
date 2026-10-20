@@ -13,29 +13,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // --- FARBE VON KÄMPFER 2: Umschalter Blau/Rot, der Wert liegt im versteckten Select ---
+    // --- FARBE VON KÄMPFER 2: Selectbox, der farbige Kreis davor folgt dem Wert ---
     const farbSelect = document.getElementById('farbe_kaempfer2');
-    const farbSchalter = document.getElementById('farbSchalter');
-    function zeigeFarbSchalter() {
-        const rot = farbSelect.value === 'rot';
-        farbSchalter.classList.toggle('rot', rot);
-        farbSchalter.setAttribute('aria-checked', String(rot));
-        const blauEl = document.getElementById('farbSchalterBlau');
-        const rotEl = document.getElementById('farbSchalterRot');
-        blauEl.classList.toggle('aktiv', !rot);
-        rotEl.classList.toggle('aktiv', rot);
-        blauEl.innerHTML = (rot ? '' : '<i class="farb-schalter-punkt"></i>') + 'Blau';
-        rotEl.innerHTML = (rot ? '<i class="farb-schalter-punkt"></i>' : '') + 'Rot';
+    function zeigeFarbPunkt() {
+        farbSelect.closest('.farb-auswahl').classList.toggle('rot', farbSelect.value === 'rot');
     }
-    function wechsleFarbe() {
-        farbSelect.value = farbSelect.value === 'rot' ? 'blau' : 'rot';
-        zeigeFarbSchalter();
-    }
-    farbSchalter.addEventListener('click', wechsleFarbe);
-    farbSchalter.addEventListener('keydown', (e) => {
-        if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); wechsleFarbe(); }
-    });
-    zeigeFarbSchalter();
+    farbSelect.addEventListener('change', zeigeFarbPunkt);
+    zeigeFarbPunkt();
 
     // --- AUSSCHREIBUNG (PDF) ---
     // ausschreibungPdfBase64: undefined = beim Speichern unverändert lassen, String = neue Datei
@@ -312,6 +296,20 @@ document.addEventListener('DOMContentLoaded', () => {
         cb.checked = true;
     }
 
+    // --- PLANUNGS-TOOLS: Haken blendet Beginn/Ende (Helferplan) ein bzw. aus ---
+    const planungsHaken = document.getElementById('planungs_tools');
+    function zeigePlanungsFelder() {
+        document.querySelectorAll('.planungs-feld').forEach(el => { el.style.display = planungsHaken.checked ? '' : 'none'; });
+    }
+    planungsHaken.addEventListener('change', zeigePlanungsFelder);
+    // Neues Turnier: Standard in der Cloud an, am Hallen-Server aus (beim Bearbeiten setzt ladeTurnierDaten den Wert)
+    if (!turnierId) {
+        fetch('/api/config').then(r => (r.ok ? r.json() : {})).then(c => {
+            planungsHaken.checked = !c.isOffline;
+            zeigePlanungsFelder();
+        }).catch(() => zeigePlanungsFelder());
+    }
+
     // --- NEUANLAGE: Verein des Users als austragenden Verein vorbelegen ---
     const setzeAusrichterVorbelegung = async () => {
         if (turnierId) return; // nur bei Neuanlage, nicht im Edit-Modus
@@ -357,7 +355,10 @@ document.addEventListener('DOMContentLoaded', () => {
             // Titel der Maske auf Bearbeiten-Modus umstellen
             const formTitle = document.getElementById('formTitle');
             if (formTitle) formTitle.innerText = "Turnier bearbeiten";
-            if (submitBtn) submitBtn.innerText = "Änderungen Speichern";
+            if (submitBtn) {
+                submitBtn.setAttribute('aria-label', 'Änderungen speichern');
+                submitBtn.dataset.tooltip = 'Änderungen speichern';
+            }
 
             // Eingabefelder mit bestehenden Werten befüllen
             document.getElementById('bezeichnung').value = turnier.bezeichnung || '';
@@ -367,7 +368,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('ausrichter').value = turnier.ausrichter || '';
             document.getElementById('anzahl_kampfflaechen').value = turnier.anzahl_kampfflaechen || 1;
             document.getElementById('farbe_kaempfer2').value = turnier.farbe_kaempfer2 === 'rot' ? 'rot' : 'blau';
-            zeigeFarbSchalter();
+            zeigeFarbPunkt();
             document.getElementById('startgeld').value = turnier.startgeld !== null && turnier.startgeld !== undefined ? turnier.startgeld : '';
             document.getElementById('iban').value = turnier.iban || '';
             document.getElementById('kontoinhaber').value = turnier.kontoinhaber || '';
@@ -387,6 +388,8 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('beginn').value = Number.isInteger(turnier.beginn_min) ? formatiereMinuten(turnier.beginn_min) : '';
             document.getElementById('ende').value = Number.isInteger(turnier.ende_min) && turnier.ende_min < 1440 ? formatiereMinuten(turnier.ende_min) : '';
             document.getElementById('waagen_anzahl').value = turnier.waagen_anzahl || 1;
+            planungsHaken.checked = turnier.planungs_tools !== false;
+            zeigePlanungsFelder();
 
             // Anmeldeschluss befüllen (reines Datum ohne Uhrzeit; String-Slice statt Date-Objekt,
             // um Zeitzonen-bedingte Tagesverschiebung zu vermeiden)
@@ -653,6 +656,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 beginn_min: beginnMin,
                 ende_min: endeMin,
                 waagen_anzahl: document.getElementById('waagen_anzahl').value,
+                planungs_tools: planungsHaken.checked,
                 startgeld: document.getElementById('startgeld').value,
                 iban: document.getElementById('iban').value.trim(),
                 kontoinhaber: document.getElementById('kontoinhaber').value.trim(),
@@ -814,34 +818,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (loeschenBtn && !['in_durchfuehrung', 'abgeschlossen'].includes(statusEffektiv) && teilnehmerAnzahl === 0) {
                 loeschenBtn.style.display = 'inline-flex';
-            }
-
-            // Live-Freigabe für die Teilnehmer-App (nur am Hallen-Server; Turniere ohne Cloud-Herkunft sind gesperrt)
-            const liveGruppe = document.getElementById('liveFreigabeGroup');
-            const liveBox = document.getElementById('liveFreigabeBox');
-            if (liveGruppe && liveBox && istOffline) {
-                const liveResp = await fetch(`/api/turniere/${turnierId}/live-freigabe`);
-                if (liveResp.ok) {
-                    const live = await liveResp.json();
-                    liveBox.checked = !!live.freigegeben;
-                    liveBox.disabled = !live.moeglich;
-                    if (!live.moeglich) liveGruppe.title = 'Nicht möglich: Dieses Turnier stammt nicht aus der Cloud.';
-                    liveGruppe.style.display = 'inline-flex';
-                    liveBox.addEventListener('change', async () => {
-                        const antwort = await fetch(`/api/turniere/${turnierId}/live-freigabe`, {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ freigegeben: liveBox.checked })
-                        });
-                        const daten = await antwort.json();
-                        if (!antwort.ok) {
-                            liveBox.checked = !liveBox.checked;
-                            if (window.zeigeNotification) window.zeigeNotification(daten.error || 'Speichern fehlgeschlagen.', 'error');
-                        } else if (window.zeigeNotification) {
-                            window.zeigeNotification(daten.freigegeben ? 'Live-Freigabe aktiviert.' : 'Live-Freigabe beendet.', 'success');
-                        }
-                    });
-                }
             }
         } catch (err) {
             console.error('Fehler bei der Lebenszyklus-Berechtigungsprüfung:', err);
