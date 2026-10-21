@@ -1,14 +1,14 @@
 import express from 'express';
 import { erzeugeApiRatenbegrenzung } from '../middleware/apiRatenbegrenzung.js';
-import { requireAuth, requireTournamentEditAccess, requireTurnierAktiv } from '../middleware/auth.js';
+import { requireAuth, requireTournamentEditAccess, requireTurnierAktiv, requireRolle } from '../middleware/auth.js';
 import {
     pruefeVorhanden, ladePlanRoute, legeTaetigkeitAnRoute, aendereTaetigkeitRoute, loescheTaetigkeitRoute,
     legeSlotAnRoute, aendereSlotRoute, loescheSlotRoute, traegeEinRoute, traegeAusRoute, ladeMitgliederRoute, ladeAusweiseRoute
 } from '../controllers/helferPlanController.js';
 
 /**
- * Helferplan der Orga (Spec Abschnitt 6): Super-Admin sowie Admins/Benutzer des ausrichtenden Vereins
- * (requireTournamentEditAccess), Schreibzugriffe nur bei nicht abgesagtem/abgeschlossenem Turnier.
+ * Helferplan der Orga (Spec Abschnitt 6): Super-Admin sowie Admins des ausrichtenden Vereins
+ * (requireTournamentEditAccess + requireRolle admin; Benutzer sind für Client-Geräte und als Helfer gedacht), Schreibzugriffe nur bei nicht abgesagtem/abgeschlossenem Turnier.
  * Das Turnier kommt aus :turnierId bzw. aus der Tätigkeit/dem Slot/dem Einsatz (resolveTurnierId).
  * @param {Object} knex
  * @param {{ jetzt?: () => Date, sende?: Function }} [optionen] - Uhr und Mailversand (Tests)
@@ -17,8 +17,8 @@ export function getHelferPlanRoutes(knex, { jetzt = () => new Date(), sende } = 
     const router = express.Router();
     router.use(erzeugeApiRatenbegrenzung(), requireAuth);
 
-    const lesen = [requireTournamentEditAccess(knex)];
-    const schreiben = [requireTournamentEditAccess(knex), requireTurnierAktiv(knex)];
+    const lesen = [requireTournamentEditAccess(knex), requireRolle(knex, 'admin')];
+    const schreiben = [...lesen, requireTurnierAktiv(knex)];
     const mitDatensatz = [pruefeVorhanden(knex), ...schreiben];
 
     router.put('/taetigkeiten/:taetigkeitId', ...mitDatensatz, (req, res) => aendereTaetigkeitRoute(knex, req, res));

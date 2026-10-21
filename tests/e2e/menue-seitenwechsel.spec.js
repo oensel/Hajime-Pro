@@ -21,6 +21,7 @@ async function beobachteBilder(page) {
                             gesperrt: el.classList.contains('disabled'),
                             aktiv: el.classList.contains('active'),
                             hintergrund: getComputedStyle(el).backgroundColor,
+                            unterpunkt: el.classList.contains('menu-subitem'),
                             iconBreite: el.querySelector('.material-icons')?.offsetWidth
                         }))
                 });
@@ -60,7 +61,8 @@ test('Nach einem Klick im Menü ist die Seitenleiste sofort da und wird dann vom
     expect(bilder[0].punkte.map(p => p.id)).toEqual(expect.arrayContaining(['nav-turniere', 'nav-turnier', 'nav-teilnehmer', 'nav-matten', 'nav-kampf']));
     // Vom ersten Bild an bis nach der Übergabe an das echte Menü bleibt jeder Punkt unverändert stehen.
     for (const bild of bilder) expect(bild.punkte).toEqual(bilder[0].punkte);
-    expect(bilder[0].punkte.every(p => p.iconBreite === 20)).toBe(true);
+    // Unterpunkte (z. B. Urkunden-Designer in der Gruppe Orga) haben bewusst kein Icon
+    expect(bilder[0].punkte.filter(p => !p.unterpunkt).every(p => p.iconBreite === 20)).toBe(true);
     expect(bilder[0].punkte.find(p => p.id === 'nav-matten')).toMatchObject({ aktiv: true, gesperrt: false });
 
     await expect(page.locator('.app-sidebar')).toHaveCount(1);

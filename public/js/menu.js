@@ -65,6 +65,8 @@ const MENUE_AKTIVE_SEITEN = [
     ['nav-videobeweis', ['videobeweis.html']],
     ['nav-sync-konflikte', ['sync-konflikte.html']],
     ['nav-nutzer', ['admin-nutzer.html']],
+    ['nav-vereine', ['admin-vereine.html', 'admin-turniere.html']],
+    ['nav-server-update', ['server-update.html']],
     ['hallenServerBtn', ['cluster.html']]
 ];
 
@@ -394,7 +396,15 @@ function baueMenueGeruest() {
                 </a>
                 <a href="/admin-nutzer.html" class="menu-item" id="nav-nutzer" data-ohne-turnier style="display: none;">
                     <span class="material-icons">admin_panel_settings</span>
-                    <span class="menu-text">Nutzer</span>
+                    <span class="menu-text">Benutzer</span>
+                </a>
+                <a href="/admin-vereine.html" class="menu-item" id="nav-vereine" data-ohne-turnier style="display: none;">
+                    <span class="material-icons">groups</span>
+                    <span class="menu-text">Vereine</span>
+                </a>
+                <a href="/server-update.html" class="menu-item" id="nav-server-update" data-ohne-turnier style="display: none;">
+                    <span class="material-icons">system_update</span>
+                    <span class="menu-text">Server-Update</span>
                 </a>
                 <a href="/video-live.html" class="menu-item" id="nav-video-live" style="display: none;">
                     <span class="material-icons">videocam</span>
@@ -774,6 +784,14 @@ async function initialisiereMenue() {
 
             link.style.display = 'none';
         }
+    };
+
+    // Orga und Helferplan ausblenden (Rolle ohne Admin-Recht bzw. Turnier ohne Planungs-Tools). Der Urkunden-Designer
+    // liegt in derselben Gruppe und bleibt für alle mit Verwaltungsrecht sichtbar; ohne ihn verschwindet die Gruppe.
+    const versteckeOrgaPunkte = () => {
+        versteckeMenuePunkte(['nav-helfer', 'nav-orga-uebersicht', 'nav-orga-meine', 'nav-orga-technik', 'nav-orga-catering', 'nav-orga-medaillen']);
+        const designer = document.getElementById('nav-urkunden-designer');
+        if (!designer || designer.style.display === 'none') versteckeMenuePunkte(['nav-orga']);
     };
 
     // --- BENUTZERSTATUS EINMALIG LADEN (für Freigabe- und Vereins-Prüfung) ---
@@ -1180,11 +1198,17 @@ async function initialisiereMenue() {
     // Turnier-Menüpunkte ausgeblendet werden.
     const wartetAufFreigabe = !!(currentUser && currentUser.verein_id && !currentUser.verein_freigegeben);
 
+    // Initialpasswort (von einem Super-Admin vergeben): zuerst ein eigenes Passwort festlegen
+    if (currentUser && currentUser.muss_passwort_aendern && !currentPath.includes('profil.html')) {
+        window.location.href = '/profil.html?passwortAendern=1';
+        return;
+    }
+
     if (wartetAufFreigabe) {
         versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-orga', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
 
         const istErlaubteSeite = currentPath.includes('turniere.html') || currentPath.includes('profil.html') || currentPath.includes('teilnehmer.html') ||
-            (rechte.nutzer && currentPath.includes('admin-nutzer.html'));
+            (rechte.nutzer && (currentPath.includes('admin-nutzer.html') || currentPath.includes('admin-vereine.html') || currentPath.includes('admin-turniere.html') || currentPath.includes('server-update.html')));
         if (!istErlaubteSeite) {
             window.location.href = '/turniere.html';
             return;
@@ -1251,13 +1275,14 @@ async function initialisiereMenue() {
 
                     // --- PLANUNGS-TOOLS: ohne den Haken im Turnier gibt es keinen Helferplan im Menü ---
                     if (turnier.planungs_tools === false) {
-                        versteckeMenuePunkte(['nav-helfer', 'nav-orga']);
+                        versteckeOrgaPunkte();
                     }
 
                     // --- VEREINS-SICHTBARKEIT: Nutzer außerhalb des ausrichtenden Vereins ---
                     // dürfen nur die Teilnehmer-Ansicht (gefiltert auf den eigenen Verein) sehen.
                     if (currentUser && !istOffline) {
-                        const gehoertZuEigenemVerein = !!(currentUser.verein_id && turnier.verein_id === currentUser.verein_id);
+                        // Super-Admins dürfen die Turniere aller Vereine verwalten
+                        const gehoertZuEigenemVerein = !!(currentUser.ist_super_admin || (currentUser.verein_id && turnier.verein_id === currentUser.verein_id));
 
                         if (!gehoertZuEigenemVerein) {
                             // Bei einem fremden Verein dürfen nur "Turniere" und "Teilnehmer" sichtbar sein.
@@ -1288,12 +1313,32 @@ async function initialisiereMenue() {
     if (!rechte.verwaltung) {
         versteckeMenuePunkte(['nav-turniere', 'nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-orga', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
     }
-    if (!rechte.helferPlan) versteckeMenuePunkte(['nav-helfer', 'nav-orga']);
+    if (!rechte.helferPlan) {
+        versteckeOrgaPunkte();
+        // Orga und Helferplan sind Admin-Sache: wer nur Benutzer ist, landet bei den Teilnehmern
+        if (['orga.html', 'orga-aufgabe.html', 'helfer-plan.html'].some(seite => currentPath.includes(seite)) && turnierId) {
+            window.location.href = `/teilnehmer.html?turnierId=${encodeURIComponent(turnierId)}`;
+            return;
+        }
+    }
     const helferAppLink = document.getElementById('nav-helfer-app');
     if (helferAppLink && rechte.helferApp) helferAppLink.style.display = '';
     const nutzerLink = document.getElementById('nav-nutzer');
     if (nutzerLink && rechte.nutzer) {
         nutzerLink.style.display = '';
+    }
+    const vereineLink = document.getElementById('nav-vereine');
+    if (vereineLink && rechte.nutzer) {
+        vereineLink.style.display = '';
+    }
+    const serverUpdateLink = document.getElementById('nav-server-update');
+    if (serverUpdateLink && rechte.nutzer) {
+        serverUpdateLink.style.display = '';
+    }
+    // Super-Admins: Benutzer, Vereine und Server-Update stehen im oberen Bereich der Seitenleiste (nicht unten)
+    if (rechte.nutzer) {
+        const oben = document.getElementById('sidebarNavPrimary');
+        if (oben) for (const link of [nutzerLink, vereineLink, serverUpdateLink]) if (link) oben.appendChild(link);
     }
 
     // --- AKTIVEN REITER HERVORHEBEN ---
@@ -1332,7 +1377,9 @@ async function initialisiereMenue() {
         kopf.addEventListener('click', () => {
             // Eingeklappte Seitenleiste (nur Icons): kein Untermenü, der Klick öffnet die Orga-Übersicht.
             if (document.body.classList.contains('sidebar-collapsed') || window.matchMedia('(max-width: 850px)').matches) {
-                window.location.href = document.getElementById('nav-orga-uebersicht').getAttribute('href');
+                const uebersicht = document.getElementById('nav-orga-uebersicht');
+                const ziel = uebersicht && uebersicht.style.display !== 'none' ? uebersicht : document.getElementById('nav-urkunden-designer');
+                window.location.href = ziel.getAttribute('href');
                 return;
             }
             const neu = kopf.getAttribute('aria-expanded') !== 'true';

@@ -39,28 +39,36 @@ test('Cloud: Konto ohne Freigabe landet in der Helfer-App, auf profil.html nur m
     await page.goto('/profil.html');
     await expect(page.locator('#sidebarNavPrimary')).toBeVisible();
     await expect(page.locator('#nav-helfer-app')).toBeVisible();
-    for (const id of ['nav-turniere', 'nav-turnier', 'nav-helfer', 'nav-dashboard', 'nav-nutzer']) {
+    for (const id of ['nav-turniere', 'nav-turnier', 'nav-helfer', 'nav-dashboard', 'nav-nutzer', 'nav-vereine', 'nav-server-update']) {
         await expect(page.locator(`#${id}`)).toBeHidden();
     }
     await expect(page).toHaveURL(/\/profil\.html$/);
 });
 
-test('Cloud: Benutzer sieht Verwaltung und Helfer-App, aber nicht „Nutzer“', async ({ page }) => {
+test('Cloud: Benutzer sieht Verwaltung und Helfer-App, aber nicht „Benutzer“ und „Server-Update“', async ({ page }) => {
     await alsCloudKonto(page, konto({ rolle: 'benutzer' }));
     await page.goto('/turniere.html');
     await expect(page.locator('#nav-turniere')).toBeVisible();
     await expect(page.locator('#nav-helfer-app')).toBeVisible();
     await expect(page.locator('#nav-helfer-app')).toHaveAttribute('href', '/helfer.html');
     await expect(page.locator('#nav-nutzer')).toBeHidden();
+    await expect(page.locator('#nav-server-update')).toBeHidden();
+    await expect(page.locator('#nav-vereine')).toBeHidden();
     await expect(page).toHaveURL(/\/turniere\.html$/);
 });
 
-test('Cloud: Super-Admin sieht „Nutzer“', async ({ page }) => {
+test('Cloud: Super-Admin sieht „Benutzer“ und „Server-Update“ als eigene Menüpunkte', async ({ page }) => {
     await alsCloudKonto(page, konto({ rolle: null, istSuperAdmin: true }));
     await page.goto('/profil.html');
     await expect(page.locator('#nav-nutzer')).toBeVisible();
     await expect(page.locator('#nav-nutzer')).toHaveAttribute('href', '/admin-nutzer.html');
-    await expect(page.locator('#nav-helfer-app')).toBeVisible();
+    await expect(page.locator('#nav-nutzer .menu-text')).toHaveText('Benutzer');
+    await expect(page.locator('#nav-server-update')).toBeVisible();
+    await expect(page.locator('#nav-server-update')).toHaveAttribute('href', '/server-update.html');
+    await expect(page.locator('#nav-vereine')).toBeVisible();
+    await expect(page.locator('#nav-vereine')).toHaveAttribute('href', '/admin-vereine.html');
+    // Super-Admins brauchen die Helfer-App nicht
+    await expect(page.locator('#nav-helfer-app')).toBeHidden();
 });
 
 test('Cloud: aktiver Helfer-Verein wechselt in einen verwaltbaren Verein', async ({ page }) => {

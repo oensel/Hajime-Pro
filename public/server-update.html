@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hajime Pro - Server-Update</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <script src="/js/menu.js"></script>
+    <style>
+        .update-box h2 { font-size: 16px; margin: 0 0 8px; }
+        .update-box .zeile { font-size: 14px; margin: 4px 0; }
+        .update-box pre { max-height: 320px; overflow: auto; font-size: 12px; white-space: pre-wrap; color: var(--text-muted); }
+    </style>
+</head>
+<body>
+
+<div class="kanji-left">柔</div>
+<div class="kanji-right">道</div>
+
+<div class="mdc-card" style="padding: 20px 24px;">
+    <div class="form-title-area">
+        <span class="material-icons">system_update</span>
+        <h1>Server-Update</h1>
+        <span class="material-icons">system_update</span>
+    </div>
+    <p style="color: var(--text-muted); font-size: 13px; margin-top: 0;">Aktualisiert den Server auf das neueste Release. Nur für Super-Admins. Der Server startet dabei neu.</p>
+
+    <div class="update-box" id="updateBox" hidden>
+        <div class="zeile">Laufende Version: <strong id="updateAktuell">–</strong> · Neuestes Release: <strong id="updateNeueste">–</strong></div>
+        <div class="zeile" id="updateHinweis" style="color: var(--text-muted);"></div>
+        <button type="button" class="mdc-button mdc-button--raised" id="updateKnopf" disabled>
+            <span class="mdc-button__label">Aktualisieren</span>
+        </button>
+        <pre id="updateLog" aria-live="polite"></pre>
+    </div>
+    <p id="updateKeine" style="color: var(--text-muted); font-size: 13px;">Wird geladen …</p>
+</div>
+
+<script src="/js/adminUpdate.js"></script>
+</body>
+</html>

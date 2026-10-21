@@ -5,9 +5,14 @@ import {
     getPendingRequests, approveMember, rejectMember, changeRolle, removeMember, getMitglieder,
     getSuperAdminPendingRequests, superApproveMember, superRejectMember
 } from '../controllers/vereinController.js';
+import { sendeEinladungenRoute, ladeEinladungenRoute } from '../controllers/helferEinladungController.js';
 import { requireAuth, requireSuperAdmin } from '../middleware/auth.js';
 
-export function getVereinRoutes(knex) {
+/**
+ * @param {Object} knex
+ * @param {{ sende?: Function }} [optionen] - Mailversand der Helfer-Einladungen (Tests)
+ */
+export function getVereinRoutes(knex, { sende } = {}) {
     const router = express.Router();
 
     // Vereinsliste (nur id und Name) ohne Anmeldung: die Registrierung auf login.html wählt den Verein per
@@ -25,6 +30,9 @@ export function getVereinRoutes(knex) {
     router.post('/rolle', (req, res) => changeRolle(knex, req, res));
     router.post('/entfernen', (req, res) => removeMember(knex, req, res));
     router.get('/mitglieder', (req, res) => getMitglieder(knex, req, res));
+    // Helfer per E-Mail einladen (Admin des Vereins bzw. Super-Admin; nur Cloud)
+    router.get('/einladungen', (req, res) => ladeEinladungenRoute(knex, req, res));
+    router.post('/einladungen', (req, res) => sendeEinladungenRoute(knex, req, res, sende ? { sende } : {}));
 
     router.get('/super/pending', requireSuperAdmin(knex), (req, res) => getSuperAdminPendingRequests(knex, req, res));
     router.post('/super/approve', requireSuperAdmin(knex), (req, res) => superApproveMember(knex, req, res));

@@ -773,7 +773,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const turnier = await turnierResp.json();
             const istOffline = configResp.ok && !!(await configResp.json()).isOffline;
             const gehoertZuEigenemVerein = !!(user.verein_id && turnier.verein_id === user.verein_id);
-            const darfBearbeiten = istOffline || gehoertZuEigenemVerein;
+            const darfBearbeiten = istOffline || gehoertZuEigenemVerein || !!user.ist_super_admin;
             if (!darfBearbeiten) return;
 
             const status = turnier.status;

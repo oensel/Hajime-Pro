@@ -69,7 +69,7 @@ test('Helfer-API und Helferplan-API: Rechte, Eintragen, Frist, Fremdturniere, Ma
         const vereinA = id((await knex('vereine').insert({ name: 'JC Ausrichter' }).returning('id'))[0]);
         const vereinB = id((await knex('vereine').insert({ name: 'JC Fremd' }).returning('id'))[0]);
         const vereinC = id((await knex('vereine').insert({ name: 'JC Dritter' }).returning('id'))[0]);
-        for (const n of ['helfer', 'helfer2', 'benutzer', 'super', 'fremd', 'fremdhelfer', 'offen']) {
+        for (const n of ['helfer', 'helfer2', 'benutzer', 'admin', 'super', 'fremd', 'fremdhelfer', 'offen']) {
             await knex('benutzer').insert({
                 id: `u-${n}`, email: `${n}@test.de`, vorname: n, nachname: 'Test',
                 email_bestaetigt_am: knex.fn.now(), password_hash: hashPassword('altes-passwort')
@@ -80,11 +80,12 @@ test('Helfer-API und Helferplan-API: Rechte, Eintragen, Frist, Fremdturniere, Ma
             { benutzer_id: 'u-helfer', verein_id: vereinA, freigegeben: 1, rolle: 'helfer' },
             { benutzer_id: 'u-helfer2', verein_id: vereinA, freigegeben: 1, rolle: 'helfer' },
             { benutzer_id: 'u-benutzer', verein_id: vereinA, freigegeben: 1, rolle: 'benutzer' },
+            { benutzer_id: 'u-admin', verein_id: vereinA, freigegeben: 1, rolle: 'admin' },
             { benutzer_id: 'u-fremd', verein_id: vereinB, freigegeben: 1, rolle: 'admin' },
             { benutzer_id: 'u-fremdhelfer', verein_id: vereinB, freigegeben: 1, rolle: 'helfer' },
             { benutzer_id: 'u-offen', verein_id: vereinA, freigegeben: 0, rolle: null }
         ]);
-        await knex('benutzer').whereIn('id', ['u-helfer', 'u-helfer2', 'u-benutzer', 'u-offen']).update({ aktiver_verein_id: vereinA });
+        await knex('benutzer').whereIn('id', ['u-helfer', 'u-helfer2', 'u-benutzer', 'u-admin', 'u-offen']).update({ aktiver_verein_id: vereinA });
         await knex('benutzer').whereIn('id', ['u-fremd', 'u-fremdhelfer']).update({ aktiver_verein_id: vereinB });
 
         const tA = await legeTurnierAn(knex, { vereinId: vereinA, name: 'Pokal A' });
@@ -96,8 +97,13 @@ test('Helfer-API und Helferplan-API: Rechte, Eintragen, Frist, Fremdturniere, Ma
         assert.equal((await get(null, '/api/helfer/turniere')).status, 401);
         assert.equal((await get(null, `/api/helfer-plan/${tA}`)).status, 401);
 
-        // --- Orga (Benutzer) öffnet den Plan: Standard-Tätigkeiten entstehen
-        const planRes = await get('u-benutzer', `/api/helfer-plan/${tA}`);
+        // --- Die Rolle Benutzer (Client-Geräte, Helfer) hat auf den Helferplan keinen Zugriff, nur der Admin
+        assert.equal((await get('u-benutzer', `/api/helfer-plan/${tA}`)).status, 403);
+        assert.equal((await post('u-benutzer', `/api/helfer-plan/${tA}/taetigkeiten`, { bezeichnung: 'X', bedarf: 1 })).status, 403);
+        assert.equal((await get('u-benutzer', `/api/helfer-plan/${tA}/mitglieder`)).status, 403);
+
+        // --- Orga (Admin) öffnet den Plan: Standard-Tätigkeiten entstehen
+        const planRes = await get('u-admin', `/api/helfer-plan/${tA}`);
         assert.equal(planRes.status, 200, JSON.stringify(planRes.daten));
         assert.deepEqual(planRes.daten.taetigkeiten.map(t => t.bezeichnung), ['Kampfgericht Matte 1', 'Kampfrichter Matte 1', 'Waage 1', 'Ersthelfer/Sanitäter', 'Mattenaufbau', 'Tribünenaufbau']);
         const matte = planRes.daten.taetigkeiten[0];
@@ -160,28 +166,28 @@ test('Helfer-API und Helferplan-API: Rechte, Eintragen, Frist, Fremdturniere, Ma
         assert.equal((await get('u-helfer', `/api/helfer-plan/${tA}/mitglieder`)).status, 403);
 
         // --- Benutzer pflegt den Plan
-        const neu = await post('u-benutzer', `/api/helfer-plan/${tA}/taetigkeiten`, { bezeichnung: 'Waffelstand', bedarf: 3 });
+        const neu = await post('u-admin', `/api/helfer-plan/${tA}/taetigkeiten`, { bezeichnung: 'Waffelstand', bedarf: 3 });
         assert.equal(neu.status, 201, JSON.stringify(neu.daten));
         const waffel = neu.daten.id;
-        assert.equal((await put('u-benutzer', `/api/helfer-plan/taetigkeiten/${waffel}`, { bezeichnung: 'Waffeln' })).status, 200);
-        const extraSlot = await post('u-benutzer', `/api/helfer-plan/taetigkeiten/${waffel}/slots`, { von_min: 1020, bis_min: 1080 });
+        assert.equal((await put('u-admin', `/api/helfer-plan/taetigkeiten/${waffel}`, { bezeichnung: 'Waffeln' })).status, 200);
+        const extraSlot = await post('u-admin', `/api/helfer-plan/taetigkeiten/${waffel}/slots`, { von_min: 1020, bis_min: 1080 });
         assert.equal(extraSlot.status, 201, JSON.stringify(extraSlot.daten));
-        assert.equal((await post('u-benutzer', `/api/helfer-plan/taetigkeiten/${waffel}/slots`, { von_min: 1030, bis_min: 1080 })).status, 400);
-        assert.equal((await del('u-benutzer', `/api/helfer-plan/slots/${extraSlot.daten.id}`)).status, 200);
-        assert.equal((await put('u-benutzer', `/api/helfer-plan/taetigkeiten/${matte.id}`, { bezeichnung: 'Anders' })).status, 409);
-        const mitglieder = await get('u-benutzer', `/api/helfer-plan/${tA}/mitglieder`);
+        assert.equal((await post('u-admin', `/api/helfer-plan/taetigkeiten/${waffel}/slots`, { von_min: 1030, bis_min: 1080 })).status, 400);
+        assert.equal((await del('u-admin', `/api/helfer-plan/slots/${extraSlot.daten.id}`)).status, 200);
+        assert.equal((await put('u-admin', `/api/helfer-plan/taetigkeiten/${matte.id}`, { bezeichnung: 'Anders' })).status, 409);
+        const mitglieder = await get('u-admin', `/api/helfer-plan/${tA}/mitglieder`);
         assert.equal(mitglieder.status, 200);
-        assert.deepEqual(mitglieder.daten.map(m => m.id).sort(), ['u-benutzer', 'u-helfer', 'u-helfer2']);
+        assert.deepEqual(mitglieder.daten.map(m => m.id).sort(), ['u-admin', 'u-benutzer', 'u-helfer', 'u-helfer2']);
         assert.equal(mitglieder.daten.find(m => m.id === 'u-helfer').name, 'helfer Test');
         assert.ok(mitglieder.daten.every(m => !('email' in m) && !('password_hash' in m)));
 
         // --- Slot-Zeit ändern: Bestätigung (409 + code/daten), dann Mail an die Eingetragenen
-        const ohneBestaetigung = await put('u-benutzer', `/api/helfer-plan/slots/${slot1}`, { von_min: 570, bis_min: 660 });
+        const ohneBestaetigung = await put('u-admin', `/api/helfer-plan/slots/${slot1}`, { von_min: 570, bis_min: 660 });
         assert.equal(ohneBestaetigung.status, 409);
         assert.equal(ohneBestaetigung.daten.code, 'bestaetigung_noetig');
         assert.equal(ohneBestaetigung.daten.daten.anzahl, 2);
         assert.equal(mails.length, 0);
-        const mitBestaetigung = await put('u-benutzer', `/api/helfer-plan/slots/${slot1}`, { von_min: 570, bis_min: 660, bestaetigt: true });
+        const mitBestaetigung = await put('u-admin', `/api/helfer-plan/slots/${slot1}`, { von_min: 570, bis_min: 660, bestaetigt: true });
         assert.equal(mitBestaetigung.status, 200, JSON.stringify(mitBestaetigung.daten));
         assert.deepEqual(mails.map(m => m.to).sort(), ['benutzer@test.de', 'helfer@test.de']);
         const mailHelfer = mails.find(m => m.to === 'helfer@test.de');
@@ -190,7 +196,7 @@ test('Helfer-API und Helferplan-API: Rechte, Eintragen, Frist, Fremdturniere, Ma
         assert.match(mailHelfer.text, /04\.05\.2030/);
         // Nur Bedarf geändert: keine Mail
         mails.length = 0;
-        assert.equal((await put('u-benutzer', `/api/helfer-plan/slots/${slot1}`, { bedarf: 3 })).status, 200);
+        assert.equal((await put('u-admin', `/api/helfer-plan/slots/${slot1}`, { bedarf: 3 })).status, 200);
         assert.equal(mails.length, 0);
         // Mail-Fehler bricht die Änderung nicht ab
         const appFehler = express();
@@ -200,7 +206,7 @@ test('Helfer-API und Helferplan-API: Rechte, Eintragen, Frist, Fremdturniere, Ma
         try {
             const r = await fetch(`http://127.0.0.1:${serverFehler.address().port}/api/helfer-plan/slots/${slot1}`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt.sign({ id: 'u-benutzer' }, process.env.JWT_SECRET)}` },
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt.sign({ id: 'u-admin' }, process.env.JWT_SECRET)}` },
                 body: JSON.stringify({ von_min: 540, bis_min: 660 })
             });
             assert.equal(r.status, 200);
@@ -225,12 +231,15 @@ test('Helfer-API und Helferplan-API: Rechte, Eintragen, Frist, Fremdturniere, Ma
         assert.equal(austragenSpaet.daten.code, 'frist');
         assert.equal((await post('u-helfer2', '/api/helfer/einsaetze', { slotId: slot2 })).status, 403);
         assert.equal((await get('u-helfer', '/api/helfer/meine-dienste')).daten[0].darfAustragen, false);
-        const orgaEin = await post('u-benutzer', `/api/helfer-plan/slots/${slot2}/einsaetze`, { benutzerId: 'u-helfer2' });
+        // Helfer ein-/austragen (Zuweisen von Diensten) nur für Admins bzw. Super-Admin, nicht für die Rolle "Benutzer"
+        assert.equal((await post('u-benutzer', `/api/helfer-plan/slots/${slot2}/einsaetze`, { benutzerId: 'u-helfer2' })).status, 403);
+        const orgaEin = await post('u-super', `/api/helfer-plan/slots/${slot2}/einsaetze`, { benutzerId: 'u-helfer2' });
         assert.equal(orgaEin.status, 201, JSON.stringify(orgaEin.daten));
-        const manuell = await post('u-benutzer', `/api/helfer-plan/slots/${slot2}/einsaetze`, { name: 'Oma Erna' });
+        const manuell = await post('u-super', `/api/helfer-plan/slots/${slot2}/einsaetze`, { name: 'Oma Erna' });
         assert.equal(manuell.status, 201);
-        assert.equal((await post('u-benutzer', `/api/helfer-plan/slots/${slot2}/einsaetze`, {})).status, 400);
-        assert.equal((await del('u-benutzer', `/api/helfer-plan/einsaetze/${orgaEin.daten.id}`)).status, 200);
+        assert.equal((await post('u-super', `/api/helfer-plan/slots/${slot2}/einsaetze`, {})).status, 400);
+        assert.equal((await del('u-benutzer', `/api/helfer-plan/einsaetze/${orgaEin.daten.id}`)).status, 403);
+        assert.equal((await del('u-super', `/api/helfer-plan/einsaetze/${orgaEin.daten.id}`)).status, 200);
         // Eigenen Einsatz eines anderen über die Helfer-Route austragen: 403
         uhr = VOR_FRIST;
         assert.equal((await del('u-helfer2', `/api/helfer/einsaetze/${einsatzHelfer}`)).status, 403);
@@ -262,8 +271,8 @@ test('Helfer-API und Helferplan-API: Rechte, Eintragen, Frist, Fremdturniere, Ma
         assert.equal((await knex('helfer_taetigkeiten').where({ id: waffel }).first()).bezeichnung, 'Waffeln');
         assert.ok(await knex('helfer_einsaetze').where({ id: manuell.daten.id }).first());
         // Nicht vorhandene IDs: 404
-        assert.equal((await put('u-benutzer', '/api/helfer-plan/slots/999999', { bedarf: 2 })).status, 404);
-        assert.equal((await del('u-benutzer', '/api/helfer-plan/einsaetze/999999')).status, 404);
+        assert.equal((await put('u-admin', '/api/helfer-plan/slots/999999', { bedarf: 2 })).status, 404);
+        assert.equal((await del('u-admin', '/api/helfer-plan/einsaetze/999999')).status, 404);
         // Die Zugehörigkeitsprüfung selbst (falls das Gate je ein anderes Turnier autorisiert)
         for (const ref of [{ taetigkeitId: waffel }, { slotId: slot2 }, { einsatzId: manuell.daten.id }]) {
             await assert.rejects(stelleSicherDassGehoertZu(knex, tB, ref), (e) => e.statusCode === 404);
@@ -271,16 +280,16 @@ test('Helfer-API und Helferplan-API: Rechte, Eintragen, Frist, Fremdturniere, Ma
         }
 
         // --- Löschen mit Bestätigung
-        const loeschen = await del('u-benutzer', `/api/helfer-plan/slots/${slot2}`);
+        const loeschen = await del('u-admin', `/api/helfer-plan/slots/${slot2}`);
         assert.equal(loeschen.status, 409);
         assert.equal(loeschen.daten.code, 'bestaetigung_noetig');
-        assert.equal((await del('u-benutzer', `/api/helfer-plan/slots/${slot2}`, { bestaetigt: true })).status, 200);
-        assert.equal((await del('u-benutzer', `/api/helfer-plan/taetigkeiten/${waffel}?bestaetigt=1`)).status, 200);
+        assert.equal((await del('u-admin', `/api/helfer-plan/slots/${slot2}`, { bestaetigt: true })).status, 200);
+        assert.equal((await del('u-admin', `/api/helfer-plan/taetigkeiten/${waffel}?bestaetigt=1`)).status, 200);
 
         // --- Abgeschlossenes Turnier: Plan lesbar, Schreiben 403
         await knex('turniere').where({ id: tA }).update({ status: 'abgeschlossen' });
-        assert.equal((await get('u-benutzer', `/api/helfer-plan/${tA}`)).status, 200);
-        assert.equal((await post('u-benutzer', `/api/helfer-plan/${tA}/taetigkeiten`, { bezeichnung: 'Spät', bedarf: 1 })).status, 403);
+        assert.equal((await get('u-admin', `/api/helfer-plan/${tA}`)).status, 200);
+        assert.equal((await post('u-admin', `/api/helfer-plan/${tA}/taetigkeiten`, { bezeichnung: 'Spät', bedarf: 1 })).status, 403);
         await knex('turniere').where({ id: tA }).update({ status: 'veroeffentlicht' });
 
         // --- Review Focus 1: ein Helfer kann das Turnier über die echte Route nicht bearbeiten

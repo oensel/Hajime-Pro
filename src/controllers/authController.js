@@ -99,6 +99,7 @@ export async function baueAnmeldeAntwort(knex, user) {
             // Rolle im aktiven Verein (login.html leitet reine Helfer direkt zur Helfer-App)
             verein_rolle: aktuellerBenutzer.verein_rolle,
             ist_super_admin: !!user.ist_super_admin,
+            muss_passwort_aendern: !!user.muss_passwort_aendern,
             vereine
         }
     };
@@ -166,6 +167,7 @@ export async function getMe(knex, req, res) {
             success: true,
             user: {
                 id: user.id,
+                muss_passwort_aendern: !!user.muss_passwort_aendern,
                 email: user.email,
                 vorname: user.vorname,
                 nachname: user.nachname,
@@ -235,6 +237,7 @@ export async function updateProfile(knex, req, res) {
                 return res.status(400).json({ success: false, error: `Das neue Passwort muss mindestens ${MIN_PASSWORT_LAENGE} Zeichen lang sein.` });
             }
             updateData.password_hash = hashPassword(newPassword);
+            updateData.muss_passwort_aendern = false;
         }
 
         await knex('benutzer').where({ id: userId }).update(updateData);
@@ -264,6 +267,7 @@ export async function updateProfile(knex, req, res) {
                 verein_name: vereinName,
                 verein_freigegeben: !!aktuellerBenutzer.verein_freigegeben,
                 verein_rolle: aktuellerBenutzer.verein_rolle,
+                muss_passwort_aendern: newPassword ? false : !!user.muss_passwort_aendern,
                 vereine
             }
         });

@@ -271,12 +271,12 @@ export async function meineErledigtRoute(knex, req, res) {
     }
 }
 
-// Orga-Recht im Verein: rolle benutzer+ (Mitgliedschaft), Super-Admin, Einzelbenutzerbetrieb.
+// Orga-Recht im Verein: Rolle admin (Mitgliedschaft), Super-Admin, Einzelbenutzerbetrieb.
 async function istOrgaImVerein(knex, benutzerId, vereinId) {
     if (istEinzelbenutzerBetrieb()) return true;
     const benutzer = await knex('benutzer').where({ id: benutzerId }).first('ist_super_admin');
     if (benutzer?.ist_super_admin) return true;
-    return (await ladeVereinIdsMitRolle(knex, benutzerId, 'benutzer')).includes(vereinId);
+    return (await ladeVereinIdsMitRolle(knex, benutzerId, 'admin')).includes(vereinId);
 }
 
 async function darfMitbringen(knex, benutzerId, vereinId) {
