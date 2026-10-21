@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hajime Pro - Turniere des Vereins</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <script src="/js/menu.js"></script>
+    <style>
+        .vt-table { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
+        .vt-table th:nth-child(1) { width: 14%; }
+        .vt-table th:nth-child(2) { width: 32%; }
+        .vt-table th:nth-child(3) { width: 18%; }
+        .vt-table th:nth-child(4) { width: 14%; }
+        .vt-table th:nth-child(5) { width: 12%; }
+        .vt-table th:nth-child(6) { width: 10%; }
+        .vt-table th, .vt-table td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border-color, #374151); vertical-align: middle; overflow-wrap: anywhere; }
+        .vt-table th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
+        .vt-meldung { color: #ef4444; font-weight: 700; min-height: 18px; }
+        .vt-zurueck { display: inline-flex; align-items: center; gap: 4px; margin: 0 0 12px; font-size: 13px; text-decoration: none; color: var(--primary); }
+        .tabelle-scroll { overflow-x: auto; }
+    </style>
+</head>
+<body>
+
+<div class="kanji-left">柔</div>
+<div class="kanji-right">道</div>
+
+<div class="mdc-card" style="padding: 20px 24px; max-width: 1180px;">
+    <div class="form-title-area">
+        <span class="material-icons">groups</span>
+        <h1 id="vtTitel">Turniere</h1>
+        <span class="material-icons">groups</span>
+    </div>
+    <a class="vt-zurueck" href="/admin-vereine.html"><span class="material-icons" style="font-size: 18px;">arrow_back</span>Zurück zu den Vereinen</a>
+    <p style="color: var(--text-muted); font-size: 13px; margin-top: 0;" id="vtInfo">Gespeicherte Turniere des Vereins, der Wettkampftag steht absteigend (neueste zuerst).</p>
+    <div id="vtMeldung" class="vt-meldung" role="alert"></div>
+    <div class="tabelle-scroll">
+        <table class="vt-table">
+            <thead>
+                <tr><th>Wettkampftag</th><th>Turnier</th><th>Ort</th><th>Bundesland</th><th>Status</th><th>Teilnehmer</th></tr>
+            </thead>
+            <tbody id="vtListe"><tr><td colspan="6">Wird geladen …</td></tr></tbody>
+        </table>
+    </div>
+</div>
+
+<script src="/js/adminVereinTurniere.js"></script>
+</body>
+</html>

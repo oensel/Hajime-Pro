@@ -221,6 +221,7 @@ export async function createTurnier(knex, req, res) {
 
         const turnierId = typeof idObj === 'object' ? idObj.id : idObj;
         await synchronisiereKampfflaechen(knex, turnierId, parseInt(anzahl_kampfflaechen) || 1);
+        if (bundesland) await knex('vereine').where({ id: vereinId }).where(function () { this.whereNull('bundesland').orWhere('bundesland', ''); }).update({ bundesland });
         // Orga-Planer: Standardvorlage anlegen (nur mit Planungs-Tools; Best-Effort, ein Fehler darf das Anlegen nicht scheitern lassen).
         if (planungsToolsWert(req.body.planungs_tools, !istEinzelbenutzerBetrieb())) {
             try {

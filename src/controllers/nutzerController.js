@@ -2,6 +2,8 @@
 // Umschalter für die globale Rolle Super-Admin (benutzer.ist_super_admin). Zugriff nur für Super-Admins
 // (requireSuperAdmin in nutzerRoutes.js). Es bleibt immer mindestens ein Super-Admin.
 
+import { datumAlsIso } from '../shared/turnierAktivierung.js';
+
 /** GET /api/nutzer — alle Konten (ohne Passwort-Hash) mit Mitgliedschaften. */
 export async function listeNutzer(knex, req, res) {
     try {
@@ -75,5 +77,89 @@ export async function setzeSuperAdmin(knex, req, res) {
     } catch (error) {
         console.error('[Nutzer-Super-Admin-Fehler]:', error);
         res.status(500).json({ success: false, error: 'Interner Server-Fehler beim Ändern der Super-Admin-Rolle.' });
+    }
+}
+
+// --- Vereinsübersicht (Super-Admin): alle Vereine mit Bundesland, Anzahl Benutzer und Turniere ---
+
+export const BUNDESLAENDER = [
+    'Baden-Württemberg', 'Bayern', 'Berlin', 'Brandenburg', 'Bremen', 'Hamburg', 'Hessen', 'Mecklenburg-Vorpommern',
+    'Niedersachsen', 'Nordrhein-Westfalen', 'Rheinland-Pfalz', 'Saarland', 'Sachsen', 'Sachsen-Anhalt',
+    'Schleswig-Holstein', 'Thüringen'
+];
+
+/** GET /api/nutzer/vereine — alle Vereine mit Bundesland, benutzer_anzahl (alle Mitgliedschaften, Rolle egal) und turniere_anzahl. */
+export async function listeVereine(knex, req, res) {
+    try {
+        const vereine = await knex('vereine').select('id', 'name', 'bundesland').orderBy('name');
+        const benutzer = await knex('benutzer_vereine').groupBy('verein_id').select('verein_id').count('* as anzahl');
+        const turniere = await knex('turniere').whereNotNull('verein_id').groupBy('verein_id').select('verein_id').count('* as anzahl');
+        const benutzerJe = new Map(benutzer.map(z => [z.verein_id, parseInt(z.anzahl, 10)]));
+        const turniereJe = new Map(turniere.map(z => [z.verein_id, parseInt(z.anzahl, 10)]));
+        res.json(vereine.map(v => ({
+            id: v.id,
+            name: v.name,
+            bundesland: v.bundesland || null,
+            benutzer_anzahl: benutzerJe.get(v.id) || 0,
+            turniere_anzahl: turniereJe.get(v.id) || 0
+        })));
+    } catch (error) {
+        console.error('[Vereine-Liste-Fehler]:', error);
+        res.status(500).json({ success: false, error: 'Fehler beim Laden der Vereine.' });
+    }
+}
+
+/** PUT /api/nutzer/vereine/:id { bundesland } — Bundesland eines Vereins setzen (leer = entfernen). */
+export async function setzeVereinBundesland(knex, req, res) {
+    try {
+        const vereinId = /^\d+$/.test(String(req.params.id)) ? parseInt(req.params.id, 10) : null;
+        if (!vereinId || vereinId > 2147483647) return res.status(404).json({ success: false, error: 'Verein nicht gefunden.' });
+        const roh = req.body ? req.body.bundesland : undefined;
+        const bundesland = typeof roh === 'string' && roh.trim() !== '' ? roh.trim() : null;
+        if (roh !== undefined && roh !== null && typeof roh !== 'string') {
+            return res.status(400).json({ success: false, error: 'bundesland muss ein Text sein.' });
+        }
+        if (bundesland && !BUNDESLAENDER.includes(bundesland)) {
+            return res.status(400).json({ success: false, error: 'Unbekanntes Bundesland.' });
+        }
+        const geaendert = await knex('vereine').where({ id: vereinId }).update({ bundesland, updated_at: knex.fn.now() });
+        if (!geaendert) return res.status(404).json({ success: false, error: 'Verein nicht gefunden.' });
+        res.json({ success: true, bundesland });
+    } catch (error) {
+        console.error('[Verein-Bundesland-Fehler]:', error);
+        res.status(500).json({ success: false, error: 'Fehler beim Speichern des Bundeslands.' });
+    }
+}
+
+/** GET /api/nutzer/vereine/:id/turniere — Turniere des Vereins, Wettkampftag absteigend. */
+export async function listeVereinTurniere(knex, req, res) {
+    try {
+        const vereinId = /^\d+$/.test(String(req.params.id)) ? parseInt(req.params.id, 10) : null;
+        const verein = vereinId && vereinId <= 2147483647 ? await knex('vereine').where({ id: vereinId }).first('id', 'name') : null;
+        if (!verein) return res.status(404).json({ success: false, error: 'Verein nicht gefunden.' });
+        const turniere = await knex('turniere')
+            .where({ verein_id: verein.id })
+            .select('id', 'bezeichnung', 'datum', 'ort', 'bundesland', 'status')
+            .orderBy([{ column: 'datum', order: 'desc' }, { column: 'id', order: 'desc' }]);
+        const ids = turniere.map(t => t.id);
+        const teilnehmer = ids.length
+            ? await knex('turnier_teilnehmer').whereIn('turnier_id', ids).groupBy('turnier_id').select('turnier_id').count('* as anzahl')
+            : [];
+        const teilnehmerJe = new Map(teilnehmer.map(z => [z.turnier_id, parseInt(z.anzahl, 10)]));
+        res.json({
+            verein: { id: verein.id, name: verein.name },
+            turniere: turniere.map(t => ({
+                id: t.id,
+                bezeichnung: t.bezeichnung,
+                datum: datumAlsIso(t.datum) || '',
+                ort: t.ort,
+                bundesland: t.bundesland || null,
+                status: t.status,
+                teilnehmer_anzahl: teilnehmerJe.get(t.id) || 0
+            }))
+        });
+    } catch (error) {
+        console.error('[Verein-Turniere-Fehler]:', error);
+        res.status(500).json({ success: false, error: 'Fehler beim Laden der Turniere.' });
     }
 }

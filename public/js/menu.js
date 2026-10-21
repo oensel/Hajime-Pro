@@ -65,6 +65,7 @@ const MENUE_AKTIVE_SEITEN = [
     ['nav-videobeweis', ['videobeweis.html']],
     ['nav-sync-konflikte', ['sync-konflikte.html']],
     ['nav-nutzer', ['admin-nutzer.html']],
+    ['nav-vereine', ['admin-vereine.html', 'admin-turniere.html']],
     ['nav-server-update', ['server-update.html']],
     ['hallenServerBtn', ['cluster.html']]
 ];
@@ -396,6 +397,10 @@ function baueMenueGeruest() {
                 <a href="/admin-nutzer.html" class="menu-item" id="nav-nutzer" data-ohne-turnier style="display: none;">
                     <span class="material-icons">admin_panel_settings</span>
                     <span class="menu-text">Benutzer</span>
+                </a>
+                <a href="/admin-vereine.html" class="menu-item" id="nav-vereine" data-ohne-turnier style="display: none;">
+                    <span class="material-icons">groups</span>
+                    <span class="menu-text">Vereine</span>
                 </a>
                 <a href="/server-update.html" class="menu-item" id="nav-server-update" data-ohne-turnier style="display: none;">
                     <span class="material-icons">system_update</span>
@@ -1197,7 +1202,7 @@ async function initialisiereMenue() {
         versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-orga', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
 
         const istErlaubteSeite = currentPath.includes('turniere.html') || currentPath.includes('profil.html') || currentPath.includes('teilnehmer.html') ||
-            (rechte.nutzer && (currentPath.includes('admin-nutzer.html') || currentPath.includes('server-update.html')));
+            (rechte.nutzer && (currentPath.includes('admin-nutzer.html') || currentPath.includes('admin-vereine.html') || currentPath.includes('admin-turniere.html') || currentPath.includes('server-update.html')));
         if (!istErlaubteSeite) {
             window.location.href = '/turniere.html';
             return;
@@ -1314,6 +1319,10 @@ async function initialisiereMenue() {
     const nutzerLink = document.getElementById('nav-nutzer');
     if (nutzerLink && rechte.nutzer) {
         nutzerLink.style.display = '';
+    }
+    const vereineLink = document.getElementById('nav-vereine');
+    if (vereineLink && rechte.nutzer) {
+        vereineLink.style.display = '';
     }
     const serverUpdateLink = document.getElementById('nav-server-update');
     if (serverUpdateLink && rechte.nutzer) {

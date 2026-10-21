@@ -10,6 +10,9 @@
     const ok = document.getElementById('nutzerOk');
     const filter = document.getElementById('nutzerFilter');
     let konten = [];
+    // Gefiltert auf einen Verein (Link aus der Vereinsübersicht: admin-nutzer.html?vereinId=)
+    const vereinFilterId = new URLSearchParams(window.location.search).get('vereinId');
+    const vereinFilterBox = document.getElementById('vereinFilterBox');
 
     function zeigeMeldung(text, erfolg = false) {
         meldung.textContent = erfolg ? '' : (text || '');
@@ -117,6 +120,7 @@
     }
 
     function passt(konto, suche) {
+        if (vereinFilterId && !konto.mitgliedschaften.some(m => String(m.verein_id) === String(vereinFilterId))) return false;
         if (!suche) return true;
         const text = [konto.vorname, konto.nachname, konto.email, ...konto.mitgliedschaften.map(m => m.verein_name)]
             .join(' ').toLowerCase();
@@ -179,12 +183,29 @@
         }
     }
 
+    function zeigeVereinFilter() {
+        if (!vereinFilterId || !vereinFilterBox) return;
+        const name = konten.flatMap(k => k.mitgliedschaften).find(m => String(m.verein_id) === String(vereinFilterId));
+        vereinFilterBox.textContent = '';
+        const text = document.createElement('span');
+        text.textContent = `Nur Benutzer von: ${name ? name.verein_name : `Verein ${vereinFilterId}`} `;
+        const alle = document.createElement('a');
+        alle.href = '/admin-nutzer.html';
+        alle.textContent = 'Alle Benutzer anzeigen';
+        const zurueck = document.createElement('a');
+        zurueck.href = '/admin-vereine.html';
+        zurueck.textContent = 'Zurück zu den Vereinen';
+        vereinFilterBox.append(text, alle, document.createTextNode(' · '), zurueck);
+        vereinFilterBox.hidden = false;
+    }
+
     async function lade() {
         try {
             const response = await fetch('/api/nutzer');
             const data = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(data.error || 'Die Benutzer konnten nicht geladen werden.');
             konten = data;
+            zeigeVereinFilter();
             zeichne();
         } catch (err) {
             superListe.textContent = '';

@@ -23,6 +23,8 @@
         .nutzer-table .zeile + .zeile { border-top: 1px dashed var(--border); }
         .nutzer-table .status { color: var(--text-muted); font-size: 12px; }
         .nutzer-table select { width: auto; max-width: 100%; height: 26px; font-size: 13px; }
+        .verein-filter-box { margin: 0 0 10px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 4px; font-size: 13px; background: rgba(30, 58, 138, 0.04); }
+        .verein-filter-box a { color: var(--primary); margin-left: 8px; }
         .nutzer-filter { width: 100%; max-width: 360px; padding: 8px 10px; margin-bottom: 12px; box-sizing: border-box; }
         .nutzer-fehler { color: #ef4444; font-weight: 700; }
         .nutzer-ok { color: var(--text-muted); font-size: 13px; min-height: 18px; }
@@ -44,6 +46,7 @@
         <span class="material-icons">manage_accounts</span>
     </div>
     <p style="color: var(--text-muted); font-size: 13px; margin-top: 0;">Alle Benutzer mit ihren Vereinen und Rollen. Die Rolle je Verein lässt sich hier ändern. Super-Admins dürfen alles in allen Vereinen und bekommen die Anfragen für Vereine ohne Admin. Es bleibt immer mindestens ein Super-Admin.</p>
+    <div id="vereinFilterBox" class="verein-filter-box" hidden></div>
     <input type="search" id="nutzerFilter" class="nutzer-filter" placeholder="Name, E-Mail oder Verein suchen" aria-label="Benutzer filtern">
     <div id="nutzerMeldung" class="nutzer-fehler" role="alert"></div>
     <div id="nutzerOk" class="nutzer-ok" role="status"></div>

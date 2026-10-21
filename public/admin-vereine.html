@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hajime Pro - Vereine</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <script src="/js/menu.js"></script>
+    <style>
+        .vereine-table { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
+        .vereine-table th:nth-child(1) { width: 40%; }
+        .vereine-table th:nth-child(2) { width: 26%; }
+        .vereine-table th:nth-child(3) { width: 17%; }
+        .vereine-table th:nth-child(4) { width: 17%; }
+        .vereine-table th, .vereine-table td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border-color, #374151); vertical-align: middle; overflow-wrap: anywhere; }
+        .vereine-table th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); position: sticky; top: 0; background: var(--bg-card); }
+        .vereine-table select { width: 100%; max-width: 220px; height: 26px; font-size: 13px; }
+        .vereine-table a.zahl { display: inline-block; min-width: 32px; padding: 2px 10px; border-radius: 12px; text-align: center; font-weight: 700; text-decoration: none; color: var(--primary); border: 1px solid var(--border); }
+        .vereine-table a.zahl:hover { border-color: var(--primary); }
+        .vereine-table span.zahl-null { display: inline-block; min-width: 32px; padding: 2px 10px; text-align: center; color: var(--text-muted); }
+        .vereine-filter { width: 100%; max-width: 360px; padding: 8px 10px; margin-bottom: 12px; box-sizing: border-box; }
+        .vereine-meldung { color: #ef4444; font-weight: 700; min-height: 18px; }
+        .vereine-info { color: var(--text-muted); font-size: 13px; margin: 0 0 8px; }
+        .tabelle-scroll { overflow-x: auto; }
+    </style>
+</head>
+<body>
+
+<div class="kanji-left">柔</div>
+<div class="kanji-right">道</div>
+
+<div class="mdc-card" style="padding: 20px 24px; max-width: 1180px;">
+    <div class="form-title-area">
+        <span class="material-icons">groups</span>
+        <h1>Vereine</h1>
+        <span class="material-icons">groups</span>
+    </div>
+    <p style="color: var(--text-muted); font-size: 13px; margin-top: 0;">Alle Vereine mit Bundesland, Anzahl der Benutzer (Rolle egal) und Anzahl der gespeicherten Turniere. Ein Klick auf eine Zahl öffnet die für diesen Verein gefilterte Liste. Das Bundesland lässt sich hier setzen.</p>
+    <input type="search" id="vereineFilter" class="vereine-filter" placeholder="Verein oder Bundesland suchen" aria-label="Vereine filtern">
+    <div id="vereineMeldung" class="vereine-meldung" role="alert"></div>
+    <p class="vereine-info" id="vereineInfo"></p>
+    <div class="tabelle-scroll">
+        <table class="vereine-table">
+            <thead>
+                <tr><th>Verein</th><th>Bundesland</th><th>Benutzer</th><th>Turniere</th></tr>
+            </thead>
+            <tbody id="vereineListe"><tr><td colspan="4">Wird geladen …</td></tr></tbody>
+        </table>
+    </div>
+</div>
+
+<script src="/js/adminVereine.js"></script>
+</body>
+</html>

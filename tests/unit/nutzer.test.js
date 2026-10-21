@@ -96,6 +96,45 @@ test('Nutzer-Verwaltung: nur Super-Admins, ernennen, letzter Super-Admin bleibt'
         await listeNutzer(knex, { user: { id: 'u-admin' } }, resListe);
         assert.equal(resListe.statusCode, 200);
         assert.equal(resListe.body.find(k => k.id === 'u-super').ist_super_admin, false);
+
+        // --- Vereinsübersicht: Bundesland, Benutzer- und Turnieranzahl, Turniere je Verein (nur Super-Admin)
+        const verein2 = id((await knex('vereine').insert({ name: 'SV Zweiter', bundesland: 'Bayern' }).returning('id'))[0]);
+        await knex('benutzer_vereine').insert([
+            { benutzer_id: 'u-super', verein_id: verein2, freigegeben: 1, rolle: 'helfer' },
+            { benutzer_id: 'u-admin', verein_id: verein2, freigegeben: 0, rolle: null }
+        ]);
+        await knex('turniere').insert([
+            { bezeichnung: 'Alt', ort: 'A', datum: '2030-01-10', ausrichter: 'X', verein_id: verein2, bundesland: 'Bayern', status: 'abgeschlossen' },
+            { bezeichnung: 'Neu', ort: 'B', datum: '2031-05-20', ausrichter: 'X', verein_id: verein2, bundesland: 'Bayern', status: 'veroeffentlicht' },
+            { bezeichnung: 'Mitte', ort: 'C', datum: '2030-09-01', ausrichter: 'X', verein_id: verein2, status: 'entwurf' }
+        ]);
+        assert.equal((await aufruf(null, '/vereine')).status, 401);
+        assert.equal((await aufruf('u-super', '/vereine')).status, 403); // u-super hat die Rolle abgegeben
+        assert.equal((await aufruf('u-super', `/vereine/${verein2}/turniere`)).status, 403);
+        // u-admin ist inzwischen der einzige Super-Admin (siehe oben)
+        const vereine = await (await aufruf('u-admin', '/vereine')).json();
+        const v1 = vereine.find(v => v.name === 'JC Nutzer');
+        const v2 = vereine.find(v => v.name === 'SV Zweiter');
+        assert.deepEqual([v1.benutzer_anzahl, v1.turniere_anzahl, v1.bundesland], [1, 0, null]);
+        assert.deepEqual([v2.benutzer_anzahl, v2.turniere_anzahl, v2.bundesland], [2, 3, 'Bayern']); // wartende Mitgliedschaft zählt mit
+        assert.deepEqual(vereine.map(v => v.name), [...vereine.map(v => v.name)].sort((a, b) => a.localeCompare(b)));
+
+        const turniere = await (await aufruf('u-admin', `/vereine/${verein2}/turniere`)).json();
+        assert.equal(turniere.verein.name, 'SV Zweiter');
+        assert.deepEqual(turniere.turniere.map(t => t.bezeichnung), ['Neu', 'Mitte', 'Alt']); // Wettkampftag absteigend
+        assert.deepEqual(turniere.turniere.map(t => t.datum), ['2031-05-20', '2030-09-01', '2030-01-10']);
+        assert.equal(turniere.turniere[0].teilnehmer_anzahl, 0);
+        assert.equal((await aufruf('u-admin', '/vereine/99999999999/turniere')).status, 404);
+
+        const setzen = (wert) => aufruf('u-admin', `/vereine/${verein2}`, { method: 'PUT', body: JSON.stringify({ bundesland: wert }) });
+        assert.equal((await setzen('Hessen')).status, 200);
+        assert.equal((await knex('vereine').where({ id: verein2 }).first()).bundesland, 'Hessen');
+        assert.equal((await setzen('Atlantis')).status, 400);
+        assert.equal((await setzen(5)).status, 400);
+        assert.equal((await setzen('')).status, 200);
+        assert.equal((await knex('vereine').where({ id: verein2 }).first()).bundesland, null);
+        assert.equal((await aufruf('u-super', `/vereine/${verein2}`, { method: 'PUT', body: JSON.stringify({ bundesland: 'Bayern' }) })).status, 403);
+        assert.equal((await aufruf('u-admin', '/vereine/99999999999', { method: 'PUT', body: JSON.stringify({ bundesland: 'Bayern' }) })).status, 404);
     } finally {
         await new Promise((resolve) => server.close(resolve));
         await db.stoppe();

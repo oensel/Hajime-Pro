@@ -2,8 +2,9 @@
 // (Browser, per dynamischem import unter /js/shared/) und die Unit-Tests nutzen dieselben Regeln.
 //   - Verwaltung (Turniere, Pools, …): Super-Admin oder Rolle Benutzer/Admin im aktiven Verein
 //   - Helferplan und Orga: nur Super-Admin oder Rolle Admin (Benutzer sind für Client-Geräte und als Helfer gedacht)
-//   - „Benutzer“ (admin-nutzer.html) und „Server-Update“ (server-update.html): nur Super-Admins
-//   - „Helfer-App“: jedes angemeldete Konto in der Cloud
+//   - „Benutzer“ (admin-nutzer.html), „Vereine“ (admin-vereine.html, admin-turniere.html) und „Server-Update“
+//     (server-update.html): nur Super-Admins
+//   - „Helfer-App“: jedes angemeldete Konto in der Cloud außer Super-Admins (die brauchen sie nicht)
 // Im Einzelbenutzerbetrieb (Hallen-Server, offline_user) bleibt das Menü wie bisher: alles Verwaltende sichtbar,
 // keine Helfer-App und keine Nutzerverwaltung (beide gibt es dort nicht).
 import { rolleReicht } from './rollen.js';
@@ -21,7 +22,7 @@ export function menueFuerRolle({ rolle = null, istSuperAdmin = false, einzelbenu
     }
     const verwaltung = !!istSuperAdmin || rolleReicht(rolle, 'benutzer');
     const helferPlan = !!istSuperAdmin || rolleReicht(rolle, 'admin');
-    return { verwaltung, helferPlan, nutzer: !!istSuperAdmin, helferApp: true };
+    return { verwaltung, helferPlan, nutzer: !!istSuperAdmin, helferApp: !istSuperAdmin };
 }
 
 /** Vereine, die sich als aktiver Verein der Verwaltung eignen: freigegeben mit Rolle Benutzer oder Admin. */
