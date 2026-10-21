@@ -776,6 +776,14 @@ async function initialisiereMenue() {
         }
     };
 
+    // Orga und Helferplan ausblenden (Rolle ohne Admin-Recht bzw. Turnier ohne Planungs-Tools). Der Urkunden-Designer
+    // liegt in derselben Gruppe und bleibt für alle mit Verwaltungsrecht sichtbar; ohne ihn verschwindet die Gruppe.
+    const versteckeOrgaPunkte = () => {
+        versteckeMenuePunkte(['nav-helfer', 'nav-orga-uebersicht', 'nav-orga-meine', 'nav-orga-technik', 'nav-orga-catering', 'nav-orga-medaillen']);
+        const designer = document.getElementById('nav-urkunden-designer');
+        if (!designer || designer.style.display === 'none') versteckeMenuePunkte(['nav-orga']);
+    };
+
     // --- BENUTZERSTATUS EINMALIG LADEN (für Freigabe- und Vereins-Prüfung) ---
     let currentUser = null;
     try {
@@ -1251,7 +1259,7 @@ async function initialisiereMenue() {
 
                     // --- PLANUNGS-TOOLS: ohne den Haken im Turnier gibt es keinen Helferplan im Menü ---
                     if (turnier.planungs_tools === false) {
-                        versteckeMenuePunkte(['nav-helfer', 'nav-orga']);
+                        versteckeOrgaPunkte();
                     }
 
                     // --- VEREINS-SICHTBARKEIT: Nutzer außerhalb des ausrichtenden Vereins ---
@@ -1288,7 +1296,14 @@ async function initialisiereMenue() {
     if (!rechte.verwaltung) {
         versteckeMenuePunkte(['nav-turniere', 'nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-orga', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
     }
-    if (!rechte.helferPlan) versteckeMenuePunkte(['nav-helfer', 'nav-orga']);
+    if (!rechte.helferPlan) {
+        versteckeOrgaPunkte();
+        // Orga und Helferplan sind Admin-Sache: wer nur Benutzer ist, landet bei den Teilnehmern
+        if (['orga.html', 'orga-aufgabe.html', 'helfer-plan.html'].some(seite => currentPath.includes(seite)) && turnierId) {
+            window.location.href = `/teilnehmer.html?turnierId=${encodeURIComponent(turnierId)}`;
+            return;
+        }
+    }
     const helferAppLink = document.getElementById('nav-helfer-app');
     if (helferAppLink && rechte.helferApp) helferAppLink.style.display = '';
     const nutzerLink = document.getElementById('nav-nutzer');
@@ -1332,7 +1347,9 @@ async function initialisiereMenue() {
         kopf.addEventListener('click', () => {
             // Eingeklappte Seitenleiste (nur Icons): kein Untermenü, der Klick öffnet die Orga-Übersicht.
             if (document.body.classList.contains('sidebar-collapsed') || window.matchMedia('(max-width: 850px)').matches) {
-                window.location.href = document.getElementById('nav-orga-uebersicht').getAttribute('href');
+                const uebersicht = document.getElementById('nav-orga-uebersicht');
+                const ziel = uebersicht && uebersicht.style.display !== 'none' ? uebersicht : document.getElementById('nav-urkunden-designer');
+                window.location.href = ziel.getAttribute('href');
                 return;
             }
             const neu = kopf.getAttribute('aria-expanded') !== 'true';

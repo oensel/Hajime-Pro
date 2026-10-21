@@ -70,7 +70,7 @@ test('Orga-API: Rechte, Turnierbindung der Aufgaben-IDs, Helfer-Routen, Mitbring
         const tA = await turnier(vA, 'Pokal A');
         const tB = await turnier(vB, 'Pokal B');
 
-        // ohne Anmeldung / ohne Rolle benutzer
+        // ohne Anmeldung / ohne Rolle admin
         assert.equal((await get(null, `/api/orga?turnierId=${tA}`)).status, 401);
         assert.equal((await get('u-helfer', `/api/orga?turnierId=${tA}`)).status, 403);
         assert.equal((await post('u-helfer', '/api/orga/aufgaben', { turnierId: tA, titel: 'x', phase: 'turniertag' })).status, 403);
@@ -78,10 +78,10 @@ test('Orga-API: Rechte, Turnierbindung der Aufgaben-IDs, Helfer-Routen, Mitbring
 
         // Vorlage wird beim ersten Laden einmal angelegt
         assert.equal(await knex('orga_aufgaben').where({ turnier_id: tA }).first() ?? null, null);
-        const erst = await get('u-benutzer', `/api/orga?turnierId=${tA}`);
+        const erst = await get('u-admin', `/api/orga?turnierId=${tA}`);
         assert.equal(erst.status, 200);
         const anzahl = (await knex('orga_aufgaben').where({ turnier_id: tA }).count('* as n').first()).n;
-        await get('u-benutzer', `/api/orga?turnierId=${tA}`);
+        await get('u-admin', `/api/orga?turnierId=${tA}`);
         assert.equal((await knex('orga_aufgaben').where({ turnier_id: tA }).count('* as n').first()).n, anzahl);
         assert.equal(erst.daten.turnier.bezeichnung, 'Pokal A');
         const wiegen = alle(erst.daten).find((a) => a.vorlage_key === 'wiegen');
@@ -91,60 +91,58 @@ test('Orga-API: Rechte, Turnierbindung der Aufgaben-IDs, Helfer-Routen, Mitbring
         // Aufgabe von Turnier B über id: Orga von A bekommt 403, Fremd-Admin darf, unbekannte id 404
         await get('u-fremd', `/api/orga?turnierId=${tB}`);
         const aufgB = await knex('orga_aufgaben').where({ turnier_id: tB, vorlage_key: 'wiegen' }).first();
-        assert.equal((await post('u-benutzer', `/api/orga/aufgaben/${aufgB.id}/erledigt`, { erledigt: true })).status, 403);
-        assert.equal((await put('u-benutzer', `/api/orga/aufgaben/${aufgB.id}`, { titel: 'Hack', turnierId: tA })).status, 403);
-        assert.equal((await del('u-benutzer', `/api/orga/aufgaben/${aufgB.id}`)).status, 403);
-        assert.equal((await post('u-benutzer', `/api/orga/aufgaben/${aufgB.id}/zuweisen`, { frei: false })).status, 403);
+        assert.equal((await post('u-admin', `/api/orga/aufgaben/${aufgB.id}/erledigt`, { erledigt: true })).status, 403);
+        assert.equal((await put('u-admin', `/api/orga/aufgaben/${aufgB.id}`, { titel: 'Hack', turnierId: tA })).status, 403);
+        assert.equal((await del('u-admin', `/api/orga/aufgaben/${aufgB.id}`)).status, 403);
+        assert.equal((await post('u-admin', `/api/orga/aufgaben/${aufgB.id}/zuweisen`, { frei: false })).status, 403);
         assert.equal((await post('u-helfer', `/api/orga/aufgaben/${wiegen.id}/erledigt`, { erledigt: true })).status, 403);
-        assert.equal((await put('u-benutzer', '/api/orga/aufgaben/999999', { titel: 'x' })).status, 404);
+        assert.equal((await put('u-admin', '/api/orga/aufgaben/999999', { titel: 'x' })).status, 404);
         assert.equal((await knex('orga_aufgaben').where({ id: aufgB.id }).first()).titel, 'Wiegen');
         // eltern_id aus fremdem Turnier
-        assert.equal((await post('u-benutzer', '/api/orga/aufgaben', { turnierId: tA, titel: 'P', eltern_id: aufgB.id })).status, 404);
+        assert.equal((await post('u-admin', '/api/orga/aufgaben', { turnierId: tA, titel: 'P', eltern_id: aufgB.id })).status, 404);
 
         // Orga: anlegen, ändern, abhaken, löschen
-        const neu = await post('u-benutzer', '/api/orga/aufgaben', { turnierId: tA, titel: 'Eigene', phase: 'turniertag', faellig_am: '2033-05-03' });
+        const neu = await post('u-admin', '/api/orga/aufgaben', { turnierId: tA, titel: 'Eigene', phase: 'turniertag', faellig_am: '2033-05-03' });
         assert.equal(neu.status, 201);
-        assert.equal((await put('u-benutzer', `/api/orga/aufgaben/${neu.daten.id}`, { titel: 'Eigene 2' })).status, 200);
+        assert.equal((await put('u-admin', `/api/orga/aufgaben/${neu.daten.id}`, { titel: 'Eigene 2' })).status, 200);
         // Zuständige gehen nicht über PUT (ignoriert), Menge wird geprüft, riesige IDs sind 404
-        await put('u-benutzer', `/api/orga/aufgaben/${neu.daten.id}`, { benutzer_id: 'u-helfer', name_frei: 'X', email_frei: 'x@y.de' });
+        await put('u-admin', `/api/orga/aufgaben/${neu.daten.id}`, { benutzer_id: 'u-helfer', name_frei: 'X', email_frei: 'x@y.de' });
         const unveraendert = await knex('orga_aufgaben').where({ id: neu.daten.id }).first();
         assert.deepEqual([unveraendert.benutzer_id, unveraendert.name_frei, unveraendert.email_frei], [null, null, null]);
-        assert.equal((await put('u-benutzer', `/api/orga/aufgaben/${neu.daten.id}`, { menge: 0 })).status, 400);
-        assert.equal((await put('u-benutzer', `/api/orga/aufgaben/${neu.daten.id}`, { menge: 'abc' })).status, 400);
-        assert.equal((await post('u-benutzer', '/api/orga/aufgaben', { turnierId: tA, titel: 'M', phase: 'turniertag', menge: 100000 })).status, 400);
-        assert.equal((await put('u-benutzer', '/api/orga/aufgaben/99999999999', { titel: 'x' })).status, 404);
-        assert.equal((await get('u-benutzer', '/api/orga?turnierId=99999999999')).status, 404);
-        assert.equal((await post('u-benutzer', '/api/orga/aufgaben', { turnierId: tA, titel: 'P', eltern_id: 99999999999 })).status, 404);
+        assert.equal((await put('u-admin', `/api/orga/aufgaben/${neu.daten.id}`, { menge: 0 })).status, 400);
+        assert.equal((await put('u-admin', `/api/orga/aufgaben/${neu.daten.id}`, { menge: 'abc' })).status, 400);
+        assert.equal((await post('u-admin', '/api/orga/aufgaben', { turnierId: tA, titel: 'M', phase: 'turniertag', menge: 100000 })).status, 400);
+        assert.equal((await put('u-admin', '/api/orga/aufgaben/99999999999', { titel: 'x' })).status, 404);
+        assert.equal((await get('u-admin', '/api/orga?turnierId=99999999999')).status, 404);
+        assert.equal((await post('u-admin', '/api/orga/aufgaben', { turnierId: tA, titel: 'P', eltern_id: 99999999999 })).status, 404);
         assert.equal((await post('u-helfer', '/api/helfer/orga/aufgaben/99999999999/erledigt', { erledigt: true })).status, 404);
         assert.equal((await post('u-helfer', '/api/helfer/orga/mitbringliste', { turnierId: 99999999999, titel: 'x' })).status, 404);
-        assert.equal((await post('u-benutzer', `/api/orga/aufgaben/${neu.daten.id}/erledigt`, { erledigt: 'ja' })).status, 400);
-        assert.equal((await post('u-benutzer', `/api/orga/aufgaben/${neu.daten.id}/erledigt`, { erledigt: true })).status, 200);
-        assert.equal((await del('u-benutzer', `/api/orga/aufgaben/${neu.daten.id}`)).status, 200);
+        assert.equal((await post('u-admin', `/api/orga/aufgaben/${neu.daten.id}/erledigt`, { erledigt: 'ja' })).status, 400);
+        assert.equal((await post('u-admin', `/api/orga/aufgaben/${neu.daten.id}/erledigt`, { erledigt: true })).status, 200);
+        assert.equal((await del('u-admin', `/api/orga/aufgaben/${neu.daten.id}`)).status, 200);
 
         // Mitglieder, Nachladen
-        const mitglieder = await get('u-benutzer', `/api/orga/mitglieder?turnierId=${tA}`);
+        const mitglieder = await get('u-admin', `/api/orga/mitglieder?turnierId=${tA}`);
         assert.deepEqual(mitglieder.daten.map((m) => m.id).sort(), ['u-admin', 'u-benutzer', 'u-helfer', 'u-helfer2']);
         assert.deepEqual(Object.keys(mitglieder.daten[0]).sort(), ['email', 'id', 'nachname', 'vorname']);
         assert.equal((await get('u-helfer', `/api/orga/mitglieder?turnierId=${tA}`)).status, 403);
-        const nachladen = await post('u-benutzer', '/api/orga/vorlage-nachladen', { turnierId: tA });
+        const nachladen = await post('u-admin', '/api/orga/vorlage-nachladen', { turnierId: tA });
         assert.deepEqual([nachladen.status, nachladen.daten.angelegt], [200, 0]);
 
-        // Zuweisen an andere und Einladungen nur für Admins; Rolle "Benutzer" darf sich nur selbst eintragen
-        assert.equal((await post('u-benutzer', `/api/orga/aufgaben/${wiegen.id}/zuweisen`, { benutzerId: 'u-helfer' })).status, 403);
+        // Die Rolle Benutzer (Client-Geräte, Helfer) verwaltet die Orga nicht: alles 403, es geht keine Mail raus
+        assert.equal((await get('u-benutzer', `/api/orga?turnierId=${tA}`)).status, 403);
+        assert.equal((await get('u-benutzer', `/api/orga/mitglieder?turnierId=${tA}`)).status, 403);
+        assert.equal((await post('u-benutzer', '/api/orga/vorlage-nachladen', { turnierId: tA })).status, 403);
+        assert.equal((await post('u-benutzer', '/api/orga/aufgaben', { turnierId: tA, titel: 'x', phase: 'turniertag' })).status, 403);
+        assert.equal((await put('u-benutzer', `/api/orga/aufgaben/${wiegen.id}`, { titel: 'Hack' })).status, 403);
+        assert.equal((await del('u-benutzer', `/api/orga/aufgaben/${wiegen.id}`)).status, 403);
+        assert.equal((await post('u-benutzer', `/api/orga/aufgaben/${wiegen.id}/erledigt`, { erledigt: true })).status, 403);
+        assert.equal((await post('u-benutzer', `/api/orga/aufgaben/${wiegen.id}/zuweisen`, { benutzerId: 'u-benutzer' })).status, 403);
         assert.equal((await post('u-benutzer', `/api/orga/aufgaben/${wiegen.id}/zuweisen`, { name: 'Gast', email: 'gast@extern.de' })).status, 403);
-        assert.equal((await post('u-benutzer', `/api/orga/aufgaben/${wiegen.id}/zuweisen`, { name: 'Irgendwer' })).status, 403);
         assert.equal((await post('u-benutzer', `/api/orga/aufgaben/${wiegen.id}/zuweisen`, { frei: false })).status, 403);
         assert.equal((await post('u-benutzer', `/api/orga/aufgaben/${wiegen.id}/einladung-erneut`)).status, 403);
         assert.equal(mails.length, 0);
-        assert.equal((await post('u-benutzer', `/api/orga/aufgaben/${wiegen.id}/zuweisen`, { name: 'benutzer Test' })).status, 200); // eigener Name ohne E-Mail
-        // Aufheben nur für Admins (auch nicht mit eigener Konto-ID getarnt), fremde Zuweisung nicht an sich ziehen
-        assert.equal((await post('u-benutzer', `/api/orga/aufgaben/${wiegen.id}/zuweisen`, { frei: false, benutzerId: 'u-benutzer' })).status, 403);
-        assert.equal((await post('u-benutzer', `/api/orga/aufgaben/${wiegen.id}/zuweisen`, { benutzerId: 'u-benutzer' })).status, 200); // schon meine
-        await post('u-admin', `/api/orga/aufgaben/${wiegen.id}/zuweisen`, { benutzerId: 'u-helfer2' });
-        assert.equal((await post('u-benutzer', `/api/orga/aufgaben/${wiegen.id}/zuweisen`, { benutzerId: 'u-benutzer' })).status, 403); // gehört u-helfer2
-        assert.equal((await post('u-benutzer', `/api/orga/aufgaben/${wiegen.id}/zuweisen`, { name: 'benutzer Test' })).status, 403);
-        await post('u-admin', `/api/orga/aufgaben/${wiegen.id}/zuweisen`, { frei: false });
-        mails.length = 0;
+        assert.equal((await knex('orga_aufgaben').where({ id: wiegen.id }).first()).titel, 'Wiegen');
 
         // Zuweisen (Admin): Konto (Mail), Nichtmitglied 400
         const z = await post('u-admin', `/api/orga/aufgaben/${wiegen.id}/zuweisen`, { benutzerId: 'u-helfer' });
@@ -153,7 +151,7 @@ test('Orga-API: Rechte, Turnierbindung der Aufgaben-IDs, Helfer-Routen, Mitbring
         assert.equal(z.daten.ohneMail, undefined);
         // Selbst zuweisen: keine Mail, Antwort markiert ohneMail
         const abbau = alle(erst.daten).find((a) => a.vorlage_key === 'abbau');
-        const selbst = await post('u-benutzer', `/api/orga/aufgaben/${abbau.id}/zuweisen`, { benutzerId: 'u-benutzer' });
+        const selbst = await post('u-admin', `/api/orga/aufgaben/${abbau.id}/zuweisen`, { benutzerId: 'u-admin' });
         assert.deepEqual([selbst.status, selbst.daten.modus, selbst.daten.ohneMail], [200, 'konto', true]);
         assert.equal(mails.length, 1);
         assert.equal((await post('u-admin', `/api/orga/aufgaben/${wiegen.id}/zuweisen`, { benutzerId: 'u-fremd' })).status, 400);
@@ -187,7 +185,8 @@ test('Orga-API: Rechte, Turnierbindung der Aufgaben-IDs, Helfer-Routen, Mitbring
         assert.equal((await del('u-helfer2', `/api/helfer/orga/mitbringliste/${mb.daten.id}`)).status, 403);
         assert.equal((await del('u-helfer', `/api/helfer/orga/mitbringliste/${mb.daten.id}`)).status, 200);
         const mb2 = await post('u-helfer', '/api/helfer/orga/mitbringliste', { turnierId: tA, titel: 'Salat' });
-        assert.equal((await del('u-benutzer', `/api/helfer/orga/mitbringliste/${mb2.daten.id}`)).status, 200, 'Orga löscht jeden');
+        assert.equal((await del('u-benutzer', `/api/helfer/orga/mitbringliste/${mb2.daten.id}`)).status, 403, 'Benutzer löscht keine fremden Einträge');
+        assert.equal((await del('u-admin', `/api/helfer/orga/mitbringliste/${mb2.daten.id}`)).status, 200, 'Orga (Admin) löscht jeden');
         // kein Mitbringeintrag über diese Route erreichbar
         assert.equal((await del('u-helfer', `/api/helfer/orga/mitbringliste/${wiegen.id}`)).status, 404);
 

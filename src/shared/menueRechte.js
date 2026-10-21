@@ -1,6 +1,7 @@
 // Menü-Rechte der Verwaltungsoberfläche (Helferverwaltung, Spec 3.3). Framework- und DB-frei: menu.js
 // (Browser, per dynamischem import unter /js/shared/) und die Unit-Tests nutzen dieselben Regeln.
-//   - Verwaltung (Turniere, Pools, …) und Helferplan: Super-Admin oder Rolle Benutzer/Admin im aktiven Verein
+//   - Verwaltung (Turniere, Pools, …): Super-Admin oder Rolle Benutzer/Admin im aktiven Verein
+//   - Helferplan und Orga: nur Super-Admin oder Rolle Admin (Benutzer sind für Client-Geräte und als Helfer gedacht)
 //   - „Nutzer“ (admin-nutzer.html): nur Super-Admins
 //   - „Helfer-App“: jedes angemeldete Konto in der Cloud
 // Im Einzelbenutzerbetrieb (Hallen-Server, offline_user) bleibt das Menü wie bisher: alles Verwaltende sichtbar,
@@ -19,7 +20,8 @@ export function menueFuerRolle({ rolle = null, istSuperAdmin = false, einzelbenu
         return { verwaltung: true, helferPlan: true, nutzer: false, helferApp: false };
     }
     const verwaltung = !!istSuperAdmin || rolleReicht(rolle, 'benutzer');
-    return { verwaltung, helferPlan: verwaltung, nutzer: !!istSuperAdmin, helferApp: true };
+    const helferPlan = !!istSuperAdmin || rolleReicht(rolle, 'admin');
+    return { verwaltung, helferPlan, nutzer: !!istSuperAdmin, helferApp: true };
 }
 
 /** Vereine, die sich als aktiver Verein der Verwaltung eignen: freigegeben mit Rolle Benutzer oder Admin. */

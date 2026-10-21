@@ -13,7 +13,7 @@ test('menueFuerRolle: Matrix über alle Rollen', () => {
         [{ rolle: null, istSuperAdmin: true }, { verwaltung: true, helferPlan: true, nutzer: true, helferApp: true }],
         [{ rolle: 'helfer', istSuperAdmin: true }, { verwaltung: true, helferPlan: true, nutzer: true, helferApp: true }],
         [{ rolle: 'admin' }, { verwaltung: true, helferPlan: true, nutzer: false, helferApp: true }],
-        [{ rolle: 'benutzer' }, { verwaltung: true, helferPlan: true, nutzer: false, helferApp: true }],
+        [{ rolle: 'benutzer' }, { verwaltung: true, helferPlan: false, nutzer: false, helferApp: true }],
         [{ rolle: 'helfer' }, { verwaltung: false, helferPlan: false, nutzer: false, helferApp: true }],
         [{ rolle: null }, { verwaltung: false, helferPlan: false, nutzer: false, helferApp: true }],
         [{}, { verwaltung: false, helferPlan: false, nutzer: false, helferApp: true }],

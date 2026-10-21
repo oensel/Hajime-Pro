@@ -127,18 +127,19 @@ test('Turnier ohne Einsätze: 404', async () => {
     await assert.rejects(erzeugeAusweisPdf(knex, turnier), (e) => e.statusCode === 404);
 });
 
-test('HTTP-Route: Helfer 403, Orga application/pdf, ohne Einsätze 404 mit deutscher Meldung', async () => {
+test('HTTP-Route: Helfer/Benutzer 403, Orga (Admin) application/pdf, ohne Einsätze 404 mit deutscher Meldung', async () => {
     const mitEinsatz = (await aufbau([{ konto: 'r', vorname: 'Rita', nachname: 'Route' }])).turnier;
     const ohne = (await aufbau([{ konto: 'o', vorname: 'O', nachname: 'O', ohneEinsatz: true }])).turnier;
     for (const t of [mitEinsatz, ohne]) await knex('turniere').where({ id: t }).update({ status: 'veroeffentlicht' });
-    for (const n of ['orga', 'helfer']) {
+    for (const n of ['orga', 'benutzer', 'helfer']) {
         await knex('benutzer').insert({
             id: `ru-${n}`, email: `ru-${n}@t.de`, vorname: n, nachname: 'T', email_bestaetigt_am: knex.fn.now(),
             password_hash: hashPassword('pw-pw-pw-pw'), aktiver_verein_id: vereinId
         });
     }
     await knex('benutzer_vereine').insert([
-        { benutzer_id: 'ru-orga', verein_id: vereinId, freigegeben: 1, rolle: 'benutzer' },
+        { benutzer_id: 'ru-orga', verein_id: vereinId, freigegeben: 1, rolle: 'admin' },
+        { benutzer_id: 'ru-benutzer', verein_id: vereinId, freigegeben: 1, rolle: 'benutzer' },
         { benutzer_id: 'ru-helfer', verein_id: vereinId, freigegeben: 1, rolle: 'helfer' }
     ]);
     const app = express();
@@ -149,6 +150,7 @@ test('HTTP-Route: Helfer 403, Orga application/pdf, ohne Einsätze 404 mit deuts
     });
     try {
         assert.equal((await aufruf('ru-helfer', mitEinsatz)).status, 403);
+        assert.equal((await aufruf('ru-benutzer', mitEinsatz)).status, 403); // Rolle Benutzer verwaltet den Helferplan nicht
         const ok = await aufruf('ru-orga', mitEinsatz);
         assert.equal(ok.status, 200);
         assert.match(ok.headers.get('content-type'), /application\/pdf/);

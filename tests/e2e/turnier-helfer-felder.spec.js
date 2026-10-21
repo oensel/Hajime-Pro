@@ -80,6 +80,8 @@ test('Planungs-Tools: Haken blendet Beginn/Ende aus, ohne Haken kein Helferplan 
 
     // Wieder ausschalten: keine Prozente mehr in der Liste, Daten bleiben
     await page.reload();
+    await expect(page.locator('#bezeichnung')).not.toHaveValue('');
+    await expect(page.locator('#planungs_tools')).toBeChecked(); // erst nach dem Laden ausschalten
     await page.locator('#planungs_tools').uncheck();
     const aus = page.waitForResponse(r => r.url().includes(`/api/turniere/${turnierId}`) && r.request().method() === 'PUT');
     await page.locator('#submitBtn').click();
