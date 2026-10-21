@@ -8,16 +8,21 @@
     <script src="/js/menu.js"></script>
     <style>
         .nutzer-table { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
-        .nutzer-table th:nth-child(1) { width: 20%; }
-        .nutzer-table th:nth-child(2) { width: 26%; }
-        .nutzer-table th:nth-child(4) { width: 14%; }
-        .nutzer-table td { overflow-wrap: anywhere; }
-        .nutzer-table th, .nutzer-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border-color, #374151); vertical-align: top; }
+        .nutzer-table th:nth-child(1) { width: 15%; }
+        .nutzer-table th:nth-child(2) { width: 22%; }
+        .nutzer-table th:nth-child(3) { width: 27%; }
+        .nutzer-table th:nth-child(4) { width: 21%; }
+        .nutzer-table th:nth-child(5) { width: 15%; white-space: nowrap; }
+        .nutzer-table th, .nutzer-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border-color, #374151); vertical-align: top; overflow-wrap: anywhere; }
         .nutzer-table th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
-        .nutzer-table .verein { display: flex; align-items: center; gap: 8px; margin: 2px 0; }
-        .nutzer-table .verein-name { min-width: 120px; }
+        /* Eine Zeile je Benutzer; jeder weitere Verein ist eine weitere Zeile in den Spalten Verein und Rolle (gleiche Zeilenhöhe) */
+        .nutzer-table .zeile { height: 30px; display: flex; align-items: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        /* Name, E-Mail und Checkbox stehen auf der Höhe der ersten Zeile von Verein und Rolle */
+        .nutzer-table td:nth-child(1), .nutzer-table td:nth-child(2) { line-height: 30px; }
+        .nutzer-table td:nth-child(5) label { display: flex; align-items: center; height: 30px; }
+        .nutzer-table .zeile + .zeile { border-top: 1px dashed var(--border); }
         .nutzer-table .status { color: var(--text-muted); font-size: 12px; }
-        .nutzer-table select { width: auto; height: 26px; font-size: 13px; }
+        .nutzer-table select { width: auto; max-width: 100%; height: 26px; font-size: 13px; }
         .nutzer-filter { width: 100%; max-width: 360px; padding: 8px 10px; margin-bottom: 12px; box-sizing: border-box; }
         .nutzer-fehler { color: #ef4444; font-weight: 700; }
         .nutzer-ok { color: var(--text-muted); font-size: 13px; min-height: 18px; }
@@ -33,7 +38,7 @@
 <div class="kanji-left">柔</div>
 <div class="kanji-right">道</div>
 
-<div class="mdc-card" style="padding: 20px 24px;">
+<div class="mdc-card" style="padding: 20px 24px; max-width: 1180px;">
     <div class="form-title-area">
         <span class="material-icons">manage_accounts</span>
         <h1>Benutzer</h1>
@@ -49,9 +54,9 @@
         <div class="tabelle-scroll">
             <table class="nutzer-table">
                 <thead>
-                    <tr><th>Name</th><th>E-Mail</th><th>Vereine und Rollen</th><th>Super-Admin</th></tr>
+                    <tr><th>Name</th><th>E-Mail</th><th>Verein</th><th>Rolle</th><th>Super-Admin</th></tr>
                 </thead>
-                <tbody id="superListe"><tr><td colspan="4">Wird geladen …</td></tr></tbody>
+                <tbody id="superListe"><tr><td colspan="5">Wird geladen …</td></tr></tbody>
             </table>
         </div>
     </section>
@@ -61,9 +66,9 @@
         <div class="tabelle-scroll">
             <table class="nutzer-table">
                 <thead>
-                    <tr><th>Name</th><th>E-Mail</th><th>Vereine und Rollen</th><th>Super-Admin</th></tr>
+                    <tr><th>Name</th><th>E-Mail</th><th>Verein</th><th>Rolle</th><th>Super-Admin</th></tr>
                 </thead>
-                <tbody id="nutzerListe"><tr><td colspan="4">Wird geladen …</td></tr></tbody>
+                <tbody id="nutzerListe"><tr><td colspan="5">Wird geladen …</td></tr></tbody>
             </table>
         </div>
     </section>

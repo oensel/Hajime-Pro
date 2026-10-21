@@ -63,7 +63,8 @@
         return auswahl;
     }
 
-    function vereineZelle(konto) {
+    // Spalte Verein: je Mitgliedschaft eine Zeile (gleiche Höhe wie in der Spalte Rolle, damit beide untereinander passen)
+    function vereinZelle(konto) {
         const td = document.createElement('td');
         if (konto.mitgliedschaften.length === 0) {
             td.textContent = '–';
@@ -71,17 +72,30 @@
         }
         for (const m of konto.mitgliedschaften) {
             const zeile = document.createElement('div');
-            zeile.className = 'verein';
-            const name = document.createElement('span');
-            name.className = 'verein-name';
-            name.textContent = m.verein_name;
-            zeile.appendChild(name);
+            zeile.className = 'zeile';
+            zeile.textContent = m.verein_name;
+            zeile.title = m.verein_name;
+            td.appendChild(zeile);
+        }
+        return td;
+    }
+
+    // Spalte Rolle: Auswahl je Mitgliedschaft (oder der Hinweis, solange sie nicht freigegeben ist)
+    function rolleZelle(konto) {
+        const td = document.createElement('td');
+        if (konto.mitgliedschaften.length === 0) {
+            td.textContent = '–';
+            return td;
+        }
+        for (const m of konto.mitgliedschaften) {
+            const zeile = document.createElement('div');
+            zeile.className = 'zeile';
             if (m.freigegeben && m.rolle) {
                 zeile.appendChild(rollenAuswahl(konto, m));
             } else {
                 const status = document.createElement('span');
                 status.className = 'status';
-                status.textContent = '(wartet auf Freischaltung)';
+                status.textContent = 'wartet auf Freischaltung';
                 zeile.appendChild(status);
             }
             td.appendChild(zeile);
@@ -119,7 +133,7 @@
         if (eintraege.length === 0) {
             const tr = document.createElement('tr');
             const td = zelle(leerText);
-            td.colSpan = 4;
+            td.colSpan = 5;
             tr.appendChild(td);
             tbody.appendChild(tr);
             return;
@@ -129,7 +143,8 @@
             tr.dataset.id = k.id;
             tr.appendChild(zelle(`${k.vorname} ${k.nachname}`));
             tr.appendChild(zelle(k.email + (k.email_bestaetigt ? '' : ' (unbestätigt)')));
-            tr.appendChild(vereineZelle(k));
+            tr.appendChild(vereinZelle(k));
+            tr.appendChild(rolleZelle(k));
             tr.appendChild(umschalterZelle(k));
             tbody.appendChild(tr);
         }

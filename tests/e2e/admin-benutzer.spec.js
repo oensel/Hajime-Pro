@@ -64,6 +64,12 @@ test('Benutzer: Super-Admins stehen oben in einem eigenen Bereich, Rollen je Ver
     await expect(anna).toContainText('JC Alpha');
     await expect(anna).toContainText('JC Beta');
     await expect(anna).toContainText('wartet auf Freischaltung');
+    // Eine Zeile je Benutzer; Verein und Rolle sind eigene Spalten (je weiterem Verein eine weitere Zeile darin)
+    await expect(anna.locator('td')).toHaveCount(5);
+    await expect(anna.locator('td').nth(2).locator('.zeile')).toHaveCount(2);
+    await expect(anna.locator('td').nth(3).locator('.zeile')).toHaveCount(2);
+    await expect(anna.locator('td').nth(4).locator('input[type=checkbox]')).toHaveCount(1);
+    await expect(anna.locator('td').nth(2).locator('select')).toHaveCount(0);
     await expect(anna).toContainText('(unbestätigt)');
     const auswahl = anna.locator('select');
     await expect(auswahl).toHaveCount(1);
