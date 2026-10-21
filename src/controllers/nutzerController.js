@@ -3,6 +3,8 @@
 // (requireSuperAdmin in nutzerRoutes.js). Es bleibt immer mindestens ein Super-Admin.
 
 import { datumAlsIso } from '../shared/turnierAktivierung.js';
+import { hashPassword } from '../utils/password.js';
+import { MIN_PASSWORT_LAENGE, MAX_EMAIL_LAENGE, MELDUNG_EMAIL_ZU_LANG, normalisiereEmail } from '../services/registrierung.js';
 
 /** GET /api/nutzer — alle Konten (ohne Passwort-Hash) mit Mitgliedschaften. */
 export async function listeNutzer(knex, req, res) {
@@ -161,5 +163,104 @@ export async function listeVereinTurniere(knex, req, res) {
     } catch (error) {
         console.error('[Verein-Turniere-Fehler]:', error);
         res.status(500).json({ success: false, error: 'Fehler beim Laden der Turniere.' });
+    }
+}
+
+// --- Benutzer bearbeiten, löschen, Initialpasswort setzen (nur Super-Admin) ---
+
+const MAX_NAME_LAENGE = 255;
+const EMAIL_MUSTER = /^[^\s@<>,;"]+@[^\s@<>,;"]+\.[^\s@<>,;".]+$/;
+
+function leseKontoId(req) {
+    const roh = req.params.id;
+    return typeof roh === 'string' && roh.length > 0 && roh.length <= 64 ? roh : null;
+}
+
+/** PUT /api/nutzer/:id { vorname, nachname, email } — Stammdaten eines Kontos ändern (E-Mail eindeutig, kleingeschrieben). */
+export async function aendereNutzer(knex, req, res) {
+    try {
+        const zielId = leseKontoId(req);
+        const body = req.body || {};
+        const vorname = typeof body.vorname === 'string' ? body.vorname.trim() : '';
+        const nachname = typeof body.nachname === 'string' ? body.nachname.trim() : '';
+        const email = normalisiereEmail(body.email);
+        if (!vorname || !nachname || !email) {
+            return res.status(400).json({ success: false, error: 'Vorname, Nachname und E-Mail sind erforderlich.' });
+        }
+        if (vorname.length > MAX_NAME_LAENGE || nachname.length > MAX_NAME_LAENGE) {
+            return res.status(400).json({ success: false, error: `Vor- und Nachname dürfen höchstens ${MAX_NAME_LAENGE} Zeichen lang sein.` });
+        }
+        if (email.length > MAX_EMAIL_LAENGE) return res.status(400).json({ success: false, error: MELDUNG_EMAIL_ZU_LANG });
+        if (!EMAIL_MUSTER.test(email)) return res.status(400).json({ success: false, error: 'Bitte eine gültige E-Mail-Adresse angeben.' });
+
+        const ziel = zielId ? await knex('benutzer').where({ id: zielId }).first('id', 'email') : null;
+        if (!ziel) return res.status(404).json({ success: false, error: 'Konto nicht gefunden.' });
+
+        if (email !== ziel.email) {
+            // Dubletten ohne Beachtung der Schreibweise (Bestandskonten können noch Großbuchstaben enthalten)
+            const fremd = await knex('benutzer').whereRaw('lower(trim(email)) = ?', [email]).whereNot({ id: ziel.id }).first('id');
+            if (fremd) return res.status(409).json({ success: false, error: 'Diese E-Mail-Adresse wird bereits von einem anderen Konto verwendet.' });
+        }
+        await knex('benutzer').where({ id: ziel.id }).update({ vorname, nachname, email, updated_at: knex.fn.now() });
+        res.json({ success: true, vorname, nachname, email });
+    } catch (error) {
+        console.error('[Nutzer-Aendern-Fehler]:', error);
+        res.status(500).json({ success: false, error: 'Fehler beim Ändern des Kontos.' });
+    }
+}
+
+/** DELETE /api/nutzer/:id — Konto samt Mitgliedschaften löschen; nicht das eigene, nicht den letzten Super-Admin. */
+export async function loescheNutzer(knex, req, res) {
+    try {
+        const zielId = leseKontoId(req);
+        if (zielId && String(zielId) === String(req.user.id)) {
+            return res.status(409).json({ success: false, error: 'Das eigene Konto kann nicht gelöscht werden.' });
+        }
+        const ergebnis = await knex.transaction(async (trx) => {
+            // Super-Admin-Zeilen sperren, damit nicht zwei gleichzeitige Löschungen den letzten entfernen
+            const superAdmins = await trx('benutzer').where({ ist_super_admin: true }).forUpdate().select('id');
+            const ziel = zielId ? await trx('benutzer').where({ id: zielId }).first('id', 'ist_super_admin') : null;
+            if (!ziel) return { status: 404, error: 'Konto nicht gefunden.' };
+            if (ziel.ist_super_admin && superAdmins.length <= 1) {
+                return { status: 409, error: 'Der letzte Super-Admin kann nicht gelöscht werden.' };
+            }
+            await trx('benutzer').where({ id: ziel.id }).del(); // Mitgliedschaften, Token, Einsätze folgen per ON DELETE CASCADE
+            return { status: 200 };
+        });
+        if (ergebnis.status !== 200) return res.status(ergebnis.status).json({ success: false, error: ergebnis.error });
+        res.json({ success: true });
+    } catch (error) {
+        console.error('[Nutzer-Loeschen-Fehler]:', error);
+        res.status(500).json({ success: false, error: 'Fehler beim Löschen des Kontos.' });
+    }
+}
+
+/**
+ * POST /api/nutzer/:id/passwort { passwort, aendernErforderlich? } — Initialpasswort vergeben. Standardmäßig muss die
+ * Person es beim nächsten Anmelden ändern (aendernErforderlich: false hebt das auf). Ein noch unbestätigtes Konto gilt
+ * damit als freigegeben (E-Mail bestätigt), weil der Super-Admin die Zugangsdaten übergibt.
+ */
+export async function setzeInitialPasswort(knex, req, res) {
+    try {
+        const zielId = leseKontoId(req);
+        const body = req.body || {};
+        const passwort = body.passwort;
+        if (typeof passwort !== 'string' || passwort.length < MIN_PASSWORT_LAENGE) {
+            return res.status(400).json({ success: false, error: `Das Passwort muss mindestens ${MIN_PASSWORT_LAENGE} Zeichen lang sein.` });
+        }
+        if (passwort.length > 200) return res.status(400).json({ success: false, error: 'Das Passwort ist zu lang.' });
+        const aendern = body.aendernErforderlich === undefined ? true : body.aendernErforderlich === true;
+        const ziel = zielId ? await knex('benutzer').where({ id: zielId }).first('id', 'email_bestaetigt_am') : null;
+        if (!ziel) return res.status(404).json({ success: false, error: 'Konto nicht gefunden.' });
+        await knex('benutzer').where({ id: ziel.id }).update({
+            password_hash: hashPassword(passwort),
+            muss_passwort_aendern: aendern,
+            ...(ziel.email_bestaetigt_am ? {} : { email_bestaetigt_am: knex.fn.now() }),
+            updated_at: knex.fn.now()
+        });
+        res.json({ success: true, aendernErforderlich: aendern });
+    } catch (error) {
+        console.error('[Nutzer-Passwort-Fehler]:', error);
+        res.status(500).json({ success: false, error: 'Fehler beim Setzen des Passworts.' });
     }
 }

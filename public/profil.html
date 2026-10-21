@@ -240,6 +240,7 @@
         <h1>Mein Profil</h1>
     </div>
 
+    <div id="passwortPflichtHinweis" role="alert" hidden style="margin: 0 0 14px; padding: 10px 12px; border: 1px solid #c62828; border-radius: 4px; color: #c62828; font-size: 13px; font-weight: 700;">Ihr Passwort wurde von einem Administrator vergeben. Bitte legen Sie jetzt ein eigenes Passwort fest (aktuelles Passwort = das vergebene).</div>
     <form id="profilForm">
         <div class="profil-form-group">
             <label for="vorname">Vorname</label>
@@ -317,6 +318,7 @@
         const vornameInput = document.getElementById('vorname');
         const nachnameInput = document.getElementById('nachname');
         const emailInput = document.getElementById('email');
+        let passwortPflicht = false;
 
         try {
             const resp = await fetch('/api/auth/me');
@@ -325,6 +327,12 @@
                 vornameInput.value = data.user.vorname || '';
                 nachnameInput.value = data.user.nachname || '';
                 emailInput.value = data.user.email || '';
+                // Initialpasswort: neues Passwort ist Pflicht, bis es geändert ist
+                if (data.user.muss_passwort_aendern || new URLSearchParams(window.location.search).get('passwortAendern') === '1') {
+                    passwortPflicht = !!data.user.muss_passwort_aendern;
+                    document.getElementById('passwortPflichtHinweis').hidden = !passwortPflicht;
+                    if (passwortPflicht) document.getElementById('currentPassword').focus();
+                }
             }
         } catch (err) {
             console.error('Fehler beim Laden des Profils:', err);
@@ -336,6 +344,11 @@
             const newPassword = document.getElementById('newPassword').value;
             const newPasswordConfirm = document.getElementById('newPasswordConfirm').value;
 
+            if (passwortPflicht && !newPassword) {
+                const msg = 'Bitte legen Sie ein neues Passwort fest.';
+                window.zeigeNotification ? window.zeigeNotification(msg, 'error') : alert(msg);
+                return;
+            }
             if (newPassword && newPassword !== newPasswordConfirm) {
                 const msg = 'Die neuen Passwörter stimmen nicht überein.';
                 window.zeigeNotification ? window.zeigeNotification(msg, 'error') : alert(msg);
@@ -365,6 +378,10 @@
                 }
 
                 localStorage.setItem('dokume_token', data.token);
+                if (passwortPflicht && !data.user.muss_passwort_aendern) {
+                    passwortPflicht = false;
+                    document.getElementById('passwortPflichtHinweis').hidden = true;
+                }
                 localStorage.setItem('dokume_user', JSON.stringify(data.user));
 
                 document.getElementById('currentPassword').value = '';

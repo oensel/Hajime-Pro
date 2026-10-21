@@ -1,6 +1,8 @@
 // Seite admin-nutzer.html („Benutzer“, nur Super-Admins): alle Konten mit Vereinen und Rollen, getrennt in
 // Super-Admins (oben, eigener Bereich) und übrige Benutzer; die Rolle je Verein ist änderbar, ebenso Super-Admin.
-// API: GET /api/nutzer, POST /api/nutzer/:id/super-admin { wert }, POST /api/vereine/rolle { userId, vereinId, rolle }.
+// API: GET /api/nutzer, PUT /api/nutzer/:id { vorname, nachname, email }, DELETE /api/nutzer/:id,
+// POST /api/nutzer/:id/passwort { passwort, aendernErforderlich }, POST /api/nutzer/:id/super-admin { wert },
+// POST /api/vereine/rolle { userId, vereinId, rolle }.
 // Der Authorization-Header kommt aus dem globalen fetch-Wrapper in menu.js.
 (function () {
     const ROLLEN = [['admin', 'Admin'], ['benutzer', 'Benutzer'], ['helfer', 'Helfer']];
@@ -10,6 +12,8 @@
     const ok = document.getElementById('nutzerOk');
     const filter = document.getElementById('nutzerFilter');
     let konten = [];
+    let eigeneId = null;
+    let aktuellerKonto = null;
     // Gefiltert auf einen Verein (Link aus der Vereinsübersicht: admin-nutzer.html?vereinId=)
     const vereinFilterId = new URLSearchParams(window.location.search).get('vereinId');
     const vereinFilterBox = document.getElementById('vereinFilterBox');
@@ -131,13 +135,39 @@
         || (a.vorname || '').localeCompare(b.vorname || '', 'de')
         || (a.email || '').localeCompare(b.email || '', 'de');
 
+    function aktionsZelle(konto) {
+        const td = document.createElement('td');
+        const knopf = (icon, text, klasse, handler, gesperrt = false) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = `aktion ${klasse}`.trim();
+            b.title = text;
+            b.setAttribute('aria-label', `${text}: ${konto.vorname} ${konto.nachname}`);
+            b.disabled = gesperrt;
+            const i = document.createElement('span');
+            i.className = 'material-icons';
+            i.textContent = icon;
+            b.appendChild(i);
+            b.addEventListener('click', handler);
+            return b;
+        };
+        td.append(
+            knopf('edit', 'Bearbeiten', '', () => oeffneBearbeiten(konto)),
+            document.createTextNode(' '),
+            knopf('key', 'Initialpasswort vergeben', '', () => oeffnePasswort(konto)),
+            document.createTextNode(' '),
+            knopf('delete', 'Löschen', 'gefahr', () => loesche(konto), String(konto.id) === String(eigeneId))
+        );
+        return td;
+    }
+
     function fuelle(tbody, anzahlFeld, eintraege, leerText) {
         tbody.textContent = '';
         anzahlFeld.textContent = `(${eintraege.length})`;
         if (eintraege.length === 0) {
             const tr = document.createElement('tr');
             const td = zelle(leerText);
-            td.colSpan = 5;
+            td.colSpan = 6;
             tr.appendChild(td);
             tbody.appendChild(tr);
             return;
@@ -150,6 +180,7 @@
             tr.appendChild(vereinZelle(k));
             tr.appendChild(rolleZelle(k));
             tr.appendChild(umschalterZelle(k));
+            tr.appendChild(aktionsZelle(k));
             tbody.appendChild(tr);
         }
     }
@@ -199,7 +230,123 @@
         vereinFilterBox.hidden = false;
     }
 
+    // --- Bearbeiten ---
+    const bearbeitenDialog = document.getElementById('bearbeitenDialog');
+    const bearbeitenFehler = document.getElementById('bearbeitenFehler');
+
+    function oeffneBearbeiten(konto) {
+        aktuellerKonto = konto;
+        document.getElementById('bearbeitenVorname').value = konto.vorname || '';
+        document.getElementById('bearbeitenNachname').value = konto.nachname || '';
+        document.getElementById('bearbeitenEmail').value = konto.email || '';
+        bearbeitenFehler.textContent = '';
+        bearbeitenDialog.showModal();
+    }
+
+    document.getElementById('bearbeitenAbbrechen').addEventListener('click', () => bearbeitenDialog.close());
+    document.getElementById('bearbeitenForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!aktuellerKonto) return;
+        const speichern = document.getElementById('bearbeitenSpeichern');
+        speichern.disabled = true;
+        bearbeitenFehler.textContent = '';
+        try {
+            const response = await fetch(`/api/nutzer/${encodeURIComponent(aktuellerKonto.id)}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    vorname: document.getElementById('bearbeitenVorname').value,
+                    nachname: document.getElementById('bearbeitenNachname').value,
+                    email: document.getElementById('bearbeitenEmail').value
+                })
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.error || 'Das Konto konnte nicht geändert werden.');
+            Object.assign(aktuellerKonto, { vorname: data.vorname, nachname: data.nachname, email: data.email });
+            bearbeitenDialog.close();
+            zeichne();
+            zeigeMeldung(`Gespeichert: ${data.vorname} ${data.nachname}`, true);
+        } catch (err) {
+            bearbeitenFehler.textContent = err.message;
+        } finally {
+            speichern.disabled = false;
+        }
+    });
+
+    // --- Initialpasswort ---
+    const passwortDialog = document.getElementById('passwortDialog');
+    const passwortFehler = document.getElementById('passwortFehler');
+
+    function oeffnePasswort(konto) {
+        aktuellerKonto = konto;
+        document.getElementById('passwortFuer').textContent = `${konto.vorname} ${konto.nachname} (${konto.email})`;
+        document.getElementById('passwortFeld').value = '';
+        document.getElementById('passwortAendern').checked = true;
+        passwortFehler.textContent = '';
+        passwortDialog.showModal();
+        document.getElementById('passwortFeld').focus();
+    }
+
+    document.getElementById('passwortAbbrechen').addEventListener('click', () => passwortDialog.close());
+    document.getElementById('passwortForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!aktuellerKonto) return;
+        const speichern = document.getElementById('passwortSpeichern');
+        speichern.disabled = true;
+        passwortFehler.textContent = '';
+        try {
+            const response = await fetch(`/api/nutzer/${encodeURIComponent(aktuellerKonto.id)}/passwort`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    passwort: document.getElementById('passwortFeld').value,
+                    aendernErforderlich: document.getElementById('passwortAendern').checked
+                })
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.error || 'Das Passwort konnte nicht gesetzt werden.');
+            aktuellerKonto.email_bestaetigt = true;
+            passwortDialog.close();
+            document.getElementById('passwortFeld').value = '';
+            zeichne();
+            zeigeMeldung(`Passwort für ${aktuellerKonto.vorname} ${aktuellerKonto.nachname} gesetzt${data.aendernErforderlich ? ' (muss beim nächsten Anmelden geändert werden)' : ''}.`, true);
+        } catch (err) {
+            passwortFehler.textContent = err.message;
+        } finally {
+            speichern.disabled = false;
+        }
+    });
+
+    // --- Löschen ---
+    async function loesche(konto) {
+        const name = `${konto.vorname} ${konto.nachname}`.trim() || konto.email;
+        const text = `Benutzer „${name}“ (${konto.email}) wirklich löschen? Die Mitgliedschaften in allen Vereinen und eingetragene Helferdienste gehen verloren.`;
+        const bestaetigt = window.zeigeZentraleBestaetigung
+            ? await window.zeigeZentraleBestaetigung(text, 'Benutzer löschen', 'delete')
+            : window.confirm(text);
+        if (!bestaetigt) return;
+        zeigeMeldung('');
+        try {
+            const response = await fetch(`/api/nutzer/${encodeURIComponent(konto.id)}`, { method: 'DELETE' });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.error || 'Das Konto konnte nicht gelöscht werden.');
+            konten = konten.filter(k => k.id !== konto.id);
+            zeichne();
+            zeigeMeldung(`Gelöscht: ${name}`, true);
+        } catch (err) {
+            zeigeMeldung(err.message);
+        }
+    }
+
+    async function ladeEigeneId() {
+        try {
+            const response = await fetch('/api/auth/me');
+            if (response.ok) eigeneId = (await response.json()).user.id;
+        } catch { /* ohne eigene ID bleibt Löschen des eigenen Kontos serverseitig gesperrt */ }
+    }
+
     async function lade() {
+        await ladeEigeneId();
         try {
             const response = await fetch('/api/nutzer');
             const data = await response.json().catch(() => ({}));

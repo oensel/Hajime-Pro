@@ -338,6 +338,7 @@
     // (nur Helfer, Freischaltung ausstehend) zur Helfer-App, sonst zur Turnierübersicht. Ist der aktive
     // Verein ein reiner Helfer-Verein, gibt es aber einen verwaltbaren, wechselt menu.js dorthin.
     async function zielNachAnmeldung(user) {
+        if (user.muss_passwort_aendern) return '/profil.html?passwortAendern=1';
         if (!user.verein_id) return '/verein_auswahl.html';
         try {
             const { menueFuerRolle, verwaltbareVereine } = await geteilt;

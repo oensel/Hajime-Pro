@@ -1198,6 +1198,12 @@ async function initialisiereMenue() {
     // Turnier-Menüpunkte ausgeblendet werden.
     const wartetAufFreigabe = !!(currentUser && currentUser.verein_id && !currentUser.verein_freigegeben);
 
+    // Initialpasswort (von einem Super-Admin vergeben): zuerst ein eigenes Passwort festlegen
+    if (currentUser && currentUser.muss_passwort_aendern && !currentPath.includes('profil.html')) {
+        window.location.href = '/profil.html?passwortAendern=1';
+        return;
+    }
+
     if (wartetAufFreigabe) {
         versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-orga', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
 

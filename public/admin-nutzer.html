@@ -8,11 +8,12 @@
     <script src="/js/menu.js"></script>
     <style>
         .nutzer-table { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
-        .nutzer-table th:nth-child(1) { width: 15%; }
-        .nutzer-table th:nth-child(2) { width: 22%; }
-        .nutzer-table th:nth-child(3) { width: 27%; }
-        .nutzer-table th:nth-child(4) { width: 21%; }
-        .nutzer-table th:nth-child(5) { width: 15%; white-space: nowrap; }
+        .nutzer-table th:nth-child(1) { width: 14%; }
+        .nutzer-table th:nth-child(2) { width: 21%; }
+        .nutzer-table th:nth-child(3) { width: 23%; }
+        .nutzer-table th:nth-child(4) { width: 18%; }
+        .nutzer-table th:nth-child(5) { width: 11%; white-space: nowrap; }
+        .nutzer-table th:nth-child(6) { width: 13%; }
         .nutzer-table th, .nutzer-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border-color, #374151); vertical-align: top; overflow-wrap: anywhere; }
         .nutzer-table th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
         /* Eine Zeile je Benutzer; jeder weitere Verein ist eine weitere Zeile in den Spalten Verein und Rolle (gleiche Zeilenhöhe) */
@@ -20,6 +21,20 @@
         /* Name, E-Mail und Checkbox stehen auf der Höhe der ersten Zeile von Verein und Rolle */
         .nutzer-table td:nth-child(1), .nutzer-table td:nth-child(2) { line-height: 30px; }
         .nutzer-table td:nth-child(5) label { display: flex; align-items: center; height: 30px; }
+        .nutzer-table td:nth-child(6) { white-space: nowrap; }
+        .nutzer-table .aktion { width: 30px; height: 30px; padding: 0; border: 1px solid var(--border); border-radius: 4px; background: transparent; color: var(--text-main); cursor: pointer; vertical-align: top; }
+        .nutzer-table .aktion:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+        .nutzer-table .aktion.gefahr:hover:not(:disabled) { border-color: #c62828; color: #c62828; }
+        .nutzer-table .aktion:disabled { opacity: 0.35; cursor: not-allowed; }
+        .nutzer-table .aktion .material-icons { font-size: 18px; }
+        dialog.nutzer-dialog { border: 2px solid var(--border); border-radius: 4px; padding: 18px 20px; width: min(420px, 92vw); background: var(--bg-card); color: var(--text-main); }
+        dialog.nutzer-dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
+        dialog.nutzer-dialog h2 { margin: 0 0 10px; font-size: 15px; text-transform: uppercase; letter-spacing: 0.5px; }
+        dialog.nutzer-dialog label { display: block; font-size: 12px; margin: 10px 0 3px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; }
+        dialog.nutzer-dialog input[type=text], dialog.nutzer-dialog input[type=email], dialog.nutzer-dialog input[type=password] { width: 100%; box-sizing: border-box; }
+        dialog.nutzer-dialog .zeile-check { display: flex; align-items: center; gap: 8px; margin-top: 12px; text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--text-main); }
+        dialog.nutzer-dialog .dialog-fehler { color: #ef4444; font-weight: 700; font-size: 13px; min-height: 18px; margin-top: 8px; }
+        dialog.nutzer-dialog .dialog-knoepfe { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
         .nutzer-table .zeile + .zeile { border-top: 1px dashed var(--border); }
         .nutzer-table .status { color: var(--text-muted); font-size: 12px; }
         .nutzer-table select { width: auto; max-width: 100%; height: 26px; font-size: 13px; }
@@ -56,9 +71,9 @@
         <div class="tabelle-scroll">
             <table class="nutzer-table">
                 <thead>
-                    <tr><th>Name</th><th>E-Mail</th><th>Verein</th><th>Rolle</th><th>Super-Admin</th></tr>
+                    <tr><th>Name</th><th>E-Mail</th><th>Verein</th><th>Rolle</th><th>Super-Admin</th><th>Aktionen</th></tr>
                 </thead>
-                <tbody id="superListe"><tr><td colspan="5">Wird geladen …</td></tr></tbody>
+                <tbody id="superListe"><tr><td colspan="6">Wird geladen …</td></tr></tbody>
             </table>
         </div>
     </section>
@@ -68,13 +83,45 @@
         <div class="tabelle-scroll">
             <table class="nutzer-table">
                 <thead>
-                    <tr><th>Name</th><th>E-Mail</th><th>Verein</th><th>Rolle</th><th>Super-Admin</th></tr>
+                    <tr><th>Name</th><th>E-Mail</th><th>Verein</th><th>Rolle</th><th>Super-Admin</th><th>Aktionen</th></tr>
                 </thead>
-                <tbody id="nutzerListe"><tr><td colspan="5">Wird geladen …</td></tr></tbody>
+                <tbody id="nutzerListe"><tr><td colspan="6">Wird geladen …</td></tr></tbody>
             </table>
         </div>
     </section>
 </div>
+
+<dialog class="nutzer-dialog" id="bearbeitenDialog" aria-labelledby="bearbeitenTitel">
+    <form method="dialog" id="bearbeitenForm">
+        <h2 id="bearbeitenTitel">Benutzer bearbeiten</h2>
+        <label for="bearbeitenVorname">Vorname</label>
+        <input type="text" id="bearbeitenVorname" maxlength="255" required>
+        <label for="bearbeitenNachname">Nachname</label>
+        <input type="text" id="bearbeitenNachname" maxlength="255" required>
+        <label for="bearbeitenEmail">E-Mail</label>
+        <input type="email" id="bearbeitenEmail" maxlength="254" required>
+        <div class="dialog-fehler" id="bearbeitenFehler" role="alert"></div>
+        <div class="dialog-knoepfe">
+            <button type="button" class="btn btn-outlined" id="bearbeitenAbbrechen">Abbrechen</button>
+            <button type="submit" class="btn btn-raised" id="bearbeitenSpeichern">Speichern</button>
+        </div>
+    </form>
+</dialog>
+
+<dialog class="nutzer-dialog" id="passwortDialog" aria-labelledby="passwortTitel">
+    <form method="dialog" id="passwortForm">
+        <h2 id="passwortTitel">Initialpasswort vergeben</h2>
+        <p id="passwortFuer" style="margin: 0; font-size: 13px; color: var(--text-muted);"></p>
+        <label for="passwortFeld">Neues Passwort (mindestens 8 Zeichen)</label>
+        <input type="password" id="passwortFeld" minlength="8" maxlength="200" autocomplete="new-password" required>
+        <label class="zeile-check"><input type="checkbox" id="passwortAendern" checked> Muss beim nächsten Anmelden geändert werden</label>
+        <div class="dialog-fehler" id="passwortFehler" role="alert"></div>
+        <div class="dialog-knoepfe">
+            <button type="button" class="btn btn-outlined" id="passwortAbbrechen">Abbrechen</button>
+            <button type="submit" class="btn btn-raised" id="passwortSpeichern">Passwort setzen</button>
+        </div>
+    </form>
+</dialog>
 
 <script src="/js/adminNutzer.js"></script>
 </body>

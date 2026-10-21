@@ -65,7 +65,7 @@ test('Benutzer: Super-Admins stehen oben in einem eigenen Bereich, Rollen je Ver
     await expect(anna).toContainText('JC Beta');
     await expect(anna).toContainText('wartet auf Freischaltung');
     // Eine Zeile je Benutzer; Verein und Rolle sind eigene Spalten (je weiterem Verein eine weitere Zeile darin)
-    await expect(anna.locator('td')).toHaveCount(5);
+    await expect(anna.locator('td')).toHaveCount(6); // Name, E-Mail, Verein, Rolle, Super-Admin, Aktionen
     await expect(anna.locator('td').nth(2).locator('.zeile')).toHaveCount(2);
     await expect(anna.locator('td').nth(3).locator('.zeile')).toHaveCount(2);
     await expect(anna.locator('td').nth(4).locator('input[type=checkbox]')).toHaveCount(1);
@@ -109,4 +109,76 @@ test('Server-Update hat eine eigene Seite mit Menüpunkt', async ({ page }) => {
     await expect(page.locator('#updateNeueste')).toHaveText('1.0.26');
     await expect(page.locator('#updateKnopf')).toBeEnabled();
     await expect(page.locator('#nav-server-update')).toHaveClass(/active/);
+});
+
+test('Benutzer: bearbeiten, Initialpasswort vergeben und löschen (das eigene Konto nicht)', async ({ page }) => {
+    let geaendert = null;
+    let passwort = null;
+    let geloescht = null;
+    await alsSuperAdmin(page, { rolleAntwort: (route) => route.fulfill({ json: { success: true } }) });
+    await page.route('**/api/nutzer/u-anna', (route) => {
+        const methode = route.request().method();
+        if (methode === 'PUT') {
+            geaendert = route.request().postDataJSON();
+            return route.fulfill({ json: { success: true, ...geaendert } });
+        }
+        if (methode === 'DELETE') { geloescht = 'u-anna'; return route.fulfill({ json: { success: true } }); }
+        return route.continue();
+    });
+    await page.route('**/api/nutzer/u-anna/passwort', (route) => {
+        passwort = route.request().postDataJSON();
+        return route.fulfill({ json: { success: true, aendernErforderlich: passwort.aendernErforderlich } });
+    });
+    await page.goto('/admin-nutzer.html');
+
+    // Das eigene Konto lässt sich nicht löschen
+    await expect(page.locator('tr[data-id="e2e-super"] button[title="Löschen"]')).toBeDisabled();
+
+    // Bearbeiten
+    const anna = page.locator('tr[data-id="u-anna"]');
+    await anna.getByRole('button', { name: /Bearbeiten: Anna Adler/ }).click();
+    const dialog = page.locator('#bearbeitenDialog');
+    await expect(dialog).toBeVisible();
+    await expect(page.locator('#bearbeitenVorname')).toHaveValue('Anna');
+    await page.locator('#bearbeitenVorname').fill('Annika');
+    await page.locator('#bearbeitenEmail').fill('annika@example.test');
+    await page.locator('#bearbeitenSpeichern').click();
+    await expect.poll(() => geaendert).toEqual({ vorname: 'Annika', nachname: 'Adler', email: 'annika@example.test' });
+    await expect(dialog).toBeHidden();
+    await expect(page.locator('tr[data-id="u-anna"]')).toContainText('Annika Adler');
+    await expect(page.locator('#nutzerOk')).toContainText('Gespeichert: Annika Adler');
+
+    // Initialpasswort: Standard = muss beim nächsten Anmelden geändert werden
+    await page.locator('tr[data-id="u-anna"]').getByRole('button', { name: /Initialpasswort vergeben/ }).click();
+    await expect(page.locator('#passwortDialog')).toBeVisible();
+    await expect(page.locator('#passwortAendern')).toBeChecked();
+    await page.locator('#passwortFeld').fill('Start-Passwort-1');
+    await page.locator('#passwortSpeichern').click();
+    await expect.poll(() => passwort).toEqual({ passwort: 'Start-Passwort-1', aendernErforderlich: true });
+    await expect(page.locator('#nutzerOk')).toContainText('muss beim nächsten Anmelden geändert werden');
+    await expect(page.locator('#passwortFeld')).toHaveValue('');
+
+    // Löschen mit Bestätigung
+    await page.locator('tr[data-id="u-anna"]').getByRole('button', { name: /Löschen: Annika Adler/ }).click();
+    await page.locator('#modalConfirmBtn').click();
+    await expect.poll(() => geloescht).toBe('u-anna');
+    await expect(page.locator('tr[data-id="u-anna"]')).toHaveCount(0);
+    await expect(page.locator('#nutzerOk')).toContainText('Gelöscht');
+});
+
+test('Initialpasswort: Konto mit Pflicht zur Änderung landet im Profil und muss ein neues Passwort setzen', async ({ page }) => {
+    await page.route('**/api/config', (route) => route.fulfill({ json: CLOUD_CONFIG }));
+    await page.route('**/api/auth/me', (route) => route.fulfill({
+        json: { success: true, user: { ...SUPER, ist_super_admin: false, muss_passwort_aendern: true } }
+    }));
+    let profilGesendet = 0;
+    await page.route('**/api/auth/profile', (route) => { profilGesendet += 1; return route.fulfill({ status: 400, json: { success: false, error: 'x' } }); });
+    await page.goto('/turniere.html');
+    await expect(page).toHaveURL(/\/profil\.html\?passwortAendern=1$/);
+    await expect(page.locator('#passwortPflichtHinweis')).toBeVisible();
+    // Ohne neues Passwort wird nicht gespeichert
+    await page.locator('#currentPassword').fill('Start-Passwort-1');
+    await page.locator('#profilForm button[type="submit"]').click();
+    await page.waitForTimeout(300);
+    expect(profilGesendet).toBe(0);
 });
