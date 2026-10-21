@@ -1275,7 +1275,8 @@ async function initialisiereMenue() {
                     // --- VEREINS-SICHTBARKEIT: Nutzer außerhalb des ausrichtenden Vereins ---
                     // dürfen nur die Teilnehmer-Ansicht (gefiltert auf den eigenen Verein) sehen.
                     if (currentUser && !istOffline) {
-                        const gehoertZuEigenemVerein = !!(currentUser.verein_id && turnier.verein_id === currentUser.verein_id);
+                        // Super-Admins dürfen die Turniere aller Vereine verwalten
+                        const gehoertZuEigenemVerein = !!(currentUser.ist_super_admin || (currentUser.verein_id && turnier.verein_id === currentUser.verein_id));
 
                         if (!gehoertZuEigenemVerein) {
                             // Bei einem fremden Verein dürfen nur "Turniere" und "Teilnehmer" sichtbar sein.
@@ -1327,6 +1328,11 @@ async function initialisiereMenue() {
     const serverUpdateLink = document.getElementById('nav-server-update');
     if (serverUpdateLink && rechte.nutzer) {
         serverUpdateLink.style.display = '';
+    }
+    // Super-Admins: Benutzer, Vereine und Server-Update stehen im oberen Bereich der Seitenleiste (nicht unten)
+    if (rechte.nutzer) {
+        const oben = document.getElementById('sidebarNavPrimary');
+        if (oben) for (const link of [nutzerLink, vereineLink, serverUpdateLink]) if (link) oben.appendChild(link);
     }
 
     // --- AKTIVEN REITER HERVORHEBEN ---

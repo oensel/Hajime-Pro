@@ -658,6 +658,8 @@
 
             const eigeneTurniere = turniere.filter(gehoertZuEigenemVerein);
             const andereTurniere = turniere.filter(t => !gehoertZuEigenemVerein(t));
+            // Super-Admins sehen die anstehenden Turniere aller Vereine und dürfen sie alle bearbeiten
+            const istSuperAdmin = !!currentUser.ist_super_admin;
 
             const jetzt = new Date();
 
@@ -986,11 +988,11 @@
 
             // Section 2: Andere Turniere
             if (andereTurniere.length > 0) {
-                const sectionTitle = eigeneTurniere.length > 0 ? 'Ausschreibungen & andere Turniere' : 'Alle Turniere';
+                const sectionTitle = istSuperAdmin ? 'Turniere aller Vereine' : (eigeneTurniere.length > 0 ? 'Ausschreibungen & andere Turniere' : 'Alle Turniere');
                 htmlContent += `
                     <h2 class="section-title"><span class="material-icons" style="font-size:20px;">explore</span> ${sectionTitle}</h2>
                     <div class="tournaments-grid">
-                        ${andereTurniere.map(t => renderCard(t, false)).join('')}
+                        ${andereTurniere.map(t => renderCard(t, istSuperAdmin)).join('')}
                     </div>
                 `;
             }

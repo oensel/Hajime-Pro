@@ -422,6 +422,8 @@ export async function getTurniere(knex, req, res) {
         const userId = req.user.id;
         const { mine, zukuenftig, lat, lon } = req.query;
         const user = await ladeBenutzerMitAktivemVerein(knex, userId);
+        // Super-Admins sehen die Turniere aller Vereine, auch Entwürfe (keine Vereinsfilter)
+        const istSuperAdmin = !!(user && user.ist_super_admin);
 
         // Explizite Spaltenliste ohne die (potenziell mehrere MB große) PDF-Binärspalte — dieser
         // Endpunkt liefert oft viele Turniere auf einmal (siehe turniere.html) und soll die
@@ -435,7 +437,7 @@ export async function getTurniere(knex, req, res) {
             } else {
                 query = query.whereNull('id'); // kein Verein -> keine eigenen Turniere
             }
-        } else if (!istEinzelbenutzerBetrieb()) {
+        } else if (!istEinzelbenutzerBetrieb() && !istSuperAdmin) {
             // Entwurf: nur für den ausrichtenden Verein sichtbar (Zustand 1 der Spezifikation).
             // Offline-Betrieb ist Single-Tenant und bleibt ausgenommen.
             if (user && user.verein_id) {
@@ -454,7 +456,7 @@ export async function getTurniere(knex, req, res) {
             // Eigene Entwürfe bleiben unabhängig vom (ggf. noch vorläufigen/falschen) Datum
             // sichtbar — ein Entwurf ist noch in Bearbeitung, kein "vergangenes" Turnier, dessen
             // Anlegerin/Anleger ihn sonst in der eigenen Übersicht nie wiederfinden würde.
-            if (user && user.verein_id) {
+            if (user && user.verein_id && !istSuperAdmin) {
                 query = query.where(function () {
                     this.where('datum', '>=', heuteStr)
                         .orWhere({ status: 'entwurf', verein_id: user.verein_id });
