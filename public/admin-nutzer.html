@@ -3,22 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hajime Pro - Nutzer</title>
+    <title>Hajime Pro - Benutzer</title>
     <link rel="stylesheet" href="/css/common.css">
     <script src="/js/menu.js"></script>
     <style>
-        .nutzer-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .nutzer-table { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
+        .nutzer-table th:nth-child(1) { width: 20%; }
+        .nutzer-table th:nth-child(2) { width: 26%; }
+        .nutzer-table th:nth-child(4) { width: 14%; }
+        .nutzer-table td { overflow-wrap: anywhere; }
         .nutzer-table th, .nutzer-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border-color, #374151); vertical-align: top; }
         .nutzer-table th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
-        .nutzer-table .verein { display: block; }
+        .nutzer-table .verein { display: flex; align-items: center; gap: 8px; margin: 2px 0; }
+        .nutzer-table .verein-name { min-width: 120px; }
         .nutzer-table .status { color: var(--text-muted); font-size: 12px; }
+        .nutzer-table select { width: auto; height: 26px; font-size: 13px; }
         .nutzer-filter { width: 100%; max-width: 360px; padding: 8px 10px; margin-bottom: 12px; box-sizing: border-box; }
         .nutzer-fehler { color: #ef4444; font-weight: 700; }
+        .nutzer-ok { color: var(--text-muted); font-size: 13px; min-height: 18px; }
         .tabelle-scroll { overflow-x: auto; }
-        .update-box { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border-color, #374151); }
-        .update-box h2 { font-size: 16px; margin: 0 0 8px; }
-        .update-box .zeile { font-size: 14px; margin: 4px 0; }
-        .update-box pre { max-height: 180px; overflow: auto; font-size: 12px; white-space: pre-wrap; color: var(--text-muted); }
+        .nutzer-bereich { margin: 18px 0 0; }
+        .nutzer-bereich h2 { font-size: 14px; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 8px; }
+        .nutzer-bereich h2 .anzahl { font-size: 12px; font-weight: 400; color: var(--text-muted); text-transform: none; letter-spacing: 0; }
+        .nutzer-bereich.super { padding: 10px 14px 4px; border: 1px solid var(--border); border-radius: 4px; background: rgba(30, 58, 138, 0.04); }
     </style>
 </head>
 <body>
@@ -29,33 +36,39 @@
 <div class="mdc-card" style="padding: 20px 24px;">
     <div class="form-title-area">
         <span class="material-icons">manage_accounts</span>
-        <h1>Nutzer</h1>
+        <h1>Benutzer</h1>
         <span class="material-icons">manage_accounts</span>
     </div>
-    <p style="color: var(--text-muted); font-size: 13px; margin-top: 0;">Alle Konten mit ihren Vereinen. Super-Admins dürfen alles in allen Vereinen und bekommen die Anfragen für Vereine ohne Admin. Es bleibt immer mindestens ein Super-Admin.</p>
-    <input type="search" id="nutzerFilter" class="nutzer-filter" placeholder="Name, E-Mail oder Verein suchen" aria-label="Nutzer filtern">
+    <p style="color: var(--text-muted); font-size: 13px; margin-top: 0;">Alle Benutzer mit ihren Vereinen und Rollen. Die Rolle je Verein lässt sich hier ändern. Super-Admins dürfen alles in allen Vereinen und bekommen die Anfragen für Vereine ohne Admin. Es bleibt immer mindestens ein Super-Admin.</p>
+    <input type="search" id="nutzerFilter" class="nutzer-filter" placeholder="Name, E-Mail oder Verein suchen" aria-label="Benutzer filtern">
     <div id="nutzerMeldung" class="nutzer-fehler" role="alert"></div>
-    <div class="tabelle-scroll">
-        <table class="nutzer-table">
-            <thead>
-                <tr><th>Name</th><th>E-Mail</th><th>Vereine</th><th>Super-Admin</th></tr>
-            </thead>
-            <tbody id="nutzerListe"><tr><td colspan="4">Wird geladen …</td></tr></tbody>
-        </table>
-    </div>
+    <div id="nutzerOk" class="nutzer-ok" role="status"></div>
 
-    <div class="update-box" id="updateBox" hidden>
-        <h2>Server-Update</h2>
-        <div class="zeile">Laufende Version: <strong id="updateAktuell">–</strong> · Neuestes Release: <strong id="updateNeueste">–</strong></div>
-        <div class="zeile" id="updateHinweis" style="color: var(--text-muted);"></div>
-        <button type="button" class="mdc-button mdc-button--raised" id="updateKnopf" disabled>
-            <span class="mdc-button__label">Aktualisieren</span>
-        </button>
-        <pre id="updateLog" aria-live="polite"></pre>
-    </div>
+    <section class="nutzer-bereich super" aria-labelledby="superTitel">
+        <h2 id="superTitel">Super-Admins <span class="anzahl" id="superAnzahl"></span></h2>
+        <div class="tabelle-scroll">
+            <table class="nutzer-table">
+                <thead>
+                    <tr><th>Name</th><th>E-Mail</th><th>Vereine und Rollen</th><th>Super-Admin</th></tr>
+                </thead>
+                <tbody id="superListe"><tr><td colspan="4">Wird geladen …</td></tr></tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="nutzer-bereich" aria-labelledby="nutzerTitel">
+        <h2 id="nutzerTitel">Benutzer <span class="anzahl" id="nutzerAnzahl"></span></h2>
+        <div class="tabelle-scroll">
+            <table class="nutzer-table">
+                <thead>
+                    <tr><th>Name</th><th>E-Mail</th><th>Vereine und Rollen</th><th>Super-Admin</th></tr>
+                </thead>
+                <tbody id="nutzerListe"><tr><td colspan="4">Wird geladen …</td></tr></tbody>
+            </table>
+        </div>
+    </section>
 </div>
 
 <script src="/js/adminNutzer.js"></script>
-<script src="/js/adminUpdate.js"></script>
 </body>
 </html>

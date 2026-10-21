@@ -1,4 +1,4 @@
-// Server-Update auf admin-nutzer.html (nur Super-Admins, nur Cloud): zeigt laufende Version und neuestes Release und
+// Server-Update auf server-update.html (nur Super-Admins, nur Cloud): zeigt laufende Version und neuestes Release und
 // startet das Update (POST /api/cloud-update/start). Der Server startet danach neu; die Seite wartet, bis er wieder
 // antwortet. API: GET /api/cloud-update/status. Der Authorization-Header kommt aus dem fetch-Wrapper in menu.js.
 (function () {
@@ -9,12 +9,14 @@
     const hinweis = document.getElementById('updateHinweis');
     const knopf = document.getElementById('updateKnopf');
     const log = document.getElementById('updateLog');
+    const keine = document.getElementById('updateKeine');
     let wartetAufNeustart = false;
     let zielVersion = null;
     let takt = null;
 
     function zeige(st) {
         box.hidden = false;
+        if (keine) keine.hidden = true;
         aktuell.textContent = st.aktuelleVersion || '–';
         neueste.textContent = st.neuesteVersion || 'nicht prüfbar';
         log.textContent = (st.meldungen || []).join('\n');
@@ -35,6 +37,7 @@
                 // 404: kein Cloud-Betrieb, 401/403: kein Super-Admin → Bereich bleibt versteckt.
                 if (wartetAufNeustart) return;
                 box.hidden = true;
+                if (keine) keine.textContent = 'Das Server-Update gibt es nur im Cloud-Betrieb und für Super-Admins.';
                 return;
             }
             const st = await antwort.json();

@@ -2,7 +2,7 @@
 // (Browser, per dynamischem import unter /js/shared/) und die Unit-Tests nutzen dieselben Regeln.
 //   - Verwaltung (Turniere, Pools, …): Super-Admin oder Rolle Benutzer/Admin im aktiven Verein
 //   - Helferplan und Orga: nur Super-Admin oder Rolle Admin (Benutzer sind für Client-Geräte und als Helfer gedacht)
-//   - „Nutzer“ (admin-nutzer.html): nur Super-Admins
+//   - „Benutzer“ (admin-nutzer.html) und „Server-Update“ (server-update.html): nur Super-Admins
 //   - „Helfer-App“: jedes angemeldete Konto in der Cloud
 // Im Einzelbenutzerbetrieb (Hallen-Server, offline_user) bleibt das Menü wie bisher: alles Verwaltende sichtbar,
 // keine Helfer-App und keine Nutzerverwaltung (beide gibt es dort nicht).

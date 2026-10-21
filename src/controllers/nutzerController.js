@@ -1,4 +1,4 @@
-// Super-Admin-Verwaltung (Helferverwaltung, Spec 3.1): Liste aller Konten mit ihren Mitgliedschaften und
+// Super-Admin-Verwaltung (Helferverwaltung, Spec 3.1; Seite „Benutzer“): Liste aller Konten (Super-Admins zuerst) mit ihren Mitgliedschaften und
 // Umschalter für die globale Rolle Super-Admin (benutzer.ist_super_admin). Zugriff nur für Super-Admins
 // (requireSuperAdmin in nutzerRoutes.js). Es bleibt immer mindestens ein Super-Admin.
 
@@ -7,7 +7,7 @@ export async function listeNutzer(knex, req, res) {
     try {
         const konten = await knex('benutzer')
             .select('id', 'vorname', 'nachname', 'email', 'ist_super_admin', 'email_bestaetigt_am')
-            .orderBy([{ column: 'nachname' }, { column: 'vorname' }, { column: 'email' }]);
+            .orderBy([{ column: 'ist_super_admin', order: 'desc' }, { column: 'nachname' }, { column: 'vorname' }, { column: 'email' }]);
         const mitgliedschaften = await knex('benutzer_vereine')
             .join('vereine', 'vereine.id', 'benutzer_vereine.verein_id')
             .select(
