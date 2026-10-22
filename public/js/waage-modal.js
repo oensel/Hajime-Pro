@@ -52,7 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const istOffline = configResp.ok && !!(await configResp.json()).isOffline;
 
             istGastgeberVerein = istOffline || !!(user.verein_id && user.verein_freigegeben && turnier && turnier.verein_id === user.verein_id);
-            istPrivilegiertFuerLizenzUndStartgeld = istGastgeberVerein || !!user.ist_super_admin;
+            istPrivilegiertFuerLizenzUndStartgeld = istGastgeberVerein || !!user.super_admin_aktiv;
             // Stichtag der Lizenzprüfung (Wettkampftag) schon hier setzen, nicht erst mit dem Laden der DJB-Klassen.
             turnierOhneStartgeld = !!turnier && (parseFloat(turnier.startgeld) || 0) === 0;
             if (turnier && turnier.datum) turnierDatum = lokalesDatum(turnier.datum);

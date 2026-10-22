@@ -11,6 +11,8 @@ export function erzeugeUplink({
     zustandDatei = null, log = console
 }) {
     const gesendet = new Map(); // turnierKey -> { hash, zeit }
+    // Auf Zuruf zurückgenommene Turniere (in diesem Prozess), damit eine Rücknahme-Liste nicht bei jedem Durchlauf neu sendet.
+    const zurueckgenommen = new Set();
     let backoffMs = 0;
     let naechsterVersuch = 0;
     let letzterErfolg = null;
@@ -57,7 +59,9 @@ export function erzeugeUplink({
         if (!antwort.ok) throw new Error(`Cloud antwortete mit Status ${antwort.status}`);
     }
 
-    async function sende(snapshots) {
+    // zurueckzunehmen: Turnier-Schlüssel, die in der Cloud zurückgenommen werden sollen, auch wenn dieser Prozess sie nie gesendet hat
+    // (z. B. nach einem Wechsel des sendenden Knotens im Cluster).
+    async function sende(snapshots, { zurueckzunehmen = [] } = {}) {
         const ergebnis = { gesendet: 0, zurueckgezogen: 0, fehler: 0 };
         const jetztMs = jetzt();
         if (jetztMs < naechsterVersuch) return ergebnis;
@@ -70,8 +74,11 @@ export function erzeugeUplink({
             const faellig = !bisher || bisher.hash !== hash || jetztMs - bisher.zeit >= lebenszeichenMs;
             if (faellig) auftraege.push({ art: 'snapshot', key: snapshot.turnierKey, hash, nutzlast: snapshot });
         }
-        for (const key of gesendet.keys()) {
-            if (!aktuelle.has(key)) auftraege.push({ art: 'rueck', key, nutzlast: { version: 1, turnierKey: key, zurueckgezogen: true } });
+        for (const key of aktuelle) zurueckgenommen.delete(key);
+        const rueckKeys = new Set([...gesendet.keys(), ...zurueckzunehmen.map(String)]);
+        for (const key of rueckKeys) {
+            if (aktuelle.has(key) || zurueckgenommen.has(key)) continue;
+            auftraege.push({ art: 'rueck', key, nutzlast: { version: 1, turnierKey: key, zurueckgezogen: true } });
         }
 
         for (const auftrag of auftraege) {
@@ -83,6 +90,7 @@ export function erzeugeUplink({
                     speichereZustand();
                 } else {
                     gesendet.delete(auftrag.key);
+                    zurueckgenommen.add(auftrag.key);
                     ergebnis.zurueckgezogen += 1;
                     speichereZustand();
                 }

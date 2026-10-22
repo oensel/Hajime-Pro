@@ -34,7 +34,7 @@ test('Turnierliste: Super-Admin sieht alle anstehenden Turniere aller Vereine, V
         for (const n of ['super', 'adminA']) {
             await knex('benutzer').insert({ id: `u-${n}`, email: `${n}@test.de`, vorname: n, nachname: 'T', email_bestaetigt_am: knex.fn.now() });
         }
-        await knex('benutzer').where({ id: 'u-super' }).update({ ist_super_admin: true });
+        await knex('benutzer').where({ id: 'u-super' }).update({ ist_super_admin: true, super_admin_modus: true });
         await knex('benutzer_vereine').insert([
             { benutzer_id: 'u-super', verein_id: vA, freigegeben: 1, rolle: 'admin' },
             { benutzer_id: 'u-adminA', verein_id: vA, freigegeben: 1, rolle: 'admin' }

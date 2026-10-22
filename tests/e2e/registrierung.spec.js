@@ -369,7 +369,7 @@ test('Super-Admin sieht eine Erstregistrierung in der Warteschlange und kann sie
     // offline_user ist im Offline-Modus die einzige Identität (siehe Datei-Kommentar) — um den
     // Super-Admin-Pfad zu testen, wird die Rolle direkt in der Test-DB gesetzt statt über einen
     // (im Offline-Modus ohnehin wirkungslosen) Login als ein anderer Benutzer.
-    await mitTestDb((db) => db('benutzer').where({ id: 'offline_user' }).update({ ist_super_admin: true }));
+    await mitTestDb((db) => db('benutzer').where({ id: 'offline_user' }).update({ ist_super_admin: true, super_admin_modus: true }));
 
     try {
         const pendingResp = await request.get('/api/vereine/super/pending');

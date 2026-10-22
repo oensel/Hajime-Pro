@@ -129,3 +129,30 @@ test('Sequenz ist streng monoton, auch wenn die Uhr stehen bleibt oder zurücksp
     assert.equal(folge.length, 3);
     assert.ok(folge[1] > folge[0] && folge[2] > folge[1], `Sequenzen ${folge}`);
 });
+
+test('Rücknahme auf Zuruf: genau einmal je Prozess, danach wieder sendbar', async () => {
+    const w = werkzeug();
+    const u = erzeugeUplink({ url: 'u', token: 't', fetchFn: w.fetchFn, jetzt: w.jetzt, log: still });
+    assert.deepEqual(await u.sende([], { zurueckzunehmen: ['42'] }), { gesendet: 0, zurueckgezogen: 1, fehler: 0 });
+    assert.equal(w.aufrufe[0].body.turnierKey, '42');
+    assert.equal(w.aufrufe[0].body.zurueckgezogen, true);
+    w.vor(5000);
+    assert.deepEqual(await u.sende([], { zurueckzunehmen: ['42'] }), { gesendet: 0, zurueckgezogen: 0, fehler: 0 });
+    assert.equal(w.aufrufe.length, 1);
+    // Wird das Turnier wieder freigegeben, ist es kein Rücknahme-Kandidat mehr und lässt sich später erneut zurücknehmen.
+    w.vor(5000);
+    await u.sende([snap('42')], { zurueckzunehmen: ['42'] });
+    assert.equal(w.aufrufe.at(-1).body.zurueckgezogen, undefined);
+    w.vor(5000);
+    assert.equal((await u.sende([], { zurueckzunehmen: ['42'] })).zurueckgezogen, 1);
+});
+
+test('Rücknahme auf Zuruf: bei Fehler wird nach dem Backoff erneut versucht', async () => {
+    const w = werkzeug({ antworten: [{ status: 500 }, { status: 204 }] });
+    const u = erzeugeUplink({ url: 'u', token: 't', fetchFn: w.fetchFn, jetzt: w.jetzt, log: still });
+    assert.equal((await u.sende([], { zurueckzunehmen: ['9'] })).fehler, 1);
+    assert.equal((await u.sende([], { zurueckzunehmen: ['9'] })).fehler, 0);
+    w.vor(3000);
+    assert.equal((await u.sende([], { zurueckzunehmen: ['9'] })).zurueckgezogen, 1);
+    assert.equal(w.aufrufe.length, 2);
+});

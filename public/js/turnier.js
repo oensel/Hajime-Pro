@@ -5,11 +5,61 @@ document.addEventListener('DOMContentLoaded', () => {
     const turnierForm = document.getElementById('turnierForm');
     const submitBtn = document.getElementById('submitBtn');
 
-    // --- ABBRECHEN: verwirft die Eingaben und kehrt zur Turnierliste zurück ---
+    // --- UNGESPEICHERTE ÄNDERUNGEN: nur echte Benutzereingaben (isTrusted) zählen, das programmatische
+    // Befüllen der Maske beim Laden nicht ---
+    let ungespeichert = false;
+    const maske = document.querySelector('.turnier-page') || document;
+    const merkeAenderung = (e) => {
+        if (e.isTrusted && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) ungespeichert = true;
+    };
+    maske.addEventListener('input', merkeAenderung);
+    maske.addEventListener('change', merkeAenderung);
+    window.addEventListener('beforeunload', (e) => {
+        if (!ungespeichert) return;
+        e.preventDefault();
+        e.returnValue = '';
+    });
+
+    // --- ABBRECHEN: verwirft die Eingaben und kehrt zur Turnierliste zurück (bei Änderungen nach Rückfrage) ---
     const abbrechenBtn = document.getElementById('abbrechenBtn');
     if (abbrechenBtn) {
-        abbrechenBtn.addEventListener('click', () => {
+        abbrechenBtn.addEventListener('click', async () => {
+            if (ungespeichert) {
+                const text = 'Die Eingaben wurden nicht gespeichert. Die Maske trotzdem verlassen?';
+                const verlassen = window.zeigeZentraleBestaetigung
+                    ? await window.zeigeZentraleBestaetigung(text, 'Ungespeicherte Änderungen', 'warning')
+                    : confirm(text);
+                if (!verlassen) return;
+            }
+            ungespeichert = false;
             window.location.href = '/turniere.html';
+        });
+    }
+
+    // --- ANLEGEN IN DER CLOUD: "Als Entwurf speichern" oder "Speichern und veröffentlichen" ---
+    const veroeffentlichenNachSpeichernBtn = document.getElementById('speichernVeroeffentlichenBtn');
+    let veroeffentlichenNachSpeichern = false;
+    if (!turnierId && veroeffentlichenNachSpeichernBtn) {
+        fetch('/api/config').then(r => (r.ok ? r.json() : {})).then((config) => {
+            if (config.isOffline) return;
+            submitBtn.setAttribute('aria-label', 'Als Entwurf speichern');
+            submitBtn.dataset.tooltip = 'Als Entwurf speichern';
+            submitBtn.classList.remove('toolbar-btn-akzent');
+            submitBtn.querySelector('.material-icons').textContent = 'edit_note';
+            submitBtn.querySelector('span:not(.material-icons)').textContent = 'Als Entwurf speichern';
+            veroeffentlichenNachSpeichernBtn.style.display = 'inline-flex';
+        }).catch(() => {});
+        veroeffentlichenNachSpeichernBtn.addEventListener('click', async (e) => {
+            // Erst nach Bestätigung absenden; requestSubmit() prüft dabei die Pflichtfelder
+            e.preventDefault();
+            if (!turnierForm.reportValidity()) return;
+            const text = 'Das Turnier wird angelegt, für andere Vereine sichtbar und die Anmeldung startet. Fortfahren?';
+            const ok = window.zeigeZentraleBestaetigung
+                ? await window.zeigeZentraleBestaetigung(text, 'Turnier veröffentlichen', 'info')
+                : confirm(text);
+            if (!ok) return;
+            veroeffentlichenNachSpeichern = true;
+            turnierForm.requestSubmit();
         });
     }
 
@@ -311,6 +361,32 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- NEUANLAGE: Verein des Users als austragenden Verein vorbelegen ---
+    async function istCloud() {
+        try {
+            const config = await fetch('/api/config').then(r => (r.ok ? r.json() : {}));
+            return !config.isOffline && config.betriebsmodus === 'cloud';
+        } catch {
+            return false;
+        }
+    }
+
+    const vereinWahl = document.getElementById('vereinWahl');
+    async function ladeVereinWahl(ausrichterFeld) {
+        const liste = await fetch('/api/vereine').then(r => (r.ok ? r.json() : []));
+        for (const v of liste) {
+            const option = document.createElement('option');
+            option.value = v.id;
+            option.textContent = v.name;
+            vereinWahl.appendChild(option);
+        }
+        vereinWahl.required = true;
+        document.getElementById('vereinWahlGruppe').style.display = '';
+        vereinWahl.addEventListener('change', () => {
+            const gewaehlt = vereinWahl.selectedOptions[0];
+            if (ausrichterFeld) ausrichterFeld.value = vereinWahl.value ? gewaehlt.textContent : '';
+        });
+    }
+
     const setzeAusrichterVorbelegung = async () => {
         if (turnierId) return; // nur bei Neuanlage, nicht im Edit-Modus
 
@@ -319,7 +395,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!response.ok) return;
             const data = await response.json();
             const ausrichterFeld = document.getElementById('ausrichter');
-            if (ausrichterFeld && data.user && data.user.verein_name) {
+            if (data.user && data.user.super_admin_aktiv && await istCloud()) {
+                // Super-Admin-Modus: der ausrichtende Verein kommt aus einer Liste aller Vereine
+                await ladeVereinWahl(ausrichterFeld);
+            } else if (ausrichterFeld && data.user && data.user.verein_name) {
                 ausrichterFeld.value = data.user.verein_name;
             }
         } catch (err) {
@@ -608,6 +687,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (turnierForm) {
         turnierForm.addEventListener('submit', async (e) => {
             e.preventDefault();
+            const sofortVeroeffentlichen = veroeffentlichenNachSpeichern;
+            veroeffentlichenNachSpeichern = false;
 
             const selectedAK = {};
             const cbs = document.querySelectorAll('input[name="altersklasse_cb"]:checked');
@@ -647,6 +728,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 bundesland: document.getElementById('bundesland').value,
                 datum: document.getElementById('datum').value,
                 ausrichter: document.getElementById('ausrichter').value.trim(),
+                ...(vereinWahl && vereinWahl.value ? { verein_id: parseInt(vereinWahl.value, 10) } : {}),
                 anzahl_kampfflaechen: parseInt(document.getElementById('anzahl_kampfflaechen').value, 10),
                 nutze_gewichtsklassen: 0,
                 farbe_kaempfer2: document.getElementById('farbe_kaempfer2').value,
@@ -695,12 +777,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 const result = await response.json();
 
                 if (result.success || response.ok) {
+                    ungespeichert = false;
                     // Globale grüne Material-Notification aus der navigation.js triggern
                     if (window.zeigeNotification) {
                         window.zeigeNotification(
                             turnierId ? 'Turnier erfolgreich aktualisiert!' : 'Turnier erfolgreich angelegt!',
                             'success'
                         );
+                    }
+
+                    if (!turnierId && result.turnierId && sofortVeroeffentlichen) {
+                        try {
+                            const pubResponse = await fetch(`/api/turniere/${result.turnierId}/veroeffentlichen`, { method: 'POST' });
+                            const pubData = await pubResponse.json().catch(() => ({}));
+                            if (!pubResponse.ok) throw new Error(pubData.error || 'Veröffentlichen fehlgeschlagen.');
+                            if (window.zeigeNotification) window.zeigeNotification('Turnier angelegt und veröffentlicht.', 'success');
+                        } catch (pubErr) {
+                            if (window.zeigeNotification) {
+                                window.zeigeNotification(`Turnier als Entwurf gespeichert, Veröffentlichen fehlgeschlagen: ${pubErr.message}`, 'error');
+                            }
+                        }
                     }
 
                     // Bei einer Neuanlage zur URL mit ID weiterleiten, um Menüpunkte freizuschalten
@@ -773,7 +869,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const turnier = await turnierResp.json();
             const istOffline = configResp.ok && !!(await configResp.json()).isOffline;
             const gehoertZuEigenemVerein = !!(user.verein_id && turnier.verein_id === user.verein_id);
-            const darfBearbeiten = istOffline || gehoertZuEigenemVerein || !!user.ist_super_admin;
+            const darfBearbeiten = istOffline || gehoertZuEigenemVerein || !!user.super_admin_aktiv;
             if (!darfBearbeiten) return;
 
             const status = turnier.status;

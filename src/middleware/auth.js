@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
-import { hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
+import { hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein, istSuperAdminAktiv } from '../utils/vereinHelper.js';
 import { rolleReicht } from '../shared/rollen.js';
 import * as steuerungPasswort from '../utils/steuerungPasswort.js';
 import { istKontoGesperrt, MELDUNG_KONTO_GESPERRT } from '../utils/kontoSperre.js';
@@ -284,7 +284,7 @@ export function requireVereinFreigabe(knex) {
 
         try {
             const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
-            if (user && user.ist_super_admin) return next();
+            if (user && user.super_admin_aktiv) return next();
             if (!user || !user.verein_freigegeben) {
                 return res.status(403).json({
                     success: false,
@@ -324,7 +324,7 @@ export function requireRolle(knex, mindestens) {
         try {
             const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
             req.vereinRolle = user ? user.verein_rolle : null;
-            if (user && (user.ist_super_admin || rolleReicht(user.verein_rolle, mindestens))) {
+            if (user && (user.super_admin_aktiv || rolleReicht(user.verein_rolle, mindestens))) {
                 return next();
             }
             return res.status(403).json({
@@ -347,8 +347,14 @@ export function requireSuperAdmin(knex) {
     return async (req, res, next) => {
         try {
             const benutzer = await knex('benutzer').where({ id: req.user.id }).first();
-            if (!benutzer || !benutzer.ist_super_admin) {
-                return res.status(403).json({ success: false, error: 'Nur der Super-Admin hat Zugriff auf diese Funktion.' });
+            if (!istSuperAdminAktiv(benutzer)) {
+                const imVerein = !!(benutzer && benutzer.ist_super_admin);
+                return res.status(403).json({
+                    success: false,
+                    error: imVerein
+                        ? 'Wechseln Sie oben rechts in den Super-Admin-Modus, um diese Funktion zu nutzen.'
+                        : 'Nur der Super-Admin hat Zugriff auf diese Funktion.'
+                });
             }
             next();
         } catch (error) {

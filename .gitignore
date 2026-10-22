@@ -51,3 +51,5 @@ test-results/
 # Entwicklungspläne (nur lokal, nicht im Repository)
 docs/plaene/
 docs/archiv/
+
+.superpowers/

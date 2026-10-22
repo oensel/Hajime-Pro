@@ -1,7 +1,7 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { starteTestPostgres } from '../helpers/testPostgres.js';
-import { erzeugeToken, pruefeToken, sperreToken, listeTokens, fuehreTokenBefehlAus } from '../../src/liveCloud/token.js';
+import { erzeugeToken, pruefeToken, sperreToken, sperreAelterTokens, listeTokens, fuehreTokenBefehlAus } from '../../src/liveCloud/token.js';
 
 let db;
 before(async () => { db = await starteTestPostgres(); });
@@ -49,4 +49,20 @@ test('Befehle des Skripts: erzeugen, liste, sperren', async () => {
     const id = eintraege.find(e => e.name === 'Befehl').id;
     assert.match((await fuehreTokenBefehlAus(knex, ['sperren', String(id)])).join('\n'), /gesperrt/);
     await assert.rejects(() => fuehreTokenBefehlAus(knex, ['unbekannt']), /Befehl/);
+});
+
+test('Token: sperreAelterTokens sperrt nur ältere aktive Tokens desselben Turniers', async () => {
+    const { knex } = db;
+    const a = await erzeugeToken(knex, { name: 'a', turnierKey: '7' });
+    const b = await erzeugeToken(knex, { name: 'b', turnierKey: '7' });
+    const neu = await erzeugeToken(knex, { name: 'neu', turnierKey: '7' });
+    const fremd = await erzeugeToken(knex, { name: 'fremd', turnierKey: '8' });
+    const frei = await erzeugeToken(knex, { name: 'ungebunden' });
+    assert.equal(await sperreAelterTokens(knex, '7', neu.id), 2);
+    assert.equal(await pruefeToken(knex, a.token), null);
+    assert.equal(await pruefeToken(knex, b.token), null);
+    assert.deepEqual(await pruefeToken(knex, neu.token), { id: neu.id, turnierKey: '7' });
+    assert.deepEqual(await pruefeToken(knex, fremd.token), { id: fremd.id, turnierKey: '8' });
+    assert.deepEqual(await pruefeToken(knex, frei.token), { id: frei.id, turnierKey: null });
+    assert.equal(await sperreAelterTokens(knex, '7', neu.id), 0);
 });

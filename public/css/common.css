@@ -253,6 +253,9 @@ body {
     transition: all 0.2s;
 }
 .theme-toggle:hover { background-color: var(--border); }
+/* Reine Anzeige im Stil der Symbole (z. B. Cloud-Symbol): kein Klick, daher ohne Hover-Hervorhebung */
+.theme-toggle.nur-anzeige { cursor: default; }
+.theme-toggle.nur-anzeige:hover { background-color: transparent; }
 
 /* Variante mit Beschriftung (z.B. "Hallen-Server"-Button in der Kopfzeile) */
 .theme-toggle.theme-toggle-text {
@@ -783,6 +786,12 @@ input[type="text"], input[type="date"], input[type="number"], select {
     transition: all 0.2s;
 }
 
+/* Aufklappliste der Dropdowns: eigene Farben, sonst steht im Dunkelmodus helle Schrift auf dem weißen Standardgrund */
+select option, select optgroup {
+    background-color: var(--bg-card);
+    color: var(--text-main);
+}
+
 input:focus, select:focus {
     outline: none;
     border-color: var(--primary);
@@ -966,4 +975,28 @@ body.sidebar-collapsed .top-header-bar {
 .btn-icon-aktion:hover::after,
 .btn-icon-aktion:focus-visible::after {
     opacity: 1;
+}
+
+/* Teilnehmer-App (public/js/teilnehmerApp.js): Dialog mit den Theme-Variablen, damit er in Hell und Dunkel lesbar bleibt */
+.ta-overlay { position: fixed; inset: 0; z-index: 10001; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.45); padding: 16px; }
+.ta-overlay[hidden] { display: none; }
+.ta-dialog { background: var(--bg-card); color: var(--text-main); border: 2px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); padding: 24px; width: 100%; max-width: 460px; box-sizing: border-box; }
+.ta-dialog h3 { margin: 0 0 12px; color: var(--text-main); }
+.ta-dialog p { margin: 0 0 12px; font-size: 14px; line-height: 1.45; }
+.ta-status { display: flex; align-items: center; gap: 8px; color: var(--text-main); }
+.ta-punkt { width: 12px; height: 12px; border-radius: 50%; background: #9e9e9e; flex: 0 0 auto; }
+.ta-schalter { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: var(--text-main); font-weight: 600; cursor: pointer; }
+.ta-hinweis { color: var(--text-muted); }
+.ta-warnung, .ta-grund { color: var(--text-main); border-left: 4px solid #f9a825; padding-left: 10px; }
+.ta-fehler { color: #c62828; font-weight: 600; }
+[data-theme="dark"] .ta-fehler { color: #ef9a9a; }
+.ta-aktionen { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+/* Hochgestellte Anzahl offener Anträge hinter einem Menütext (z. B. Erstregistrierungen) */
+.menu-sup {
+    margin-left: 3px;
+    font-size: 10px;
+    font-weight: 800;
+    color: #ef4444;
+    line-height: 1;
 }

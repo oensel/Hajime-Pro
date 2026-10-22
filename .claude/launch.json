@@ -4,8 +4,29 @@
     {
       "name": "hajime-pro",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "start"],
+      "runtimeArgs": [
+        "run",
+        "start"
+      ],
       "port": 3000
+    },
+    {
+      "name": "hajime-live",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--env-file=.env.live-demo",
+        "src/app.js"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "hallen-server",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--env-file=.env.hallen-demo",
+        "src/app.js"
+      ],
+      "port": 3050
     }
   ]
 }

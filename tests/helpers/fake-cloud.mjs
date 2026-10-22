@@ -1,11 +1,14 @@
 // Minimal-Attrappe der Cloud für die E2E-Suite (Turnier aus der Cloud holen): Erreichbarkeit, Login,
 // Turnierliste und Export (Turnier 13 zusätzlich mit Helferplan, Stand per /test/helferplan-stand). Zugangsdaten: FAKE_CLOUD_EMAIL / FAKE_CLOUD_PASSWORT. Port: FAKE_CLOUD_PORT.
 import http from 'node:http';
+import zlib from 'node:zlib';
 
 const PORT = Number(process.env.FAKE_CLOUD_PORT || 3190);
 const EMAIL = process.env.FAKE_CLOUD_EMAIL || 'cloud@test.de';
 const PASSWORT = process.env.FAKE_CLOUD_PASSWORT || 'cloud-geheim';
 const TOKEN = 'fake-cloud-token';
+// Ingest-Token, das die Attrappe beim Export mit ?liveToken=1 mitgibt und am Ingest akzeptiert.
+const LIVE_TOKEN = 'hjl_fake-live-token';
 
 const turniere = [
     {
@@ -79,17 +82,46 @@ function exportFuer(t) {
     };
 }
 
+// Teilnehmer-App: Zustand der Attrappe für den Ingest (tests/e2e/teilnehmer-app-schalter.spec.js). 'ingest' steuert die Antwort
+// (ok | fehler = 500), 'erreichbar' false lässt die Erreichbarkeitsprüfung scheitern. Empfangene Pakete sind abrufbar.
+const live = { ingest: 'ok', erreichbar: true, pakete: [] };
+
 function senden(res, status, daten) {
     res.writeHead(status, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(daten));
 }
 
 http.createServer((req, res) => {
-    let body = '';
-    req.on('data', (c) => { body += c; });
+    const teile = [];
+    req.on('data', (c) => { teile.push(c); });
     req.on('end', () => {
+        const roh = Buffer.concat(teile);
+        const body = roh.toString('utf8');
         const url = new URL(req.url, 'http://x');
-        if (url.pathname === '/api/auth/mode') return senden(res, 200, { isOffline: false });
+        if (url.pathname === '/api/auth/mode') {
+            return live.erreichbar ? senden(res, 200, { isOffline: false }) : senden(res, 503, { success: false });
+        }
+        if (url.pathname === '/test/modus' && req.method === 'POST') {
+            let eingabe = {};
+            try { eingabe = JSON.parse(body); } catch { /* leer */ }
+            if (eingabe.ingest !== undefined) live.ingest = eingabe.ingest;
+            if (eingabe.erreichbar !== undefined) live.erreichbar = !!eingabe.erreichbar;
+            return senden(res, 200, { success: true, ...live, pakete: undefined });
+        }
+        if (url.pathname === '/test/ingest' && req.method === 'GET') return senden(res, 200, { pakete: live.pakete });
+        if (url.pathname === '/test/ingest' && req.method === 'DELETE') { live.pakete = []; return senden(res, 200, { success: true }); }
+        if (url.pathname === '/api/live/ingest' && req.method === 'POST') {
+            const bearer = req.headers.authorization || '';
+            if (bearer !== `Bearer ${LIVE_TOKEN}`) return senden(res, 401, { success: false });
+            if (live.ingest === 'fehler') return senden(res, 500, { success: false });
+            let paket = null;
+            try {
+                paket = JSON.parse((req.headers['content-encoding'] === 'gzip' ? zlib.gunzipSync(roh) : roh).toString('utf8'));
+            } catch { /* kein gültiges Paket */ }
+            live.pakete.push({ bearer, paket });
+            res.writeHead(204);
+            return res.end();
+        }
         if (url.pathname === '/test/helferplan-stand' && req.method === 'POST') {
             let eingabe = {};
             try { eingabe = JSON.parse(body); } catch { /* leer */ }
@@ -116,7 +148,10 @@ http.createServer((req, res) => {
             if (t.status_effektiv === 'veroeffentlicht') {
                 return senden(res, 403, { success: false, error: 'Das Turnier kann erst exportiert werden, wenn die Anmeldefrist abgelaufen ist.' });
             }
-            return senden(res, 200, exportFuer(t));
+            const daten = exportFuer(t);
+            // Wie die echte Cloud: nur auf ausdrückliche Anforderung (?liveToken=1) ein Ingest-Token für die Teilnehmer-App.
+            if (url.searchParams.get('liveToken') === '1') daten.live = { token: LIVE_TOKEN };
+            return senden(res, 200, daten);
         }
         return senden(res, 404, { success: false, error: 'Nicht gefunden.' });
     });

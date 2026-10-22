@@ -354,7 +354,7 @@
         try {
             const { menueFuerRolle, verwaltbareVereine } = await geteilt;
             const rechte = menueFuerRolle({
-                rolle: user.verein_rolle, istSuperAdmin: user.ist_super_admin, einzelbenutzer: await istEinzelbenutzer()
+                rolle: user.verein_rolle, istSuperAdmin: user.super_admin_aktiv, einzelbenutzer: await istEinzelbenutzer()
             });
             if (!rechte.verwaltung && verwaltbareVereine(user.vereine).length === 0) return '/helfer.html';
         } catch (e) {

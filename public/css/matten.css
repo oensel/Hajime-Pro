@@ -442,3 +442,11 @@
     color: #212529;
     font-weight: 700;
 }
+
+/* Teilnehmer-App: Hinweis nach der Mattenverteilung (Theme-Variablen, damit er in Hell und Dunkel lesbar bleibt) */
+.ta-hinweiskasten { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin: 0 0 16px; padding: 12px 16px; background: var(--bg-card); color: var(--text-main); border: 2px solid #2e7d32; border-radius: 8px; }
+.ta-hinweiskasten[hidden] { display: none; }
+.ta-hinweis-text { display: flex; flex-direction: column; gap: 4px; font-size: 14px; line-height: 1.4; }
+.ta-hinweis-text strong { color: var(--text-main); }
+.ta-hinweis-knoepfe { display: flex; gap: 8px; flex: 0 0 auto; }
+@media (max-width: 700px) { .ta-hinweiskasten { flex-direction: column; align-items: stretch; } }

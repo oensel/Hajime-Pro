@@ -11,6 +11,34 @@ import { sendeResetLink } from '../services/passwortReset.js';
 import { legeVereinAn, benenneVereinUm, fuehreVereineZusammen, loescheLeerenVerein } from '../services/vereinsVerwaltung.js';
 import { ermittleBasisUrl, HINWEIS_FEHLENDE_BASIS_URL } from '../utils/basisUrl.js';
 import { vergesseSperrStand } from '../utils/kontoSperre.js';
+import { weiseMitgliedschaftZu, entferneMitglied } from '../services/vereinsRollen.js';
+
+/** DELETE /api/nutzer/:id/mitgliedschaft/:vereinId — Vereinszuordnung entfernen; der Verein bleibt auch ohne Mitglieder bestehen. */
+export async function entferneMitgliedschaftRoute(knex, req, res) {
+    try {
+        const vereinId = parseInt(req.params.vereinId, 10);
+        if (!vereinId) return res.status(400).json({ success: false, error: 'Ungültiger Verein.' });
+        const ergebnis = await entferneMitglied(knex, { vereinId, benutzerId: req.params.id, durchId: req.user.id, vereinBehalten: true, ueberVerwaltung: true });
+        if (!ergebnis.ok) return res.status(ergebnis.status).json({ success: false, error: ergebnis.error });
+        res.json({ success: true });
+    } catch (error) {
+        console.error('[Nutzer-Mitgliedschaft-Entfernen-Fehler]:', error);
+        res.status(500).json({ success: false, error: 'Interner Server-Fehler beim Entfernen der Vereinszuordnung.' });
+    }
+}
+
+/** POST /api/nutzer/:id/mitgliedschaft { vereinId, rolle } — Verein mit Rolle zuweisen (neu, freigeben oder Rolle ändern). */
+export async function weiseMitgliedschaftZuRoute(knex, req, res) {
+    try {
+        const { vereinId, rolle } = req.body || {};
+        const ergebnis = await weiseMitgliedschaftZu(knex, { benutzerId: req.params.id, vereinId, rolle, durchId: req.user.id });
+        if (!ergebnis.ok) return res.status(ergebnis.status).json({ success: false, error: ergebnis.error });
+        res.json({ success: true, aktion: ergebnis.aktion });
+    } catch (error) {
+        console.error('[Nutzer-Mitgliedschaft-Fehler]:', error);
+        res.status(500).json({ success: false, error: 'Interner Server-Fehler beim Zuweisen des Vereins.' });
+    }
+}
 
 /** GET /api/nutzer — alle Konten (ohne Passwort-Hash) mit Mitgliedschaften. */
 export async function listeNutzer(knex, req, res) {
@@ -76,7 +104,7 @@ export async function setzeSuperAdmin(knex, req, res) {
                     error: 'Der letzte Super-Admin kann nicht entzogen werden. Bitte zuerst einen weiteren Super-Admin ernennen.'
                 };
             }
-            await trx('benutzer').where({ id: zielId }).update({ ist_super_admin: wert, updated_at: trx.fn.now() });
+            await trx('benutzer').where({ id: zielId }).update({ ist_super_admin: wert, super_admin_modus: wert, updated_at: trx.fn.now() });
             return { status: 200 };
         });
 

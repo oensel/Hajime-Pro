@@ -7,7 +7,7 @@ import { FachFehler } from '../utils/fachFehler.js';
 import { sendeFehler } from './helferPlanController.js';
 import { ermittleBasisUrl } from '../utils/basisUrl.js';
 import { ermittleOrgaTurnierId } from '../middleware/auth.js';
-import { hatHelferZugriffAufVerein, ladeVereinIdsMitRolle, MITGLIED_ROLLEN } from '../utils/vereinHelper.js';
+import { hatHelferZugriffAufVerein, ladeVereinIdsMitRolle, istSuperAdminAktiv, MITGLIED_ROLLEN } from '../utils/vereinHelper.js';
 import { berechneStatus } from '../shared/orgaStatus.js';
 import {
     ladeOrga, legeAusVorlageAn, legeAufgabeAn, aendereAufgabe, loescheAufgabe, setzeErledigt, ladeZaehlung,
@@ -274,8 +274,8 @@ export async function meineErledigtRoute(knex, req, res) {
 // Orga-Recht im Verein: Rolle admin (Mitgliedschaft), Super-Admin, Einzelbenutzerbetrieb.
 async function istOrgaImVerein(knex, benutzerId, vereinId) {
     if (istEinzelbenutzerBetrieb()) return true;
-    const benutzer = await knex('benutzer').where({ id: benutzerId }).first('ist_super_admin');
-    if (benutzer?.ist_super_admin) return true;
+    const benutzer = await knex('benutzer').where({ id: benutzerId }).first('ist_super_admin', 'super_admin_modus');
+    if (istSuperAdminAktiv(benutzer)) return true;
     return (await ladeVereinIdsMitRolle(knex, benutzerId, 'admin')).includes(vereinId);
 }
 

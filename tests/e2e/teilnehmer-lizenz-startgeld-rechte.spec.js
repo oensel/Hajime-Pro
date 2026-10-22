@@ -73,7 +73,7 @@ test.describe.serial('Lizenz-/Startgeld-Rechte: nur ausrichtender Verein oder Su
         await knex('benutzer').insert([
             { id: ausrichterUserId, email: `${ausrichterUserId}@example.test`, vorname: 'Aus', nachname: 'Richter', aktiver_verein_id: ausrichterVereinId, ist_super_admin: false },
             { id: gastUserId, email: `${gastUserId}@example.test`, vorname: 'Gast', nachname: 'Verein', aktiver_verein_id: gastVereinId, ist_super_admin: false },
-            { id: gastSuperAdminUserId, email: `${gastSuperAdminUserId}@example.test`, vorname: 'Gast', nachname: 'Superadmin', aktiver_verein_id: gastVereinId, ist_super_admin: true }
+            { id: gastSuperAdminUserId, email: `${gastSuperAdminUserId}@example.test`, vorname: 'Gast', nachname: 'Superadmin', aktiver_verein_id: gastVereinId, ist_super_admin: true, super_admin_modus: true }
         ]);
         await knex('benutzer_vereine').insert([
             { benutzer_id: ausrichterUserId, verein_id: ausrichterVereinId, freigegeben: 1, rolle: 'admin' },

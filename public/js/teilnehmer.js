@@ -1252,7 +1252,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Baut aus der (bearbeiteten) Tabelle wieder eine CSV und holt die Server-Prüfung dazu.
-    async function aktualisiereMailVorschau() {
+    // neueMail: frisch abgelegte Mail, die Spaltenzuordnung einer vorher noch offenen Vorschau gilt dafür nicht
+    async function aktualisiereMailVorschau(neueMail = false) {
         mailTabelle.rows = mailTabelle.rows.filter(z => z.some(c => String(c).trim() !== ''));
         if (mailTabelle.rows.length === 0) {
             importVorschauModal.style.display = 'none';
@@ -1260,7 +1261,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             melde('Keine Zeilen mehr übrig – der Import wurde abgebrochen.', 'error');
             return;
         }
-        const zuordnung = importVorschauModal.style.display === 'flex' ? sammleAktuelleZuordnung() : undefined;
+        const zuordnung = !neueMail && importVorschauModal.style.display === 'flex' ? sammleAktuelleZuordnung() : undefined;
         const csv = (await ladeMailModul()).tabelleZuCsv(mailTabelle.headers, mailTabelle.rows);
         importDateiName = 'email.csv';
         importContentBase64 = bytesZuBase64(new TextEncoder().encode(csv));
@@ -1296,7 +1297,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             rows: modul.kaempferZuZeilen(saetze),
             hinweis: tabellenAnhang ? `Die E-Mail hat außerdem den Anhang "${tabellenAnhang.name}" – falls die Liste unvollständig ist, kannst du ihn direkt hineinziehen.` : ''
         };
-        await aktualisiereMailVorschau();
+        await aktualisiereMailVorschau(true);
     }
 
     async function verarbeiteAblage(dt) {

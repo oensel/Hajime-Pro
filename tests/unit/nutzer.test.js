@@ -42,7 +42,7 @@ test('Nutzer-Verwaltung: nur Super-Admins, ernennen, letzter Super-Admin bleibt'
     try {
         const verein = id((await knex('vereine').insert({ name: 'JC Nutzer' }).returning('id'))[0]);
         await knex('benutzer').insert([
-            { id: 'u-super', email: 'super@test.de', vorname: 'S', nachname: 'Uper', ist_super_admin: true, password_hash: 'geheim' },
+            { id: 'u-super', email: 'super@test.de', vorname: 'S', nachname: 'Uper', ist_super_admin: true, super_admin_modus: true, password_hash: 'geheim' },
             { id: 'u-admin', email: 'admin@test.de', vorname: 'A', nachname: 'Dmin', password_hash: 'geheim' }
         ]);
         await knex('benutzer_vereine').insert({ benutzer_id: 'u-admin', verein_id: verein, freigegeben: 1, rolle: 'admin' });

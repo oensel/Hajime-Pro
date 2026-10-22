@@ -64,6 +64,11 @@
                 <span class="material-icons">save</span>
                 <span>Eintrag speichern</span>
             </button>
+            <!-- Nur beim Anlegen in der Cloud: legt das Turnier an und veröffentlicht es sofort; submitBtn wird dort zu "Als Entwurf speichern" -->
+            <button type="submit" form="turnierForm" class="toolbar-btn toolbar-btn-akzent" id="speichernVeroeffentlichenBtn" aria-label="Speichern und veröffentlichen" data-tooltip="Speichern und veröffentlichen" style="display: none;">
+                <span class="material-icons">save</span>
+                <span>Speichern und veröffentlichen</span>
+            </button>
         </div>
     </div>
     <div id="importTurnierStatus" style="display: none; margin: 0 0 16px 0; font-size: 13px; font-weight: bold; color: var(--text-muted);"></div>
@@ -129,6 +134,10 @@
                                 <option value="Schleswig-Holstein">Schleswig-Holstein</option>
                                 <option value="Thüringen">Thüringen</option>
                             </select>
+                        </div>
+                        <div class="form-group" id="vereinWahlGruppe" style="display: none;">
+                            <label for="vereinWahl">Verein (Super-Admin)</label>
+                            <select id="vereinWahl"><option value="">Verein wählen …</option></select>
                         </div>
                         <div class="form-group">
                             <label for="ausrichter">Ausrichter (Verein)</label>

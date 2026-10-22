@@ -4,7 +4,7 @@
 import { FachFehler } from '../utils/fachFehler.js';
 import { sendeMail } from '../utils/mailer.js';
 import { hashPassword, verifyPassword } from '../utils/password.js';
-import { hatHelferZugriffAufVerein, ladeVereineFuerBenutzer, ladeVereinIdsMitRolle } from '../utils/vereinHelper.js';
+import { hatHelferZugriffAufVerein, ladeVereineFuerBenutzer, ladeVereinIdsMitRolle, istSuperAdminAktiv } from '../utils/vereinHelper.js';
 import { entferneMitglied } from '../services/vereinsRollen.js';
 import { darfHelferAendern } from '../shared/helferZeit.js';
 import * as plan from '../services/helferPlan.js';
@@ -65,7 +65,7 @@ export async function listeTurniere(knex, req, res, { jetzt = () => new Date() }
             .where('tu.datum', '>=', heuteBerlin(jetzt()))
             .where('tu.planungs_tools', true);
         // Super-Admin: alle Vereine (wie hatHelferZugriffAufVerein)
-        if (!benutzer.ist_super_admin) {
+        if (!istSuperAdminAktiv(benutzer)) {
             const vereinIds = await ladeVereinIdsMitRolle(knex, req.user.id, 'helfer');
             if (vereinIds.length === 0) return res.json([]);
             abfrage = abfrage.whereIn('tu.verein_id', vereinIds);

@@ -39,7 +39,9 @@ function speichereDatei(datei, daten) {
     renameSync(tmp, datei);
 }
 
-export function starteClusterDienst({ knex, clusterKonfig, syncKonfig, sync, version = null, updateEnv = process.env }) {
+// holeLiveAppStatus: Cloud-Stand der Teilnehmer-App dieses Knotens (src/liveApp/); der Partner liest ihn im Cluster-Status,
+// um zu entscheiden, wer an die Cloud sendet.
+export function starteClusterDienst({ knex, clusterKonfig, syncKonfig, sync, version = null, updateEnv = process.env, holeLiveAppStatus = () => null }) {
     const { knoten, partnerKnoten, partnerUrl } = clusterKonfig;
     const eigeneVersion = (updateEnv.NODE_ENV === 'test' && updateEnv.CLUSTER_VERSION) || version;
     const pg = erzeugePgReplikation(knex, { partnerKnoten });
@@ -407,6 +409,7 @@ export function starteClusterDienst({ knex, clusterKonfig, syncKonfig, sync, ver
             letzter_rueckstufungsfehler: letzterRueckstufungsFehler,
             uebergabe_laeuft: !!uebergabe,
             update: { laeuft: update.laeuft() || !!vorgemerkt() },
+            live_app: holeLiveAppStatus(),
             pg: { rolle: g.pg_rolle, ...(letzterPgStatus || {}) },
             system: await systemInfo(),
             dokumente: await sync.dokumentStatus(),
@@ -437,6 +440,7 @@ export function starteClusterDienst({ knex, clusterKonfig, syncKonfig, sync, ver
         knoten,
         darfSchreiben,
         rolle: () => rolle,
+        partnerLetzter: () => letzterPartner,
         gesundheit,
         befoerdern,
         zurueckstufen,

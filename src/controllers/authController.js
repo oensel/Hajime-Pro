@@ -110,6 +110,10 @@ export async function passwortZuruecksetzen(knex, req, res) {
 
 /** Antwort einer erfolgreichen Anmeldung (Token + Benutzer mit Vereinen); gemeinsam für Login und Einladung. */
 export async function baueAnmeldeAntwort(knex, user) {
+    // Ein Super-Admin startet nach jeder Anmeldung im Super-Admin-Modus (Wechsel in einen Verein über die Kopfleiste).
+    if (user.ist_super_admin) {
+        await knex('benutzer').where({ id: user.id }).update({ super_admin_modus: true });
+    }
     const token = jwt.sign(
         { id: user.id, email: user.email },
         JWT_SECRET,
@@ -132,6 +136,7 @@ export async function baueAnmeldeAntwort(knex, user) {
             // Rolle im aktiven Verein (login.html leitet reine Helfer direkt zur Helfer-App)
             verein_rolle: aktuellerBenutzer.verein_rolle,
             ist_super_admin: !!user.ist_super_admin,
+            super_admin_aktiv: !!aktuellerBenutzer.super_admin_aktiv,
             muss_passwort_aendern: !!user.muss_passwort_aendern,
             vereine
         }
@@ -214,6 +219,7 @@ export async function getMe(knex, req, res) {
                 verein_wartet_auf_super_admin: vereinWartetAufSuperAdmin,
                 verein_mitglieder_anzahl: vereinMitgliederAnzahl,
                 ist_super_admin: !!user.ist_super_admin,
+                super_admin_aktiv: !!user.super_admin_aktiv,
                 vereine
             }
         });

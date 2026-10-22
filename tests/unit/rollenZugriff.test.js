@@ -43,7 +43,7 @@ test('Rollen: Turnierzugriff, Middlewares und Vereinslisten', async () => {
         for (const b of benutzer) {
             await knex('benutzer').insert({ id: `u-${b}`, email: `${b}@test.de`, vorname: b, nachname: 'Test' });
         }
-        await knex('benutzer').where({ id: 'u-super' }).update({ ist_super_admin: true });
+        await knex('benutzer').where({ id: 'u-super' }).update({ ist_super_admin: true, super_admin_modus: true });
         await knex('benutzer_vereine').insert([
             { benutzer_id: 'u-admin', verein_id: vereinA, freigegeben: 1, rolle: 'admin' },
             { benutzer_id: 'u-benutzer', verein_id: vereinA, freigegeben: 1, rolle: 'benutzer' },
@@ -164,7 +164,7 @@ test('Rollen: Fremdvereins-Pfad für Teilnehmer/Mannschaften und Turnier anlegen
         for (const b of ['admin', 'benutzer', 'helfer', 'super']) {
             await knex('benutzer').insert({ id: `g-${b}`, email: `g-${b}@test.de`, vorname: b, nachname: 'Gast' });
         }
-        await knex('benutzer').where({ id: 'g-super' }).update({ ist_super_admin: true });
+        await knex('benutzer').where({ id: 'g-super' }).update({ ist_super_admin: true, super_admin_modus: true });
         await knex('benutzer_vereine').insert(['admin', 'benutzer', 'helfer'].map(r => (
             { benutzer_id: `g-${r}`, verein_id: vereinA, freigegeben: 1, rolle: r })));
         for (const b of ['admin', 'benutzer', 'helfer']) await setzeAktivenVerein(knex, `g-${b}`, vereinA);

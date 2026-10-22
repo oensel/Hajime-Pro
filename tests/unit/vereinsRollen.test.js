@@ -37,7 +37,7 @@ test('Vereinsrollen: Freigabe, Empfänger, letzter Admin, Austritt', async () =>
     try {
         const verein = id((await knex('vereine').insert({ name: 'JC Rollen' }).returning('id'))[0]);
         await legeBenutzerAn(knex, ['admin', 'helfer', 'neu1', 'neu2', 'neu3', 'super1', 'super2']);
-        await knex('benutzer').whereIn('id', ['u-super1', 'u-super2']).update({ ist_super_admin: true });
+        await knex('benutzer').whereIn('id', ['u-super1', 'u-super2']).update({ ist_super_admin: true, super_admin_modus: true });
         await knex('benutzer_vereine').insert([
             { benutzer_id: 'u-admin', verein_id: verein, freigegeben: 1, rolle: 'admin' },
             { benutzer_id: 'u-helfer', verein_id: verein, freigegeben: 1, rolle: 'helfer' },

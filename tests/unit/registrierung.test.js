@@ -48,7 +48,7 @@ test('Registrierung: unbestätigt anlegen, bestätigen, Anfrage an den Verein', 
         const ohneAdmin = id((await knex('vereine').insert({ name: 'JC Ohne Admin' }).returning('id'))[0]);
         await knex('benutzer').insert([
             { id: 'u-admin', email: 'admin@test.de', vorname: 'A', nachname: 'Dmin', email_bestaetigt_am: knex.fn.now() },
-            { id: 'u-super', email: 'super@test.de', vorname: 'S', nachname: 'Uper', ist_super_admin: true, email_bestaetigt_am: knex.fn.now() }
+            { id: 'u-super', email: 'super@test.de', vorname: 'S', nachname: 'Uper', ist_super_admin: true, super_admin_modus: true, email_bestaetigt_am: knex.fn.now() }
         ]);
         await knex('benutzer_vereine').insert({ benutzer_id: 'u-admin', verein_id: mitAdmin, freigegeben: 1, rolle: 'admin' });
 

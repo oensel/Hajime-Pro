@@ -7,7 +7,7 @@ const CLOUD_CONFIG = { isOffline: false, syncRolle: null, betriebsmodus: 'cloud'
 const SUPER = {
     id: 'e2e-super', email: 'super@example.test', vorname: 'Sam', nachname: 'Super',
     verein_id: 1, verein_name: 'Administration', verein_freigegeben: true, verein_rolle: 'admin',
-    verein_wartet_auf_super_admin: false, ist_super_admin: true,
+    verein_wartet_auf_super_admin: false, ist_super_admin: true, super_admin_aktiv: true,
     vereine: [{ verein_id: 1, name: 'Administration', freigegeben: true, rolle: 'admin' }]
 };
 
@@ -24,11 +24,14 @@ const KONTEN = [
     { id: 'u-zweit', vorname: 'Zora', nachname: 'Super2', email: 'zora@example.test', ist_super_admin: true, email_bestaetigt: true, mitgliedschaften: [] }
 ];
 
+const superGesendet = [];
+
 async function alsSuperAdmin(page, { rolleAntwort } = {}) {
     await page.route('**/api/config', (route) => route.fulfill({ json: CLOUD_CONFIG }));
     await page.route('**/api/auth/me', (route) => route.fulfill({ json: { success: true, user: SUPER } }));
     await page.route('**/api/nutzer', (route) => route.fulfill({ json: KONTEN }));
     await page.route('**/api/vereine/rolle', (route) => rolleAntwort(route));
+    await page.route('**/api/nutzer/*/super-admin', (route) => { superGesendet.push([route.request().url(), route.request().postDataJSON()]); return route.fulfill({ json: { success: true } }); });
     await page.route('**/api/cloud-update/status', (route) => route.fulfill({
         json: { moeglich: true, aktuelleVersion: '1.0.25', neuesteVersion: '1.0.26', updateVerfuegbar: true, zustand: 'bereit', meldungen: [] }
     }));
@@ -65,10 +68,11 @@ test('Benutzer: Super-Admins stehen oben in einem eigenen Bereich, Rollen je Ver
     await expect(anna).toContainText('JC Beta');
     await expect(anna).toContainText('wartet auf Freischaltung');
     // Eine Zeile je Benutzer; Verein und Rolle sind eigene Spalten (je weiterem Verein eine weitere Zeile darin)
-    await expect(anna.locator('td')).toHaveCount(6); // Name, E-Mail, Verein, Rolle, Super-Admin, Aktionen
+    await expect(anna.locator('td')).toHaveCount(5); // Name, E-Mail, Verein, Rolle, Aktionen
     await expect(anna.locator('td').nth(2).locator('.zeile')).toHaveCount(2);
     await expect(anna.locator('td').nth(3).locator('.zeile')).toHaveCount(2);
-    await expect(anna.locator('td').nth(4).locator('input[type=checkbox]')).toHaveCount(1);
+    await expect(anna.locator('input[type=checkbox]')).toHaveCount(0);
+    await expect(anna.locator('select option')).toHaveText(['Admin', 'Benutzer', 'Helfer']);
     await expect(anna.locator('td').nth(2).locator('select')).toHaveCount(0);
     await expect(anna).toContainText('(unbestätigt)');
     const auswahl = anna.locator('select');
@@ -181,4 +185,112 @@ test('Initialpasswort: Konto mit Pflicht zur Änderung landet im Profil und muss
     await page.locator('#profilForm button[type="submit"]').click();
     await page.waitForTimeout(300);
     expect(profilGesendet).toBe(0);
+});
+
+test('Benutzer: Super-Admin hinzufügen (Autovervollständigung, Bestätigung) und entziehen', async ({ page }) => {
+    superGesendet.length = 0;
+    await alsSuperAdmin(page, { rolleAntwort: (route) => route.fulfill({ json: { success: true } }) });
+    await page.goto('/admin-nutzer.html');
+    const superBereich = page.locator('.nutzer-bereich.super');
+
+    // Keine Super-Admin-Option in der Rollenauswahl
+    await expect(page.locator('tr[data-id="u-zett"] select option')).toHaveText(['Admin', 'Benutzer', 'Helfer']);
+
+    // Hinzufügen: Suche zeigt nur Konten, die noch keine Super-Admins sind
+    await page.locator('#superHinzufuegenKnopf').click();
+    await page.locator('#superHinzufuegenSuche').fill('zett');
+    await expect(page.locator('#superHinzufuegenTreffer li')).toHaveCount(1);
+    await page.locator('#superHinzufuegenSuche').fill('super');
+    await expect(page.locator('#superHinzufuegenTreffer')).toContainText('Kein passendes Konto');
+    await page.locator('#superHinzufuegenSuche').fill('zo');
+    await page.locator('#superHinzufuegenTreffer button').first().click();
+    await expect(page.locator('#superHinzufuegenGewaehlt')).toContainText('Zoe Zett');
+
+    // Abbrechen in der Bestätigung: nichts wird gesendet
+    await page.locator('#superHinzufuegenSpeichern').click();
+    await expect(page.locator('#modalMessage')).toContainText('wirklich zum Super-Admin machen');
+    await page.locator('#modalCancelBtn').click();
+    expect(superGesendet).toHaveLength(0);
+
+    // Bestätigen: Zoe wird Super-Admin und wechselt in den oberen Bereich
+    await page.locator('#superHinzufuegenSpeichern').click();
+    await page.locator('#modalConfirmBtn').click();
+    await expect.poll(() => superGesendet.length).toBe(1);
+    expect(superGesendet[0][0]).toContain('/api/nutzer/u-zett/super-admin');
+    expect(superGesendet[0][1]).toEqual({ wert: true });
+    await expect(superBereich).toContainText('Zoe Zett');
+
+    // Entziehen: eigene Aktion je Super-Admin, mit Bestätigung
+    await superBereich.locator('tr[data-id="u-zett"] button[title="Super-Admin entziehen"]').click();
+    await expect(page.locator('#modalMessage')).toContainText('entziehen');
+    await page.locator('#modalConfirmBtn').click();
+    await expect.poll(() => superGesendet.length).toBe(2);
+    expect(superGesendet[1][1]).toEqual({ wert: false });
+    await expect(superBereich).not.toContainText('Zoe Zett');
+});
+
+test('Benutzer: Verein und Rolle zuweisen (neu, offene Anfrage freigeben)', async ({ page }) => {
+    const zuweisungen = [];
+    await alsSuperAdmin(page, { rolleAntwort: (route) => route.fulfill({ json: { success: true } }) });
+    await page.route('**/api/vereine', (route) => route.fulfill({ json: [{ id: 2, name: 'JC Alpha' }, { id: 3, name: 'JC Beta' }, { id: 4, name: 'JC Gamma' }] }));
+    await page.route('**/api/nutzer/*/mitgliedschaft', (route) => { zuweisungen.push([route.request().url(), route.request().postDataJSON()]); return route.fulfill({ json: { success: true, aktion: 'angelegt' } }); });
+    await page.goto('/admin-nutzer.html');
+    const anna = page.locator('tr[data-id="u-anna"]');
+
+    // Neuer Verein
+    await anna.locator('button[title="Verein und Rolle zuweisen"]').click();
+    await expect(page.locator('#zuweisenFuer')).toContainText('anna@example.test');
+    await expect.poll(() => page.locator('#zuweisenVereineListe option').evaluateAll(
+        os => os.map(o => `${o.value}|${o.label}`)
+    )).toEqual(['JC Alpha|JC Alpha (bisher Helfer)', 'JC Beta|JC Beta (wartet auf Freischaltung)', 'JC Gamma|']);
+    await page.locator('#zuweisenVerein').fill('JC Gamma');
+    await page.locator('#zuweisenRolle').selectOption('admin');
+    await page.locator('#zuweisenSpeichern').click();
+    await expect.poll(() => zuweisungen.length).toBe(1);
+    expect(zuweisungen[0][0]).toContain('/api/nutzer/u-anna/mitgliedschaft');
+    expect(zuweisungen[0][1]).toEqual({ vereinId: 4, rolle: 'admin' });
+    await expect(anna).toContainText('JC Gamma');
+    await expect(page.locator('#nutzerOk')).toContainText('JC Gamma als Admin zugewiesen');
+
+    // Offene Anfrage freigeben: die Zeile zeigt danach eine Rollenauswahl statt "wartet auf Freischaltung"
+    await anna.locator('button[title="Verein und Rolle zuweisen"]').click();
+    await page.locator('#zuweisenVerein').fill('JC Beta');
+    await page.locator('#zuweisenRolle').selectOption('benutzer');
+    await page.locator('#zuweisenSpeichern').click();
+    await expect.poll(() => zuweisungen.length).toBe(2);
+    await expect(anna).not.toContainText('wartet auf Freischaltung');
+    await expect(anna.locator('select')).toHaveCount(3);
+});
+
+test('Benutzer: Vereinszuordnung entfernen (mit Bestätigung)', async ({ page }) => {
+    const geloescht = [];
+    await alsSuperAdmin(page, { rolleAntwort: (route) => route.fulfill({ json: { success: true } }) });
+    await page.route('**/api/nutzer/*/mitgliedschaft/*', (route) => { geloescht.push([route.request().method(), route.request().url()]); return route.fulfill({ json: { success: true } }); });
+    await page.goto('/admin-nutzer.html');
+    const anna = page.locator('tr[data-id="u-anna"]');
+    await expect(anna).toContainText('JC Alpha');
+
+    await anna.locator('button[title="Vereinszuordnung entfernen"]').first().click();
+    await expect(page.locator('#modalMessage')).toContainText('JC Alpha');
+    await page.locator('#modalCancelBtn').click();
+    expect(geloescht).toHaveLength(0);
+
+    await anna.locator('button[title="Vereinszuordnung entfernen"]').first().click();
+    await page.locator('#modalConfirmBtn').click();
+    await expect.poll(() => geloescht.length).toBe(1);
+    expect(geloescht[0][0]).toBe('DELETE');
+    expect(geloescht[0][1]).toMatch(/\/api\/nutzer\/u-anna\/mitgliedschaft\/2$/);
+    await expect(anna).not.toContainText('JC Alpha');
+});
+
+test('Benutzer: die Aktions-Icons bleiben in einer Zeile', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await alsSuperAdmin(page, { rolleAntwort: (route) => route.fulfill({ json: { success: true } }) });
+    await page.goto('/admin-nutzer.html');
+    // Anna ist unbestätigt (die meisten Aktionen), Sam ist Super-Admin (mit "Super-Admin entziehen")
+    for (const kontoId of ['u-anna', 'e2e-super']) {
+        const tops = await page.locator(`tr[data-id="${kontoId}"] td:last-child button`).evaluateAll((knoepfe) => knoepfe.map((k) => Math.round(k.getBoundingClientRect().top)));
+        expect(tops.length).toBeGreaterThanOrEqual(7);
+        expect(new Set(tops).size, `Icons von ${kontoId}: ${tops}`).toBe(1);
+    }
 });

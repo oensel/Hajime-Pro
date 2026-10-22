@@ -1,4 +1,4 @@
-import { setzeAktivenVerein, ladeVereineFuerBenutzer, ladeVereinIdsMitRolle } from '../utils/vereinHelper.js';
+import { setzeAktivenVerein, setzeSuperAdminModus, ladeVereineFuerBenutzer, ladeVereinIdsMitRolle } from '../utils/vereinHelper.js';
 import { sendeMail } from '../utils/mailer.js';
 import {
     entscheideAnfrage, aendereRolle, entferneMitglied, ladeEmpfaengerFuerAnfrage, hatVereinAdmin, darfVereinVerwalten
@@ -191,6 +191,10 @@ export async function leaveVerein(knex, req, res) {
 export async function wechsleAktivenVerein(knex, req, res) {
     try {
         const userId = req.user.id;
+        if (req.body.superAdmin === true) {
+            await setzeSuperAdminModus(knex, userId);
+            return res.json({ success: true, vereine: await ladeVereineFuerBenutzer(knex, userId) });
+        }
         const vereinId = parseInt(req.body.vereinId);
         if (!vereinId) {
             return res.status(400).json({ success: false, error: 'vereinId ist erforderlich.' });
