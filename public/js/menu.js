@@ -1531,6 +1531,7 @@ async function initialisiereMenue() {
             localStorage.setItem('hajime-sidebar-collapsed', String(neuerZustand));
             anwendenSidebarZustand(neuerZustand);
         });
+        sidebarCollapseBtn.dataset.bereit = '1'; // Klick-Handler ist gebunden (Tests warten darauf)
     }
 
     // --- PROFIL HANDLER ---
