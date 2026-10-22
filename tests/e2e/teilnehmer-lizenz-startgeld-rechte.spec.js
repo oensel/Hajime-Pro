@@ -49,6 +49,7 @@ function mockReq(benutzerId, body = {}, params = {}) {
 test.describe.serial('Lizenz-/Startgeld-Rechte: nur ausrichtender Verein oder Super-Admin (teilnehmerController.js)', () => {
     let knex;
     let vorherigesIsOffline;
+    let vorherigerBetriebsmodus;
     let ausrichterVereinId, gastVereinId, gastVereinName, turnierId;
     let gastTeilnehmerId;
 
@@ -59,8 +60,12 @@ test.describe.serial('Lizenz-/Startgeld-Rechte: nur ausrichtender Verein oder Su
     test.beforeAll(async () => {
         // Nur der lokale Testprozess ist betroffen (siehe Datei-Kommentar) — der laufende
         // Testserver-Kindprozess hat seine eigene, unveränderliche Umgebung.
+        // BETRIEBSMODUS ebenfalls leeren: andere Specs im selben Prozess laden .env (BETRIEBSMODUS=server) und
+        // würden den Cloud-Pfad sonst überstimmen (reihenfolgeabhängiger Fehlschlag).
         vorherigesIsOffline = process.env.IS_OFFLINE;
+        vorherigerBetriebsmodus = process.env.BETRIEBSMODUS;
         process.env.IS_OFFLINE = 'false';
+        process.env.BETRIEBSMODUS = '';
 
         knex = knexLib({ client: 'pg', connection: testDbVerbindung, pool: { min: 0, max: 2 } });
 
@@ -97,7 +102,8 @@ test.describe.serial('Lizenz-/Startgeld-Rechte: nur ausrichtender Verein oder Su
 
     test.afterAll(async () => {
         await knex.destroy();
-        process.env.IS_OFFLINE = vorherigesIsOffline;
+        if (vorherigesIsOffline === undefined) delete process.env.IS_OFFLINE; else process.env.IS_OFFLINE = vorherigesIsOffline;
+        if (vorherigerBetriebsmodus === undefined) delete process.env.BETRIEBSMODUS; else process.env.BETRIEBSMODUS = vorherigerBetriebsmodus;
     });
 
     test('Ausrichter-Verein: Lizenz und Startgeld werden beim Anlegen wie angegeben gespeichert', async () => {
