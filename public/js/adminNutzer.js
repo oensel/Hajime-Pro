@@ -2,6 +2,8 @@
 // Super-Admins (oben, eigener Bereich) und übrige Benutzer; die Rolle je Verein ist änderbar, ebenso Super-Admin.
 // API: GET /api/nutzer, PUT /api/nutzer/:id { vorname, nachname, email }, DELETE /api/nutzer/:id,
 // POST /api/nutzer/:id/passwort { passwort, aendernErforderlich }, POST /api/nutzer/:id/super-admin { wert },
+// POST /api/nutzer/:id/sperren { wert }, POST /api/nutzer/:id/bestaetigen, POST /api/nutzer/:id/bestaetigungs-mail,
+// POST /api/nutzer/:id/passwort-mail, DELETE /api/nutzer/unbestaetigte { aelterAlsTage },
 // POST /api/vereine/rolle { userId, vereinId, rolle }.
 // Der Authorization-Header kommt aus dem globalen fetch-Wrapper in menu.js.
 (function () {
@@ -123,7 +125,10 @@
         return td;
     }
 
+    const nurUnbestaetigt = document.getElementById('nurUnbestaetigt');
+
     function passt(konto, suche) {
+        if (nurUnbestaetigt && nurUnbestaetigt.checked && konto.email_bestaetigt) return false;
         if (vereinFilterId && !konto.mitgliedschaften.some(m => String(m.verein_id) === String(vereinFilterId))) return false;
         if (!suche) return true;
         const text = [konto.vorname, konto.nachname, konto.email, ...konto.mitgliedschaften.map(m => m.verein_name)]
@@ -156,7 +161,22 @@
             document.createTextNode(' '),
             knopf('key', 'Initialpasswort vergeben', '', () => oeffnePasswort(konto)),
             document.createTextNode(' '),
-            knopf('delete', 'Löschen', 'gefahr', () => loesche(konto), String(konto.id) === String(eigeneId))
+            knopf('forward_to_inbox', 'Passwort-Zurücksetzen-Mail senden', '', () => sendePasswortMail(konto), konto.gesperrt || !konto.email_bestaetigt),
+            document.createTextNode(' ')
+        );
+        if (!konto.email_bestaetigt) {
+            td.append(
+                knopf('mark_email_read', 'E-Mail von Hand bestätigen', '', () => bestaetige(konto)),
+                document.createTextNode(' '),
+                knopf('send', 'Bestätigungsmail erneut senden', '', () => sendeBestaetigungsMail(konto)),
+                document.createTextNode(' ')
+            );
+        }
+        const istSelbst = String(konto.id) === String(eigeneId);
+        td.append(
+            knopf(konto.gesperrt ? 'lock_open' : 'block', konto.gesperrt ? 'Entsperren' : 'Sperren', '', () => setzeGesperrt(konto, !konto.gesperrt), !konto.gesperrt && istSelbst),
+            document.createTextNode(' '),
+            knopf('delete', 'Löschen', 'gefahr', () => loesche(konto), istSelbst)
         );
         return td;
     }
@@ -176,7 +196,8 @@
             const tr = document.createElement('tr');
             tr.dataset.id = k.id;
             tr.appendChild(zelle(`${k.vorname} ${k.nachname}`));
-            tr.appendChild(zelle(k.email + (k.email_bestaetigt ? '' : ' (unbestätigt)')));
+            tr.appendChild(zelle(k.email + (k.email_bestaetigt ? '' : ' (unbestätigt)') + (k.gesperrt ? ' (gesperrt)' : '')));
+            if (k.gesperrt) tr.classList.add('gesperrt');
             tr.appendChild(vereinZelle(k));
             tr.appendChild(rolleZelle(k));
             tr.appendChild(umschalterZelle(k));
@@ -317,6 +338,100 @@
         }
     });
 
+    // --- Sperren, Bestätigung, Passwort-Mail ---
+    async function kontoAktion(konto, pfad, methode, body) {
+        zeigeMeldung('');
+        const response = await fetch(`/api/nutzer/${encodeURIComponent(konto.id)}/${pfad}`, {
+            method: methode,
+            headers: { 'Content-Type': 'application/json' },
+            body: body === undefined ? undefined : JSON.stringify(body)
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'Die Aktion ist fehlgeschlagen.');
+        return data;
+    }
+
+    const kontoName = (konto) => `${konto.vorname} ${konto.nachname}`.trim() || konto.email;
+
+    async function setzeGesperrt(konto, wert) {
+        try {
+            if (wert) {
+                const text = `Konto „${kontoName(konto)}“ sperren? Die Person kann sich nicht mehr anmelden und bestehende Anmeldungen enden sofort. Alle Daten bleiben erhalten.`;
+                const bestaetigt = window.zeigeZentraleBestaetigung
+                    ? await window.zeigeZentraleBestaetigung(text, 'Konto sperren', 'block')
+                    : window.confirm(text);
+                if (!bestaetigt) return;
+            }
+            await kontoAktion(konto, 'sperren', 'POST', { wert });
+            konto.gesperrt = wert;
+            zeichne();
+            zeigeMeldung(`${kontoName(konto)} ist ${wert ? 'gesperrt' : 'wieder freigegeben'}.`, true);
+        } catch (err) {
+            zeigeMeldung(err.message);
+        }
+    }
+
+    async function bestaetige(konto) {
+        try {
+            await kontoAktion(konto, 'bestaetigen', 'POST');
+            konto.email_bestaetigt = true;
+            zeichne();
+            zeigeMeldung(`E-Mail-Adresse von ${kontoName(konto)} bestätigt.`, true);
+        } catch (err) {
+            zeigeMeldung(err.message);
+        }
+    }
+
+    async function sendeBestaetigungsMail(konto) {
+        try {
+            await kontoAktion(konto, 'bestaetigungs-mail', 'POST');
+            zeigeMeldung(`Bestätigungsmail an ${konto.email} gesendet.`, true);
+        } catch (err) {
+            zeigeMeldung(err.message);
+        }
+    }
+
+    async function sendePasswortMail(konto) {
+        try {
+            await kontoAktion(konto, 'passwort-mail', 'POST');
+            zeigeMeldung(`Mail zum Zurücksetzen des Passworts an ${konto.email} gesendet.`, true);
+        } catch (err) {
+            zeigeMeldung(err.message);
+        }
+    }
+
+    // Nie bestätigte Konten, die älter als 30 Tage sind, aufräumen
+    const AUFRAEUM_TAGE = 30;
+    const aufraeumKnopf = document.getElementById('aufraeumenKnopf');
+    if (aufraeumKnopf) {
+        aufraeumKnopf.addEventListener('click', async () => {
+            const grenze = Date.now() - AUFRAEUM_TAGE * 24 * 60 * 60 * 1000;
+            const betroffen = konten.filter(k => !k.email_bestaetigt && !k.ist_super_admin && k.erstellt_am && Date.parse(k.erstellt_am) < grenze).length;
+            if (betroffen === 0) {
+                zeigeMeldung(`Keine unbestätigten Konten, die älter als ${AUFRAEUM_TAGE} Tage sind.`, true);
+                return;
+            }
+            const text = `${betroffen} nie bestätigte Konten, die älter als ${AUFRAEUM_TAGE} Tage sind, löschen?`;
+            const bestaetigt = window.zeigeZentraleBestaetigung
+                ? await window.zeigeZentraleBestaetigung(text, 'Unbestätigte Konten löschen', 'delete')
+                : window.confirm(text);
+            if (!bestaetigt) return;
+            try {
+                const response = await fetch('/api/nutzer/unbestaetigte', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ aelterAlsTage: AUFRAEUM_TAGE })
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(data.error || 'Das Aufräumen ist fehlgeschlagen.');
+                await lade();
+                zeigeMeldung(`${data.geloescht} unbestätigte Konten gelöscht.`, true);
+            } catch (err) {
+                zeigeMeldung(err.message);
+            }
+        });
+    }
+
     // --- Löschen ---
     async function loesche(konto) {
         const name = `${konto.vorname} ${konto.nachname}`.trim() || konto.email;
@@ -362,5 +477,6 @@
     }
 
     filter.addEventListener('input', zeichne);
+    if (nurUnbestaetigt) nurUnbestaetigt.addEventListener('change', zeichne);
     lade();
 })();

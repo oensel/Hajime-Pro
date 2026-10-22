@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import { hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
 import { rolleReicht } from '../shared/rollen.js';
 import * as steuerungPasswort from '../utils/steuerungPasswort.js';
+import { istKontoGesperrt, MELDUNG_KONTO_GESPERRT } from '../utils/kontoSperre.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 const { istEinzelbenutzerBetrieb } = betriebsmodus;
 dotenv.config({ quiet: true });
@@ -56,10 +57,22 @@ export async function requireAuth(req, res, next) {
     try {
         const decoded = jwt.verify(token, JWT_SECRET);
         req.user = decoded; // { id: DokuMeUserId, email }
-        next();
     } catch (error) {
         return res.status(401).json({ success: false, error: 'Ungültiges oder abgelaufenes Token.' });
     }
+    // Gesperrte Konten (Super-Admin) verlieren den Zugriff sofort, auch mit noch gültigem Token. 401, damit die
+    // Oberfläche (menu.js) zur Anmeldung zurückleitet.
+    const knex = req.app && req.app.get ? req.app.get('knex') : null;
+    if (knex) {
+        try {
+            if (await istKontoGesperrt(knex, req.user.id)) {
+                return res.status(401).json({ success: false, code: 'gesperrt', error: MELDUNG_KONTO_GESPERRT });
+            }
+        } catch (err) {
+            console.error('[Auth] Sperrprüfung fehlgeschlagen:', err.message);
+        }
+    }
+    next();
 }
 
 /**

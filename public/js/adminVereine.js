@@ -1,6 +1,8 @@
 // Seite admin-vereine.html („Vereine“, nur Super-Admins): alle Vereine mit Bundesland (änderbar), Anzahl Benutzer
 // (Rolle egal) und Anzahl Turniere. Ein Klick auf die Zahlen öffnet die für den Verein gefilterte Benutzerliste
 // (admin-nutzer.html?vereinId=) bzw. Turnierliste (admin-turniere.html?vereinId=, Wettkampftag absteigend).
+// Verwaltung: anlegen (POST /api/nutzer/vereine), umbenennen (PUT /api/nutzer/vereine/:id { name }), zusammenführen
+// (POST /api/nutzer/vereine/:id/zusammenfuehren { zielId }) und leere Vereine löschen (DELETE /api/nutzer/vereine/:id).
 // API: GET /api/nutzer/vereine, PUT /api/nutzer/vereine/:id { bundesland }.
 (function () {
     const BUNDESLAENDER = [
@@ -79,6 +81,158 @@
         return td;
     }
 
+    function aktionsZelle(verein) {
+        const td = document.createElement('td');
+        const knopf = (icon, text, klasse, handler, gesperrt = false) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = `aktion ${klasse}`.trim();
+            b.title = text;
+            b.setAttribute('aria-label', `${text}: ${verein.name}`);
+            b.disabled = gesperrt;
+            const i = document.createElement('span');
+            i.className = 'material-icons';
+            i.textContent = icon;
+            b.appendChild(i);
+            b.addEventListener('click', handler);
+            return b;
+        };
+        const leer = verein.benutzer_anzahl === 0 && verein.turniere_anzahl === 0;
+        td.append(
+            knopf('edit', 'Umbenennen', '', () => oeffneVereinDialog(verein)),
+            document.createTextNode(' '),
+            knopf('merge_type', 'Zusammenführen', '', () => oeffneZusammen(verein), vereine.length < 2),
+            document.createTextNode(' '),
+            knopf('delete', leer ? 'Löschen' : 'Löschen (nur leere Vereine)', 'gefahr', () => loesche(verein), !leer)
+        );
+        return td;
+    }
+
+    // --- Anlegen und Umbenennen ---
+    const vereinDialog = document.getElementById('vereinDialog');
+    const vereinFehler = document.getElementById('vereinFehler');
+    const vereinName = document.getElementById('vereinName');
+    const vereinLand = document.getElementById('vereinLand');
+    let bearbeiteterVerein = null; // null = neuen Verein anlegen
+
+    const leereOption = document.createElement('option');
+    leereOption.value = '';
+    leereOption.textContent = '–';
+    vereinLand.appendChild(leereOption);
+    for (const land of BUNDESLAENDER) {
+        const option = document.createElement('option');
+        option.value = land;
+        option.textContent = land;
+        vereinLand.appendChild(option);
+    }
+
+    function oeffneVereinDialog(verein) {
+        bearbeiteterVerein = verein || null;
+        document.getElementById('vereinDialogTitel').textContent = verein ? 'Verein umbenennen' : 'Verein anlegen';
+        document.getElementById('vereinLandBox').hidden = !!verein;
+        vereinName.value = verein ? verein.name : '';
+        vereinLand.value = '';
+        vereinFehler.textContent = '';
+        vereinDialog.showModal();
+        vereinName.focus();
+    }
+
+    document.getElementById('vereinNeuKnopf').addEventListener('click', () => oeffneVereinDialog(null));
+    document.getElementById('vereinAbbrechen').addEventListener('click', () => vereinDialog.close());
+    document.getElementById('vereinForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const speichern = document.getElementById('vereinSpeichern');
+        speichern.disabled = true;
+        vereinFehler.textContent = '';
+        try {
+            const response = bearbeiteterVerein
+                ? await fetch(`/api/nutzer/vereine/${encodeURIComponent(bearbeiteterVerein.id)}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: vereinName.value })
+                })
+                : await fetch('/api/nutzer/vereine', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: vereinName.value, bundesland: vereinLand.value })
+                });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.error || 'Der Verein konnte nicht gespeichert werden.');
+            vereinDialog.close();
+            await lade();
+            zeigeMeldung('');
+        } catch (err) {
+            vereinFehler.textContent = err.message;
+        } finally {
+            speichern.disabled = false;
+        }
+    });
+
+    // --- Zusammenführen ---
+    const zusammenDialog = document.getElementById('zusammenDialog');
+    const zusammenFehler = document.getElementById('zusammenFehler');
+    const zusammenZiel = document.getElementById('zusammenZiel');
+    let zusammenQuelle = null;
+
+    function oeffneZusammen(verein) {
+        zusammenQuelle = verein;
+        document.getElementById('zusammenText').textContent = `„${verein.name}“ in einen anderen Verein überführen.`;
+        zusammenZiel.textContent = '';
+        for (const v of vereine.filter(x => x.id !== verein.id)) {
+            const option = document.createElement('option');
+            option.value = v.id;
+            option.textContent = v.name;
+            zusammenZiel.appendChild(option);
+        }
+        zusammenFehler.textContent = '';
+        zusammenDialog.showModal();
+        zusammenZiel.focus();
+    }
+
+    document.getElementById('zusammenAbbrechen').addEventListener('click', () => zusammenDialog.close());
+    document.getElementById('zusammenForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!zusammenQuelle) return;
+        const speichern = document.getElementById('zusammenSpeichern');
+        speichern.disabled = true;
+        zusammenFehler.textContent = '';
+        try {
+            const response = await fetch(`/api/nutzer/vereine/${encodeURIComponent(zusammenQuelle.id)}/zusammenfuehren`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ zielId: Number(zusammenZiel.value) })
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.error || 'Das Zusammenführen ist fehlgeschlagen.');
+            zusammenDialog.close();
+            await lade();
+            zeigeMeldung('');
+            info.textContent = `${zusammenQuelle.name} zusammengeführt: ${data.mitglieder} Mitgliedschaften, ${data.turniere} Turniere, ${data.vorlagen} Urkunden-Vorlagen übernommen.`;
+        } catch (err) {
+            zusammenFehler.textContent = err.message;
+        } finally {
+            speichern.disabled = false;
+        }
+    });
+
+    // --- Löschen (nur leere Vereine) ---
+    async function loesche(verein) {
+        const text = `Verein „${verein.name}“ wirklich löschen?`;
+        const bestaetigt = window.zeigeZentraleBestaetigung
+            ? await window.zeigeZentraleBestaetigung(text, 'Verein löschen', 'delete')
+            : window.confirm(text);
+        if (!bestaetigt) return;
+        zeigeMeldung('');
+        try {
+            const response = await fetch(`/api/nutzer/vereine/${encodeURIComponent(verein.id)}`, { method: 'DELETE' });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.error || 'Der Verein konnte nicht gelöscht werden.');
+            await lade();
+        } catch (err) {
+            zeigeMeldung(err.message);
+        }
+    }
+
     function passt(verein, suche) {
         if (!suche) return true;
         return `${verein.name} ${verein.bundesland || ''}`.toLowerCase().includes(suche);
@@ -92,7 +246,7 @@
         if (sichtbar.length === 0) {
             const tr = document.createElement('tr');
             const td = document.createElement('td');
-            td.colSpan = 4;
+            td.colSpan = 5;
             td.textContent = 'Keine Vereine gefunden.';
             tr.appendChild(td);
             liste.appendChild(tr);
@@ -107,6 +261,7 @@
             tr.appendChild(bundeslandZelle(v));
             tr.appendChild(zahlZelle(v.benutzer_anzahl, `/admin-nutzer.html?vereinId=${encodeURIComponent(v.id)}`, `Benutzer von ${v.name} anzeigen`));
             tr.appendChild(zahlZelle(v.turniere_anzahl, `/admin-turniere.html?vereinId=${encodeURIComponent(v.id)}`, `Turniere von ${v.name} anzeigen`));
+            tr.appendChild(aktionsZelle(v));
             liste.appendChild(tr);
         }
     }

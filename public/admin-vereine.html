@@ -8,10 +8,26 @@
     <script src="/js/menu.js"></script>
     <style>
         .vereine-table { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
-        .vereine-table th:nth-child(1) { width: 40%; }
-        .vereine-table th:nth-child(2) { width: 26%; }
-        .vereine-table th:nth-child(3) { width: 17%; }
-        .vereine-table th:nth-child(4) { width: 17%; }
+        .vereine-table th:nth-child(1) { width: 32%; }
+        .vereine-table th:nth-child(2) { width: 24%; }
+        .vereine-table th:nth-child(3) { width: 12%; }
+        .vereine-table th:nth-child(4) { width: 12%; }
+        .vereine-table th:nth-child(5) { width: 20%; }
+        .vereine-table .aktion { width: 30px; height: 30px; padding: 0; border: 1px solid var(--border); border-radius: 4px; background: transparent; color: var(--text-main); cursor: pointer; }
+        .vereine-table .aktion:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+        .vereine-table .aktion.gefahr:hover:not(:disabled) { border-color: #c62828; color: #c62828; }
+        .vereine-table .aktion:disabled { opacity: 0.35; cursor: not-allowed; }
+        .vereine-table .aktion .material-icons { font-size: 18px; }
+        .vereine-werkzeuge { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-bottom: 12px; }
+        .vereine-werkzeuge .vereine-filter { margin-bottom: 0; }
+        dialog.verein-dialog { border: 2px solid var(--border); border-radius: 4px; padding: 18px 20px; width: min(420px, 92vw); background: var(--bg-card); color: var(--text-main); }
+        dialog.verein-dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
+        dialog.verein-dialog h2 { margin: 0 0 10px; font-size: 15px; text-transform: uppercase; letter-spacing: 0.5px; }
+        dialog.verein-dialog label { display: block; font-size: 12px; margin: 10px 0 3px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; }
+        dialog.verein-dialog input[type=text], dialog.verein-dialog select { width: 100%; box-sizing: border-box; }
+        dialog.verein-dialog .dialog-hinweis { font-size: 13px; color: var(--text-muted); margin: 6px 0 0; }
+        dialog.verein-dialog .dialog-fehler { color: #ef4444; font-weight: 700; font-size: 13px; min-height: 18px; margin-top: 8px; }
+        dialog.verein-dialog .dialog-knoepfe { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
         .vereine-table th, .vereine-table td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border-color, #374151); vertical-align: middle; overflow-wrap: anywhere; }
         .vereine-table th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); position: sticky; top: 0; background: var(--bg-card); }
         .vereine-table select { width: 100%; max-width: 220px; height: 26px; font-size: 13px; }
@@ -35,19 +51,54 @@
         <h1>Vereine</h1>
         <span class="material-icons">groups</span>
     </div>
-    <p style="color: var(--text-muted); font-size: 13px; margin-top: 0;">Alle Vereine mit Bundesland, Anzahl der Benutzer (Rolle egal) und Anzahl der gespeicherten Turniere. Ein Klick auf eine Zahl öffnet die für diesen Verein gefilterte Liste. Das Bundesland lässt sich hier setzen.</p>
-    <input type="search" id="vereineFilter" class="vereine-filter" placeholder="Verein oder Bundesland suchen" aria-label="Vereine filtern">
+    <p style="color: var(--text-muted); font-size: 13px; margin-top: 0;">Alle Vereine mit Bundesland, Anzahl der Benutzer (Rolle egal) und Anzahl der gespeicherten Turniere. Ein Klick auf eine Zahl öffnet die für diesen Verein gefilterte Liste. Das Bundesland lässt sich hier setzen. Vereine lassen sich anlegen, umbenennen und zusammenführen (Dubletten); leere Vereine ohne Turniere und Mitglieder lassen sich löschen.</p>
+    <div class="vereine-werkzeuge">
+        <input type="search" id="vereineFilter" class="vereine-filter" placeholder="Verein oder Bundesland suchen" aria-label="Vereine filtern">
+        <button type="button" class="btn btn-raised" id="vereinNeuKnopf">Verein anlegen</button>
+    </div>
     <div id="vereineMeldung" class="vereine-meldung" role="alert"></div>
     <p class="vereine-info" id="vereineInfo"></p>
     <div class="tabelle-scroll">
         <table class="vereine-table">
             <thead>
-                <tr><th>Verein</th><th>Bundesland</th><th>Benutzer</th><th>Turniere</th></tr>
+                <tr><th>Verein</th><th>Bundesland</th><th>Benutzer</th><th>Turniere</th><th>Aktionen</th></tr>
             </thead>
-            <tbody id="vereineListe"><tr><td colspan="4">Wird geladen …</td></tr></tbody>
+            <tbody id="vereineListe"><tr><td colspan="5">Wird geladen …</td></tr></tbody>
         </table>
     </div>
 </div>
+
+<dialog class="verein-dialog" id="vereinDialog" aria-labelledby="vereinDialogTitel">
+    <form method="dialog" id="vereinForm">
+        <h2 id="vereinDialogTitel">Verein</h2>
+        <label for="vereinName">Name</label>
+        <input type="text" id="vereinName" maxlength="255" required>
+        <div id="vereinLandBox">
+            <label for="vereinLand">Bundesland (optional)</label>
+            <select id="vereinLand"></select>
+        </div>
+        <div class="dialog-fehler" id="vereinFehler" role="alert"></div>
+        <div class="dialog-knoepfe">
+            <button type="button" class="btn btn-outlined" id="vereinAbbrechen">Abbrechen</button>
+            <button type="submit" class="btn btn-raised" id="vereinSpeichern">Speichern</button>
+        </div>
+    </form>
+</dialog>
+
+<dialog class="verein-dialog" id="zusammenDialog" aria-labelledby="zusammenTitel">
+    <form method="dialog" id="zusammenForm">
+        <h2 id="zusammenTitel">Vereine zusammenführen</h2>
+        <p class="dialog-hinweis" id="zusammenText"></p>
+        <label for="zusammenZiel">Zielverein (bleibt bestehen)</label>
+        <select id="zusammenZiel" required></select>
+        <p class="dialog-hinweis">Mitglieder (bei Doppelmitgliedschaft gilt die höhere Rolle), Turniere, Urkunden-Vorlagen und Einladungen wandern zum Zielverein. Der Verein selbst wird danach gelöscht. Das lässt sich nicht rückgängig machen.</p>
+        <div class="dialog-fehler" id="zusammenFehler" role="alert"></div>
+        <div class="dialog-knoepfe">
+            <button type="button" class="btn btn-outlined" id="zusammenAbbrechen">Abbrechen</button>
+            <button type="submit" class="btn btn-raised" id="zusammenSpeichern">Zusammenführen</button>
+        </div>
+    </form>
+</dialog>
 
 <script src="/js/adminVereine.js"></script>
 </body>

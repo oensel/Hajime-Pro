@@ -5,6 +5,8 @@ import * as steuerungPasswort from '../utils/steuerungPasswort.js';
 import { registriere, bestaetige, sendeBestaetigungNeu, findeKontoPerEmail, normalisiereEmail, MIN_PASSWORT_LAENGE, MAX_EMAIL_LAENGE, MELDUNG_EMAIL_ZU_LANG } from '../services/registrierung.js';
 import { ermittleBasisUrl, HINWEIS_FEHLENDE_BASIS_URL } from '../utils/basisUrl.js';
 import { hatVereinAdmin } from '../services/vereinsRollen.js';
+import { MELDUNG_KONTO_GESPERRT } from '../utils/kontoSperre.js';
+import { fordereZuruecksetzungAn, setzePasswortZurueck } from '../services/passwortReset.js';
 import dotenv from 'dotenv';
 dotenv.config({ quiet: true });
 
@@ -75,6 +77,37 @@ export async function emailBestaetigungErneut(knex, req, res) {
     });
 }
 
+// Passwort vergessen: schickt (bei bestätigtem, nicht gesperrtem Konto) einen Link zum Zurücksetzen; verrät nie, ob die
+// Adresse existiert.
+export async function passwortVergessen(knex, req, res) {
+    try {
+        const basisUrl = ermittleBasisUrl(req);
+        if (!basisUrl) {
+            console.error(`[Passwort-vergessen] ${HINWEIS_FEHLENDE_BASIS_URL}`);
+        } else {
+            await fordereZuruecksetzungAn(knex, req.body && req.body.email, basisUrl);
+        }
+    } catch (error) {
+        console.error('[Passwort-vergessen-Fehler]:', error);
+    }
+    return res.json({
+        success: true,
+        message: 'Falls zu dieser Adresse ein Konto gehört, haben wir eine E-Mail mit einem Link zum Zurücksetzen des Passworts geschickt.'
+    });
+}
+
+export async function passwortZuruecksetzen(knex, req, res) {
+    try {
+        const { token, passwort } = req.body || {};
+        const ergebnis = await setzePasswortZurueck(knex, token, passwort);
+        if (!ergebnis.ok) return res.status(ergebnis.status).json({ success: false, error: ergebnis.error });
+        return res.json({ success: true, message: 'Das Passwort wurde geändert. Sie können sich jetzt anmelden.' });
+    } catch (error) {
+        console.error('[Passwort-zuruecksetzen-Fehler]:', error);
+        return res.status(500).json({ success: false, error: 'Interner Server-Fehler beim Zurücksetzen des Passworts.' });
+    }
+}
+
 /** Antwort einer erfolgreichen Anmeldung (Token + Benutzer mit Vereinen); gemeinsam für Login und Einladung. */
 export async function baueAnmeldeAntwort(knex, user) {
     const token = jwt.sign(
@@ -121,6 +154,9 @@ export async function login(knex, req, res) {
             return res.status(401).json({ success: false, error: 'Ungültige Anmeldedaten.' });
         }
         // Erst nach dem Passwort prüfen, damit der Zustand eines Kontos nur mit gültigen Zugangsdaten sichtbar wird.
+        if (user.gesperrt) {
+            return res.status(403).json({ success: false, code: 'gesperrt', error: MELDUNG_KONTO_GESPERRT });
+        }
         if (!user.email_bestaetigt_am) {
             return res.status(403).json({
                 success: false,

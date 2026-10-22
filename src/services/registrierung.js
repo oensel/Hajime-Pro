@@ -131,13 +131,22 @@ export async function bestaetige(knex, token, basisUrl, { sende = sendeMail } = 
     if (!eintrag) {
         return { ok: false, status: 400, error: 'Der Bestätigungslink ist ungültig, abgelaufen oder wurde bereits verwendet.' };
     }
-    const benutzerId = eintrag.benutzer_id;
+    return schliesseBestaetigungAb(knex, {
+        benutzerId: eintrag.benutzer_id, vereinId: eintrag.verein_id, angefragtUeber: eintrag.angefragt_ueber
+    }, basisUrl, sende);
+}
+
+/**
+ * Gemeinsamer Abschluss der Bestätigung (Link der Mail oder manuell durch einen Super-Admin): E-Mail als bestätigt
+ * markieren, offene Bestätigungslinks entwerten und, wenn bei der Registrierung ein Verein gewünscht war, die
+ * Beitrittsanfrage anlegen und die Entscheider benachrichtigen.
+ */
+export async function schliesseBestaetigungAb(knex, { benutzerId, vereinId, angefragtUeber }, basisUrl, sende = sendeMail) {
     await knex('benutzer').where({ id: benutzerId }).whereNull('email_bestaetigt_am')
         .update({ email_bestaetigt_am: knex.fn.now(), updated_at: knex.fn.now() });
     // Weitere offene Bestätigungslinks haben sich erledigt.
     await entwerteTokens(knex, benutzerId, 'email');
 
-    const vereinId = eintrag.verein_id;
     if (!vereinId) return { ok: true };
 
     const verein = await knex('vereine').where({ id: vereinId }).first();
@@ -149,7 +158,7 @@ export async function bestaetige(knex, token, basisUrl, { sende = sendeMail } = 
             benutzer_id: benutzerId,
             verein_id: vereinId,
             freigegeben: 0,
-            angefragt_ueber: eintrag.angefragt_ueber || 'verwaltung'
+            angefragt_ueber: angefragtUeber || 'verwaltung'
         });
         await knex('benutzer').where({ id: benutzerId }).whereNull('aktiver_verein_id')
             .update({ aktiver_verein_id: vereinId, updated_at: knex.fn.now() });
@@ -186,15 +195,39 @@ export async function sendeBestaetigungNeu(knex, email, basisUrl, { sende = send
 // "erneut senden"); die Antwort an den Aufrufer bleibt dieselbe.
 const MINDESTABSTAND_BESTAETIGUNGSMAIL_SEKUNDEN = 120;
 
+/**
+ * Super-Admin: Bestätigungsmail an ein unbestätigtes Konto (auch kurz nach der letzten, ohne Mindestabstand).
+ * @returns {Promise<boolean>} false, wenn das Konto schon bestätigt ist
+ */
+export async function sendeBestaetigungAnKonto(knex, konto, basisUrl, { sende = sendeMail } = {}) {
+    if (konto.email_bestaetigt_am) return false;
+    await sendeNeuenBestaetigungslink(knex, konto, basisUrl, sende, { abstandPruefen: false });
+    return true;
+}
+
+/**
+ * Super-Admin: bestätigt ein Konto von Hand (statt über den Link der Mail). Ein bei der Registrierung gewünschter
+ * Verein (steht am letzten Bestätigungs-Token) führt wie sonst zur Beitrittsanfrage.
+ */
+export async function bestaetigeKontoManuell(knex, benutzerId, basisUrl, { sende = sendeMail } = {}) {
+    const letzter = await knex('token_einmal')
+        .where({ benutzer_id: benutzerId, zweck: 'email' })
+        .orderBy('id', 'desc')
+        .first('verein_id', 'angefragt_ueber');
+    return schliesseBestaetigungAb(knex, {
+        benutzerId, vereinId: letzter ? letzter.verein_id : null, angefragtUeber: letzter ? letzter.angefragt_ueber : null
+    }, basisUrl, sende);
+}
+
 // Neuer Bestätigungslink für ein unbestätigtes Konto; ältere verfallen, Verein und Quelle stammen vom letzten Token.
 // Ist der letzte Token jünger als der Mindestabstand, geschieht nichts (der bisherige Link bleibt gültig).
-async function sendeNeuenBestaetigungslink(knex, konto, basisUrl, sende) {
+async function sendeNeuenBestaetigungslink(knex, konto, basisUrl, sende, { abstandPruefen = true } = {}) {
     // Verein und Quelle der Registrierung stehen am letzten Bestätigungs-Token (auch wenn er abgelaufen ist).
     const letzter = await knex('token_einmal')
         .where({ benutzer_id: konto.id, zweck: 'email' })
         .orderBy('id', 'desc')
         .first(['*', knex.raw("created_at > now() - (? * interval '1 second') as zu_frisch", [MINDESTABSTAND_BESTAETIGUNGSMAIL_SEKUNDEN])]);
-    if (letzter && letzter.zu_frisch) return;
+    if (abstandPruefen && letzter && letzter.zu_frisch) return;
     await entwerteTokens(knex, konto.id, 'email');
     const token = await erzeugeToken(knex, {
         benutzerId: konto.id,

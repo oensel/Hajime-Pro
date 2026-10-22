@@ -4,13 +4,19 @@
 
 import { datumAlsIso } from '../shared/turnierAktivierung.js';
 import { hashPassword } from '../utils/password.js';
-import { MIN_PASSWORT_LAENGE, MAX_EMAIL_LAENGE, MELDUNG_EMAIL_ZU_LANG, normalisiereEmail } from '../services/registrierung.js';
+import {
+    MIN_PASSWORT_LAENGE, MAX_EMAIL_LAENGE, MELDUNG_EMAIL_ZU_LANG, normalisiereEmail, sendeBestaetigungAnKonto, bestaetigeKontoManuell
+} from '../services/registrierung.js';
+import { sendeResetLink } from '../services/passwortReset.js';
+import { legeVereinAn, benenneVereinUm, fuehreVereineZusammen, loescheLeerenVerein } from '../services/vereinsVerwaltung.js';
+import { ermittleBasisUrl, HINWEIS_FEHLENDE_BASIS_URL } from '../utils/basisUrl.js';
+import { vergesseSperrStand } from '../utils/kontoSperre.js';
 
 /** GET /api/nutzer — alle Konten (ohne Passwort-Hash) mit Mitgliedschaften. */
 export async function listeNutzer(knex, req, res) {
     try {
         const konten = await knex('benutzer')
-            .select('id', 'vorname', 'nachname', 'email', 'ist_super_admin', 'email_bestaetigt_am')
+            .select('id', 'vorname', 'nachname', 'email', 'ist_super_admin', 'email_bestaetigt_am', 'gesperrt', 'created_at')
             .orderBy([{ column: 'ist_super_admin', order: 'desc' }, { column: 'nachname' }, { column: 'vorname' }, { column: 'email' }]);
         const mitgliedschaften = await knex('benutzer_vereine')
             .join('vereine', 'vereine.id', 'benutzer_vereine.verein_id')
@@ -38,6 +44,8 @@ export async function listeNutzer(knex, req, res) {
             email: k.email,
             ist_super_admin: !!k.ist_super_admin,
             email_bestaetigt: !!k.email_bestaetigt_am,
+            gesperrt: !!k.gesperrt,
+            erstellt_am: k.created_at ? new Date(k.created_at).toISOString() : null,
             mitgliedschaften: jeKonto.get(k.id) || []
         })));
     } catch (error) {
@@ -111,12 +119,51 @@ export async function listeVereine(knex, req, res) {
     }
 }
 
-/** PUT /api/nutzer/vereine/:id { bundesland } — Bundesland eines Vereins setzen (leer = entfernen). */
+function leseVereinId(roh) {
+    const id = /^\d+$/.test(String(roh)) ? parseInt(roh, 10) : null;
+    return id && id <= 2147483647 ? id : null;
+}
+
+/**
+ * PUT /api/nutzer/vereine/:id { name?, bundesland? } — Verein umbenennen und/oder Bundesland setzen (leer = entfernen).
+ * Nur die mitgeschickten Felder ändern sich.
+ */
 export async function setzeVereinBundesland(knex, req, res) {
     try {
-        const vereinId = /^\d+$/.test(String(req.params.id)) ? parseInt(req.params.id, 10) : null;
-        if (!vereinId || vereinId > 2147483647) return res.status(404).json({ success: false, error: 'Verein nicht gefunden.' });
-        const roh = req.body ? req.body.bundesland : undefined;
+        const vereinId = leseVereinId(req.params.id);
+        if (!vereinId) return res.status(404).json({ success: false, error: 'Verein nicht gefunden.' });
+        const body = req.body || {};
+        const hatName = Object.prototype.hasOwnProperty.call(body, 'name');
+        const hatLand = Object.prototype.hasOwnProperty.call(body, 'bundesland') || !hatName; // ohne Name: wie bisher nur das Bundesland
+        const roh = body.bundesland;
+        const bundesland = typeof roh === 'string' && roh.trim() !== '' ? roh.trim() : null;
+        if (roh !== undefined && roh !== null && typeof roh !== 'string') {
+            return res.status(400).json({ success: false, error: 'bundesland muss ein Text sein.' });
+        }
+        if (hatLand && bundesland && !BUNDESLAENDER.includes(bundesland)) {
+            return res.status(400).json({ success: false, error: 'Unbekanntes Bundesland.' });
+        }
+        const vorhanden = await knex('vereine').where({ id: vereinId }).first('id');
+        if (!vorhanden) return res.status(404).json({ success: false, error: 'Verein nicht gefunden.' });
+        let name;
+        if (hatName) {
+            const ergebnis = await benenneVereinUm(knex, vereinId, body.name);
+            if (!ergebnis.ok) return res.status(ergebnis.status).json({ success: false, error: ergebnis.error });
+            name = ergebnis.name;
+        }
+        if (hatLand) await knex('vereine').where({ id: vereinId }).update({ bundesland, updated_at: knex.fn.now() });
+        res.json({ success: true, ...(hatLand ? { bundesland } : {}), ...(hatName ? { name } : {}) });
+    } catch (error) {
+        console.error('[Verein-Aendern-Fehler]:', error);
+        res.status(500).json({ success: false, error: 'Fehler beim Speichern des Vereins.' });
+    }
+}
+
+/** POST /api/nutzer/vereine { name, bundesland? } — Verein anlegen. */
+export async function legeVereinAnRoute(knex, req, res) {
+    try {
+        const body = req.body || {};
+        const roh = body.bundesland;
         const bundesland = typeof roh === 'string' && roh.trim() !== '' ? roh.trim() : null;
         if (roh !== undefined && roh !== null && typeof roh !== 'string') {
             return res.status(400).json({ success: false, error: 'bundesland muss ein Text sein.' });
@@ -124,12 +171,42 @@ export async function setzeVereinBundesland(knex, req, res) {
         if (bundesland && !BUNDESLAENDER.includes(bundesland)) {
             return res.status(400).json({ success: false, error: 'Unbekanntes Bundesland.' });
         }
-        const geaendert = await knex('vereine').where({ id: vereinId }).update({ bundesland, updated_at: knex.fn.now() });
-        if (!geaendert) return res.status(404).json({ success: false, error: 'Verein nicht gefunden.' });
-        res.json({ success: true, bundesland });
+        const ergebnis = await legeVereinAn(knex, { name: body.name, bundesland });
+        if (!ergebnis.ok) return res.status(ergebnis.status).json({ success: false, error: ergebnis.error });
+        res.status(201).json({ success: true, verein: ergebnis.verein });
     } catch (error) {
-        console.error('[Verein-Bundesland-Fehler]:', error);
-        res.status(500).json({ success: false, error: 'Fehler beim Speichern des Bundeslands.' });
+        console.error('[Verein-Anlegen-Fehler]:', error);
+        res.status(500).json({ success: false, error: 'Fehler beim Anlegen des Vereins.' });
+    }
+}
+
+/** POST /api/nutzer/vereine/:id/zusammenfuehren { zielId } — den Verein :id in den Verein zielId überführen (:id verschwindet). */
+export async function fuehreVereineZusammenRoute(knex, req, res) {
+    try {
+        const quelleId = leseVereinId(req.params.id);
+        const zielId = leseVereinId(req.body && req.body.zielId);
+        if (!quelleId) return res.status(404).json({ success: false, error: 'Verein nicht gefunden.' });
+        if (!zielId) return res.status(400).json({ success: false, error: 'Bitte den Zielverein angeben.' });
+        const ergebnis = await fuehreVereineZusammen(knex, quelleId, zielId);
+        if (!ergebnis.ok) return res.status(ergebnis.status).json({ success: false, error: ergebnis.error });
+        res.json({ success: true, mitglieder: ergebnis.mitglieder, turniere: ergebnis.turniere, vorlagen: ergebnis.vorlagen });
+    } catch (error) {
+        console.error('[Vereine-Zusammenfuehren-Fehler]:', error);
+        res.status(500).json({ success: false, error: 'Fehler beim Zusammenführen der Vereine.' });
+    }
+}
+
+/** DELETE /api/nutzer/vereine/:id — leeren Verein (ohne Turniere und Mitglieder) löschen. */
+export async function loescheVereinRoute(knex, req, res) {
+    try {
+        const vereinId = leseVereinId(req.params.id);
+        if (!vereinId) return res.status(404).json({ success: false, error: 'Verein nicht gefunden.' });
+        const ergebnis = await loescheLeerenVerein(knex, vereinId);
+        if (!ergebnis.ok) return res.status(ergebnis.status).json({ success: false, error: ergebnis.error });
+        res.json({ success: true });
+    } catch (error) {
+        console.error('[Verein-Loeschen-Fehler]:', error);
+        res.status(500).json({ success: false, error: 'Fehler beim Löschen des Vereins.' });
     }
 }
 
@@ -141,7 +218,7 @@ export async function listeVereinTurniere(knex, req, res) {
         if (!verein) return res.status(404).json({ success: false, error: 'Verein nicht gefunden.' });
         const turniere = await knex('turniere')
             .where({ verein_id: verein.id })
-            .select('id', 'bezeichnung', 'datum', 'ort', 'bundesland', 'status')
+            .select('id', 'bezeichnung', 'datum', 'ort', 'bundesland', 'status', 'archiviert', 'aktiv')
             .orderBy([{ column: 'datum', order: 'desc' }, { column: 'id', order: 'desc' }]);
         const ids = turniere.map(t => t.id);
         const teilnehmer = ids.length
@@ -157,6 +234,8 @@ export async function listeVereinTurniere(knex, req, res) {
                 ort: t.ort,
                 bundesland: t.bundesland || null,
                 status: t.status,
+                archiviert: !!t.archiviert,
+                aktiv: !!t.aktiv,
                 teilnehmer_anzahl: teilnehmerJe.get(t.id) || 0
             }))
         });
@@ -262,5 +341,169 @@ export async function setzeInitialPasswort(knex, req, res) {
     } catch (error) {
         console.error('[Nutzer-Passwort-Fehler]:', error);
         res.status(500).json({ success: false, error: 'Fehler beim Setzen des Passworts.' });
+    }
+}
+
+// --- Konten sperren, Bestätigung verwalten, Passwort-Reset-Mail (nur Super-Admin) ---
+
+const BASIS_URL_FEHLT = 'Die Basis-URL für Links in Mails ist nicht konfiguriert (PUBLIC_BASE_URL).';
+
+/**
+ * POST /api/nutzer/:id/sperren { wert: boolean } — Konto sperren (Login und alle Anfragen werden abgelehnt, Daten bleiben)
+ * oder wieder freigeben. Nicht das eigene Konto und nicht den letzten nicht gesperrten Super-Admin.
+ */
+export async function setzeGesperrt(knex, req, res) {
+    try {
+        const zielId = leseKontoId(req);
+        const wert = req.body ? req.body.wert : undefined;
+        if (typeof wert !== 'boolean') return res.status(400).json({ success: false, error: 'wert muss true oder false sein.' });
+        if (wert && zielId && String(zielId) === String(req.user.id)) {
+            return res.status(409).json({ success: false, error: 'Das eigene Konto kann nicht gesperrt werden.' });
+        }
+        const ergebnis = await knex.transaction(async (trx) => {
+            const superAdmins = await trx('benutzer').where({ ist_super_admin: true, gesperrt: false }).forUpdate().select('id');
+            const ziel = zielId ? await trx('benutzer').where({ id: zielId }).first('id', 'ist_super_admin') : null;
+            if (!ziel) return { status: 404, error: 'Konto nicht gefunden.' };
+            if (wert && ziel.ist_super_admin && superAdmins.length <= 1) {
+                return { status: 409, error: 'Der letzte nicht gesperrte Super-Admin kann nicht gesperrt werden.' };
+            }
+            await trx('benutzer').where({ id: ziel.id }).update({
+                gesperrt: wert,
+                gesperrt_am: wert ? trx.fn.now() : null,
+                updated_at: trx.fn.now()
+            });
+            return { status: 200 };
+        });
+        if (ergebnis.status !== 200) return res.status(ergebnis.status).json({ success: false, error: ergebnis.error });
+        vergesseSperrStand(zielId);
+        res.json({ success: true, gesperrt: wert });
+    } catch (error) {
+        console.error('[Nutzer-Sperren-Fehler]:', error);
+        res.status(500).json({ success: false, error: 'Fehler beim Sperren des Kontos.' });
+    }
+}
+
+/** POST /api/nutzer/:id/bestaetigen — E-Mail-Adresse eines unbestätigten Kontos von Hand bestätigen. */
+export async function bestaetigeKonto(knex, req, res) {
+    try {
+        const zielId = leseKontoId(req);
+        const ziel = zielId ? await knex('benutzer').where({ id: zielId }).first('id', 'email_bestaetigt_am') : null;
+        if (!ziel) return res.status(404).json({ success: false, error: 'Konto nicht gefunden.' });
+        if (ziel.email_bestaetigt_am) return res.status(409).json({ success: false, error: 'Das Konto ist bereits bestätigt.' });
+        // Ohne sichere Basis-URL gibt es keinen Freischaltungs-Link; die Anfrage bleibt dann in der Liste offener Anfragen.
+        await bestaetigeKontoManuell(knex, ziel.id, ermittleBasisUrl(req));
+        res.json({ success: true });
+    } catch (error) {
+        console.error('[Nutzer-Bestaetigen-Fehler]:', error);
+        res.status(500).json({ success: false, error: 'Fehler beim Bestätigen des Kontos.' });
+    }
+}
+
+/** POST /api/nutzer/:id/bestaetigungs-mail — Bestätigungsmail an ein unbestätigtes Konto (erneut) senden. */
+export async function sendeBestaetigungsMailRoute(knex, req, res) {
+    try {
+        const zielId = leseKontoId(req);
+        const ziel = zielId ? await knex('benutzer').where({ id: zielId }).first() : null;
+        if (!ziel) return res.status(404).json({ success: false, error: 'Konto nicht gefunden.' });
+        if (ziel.email_bestaetigt_am) return res.status(409).json({ success: false, error: 'Das Konto ist bereits bestätigt.' });
+        const basisUrl = ermittleBasisUrl(req);
+        if (!basisUrl) {
+            console.error(`[Bestaetigungsmail] ${HINWEIS_FEHLENDE_BASIS_URL}`);
+            return res.status(503).json({ success: false, error: BASIS_URL_FEHLT });
+        }
+        await sendeBestaetigungAnKonto(knex, ziel, basisUrl);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('[Nutzer-Bestaetigungsmail-Fehler]:', error);
+        res.status(500).json({ success: false, error: 'Fehler beim Senden der Bestätigungsmail.' });
+    }
+}
+
+/** POST /api/nutzer/:id/passwort-mail — dem Konto einen Link zum Zurücksetzen des Passworts schicken. */
+export async function sendePasswortMail(knex, req, res) {
+    try {
+        const zielId = leseKontoId(req);
+        const ziel = zielId ? await knex('benutzer').where({ id: zielId }).first() : null;
+        if (!ziel) return res.status(404).json({ success: false, error: 'Konto nicht gefunden.' });
+        if (ziel.gesperrt) return res.status(409).json({ success: false, error: 'Das Konto ist gesperrt. Zuerst entsperren.' });
+        const basisUrl = ermittleBasisUrl(req);
+        if (!basisUrl) {
+            console.error(`[Passwort-Mail] ${HINWEIS_FEHLENDE_BASIS_URL}`);
+            return res.status(503).json({ success: false, error: BASIS_URL_FEHLT });
+        }
+        try {
+            await sendeResetLink(knex, ziel, basisUrl, { abstandPruefen: false, durchAdmin: true });
+        } catch (err) {
+            return res.status(502).json({ success: false, error: 'Die Mail konnte nicht gesendet werden. Bitte die Mail-Einstellungen (SMTP) prüfen.' });
+        }
+        res.json({ success: true });
+    } catch (error) {
+        console.error('[Nutzer-Passwortmail-Fehler]:', error);
+        res.status(500).json({ success: false, error: 'Fehler beim Senden der Passwort-Mail.' });
+    }
+}
+
+/** DELETE /api/nutzer/unbestaetigte { aelterAlsTage } — nie bestätigte Konten löschen, die älter als N Tage sind (Standard 30, mindestens 1). */
+export async function loescheUnbestaetigte(knex, req, res) {
+    try {
+        const roh = req.body && req.body.aelterAlsTage;
+        const tage = roh === undefined ? 30 : Number(roh);
+        if (!Number.isInteger(tage) || tage < 1 || tage > 3650) {
+            return res.status(400).json({ success: false, error: 'aelterAlsTage muss eine ganze Zahl zwischen 1 und 3650 sein.' });
+        }
+        const geloescht = await knex('benutzer')
+            .whereNull('email_bestaetigt_am')
+            .where({ ist_super_admin: false })
+            .whereRaw("created_at < now() - (? * interval '1 day')", [tage])
+            .del();
+        res.json({ success: true, geloescht });
+    } catch (error) {
+        console.error('[Nutzer-Unbestaetigte-Fehler]:', error);
+        res.status(500).json({ success: false, error: 'Fehler beim Aufräumen der unbestätigten Konten.' });
+    }
+}
+
+// --- Turniere verwalten (nur Super-Admin; ein Turnier einem anderen Verein zuordnen gibt es bewusst nicht) ---
+
+function leseTurnierId(req) {
+    const roh = req.params.id;
+    return /^\d+$/.test(String(roh)) && Number(roh) <= 2147483647 ? parseInt(roh, 10) : null;
+}
+
+/**
+ * POST /api/nutzer/turniere/:id/archivieren { wert: boolean } — Turnier archivieren (verschwindet aus den Turnierlisten
+ * der Vereine, bleibt vollständig gespeichert) oder wiederherstellen. Das aktive Turnier eines Hallen-Servers nicht.
+ */
+export async function archiviereTurnier(knex, req, res) {
+    try {
+        const id = leseTurnierId(req);
+        const wert = req.body ? req.body.wert : undefined;
+        if (typeof wert !== 'boolean') return res.status(400).json({ success: false, error: 'wert muss true oder false sein.' });
+        const turnier = id ? await knex('turniere').where({ id }).first('id', 'aktiv') : null;
+        if (!turnier) return res.status(404).json({ success: false, error: 'Turnier nicht gefunden.' });
+        if (wert && turnier.aktiv) return res.status(409).json({ success: false, error: 'Das aktive Turnier kann nicht archiviert werden.' });
+        await knex('turniere').where({ id }).update({ archiviert: wert, updated_at: knex.fn.now() });
+        res.json({ success: true, archiviert: wert });
+    } catch (error) {
+        console.error('[Turnier-Archivieren-Fehler]:', error);
+        res.status(500).json({ success: false, error: 'Fehler beim Archivieren des Turniers.' });
+    }
+}
+
+/**
+ * DELETE /api/nutzer/turniere/:id — Turnier endgültig löschen, auch mit Teilnehmern und Kämpfen (alles folgt per
+ * ON DELETE CASCADE). Nicht das aktive Turnier eines Hallen-Servers.
+ */
+export async function loescheTurnierAlsSuperAdmin(knex, req, res) {
+    try {
+        const id = leseTurnierId(req);
+        const turnier = id ? await knex('turniere').where({ id }).first('id', 'aktiv') : null;
+        if (!turnier) return res.status(404).json({ success: false, error: 'Turnier nicht gefunden.' });
+        if (turnier.aktiv) return res.status(409).json({ success: false, error: 'Das aktive Turnier kann nicht gelöscht werden.' });
+        await knex('turniere').where({ id }).del();
+        res.json({ success: true });
+    } catch (error) {
+        console.error('[Turnier-Loeschen-Fehler]:', error);
+        res.status(500).json({ success: false, error: 'Fehler beim Löschen des Turniers.' });
     }
 }

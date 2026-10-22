@@ -8,12 +8,19 @@
     <script src="/js/menu.js"></script>
     <style>
         .vt-table { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
-        .vt-table th:nth-child(1) { width: 14%; }
-        .vt-table th:nth-child(2) { width: 32%; }
-        .vt-table th:nth-child(3) { width: 18%; }
-        .vt-table th:nth-child(4) { width: 14%; }
-        .vt-table th:nth-child(5) { width: 12%; }
-        .vt-table th:nth-child(6) { width: 10%; }
+        .vt-table th:nth-child(1) { width: 12%; }
+        .vt-table th:nth-child(2) { width: 26%; }
+        .vt-table th:nth-child(3) { width: 15%; }
+        .vt-table th:nth-child(4) { width: 12%; }
+        .vt-table th:nth-child(5) { width: 15%; }
+        .vt-table th:nth-child(6) { width: 9%; }
+        .vt-table th:nth-child(7) { width: 11%; }
+        .vt-table tr.archiviert td { opacity: 0.6; }
+        .vt-table .aktion { width: 30px; height: 30px; padding: 0; border: 1px solid var(--border); border-radius: 4px; background: transparent; color: var(--text-main); cursor: pointer; }
+        .vt-table .aktion:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+        .vt-table .aktion.gefahr:hover:not(:disabled) { border-color: #c62828; color: #c62828; }
+        .vt-table .aktion:disabled { opacity: 0.35; cursor: not-allowed; }
+        .vt-table .aktion .material-icons { font-size: 18px; }
         .vt-table th, .vt-table td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border-color, #374151); vertical-align: middle; overflow-wrap: anywhere; }
         .vt-table th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
         .vt-meldung { color: #ef4444; font-weight: 700; min-height: 18px; }
@@ -33,14 +40,14 @@
         <span class="material-icons">groups</span>
     </div>
     <a class="vt-zurueck" href="/admin-vereine.html"><span class="material-icons" style="font-size: 18px;">arrow_back</span>Zurück zu den Vereinen</a>
-    <p style="color: var(--text-muted); font-size: 13px; margin-top: 0;" id="vtInfo">Gespeicherte Turniere des Vereins, der Wettkampftag steht absteigend (neueste zuerst).</p>
+    <p style="color: var(--text-muted); font-size: 13px; margin-top: 0;" id="vtInfo">Gespeicherte Turniere des Vereins, der Wettkampftag steht absteigend (neueste zuerst). Archivierte Turniere verschwinden aus den Turnierlisten der Vereine, bleiben aber gespeichert; Löschen entfernt ein Turnier mit allen Teilnehmern und Kämpfen endgültig.</p>
     <div id="vtMeldung" class="vt-meldung" role="alert"></div>
     <div class="tabelle-scroll">
         <table class="vt-table">
             <thead>
-                <tr><th>Wettkampftag</th><th>Turnier</th><th>Ort</th><th>Bundesland</th><th>Status</th><th>Teilnehmer</th></tr>
+                <tr><th>Wettkampftag</th><th>Turnier</th><th>Ort</th><th>Bundesland</th><th>Status</th><th>Teilnehmer</th><th>Aktionen</th></tr>
             </thead>
-            <tbody id="vtListe"><tr><td colspan="6">Wird geladen …</td></tr></tbody>
+            <tbody id="vtListe"><tr><td colspan="7">Wird geladen …</td></tr></tbody>
         </table>
     </div>
 </div>
