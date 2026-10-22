@@ -209,14 +209,14 @@ test('Rollen: Fremdvereins-Pfad für Teilnehmer/Mannschaften und Turnier anlegen
             assert.equal((await knex('mannschaften').where({ id: mannschaftId }).first()).bezeichnung, `Team ${u}`);
         }
 
-        // Super-Admin ohne aktiven Verein kann kein Turnier ohne Verein anlegen
+        // Super-Admin (Super-Admin-Modus) kann kein Turnier ohne gewählten ausrichtenden Verein anlegen
         const anzahlVorher = (await knex('turniere')).length;
         const res = fakeRes();
         await createTurnier(knex, { user: { id: 'g-super' }, app: { get: () => null }, body: {
             bezeichnung: 'Ohne Verein', ort: 'Halle', datum: '2099-12-02', ausrichter: 'X'
         } }, res);
         assert.equal(res.statusCode, 400);
-        assert.equal(res.body.error, 'Bitte zuerst einen aktiven Verein wählen.');
+        assert.equal(res.body.error, 'Bitte den ausrichtenden Verein aus der Liste wählen.');
         assert.equal((await knex('turniere')).length, anzahlVorher);
     } finally {
         await db.stoppe();
