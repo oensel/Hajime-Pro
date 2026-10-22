@@ -141,6 +141,13 @@
             line-height: 1.5;
             display: none;
         }
+        .passwort-vergessen {
+            display: block;
+            margin-top: 14px;
+            text-align: center;
+            font-size: 13px;
+            color: #93c5fd;
+        }
         .btn-link {
             background: none;
             border: none;
@@ -224,6 +231,7 @@
             <input type="password" id="loginPassword" required placeholder="••••••••">
         </div>
         <button type="submit" class="btn-login">Einloggen</button>
+        <a class="passwort-vergessen" id="passwortVergessen" href="/passwort-zuruecksetzen.html">Passwort vergessen?</a>
     </form>
 
     <form id="registerForm" class="auth-form">
@@ -315,6 +323,9 @@
             loginForm.classList.remove('active');
         }
     }
+
+    // Im Hallen-Server (Einzelbenutzerbetrieb) gibt es weder Konten noch Mails: kein Link zum Zurücksetzen
+    istEinzelbenutzer().then((einzel) => { if (einzel) document.getElementById('passwortVergessen').style.display = 'none'; });
 
     tabLogin.addEventListener('click', () => showTab('login'));
     tabRegister.addEventListener('click', () => showTab('register'));

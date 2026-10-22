@@ -9,11 +9,11 @@
     <style>
         .nutzer-table { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
         .nutzer-table th:nth-child(1) { width: 14%; }
-        .nutzer-table th:nth-child(2) { width: 21%; }
-        .nutzer-table th:nth-child(3) { width: 23%; }
+        .nutzer-table th:nth-child(2) { width: 20%; }
+        .nutzer-table th:nth-child(3) { width: 21%; }
         .nutzer-table th:nth-child(4) { width: 18%; }
         .nutzer-table th:nth-child(5) { width: 11%; white-space: nowrap; }
-        .nutzer-table th:nth-child(6) { width: 13%; }
+        .nutzer-table th:nth-child(6) { width: 16%; }
         .nutzer-table th, .nutzer-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border-color, #374151); vertical-align: top; overflow-wrap: anywhere; }
         .nutzer-table th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
         /* Eine Zeile je Benutzer; jeder weitere Verein ist eine weitere Zeile in den Spalten Verein und Rolle (gleiche Zeilenhöhe) */
@@ -21,7 +21,12 @@
         /* Name, E-Mail und Checkbox stehen auf der Höhe der ersten Zeile von Verein und Rolle */
         .nutzer-table td:nth-child(1), .nutzer-table td:nth-child(2) { line-height: 30px; }
         .nutzer-table td:nth-child(5) label { display: flex; align-items: center; height: 30px; }
-        .nutzer-table td:nth-child(6) { white-space: nowrap; }
+        .nutzer-table td:nth-child(6) { white-space: normal; }
+        .nutzer-table td:nth-child(6) .aktion { margin: 0 2px 4px 0; }
+        .nutzer-table tr.gesperrt td { opacity: 0.6; }
+        .nutzer-werkzeuge { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-bottom: 12px; }
+        .nutzer-werkzeuge .nutzer-filter { margin-bottom: 0; }
+        .nutzer-werkzeuge label { display: flex; align-items: center; gap: 6px; font-size: 13px; }
         .nutzer-table .aktion { width: 30px; height: 30px; padding: 0; border: 1px solid var(--border); border-radius: 4px; background: transparent; color: var(--text-main); cursor: pointer; vertical-align: top; }
         .nutzer-table .aktion:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
         .nutzer-table .aktion.gefahr:hover:not(:disabled) { border-color: #c62828; color: #c62828; }
@@ -60,9 +65,13 @@
         <h1>Benutzer</h1>
         <span class="material-icons">manage_accounts</span>
     </div>
-    <p style="color: var(--text-muted); font-size: 13px; margin-top: 0;">Alle Benutzer mit ihren Vereinen und Rollen. Die Rolle je Verein lässt sich hier ändern. Super-Admins dürfen alles in allen Vereinen und bekommen die Anfragen für Vereine ohne Admin. Es bleibt immer mindestens ein Super-Admin.</p>
+    <p style="color: var(--text-muted); font-size: 13px; margin-top: 0;">Alle Benutzer mit ihren Vereinen und Rollen. Die Rolle je Verein lässt sich hier ändern. Super-Admins dürfen alles in allen Vereinen und bekommen die Anfragen für Vereine ohne Admin. Es bleibt immer mindestens ein Super-Admin. Gesperrte Konten können sich nicht anmelden; ihre Daten bleiben erhalten.</p>
     <div id="vereinFilterBox" class="verein-filter-box" hidden></div>
-    <input type="search" id="nutzerFilter" class="nutzer-filter" placeholder="Name, E-Mail oder Verein suchen" aria-label="Benutzer filtern">
+    <div class="nutzer-werkzeuge">
+        <input type="search" id="nutzerFilter" class="nutzer-filter" placeholder="Name, E-Mail oder Verein suchen" aria-label="Benutzer filtern">
+        <label><input type="checkbox" id="nurUnbestaetigt"> Nur unbestätigte Konten</label>
+        <button type="button" class="btn btn-outlined" id="aufraeumenKnopf">Alte unbestätigte Konten löschen (&gt; 30 Tage)</button>
+    </div>
     <div id="nutzerMeldung" class="nutzer-fehler" role="alert"></div>
     <div id="nutzerOk" class="nutzer-ok" role="status"></div>
 

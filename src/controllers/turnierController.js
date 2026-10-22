@@ -429,6 +429,8 @@ export async function getTurniere(knex, req, res) {
         // Endpunkt liefert oft viele Turniere auf einmal (siehe turniere.html) und soll die
         // Ausschreibungen dafür nicht unnötig aus der DB laden.
         let query = knex('turniere').select([...TURNIER_SPALTEN_OHNE_PDF, 'aktiv', knex.raw('(ausschreibung_pdf is not null) as hat_ausschreibung')]);
+        // Archivierte Turniere (Super-Admin, admin-turniere.html) erscheinen in keiner Turnierliste
+        query = query.where({ archiviert: false });
 
         if (mine === 'true') {
             // "Eigene" Turniere = Turniere des eigenen Vereins

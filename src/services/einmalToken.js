@@ -1,9 +1,9 @@
 // Einmal-Token für Links in Mails (Helferverwaltung, Spec Abschnitt 4): E-Mail-Bestätigung ('email') und
-// Freischaltung einer Beitrittsanfrage ('freischaltung'). In der Tabelle token_einmal steht nur der
+// Freischaltung einer Beitrittsanfrage ('freischaltung') und Zurücksetzen des Passworts ('passwort'). In der Tabelle token_einmal steht nur der
 // SHA-256 des Tokens; der Klartext existiert nur im Link der Mail.
 import crypto from 'crypto';
 
-const ZWECKE = new Set(['email', 'freischaltung']);
+const ZWECKE = new Set(['email', 'freischaltung', 'passwort']);
 
 function hashToken(token) {
     return crypto.createHash('sha256').update(String(token)).digest('hex');
@@ -15,7 +15,7 @@ function istTokenText(token) {
 
 /**
  * Erzeugt einen Token und speichert seinen Hash.
- * @param {{ benutzerId: string, zweck: 'email'|'freischaltung', vereinId?: number|null, gueltigStunden?: number, angefragtUeber?: string|null }} p
+ * @param {{ benutzerId: string, zweck: 'email'|'freischaltung'|'passwort', vereinId?: number|null, gueltigStunden?: number, angefragtUeber?: string|null }} p
  * @returns {Promise<string>} der Klartext-Token (URL-sicher)
  */
 export async function erzeugeToken(knex, { benutzerId, zweck, vereinId = null, gueltigStunden = 48, angefragtUeber = null }) {
