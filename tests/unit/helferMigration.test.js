@@ -10,7 +10,7 @@ test('Helfer-Migrationen: Bestandsdaten, Tabellen und Eindeutigkeit', async () =
     try {
         // Bis vor die Helfer-Migrationen migrieren
         await knex.migrate.latest();
-        for (let i = 0; i < 10; i++) {
+        for (let i = 0; i < 100; i++) {
             const aktuell = await knex.migrate.currentVersion();
             if (aktuell <= '20261017110000') break;
             await knex.migrate.down();
@@ -59,7 +59,7 @@ test('Helfer-Migrationen: Bestandsdaten, Tabellen und Eindeutigkeit', async () =
 
         // Rückwärts-Migration läuft
         // alle Helferverwaltungs-Migrationen (ab 20261018100000) zurücknehmen, auch später hinzugekommene
-        for (let i = 0; i < 10 && await knex.schema.hasColumn('benutzer_vereine', 'rolle'); i++) {
+        for (let i = 0; i < 100 && await knex.schema.hasColumn('benutzer_vereine', 'rolle'); i++) {
             await knex.migrate.down();
         }
         assert.equal(await knex.schema.hasTable('helfer_slots'), false);
