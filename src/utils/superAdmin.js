@@ -5,7 +5,7 @@ import { hashPassword } from './password.js';
 // Vereine, siehe "Erstnutzer-Freigabe-Flow" — ein Verein braucht ohne dieses Konto niemanden,
 // der die allererste Person freischalten kann). Bewusst kein env-Override: der Super-Admin ist
 // eine feste Betriebsentscheidung, kein Deployment-Parameter.
-export const SUPER_ADMIN_EMAIL = 'admin@example.org';
+export const SUPER_ADMIN_EMAIL = 'hajime-pro@bastian-haas.com';
 const SUPER_ADMIN_VORNAME = 'Super';
 const SUPER_ADMIN_NACHNAME = 'Admin';
 const SUPER_ADMIN_VEREIN_NAME = 'Administration';

@@ -3,6 +3,7 @@ import { readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { ladeVerwaltendenVereinsnamen, hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
+import { darfTurnierSehen } from '../services/turnierSichtbarkeit.js';
 import { turnierHatEchteKaempfe, mannschaftsPoolsHabenEchteKaempfe, ermittleAltersklassenPoolZustand, regeneriereKampfplanFuerPool, aktualisiereMatteNachPoolAenderung } from './poolController.js';
 import { FachFehler } from '../utils/fachFehler.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
@@ -143,7 +144,8 @@ async function ermittleKontext(knex, req, turnier) {
         istGastgeberVerein,
         istPrivilegiert: istGastgeberVerein || !!(user && user.super_admin_aktiv),
         userVereinName: await ladeVerwaltendenVereinsnamen(knex, user),
-        userGefunden: !!user
+        userGefunden: !!user,
+        turnierSichtbar: istGastgeberVerein || await darfTurnierSehen(knex, user, turnier)
     };
 }
 
@@ -159,6 +161,9 @@ export async function legeTeilnehmerAn(knex, daten, kontext) {
     // Turnier laden
     const turnier = await knex('turniere').where({ id: parseInt(turnier_id) }).first();
     if (!turnier) {
+        throw new FachFehler(404, 'Turnier nicht gefunden.');
+    }
+    if (kontext && kontext.turnierSichtbar === false) {
         throw new FachFehler(404, 'Turnier nicht gefunden.');
     }
 

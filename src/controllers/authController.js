@@ -1,5 +1,5 @@
 import jwt from 'jsonwebtoken';
-import { hashPassword, verifyPassword } from '../utils/password.js';
+import { hashPassword, verifyPassword, brauchtNeuenHash } from '../utils/password.js';
 import { ladeBenutzerMitAktivemVerein, ladeVereineFuerBenutzer } from '../utils/vereinHelper.js';
 import * as steuerungPasswort from '../utils/steuerungPasswort.js';
 import { registriere, bestaetige, sendeBestaetigungNeu, findeKontoPerEmail, normalisiereEmail, MIN_PASSWORT_LAENGE, MAX_EMAIL_LAENGE, MELDUNG_EMAIL_ZU_LANG } from '../services/registrierung.js';
@@ -7,6 +7,14 @@ import { ermittleBasisUrl, HINWEIS_FEHLENDE_BASIS_URL } from '../utils/basisUrl.
 import { hatVereinAdmin } from '../services/vereinsRollen.js';
 import { MELDUNG_KONTO_GESPERRT } from '../utils/kontoSperre.js';
 import { fordereZuruecksetzungAn, setzePasswortZurueck } from '../services/passwortReset.js';
+import { nutzeNotfallSchluessel } from '../services/notfallZugang.js';
+import {
+    zweiFaktorPflicht, erzeugeZwischenToken, leseZwischenToken, starteEinrichtung, bestaetigeEinrichtung, pruefeZweitenFaktor,
+    zweiFaktorStatus, erzeugeNeueBackupCodes, pruefeCodeFuerAktion
+} from '../services/zweiFaktor.js';
+import betriebsmodus from '../config/betriebsmodus.cjs';
+import { protokolliereKonto } from '../services/aktionsProtokoll.js';
+import { clientIp } from '../liveCloud/ratenbegrenzung.js';
 import dotenv from 'dotenv';
 dotenv.config({ quiet: true });
 
@@ -27,6 +35,12 @@ export async function register(knex, req, res) {
         const ergebnis = await registriere(knex, {
             email, password, vorname, nachname, vereinId, quelle, basisUrl
         });
+        if (ergebnis.status < 300) {
+            protokolliereAnmeldung(knex, req, {
+                adresse: email, vereinId: Number.isInteger(Number(vereinId)) ? Number(vereinId) : null,
+                aktion: 'konto.registriert', beschreibung: 'Konto registriert (E-Mail-Bestätigung ausstehend)', status: ergebnis.status
+            });
+        }
         return res.status(ergebnis.status).json(ergebnis.body);
     } catch (error) {
         console.error('[Register-Fehler]:', error);
@@ -101,10 +115,132 @@ export async function passwortZuruecksetzen(knex, req, res) {
         const { token, passwort } = req.body || {};
         const ergebnis = await setzePasswortZurueck(knex, token, passwort);
         if (!ergebnis.ok) return res.status(ergebnis.status).json({ success: false, error: ergebnis.error });
+        protokolliereAnmeldung(knex, req, { konto: { id: ergebnis.benutzerId }, aktion: 'passwort.zurueckgesetzt', beschreibung: 'Passwort über den Link aus der Mail neu gesetzt', status: 200 });
         return res.json({ success: true, message: 'Das Passwort wurde geändert. Sie können sich jetzt anmelden.' });
     } catch (error) {
         console.error('[Passwort-zuruecksetzen-Fehler]:', error);
         return res.status(500).json({ success: false, error: 'Interner Server-Fehler beim Zurücksetzen des Passworts.' });
+    }
+}
+
+// Anmeldeereignisse ins Aktionsprotokoll (nur Cloud bzw. PROTOKOLL_AKTIV=true); ohne Warten und ohne Fehler für den Aufrufer.
+function protokolliereAnmeldung(knex, req, daten) {
+    if (!(betriebsmodus.liesBetriebsmodus().istCloud || process.env.PROTOKOLL_AKTIV === 'true')) return;
+    void protokolliereKonto(knex, { ip: clientIp(req), ...daten });
+}
+
+/** POST /api/auth/notfall-zugang { schluessel, email, passwort } — Passwort eines Super-Admins mit dem Notfall-Schlüssel neu setzen (nur Cloud). */
+export async function notfallZugang(knex, req, res) {
+    if (!betriebsmodus.liesBetriebsmodus().istCloud) return res.status(404).json({ success: false, error: 'Nicht verfügbar.' });
+    try {
+        const { schluessel, email, passwort } = req.body || {};
+        const ergebnis = await nutzeNotfallSchluessel(knex, { schluessel, email, passwort });
+        if (!ergebnis.ok) {
+            protokolliereAnmeldung(knex, req, { adresse: typeof email === 'string' ? email : null, aktion: 'notfall.fehlgeschlagen', beschreibung: 'Notfall-Zugang abgewiesen (Schlüssel oder Konto ungültig)', status: ergebnis.status });
+            return res.status(ergebnis.status).json({ success: false, error: ergebnis.error });
+        }
+        protokolliereAnmeldung(knex, req, { konto: await findeKontoPerEmail(knex, ergebnis.email), aktion: 'notfall.verwendet', beschreibung: 'Notfall-Schlüssel benutzt: Passwort neu gesetzt, Zwei-Faktor-Anmeldung zurückgesetzt', status: 200 });
+        return res.json({ success: true, message: 'Das Passwort wurde geändert und der Notfall-Schlüssel ist verbraucht. Sie können sich jetzt anmelden.' });
+    } catch (error) {
+        console.error('[Notfall-Zugang-Fehler]:', error);
+        return res.status(500).json({ success: false, error: 'Interner Server-Fehler beim Notfall-Zugang.' });
+    }
+}
+
+// --- Zweiter Faktor (Super-Admins, Cloud): POST /api/auth/2fa/pruefen | einrichtung/start | einrichtung/bestaetigen ---
+const MELDUNG_ANMELDUNG_ABGELAUFEN = 'Die Anmeldung ist abgelaufen. Bitte melden Sie sich erneut an.';
+
+async function ladeKontoFuerZweiFaktor(knex, token, zweck, res) {
+    const id = leseZwischenToken(token, zweck);
+    const konto = id ? await knex('benutzer').where({ id }).first() : null;
+    if (!konto || !konto.ist_super_admin) {
+        res.status(401).json({ success: false, error: MELDUNG_ANMELDUNG_ABGELAUFEN });
+        return null;
+    }
+    if (konto.gesperrt) {
+        res.status(403).json({ success: false, code: 'gesperrt', error: MELDUNG_KONTO_GESPERRT });
+        return null;
+    }
+    return konto;
+}
+
+export async function zweiFaktorPruefen(knex, req, res) {
+    try {
+        const { zwischenToken, code } = req.body || {};
+        const konto = await ladeKontoFuerZweiFaktor(knex, zwischenToken, 'pruefen', res);
+        if (!konto) return;
+        const ergebnis = await pruefeZweitenFaktor(knex, konto.id, code);
+        if (!ergebnis.ok) {
+            protokolliereAnmeldung(knex, req, { konto, aktion: 'anmeldung.2fa_fehlgeschlagen', beschreibung: 'Zwei-Faktor-Code abgelehnt', status: ergebnis.status });
+            return res.status(ergebnis.status).json({ success: false, error: ergebnis.error });
+        }
+        protokolliereAnmeldung(knex, req, {
+            konto, aktion: 'anmeldung.erfolgreich',
+            beschreibung: ergebnis.art === 'backup' ? 'Angemeldet mit Zwei-Faktor (Backup-Code)' : 'Angemeldet mit Zwei-Faktor (Authenticator-App)', status: 200
+        });
+        const antwort = await baueAnmeldeAntwort(knex, konto);
+        return res.json({ ...antwort, zweiFaktorArt: ergebnis.art, verbleibendeBackupCodes: ergebnis.verbleibendeBackupCodes });
+    } catch (error) {
+        console.error('[2FA-Pruefen-Fehler]:', error);
+        return res.status(500).json({ success: false, error: 'Interner Server-Fehler bei der Zwei-Faktor-Anmeldung.' });
+    }
+}
+
+export async function zweiFaktorEinrichtungStart(knex, req, res) {
+    try {
+        const konto = await ladeKontoFuerZweiFaktor(knex, (req.body || {}).zwischenToken, 'einrichtung', res);
+        if (!konto) return;
+        const ergebnis = await starteEinrichtung(knex, konto.id);
+        if (!ergebnis.ok) return res.status(ergebnis.status).json({ success: false, error: ergebnis.error });
+        return res.json({ success: true, geheimnis: ergebnis.geheimnis, otpauthUrl: ergebnis.otpauthUrl });
+    } catch (error) {
+        console.error('[2FA-Einrichtung-Fehler]:', error);
+        return res.status(500).json({ success: false, error: 'Interner Server-Fehler bei der Einrichtung.' });
+    }
+}
+
+export async function zweiFaktorEinrichtungBestaetigen(knex, req, res) {
+    try {
+        const { zwischenToken, code } = req.body || {};
+        const konto = await ladeKontoFuerZweiFaktor(knex, zwischenToken, 'einrichtung', res);
+        if (!konto) return;
+        const ergebnis = await bestaetigeEinrichtung(knex, konto.id, code);
+        if (!ergebnis.ok) return res.status(ergebnis.status).json({ success: false, error: ergebnis.error });
+        const frisch = await knex('benutzer').where({ id: konto.id }).first();
+        protokolliereAnmeldung(knex, req, { konto: frisch, aktion: '2fa.eingerichtet', beschreibung: 'Zwei-Faktor-Anmeldung eingerichtet und angemeldet', status: 200 });
+        const antwort = await baueAnmeldeAntwort(knex, frisch);
+        return res.json({ ...antwort, backupCodes: ergebnis.backupCodes });
+    } catch (error) {
+        console.error('[2FA-Bestaetigen-Fehler]:', error);
+        return res.status(500).json({ success: false, error: 'Interner Server-Fehler bei der Einrichtung.' });
+    }
+}
+
+/** GET /api/auth/2fa/status — Stand der Zwei-Faktor-Anmeldung des angemeldeten Kontos (Profil). */
+export async function zweiFaktorStatusRoute(knex, req, res) {
+    try {
+        const status = await zweiFaktorStatus(knex, req.user.id);
+        if (!status) return res.status(404).json({ success: false, error: 'Benutzer nicht gefunden.' });
+        return res.json({ success: true, ...status });
+    } catch (error) {
+        console.error('[2FA-Status-Fehler]:', error);
+        return res.status(500).json({ success: false, error: 'Interner Server-Fehler.' });
+    }
+}
+
+/** POST /api/auth/2fa/backup-codes — neue Backup-Codes (Header X-2FA-Code: aktueller Code oder ein Backup-Code). */
+export async function zweiFaktorBackupCodesRoute(knex, req, res) {
+    try {
+        const status = await zweiFaktorStatus(knex, req.user.id);
+        if (!status || !status.istSuperAdmin || !status.aktiv) {
+            return res.status(400).json({ success: false, error: 'Die Zwei-Faktor-Anmeldung ist nicht eingerichtet.' });
+        }
+        const pruefung = await pruefeCodeFuerAktion(knex, req.user.id, req.get('x-2fa-code'));
+        if (!pruefung.ok) return res.status(pruefung.status).json({ success: false, error: pruefung.error });
+        return res.json({ success: true, backupCodes: await erzeugeNeueBackupCodes(knex, req.user.id) });
+    } catch (error) {
+        console.error('[2FA-BackupCodes-Fehler]:', error);
+        return res.status(500).json({ success: false, error: 'Interner Server-Fehler.' });
     }
 }
 
@@ -143,6 +279,18 @@ export async function baueAnmeldeAntwort(knex, user) {
     };
 }
 
+/**
+ * Schließt eine Anmeldung nach geprüftem Passwort ab. Super-Admins brauchen in der Cloud den zweiten Faktor: statt der
+ * Sitzung kommt dann ein kurzlebiges Zwischen-Token ({ zweiFaktor: 'pruefen' | 'einrichtung', zwischenToken }).
+ */
+export async function anmeldungAbschliessen(knex, user) {
+    if (user.ist_super_admin && zweiFaktorPflicht()) {
+        const zweck = user.totp_aktiv_am ? 'pruefen' : 'einrichtung';
+        return { success: true, zweiFaktor: zweck, zwischenToken: erzeugeZwischenToken(user.id, zweck) };
+    }
+    return baueAnmeldeAntwort(knex, user);
+}
+
 export async function login(knex, req, res) {
     try {
         const { email, password } = req.body;
@@ -156,10 +304,17 @@ export async function login(knex, req, res) {
 
         const user = await findeKontoPerEmail(knex, email);
         if (!user || !user.password_hash || !verifyPassword(password, user.password_hash)) {
+            protokolliereAnmeldung(knex, req, { konto: user || null, adresse: email, aktion: 'anmeldung.fehlgeschlagen', beschreibung: 'Anmeldung fehlgeschlagen (Passwort falsch oder Konto unbekannt)', status: 401 });
             return res.status(401).json({ success: false, error: 'Ungültige Anmeldedaten.' });
+        }
+        // Ältere, schwächere Passwort-Prüfwerte beim erfolgreichen Login erneuern (src/utils/password.js); ein Fehler dabei stört die Anmeldung nicht
+        if (brauchtNeuenHash(user.password_hash)) {
+            knex('benutzer').where({ id: user.id }).update({ password_hash: hashPassword(password) })
+                .catch((err) => console.error('[Login] Passwort-Prüfwert nicht erneuert:', err.message));
         }
         // Erst nach dem Passwort prüfen, damit der Zustand eines Kontos nur mit gültigen Zugangsdaten sichtbar wird.
         if (user.gesperrt) {
+            protokolliereAnmeldung(knex, req, { konto: user, aktion: 'anmeldung.gesperrt', beschreibung: 'Anmeldung eines gesperrten Kontos abgewiesen', status: 403 });
             return res.status(403).json({ success: false, code: 'gesperrt', error: MELDUNG_KONTO_GESPERRT });
         }
         if (!user.email_bestaetigt_am) {
@@ -170,7 +325,9 @@ export async function login(knex, req, res) {
             });
         }
 
-        return res.json(await baueAnmeldeAntwort(knex, user));
+        const antwort = await anmeldungAbschliessen(knex, user);
+        if (antwort.token) protokolliereAnmeldung(knex, req, { konto: user, aktion: 'anmeldung.erfolgreich', beschreibung: 'Angemeldet', status: 200 });
+        return res.json(antwort);
 
     } catch (error) {
         console.error('[Login-Fehler]:', error);

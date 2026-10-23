@@ -2,6 +2,7 @@ import { readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { ladeVerwaltendenVereinsnamen, hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
+import { darfTurnierSehen } from '../services/turnierSichtbarkeit.js';
 import { mannschaftsPoolsHabenEchteKaempfe, poolHatBereitsEchteKaempfe, regeneriereMannschaftsPool, ermittleGoldenScoreEinstellungen, verteileMannschaftsPoolAufMatten, setzeBegegnungMatte } from './poolController.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 const { istEinzelbenutzerBetrieb } = betriebsmodus;
@@ -86,6 +87,9 @@ export async function createMannschaft(knex, req, res) {
         }
 
         const istGastgeberVerein = istEinzelbenutzerBetrieb() || hatVereinsZugriffAufTurnier(user, turnier);
+        if (!istGastgeberVerein && !(await darfTurnierSehen(knex, user, turnier))) {
+            return res.status(404).json({ success: false, error: 'Turnier nicht gefunden.' });
+        }
         const userVereinName = await ladeVerwaltendenVereinsnamen(knex, user);
 
         if (!turnier_id || !bezeichnung || (!istGastgeberVerein && !verein)) {

@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
+import { normalisiereSichtbarkeit, filtereSichtbareTurniere, darfTurnierSehen } from '../services/turnierSichtbarkeit.js';
 import { gueltigeFarbe } from '../shared/kampfFarbe.js';
 import { exportiereVorlagen, importiereVorlagen } from '../services/urkundenVorlagenTransfer.js';
 import { exportiereHelferplan, ersetzeHelferplan } from '../services/helferTransfer.js';
@@ -59,7 +60,7 @@ export const TURNIER_SPALTEN_OHNE_PDF = [
     'nutze_gewichtsklassen', 'anzahl_kampfflaechen', 'verein_id', 'altersklassen',
     'mannschafts_altersklassen', 'status', 'anmeldeschluss', 'startgeld', 'iban',
     'kontoinhaber', 'verwendungszweck', 'ausschreibung_dateiname', 'farbe_kaempfer2',
-    'beginn_min', 'ende_min', 'waagen_anzahl', 'planungs_tools', 'created_at', 'updated_at'
+    'beginn_min', 'ende_min', 'waagen_anzahl', 'planungs_tools', 'sichtbarkeit', 'created_at', 'updated_at'
 ];
 
 const AUSSCHREIBUNG_MAX_MB = 10;
@@ -227,6 +228,7 @@ export async function createTurnier(knex, req, res) {
             farbe_kaempfer2: gueltigeFarbe(farbe_kaempfer2) || 'blau',
             ...turnierzeit,
             planungs_tools: planungsToolsWert(req.body.planungs_tools, !istEinzelbenutzerBetrieb()),
+            sichtbarkeit: normalisiereSichtbarkeit(req.body.sichtbarkeit),
             ...ausschreibungFragment
         }).returning('id');
 
@@ -305,6 +307,7 @@ export async function updateTurnier(knex, req, res) {
             ...(gueltigeFarbe(farbe_kaempfer2) ? { farbe_kaempfer2 } : {}),
             ...turnierzeit,
             ...(req.body.planungs_tools !== undefined ? { planungs_tools: planungsToolsWert(req.body.planungs_tools, true) } : {}),
+            ...(req.body.sichtbarkeit !== undefined ? { sichtbarkeit: normalisiereSichtbarkeit(req.body.sichtbarkeit, bestehendesTurnier.sichtbarkeit || 'alle') } : {}),
             ...ausschreibungFragment,
             updated_at: knex.fn.now()
         });
@@ -354,6 +357,10 @@ export async function getTurnier(knex, req, res) {
             if (!hatVereinsZugriffAufTurnier(user, turnier)) {
                 return res.status(403).json({ error: 'Dieses Turnier befindet sich noch im Entwurf und ist nicht sichtbar.' });
             }
+        }
+
+        if (!istEinzelbenutzerBetrieb() && !(await darfTurnierSehen(knex, await ladeBenutzerMitAktivemVerein(knex, req.user.id), turnier))) {
+            return res.status(404).json({ error: 'Turnier nicht gefunden.' });
         }
 
         // Altersklassen parsen
@@ -420,6 +427,10 @@ export async function ladeAusschreibung(knex, req, res) {
             }
         }
 
+        if (!istEinzelbenutzerBetrieb() && !(await darfTurnierSehen(knex, await ladeBenutzerMitAktivemVerein(knex, req.user.id), turnier))) {
+            return res.status(404).json({ error: 'Turnier nicht gefunden.' });
+        }
+
         if (!turnier.ausschreibung_pdf) {
             return res.status(404).json({ error: 'Für dieses Turnier ist keine Ausschreibung hinterlegt.' });
         }
@@ -483,7 +494,10 @@ export async function getTurniere(knex, req, res) {
             }
         }
 
-        const turniere = await query.orderBy('datum', 'desc');
+        // Sichtbarkeit: Turniere mit Einschränkung nur für berechtigte Vereine ("mine" zeigt ohnehin nur eigene)
+        const turniere = mine === 'true'
+            ? await query.orderBy('datum', 'desc')
+            : await filtereSichtbareTurniere(knex, user, await query.orderBy('datum', 'desc'));
         const aktivesTurnier = turniere.find(t => t.aktiv) || null;
         const heute = datumAlsIso(new Date());
 

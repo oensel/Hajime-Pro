@@ -1,0 +1,41 @@
+{
+  "betreiber": {
+    "art": "privatperson",
+    "vorname": "Vorname",
+    "name": "Nachname",
+    "rechtsform": "",
+    "zusatz": "",
+    "strasse": "Musterstraße 1",
+    "plz": "12345",
+    "ort": "Musterstadt",
+    "land": "Deutschland",
+    "vertretung": "",
+    "registergericht": "",
+    "registernummer": "",
+    "ohneRegister": false,
+    "umsatzsteuerId": "",
+    "wirtschaftsId": "",
+    "email": "kontakt@beispiel.de",
+    "telefon": "+49 123 456789",
+    "kontaktformularUrl": ""
+  },
+  "redaktionell": { "name": "", "anschrift": "" },
+  "datenschutz": {
+    "email": "datenschutz@beispiel.de",
+    "beauftragter": { "name": "", "email": "", "telefon": "" },
+    "aufsichtsbehoerde": {
+      "name": "Landesbeauftragte für Datenschutz und Informationsfreiheit Nordrhein-Westfalen",
+      "anschrift": "Kavalleriestraße 2–4, 40213 Düsseldorf",
+      "web": "https://www.ldi.nrw.de"
+    },
+    "logfileTage": 7
+  },
+  "hosting": { "anbieter": "STRATO AG, Pascalstraße 10, 10587 Berlin", "standort": "Deutschland" },
+  "datenbank": { "anbieter": "Supabase Inc. (Rechenzentrum der gewählten Region)", "region": "EU (Frankfurt)", "drittland": true },
+  "mail": { "anbieter": "ALL-INKL.COM – Neue Medien Münnich, Hauptstraße 68, 02742 Friedersdorf" },
+  "backup": { "aktiv": true, "anbieter": "Google Ireland Limited (Google Drive)", "drittland": true, "aufbewahrungTage": 60 },
+  "teilnehmerApp": { "aktiv": true },
+  "verbraucherstreit": "",
+  "stand": "2026-10-24",
+  "_hinweis": "Vorlage: alle Werte durch die eigenen ersetzen (art: privatperson | einzelunternehmen | verein | gbr | ug | gmbh | sonstige; verbraucherstreit: bereit | nicht-bereit | leer). Aufsichtsbehörde: die für den Sitz des Betreibers zuständige Landesbehörde eintragen. Datei als RECHTLICHES_DATEI ablegen. Diese Beispielwerte sind Platzhalter und nicht geprüft; Anschriften der Anbieter bitte selbst gegenprüfen."
+}

@@ -27,7 +27,8 @@ export async function legeVereinAn(knex, { name, bundesland = null }) {
     if (await nameVergeben(knex, bereinigt)) {
         return { ok: false, status: 409, error: 'Ein Verein mit diesem Namen existiert bereits.' };
     }
-    const [zeile] = await knex('vereine').insert({ name: bereinigt, bundesland }).returning(['id', 'name', 'bundesland']);
+    // Ohne Angabe gilt der Spaltenstandard (Nordrhein-Westfalen).
+    const [zeile] = await knex('vereine').insert({ name: bereinigt, ...(bundesland ? { bundesland } : {}) }).returning(['id', 'name', 'bundesland']);
     return { ok: true, verein: zeile };
 }
 

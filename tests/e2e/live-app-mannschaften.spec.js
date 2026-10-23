@@ -4,10 +4,14 @@ import { test, expect } from '@playwright/test';
 import crypto from 'node:crypto';
 import knexLib from 'knex';
 import { testDbVerbindung } from './test-env.js';
+import { merkeZugang } from './helpers/live-zugang.js';
 
 let KEY = '';
 let zaehler = 0;
-test.beforeEach(() => { KEY = `E2E-LIVE-TEAM-${Date.now()}-${zaehler++}`; });
+test.beforeEach(async ({ page }) => {
+    KEY = `E2E-LIVE-TEAM-${Date.now()}-${zaehler++}`;
+    await merkeZugang(page, KEY, { name: 'Team-E2E-Turnier' });
+});
 const TOKEN = 'hjl_e2e_team_token_0123456789abcdef0123456789abcdef';
 
 const team = (key, bezeichnung, extra = {}) => ({

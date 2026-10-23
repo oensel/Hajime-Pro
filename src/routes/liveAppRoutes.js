@@ -35,5 +35,33 @@ export function getLiveAppRoutes(dienst) {
         }
     });
 
+    // Zugangscode für den QR-Code der Teilnehmer-App (liegt in der Cloud): abrufen, erneuern (alter Code sofort ungültig), sperren/freigeben
+    router.get('/zugang', async (req, res) => {
+        try {
+            res.set('Cache-Control', 'no-store');
+            res.json({ success: true, ...(await dienst.zugang({ turnierId: parseInt(req.query.turnierId, 10) })) });
+        } catch (fehler) {
+            antworteFehler(res, fehler);
+        }
+    });
+
+    router.post('/zugang/erneuern', async (req, res) => {
+        try {
+            res.json({ success: true, ...(await dienst.erneuereZugang({ turnierId: parseInt((req.body || {}).turnierId, 10) })) });
+        } catch (fehler) {
+            antworteFehler(res, fehler);
+        }
+    });
+
+    router.post('/zugang/sperren', async (req, res) => {
+        try {
+            const { turnierId, gesperrt } = req.body || {};
+            if (typeof gesperrt !== 'boolean') return res.status(400).json({ success: false, error: 'Feld "gesperrt" muss true oder false sein.' });
+            res.json({ success: true, ...(await dienst.sperreZugang({ turnierId: parseInt(turnierId, 10), gesperrt })) });
+        } catch (fehler) {
+            antworteFehler(res, fehler);
+        }
+    });
+
     return router;
 }

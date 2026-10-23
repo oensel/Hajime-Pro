@@ -360,6 +360,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }).catch(() => zeigePlanungsFelder());
     }
 
+    // --- SICHTBARKEIT: nur in der Cloud relevant (am Hallen-Server gibt es keine anderen Vereine) ---
+    fetch('/api/config').then(r => (r.ok ? r.json() : {})).then(c => {
+        if (!c.isOffline) document.getElementById('sichtbarkeitGroup').style.display = '';
+    }).catch(() => {});
+
     // --- NEUANLAGE: Verein des Users als austragenden Verein vorbelegen ---
     async function istCloud() {
         try {
@@ -468,6 +473,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('ende').value = Number.isInteger(turnier.ende_min) && turnier.ende_min < 1440 ? formatiereMinuten(turnier.ende_min) : '';
             document.getElementById('waagen_anzahl').value = turnier.waagen_anzahl || 1;
             planungsHaken.checked = turnier.planungs_tools !== false;
+            document.getElementById('sichtbarkeit').value = turnier.sichtbarkeit || 'alle';
             zeigePlanungsFelder();
 
             // Anmeldeschluss befüllen (reines Datum ohne Uhrzeit; String-Slice statt Date-Objekt,
@@ -739,6 +745,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ende_min: endeMin,
                 waagen_anzahl: document.getElementById('waagen_anzahl').value,
                 planungs_tools: planungsHaken.checked,
+                sichtbarkeit: document.getElementById('sichtbarkeit').value,
                 startgeld: document.getElementById('startgeld').value,
                 iban: document.getElementById('iban').value.trim(),
                 kontoinhaber: document.getElementById('kontoinhaber').value.trim(),

@@ -300,6 +300,7 @@
             <span id="registerVereinHinweis" class="form-hinweis" role="status">Nur Vereine aus der Liste. Ein Admin des Vereins schaltet dich nach der E-Mail-Bestätigung frei.</span>
         </div>
         <button type="submit" class="btn-login">Konto erstellen</button>
+        <span class="form-hinweis">Mit der Registrierung bestätigst du, die <a href="/datenschutz.html" target="_blank" rel="noopener">Datenschutzerklärung</a> zur Kenntnis genommen zu haben.</span>
     </form>
 
     <div id="errorMessage" class="error-message"></div>
@@ -316,6 +317,10 @@
     </div>
 </div>
 
+<script src="/js/qrgen/qrcode.js"></script>
+<script src="/js/zweiFaktorDialog.js"></script>
+<script src="/js/fehlerMelder.js"></script>
+<script src="/js/rechtsfuss.js"></script>
 <script>
     const tabLogin = document.getElementById('tabLogin');
     const tabRegister = document.getElementById('tabRegister');
@@ -583,7 +588,7 @@
                 body: JSON.stringify({ email, password })
             });
 
-            const data = await response.json();
+            let data = await response.json();
             if (response.status === 403 && data.code === 'email_unbestaetigt') {
                 unbestaetigteEmail = email;
                 zeigeInfo('Bitte bestätige zuerst deine E-Mail-Adresse.', true);
@@ -593,6 +598,8 @@
                 throw new Error(data.error || 'Login fehlgeschlagen');
             }
 
+            // Super-Admins (nur Cloud): zweiter Faktor, erst danach kommt die Sitzung
+            if (data.zweiFaktor) data = await window.ZweiFaktorDialog.starte(data);
             await handleAuthSuccess(data);
         } catch (err) {
             errDiv.textContent = err.message;

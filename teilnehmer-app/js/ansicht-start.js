@@ -1,48 +1,30 @@
-// Startseiten: Turnierwahl (mit Offline-Zugang) und Suche innerhalb eines Turniers.
+// Startseiten: gemerkte Turniere (Zugang per QR-Code) und Suche innerhalb eines Turniers.
 import { api } from './api.js';
 import { sortiereTeams } from './uebersicht.js';
 import { gewichtText, kachelZeilen, klassenTitel, verbindung } from './anzeige.js';
-import { bereinigeAlte, gecachteTurniere } from './speicher.js';
+import { bereinigeAlte } from './speicher.js';
+import { listeZugaenge } from './zugang.js';
 import { h, inhalt, setzeStatus, speicherFuer, teamKachel, zeigeTabs } from './ui.js';
-
-// Namen der zuletzt gesehenen Turniere, damit der Offline-Start sie benennen kann (bewusst außerhalb des Präfixes
-// hajime-live:, das bereinigeAlte aufräumt).
-const META_TURNIERE = 'hajime-live-meta:turniere';
 
 let suchTimer = null;
 
+// Es gibt keine Liste aller Turniere: die App zeigt nur die Turniere, deren QR-Code dieses Gerät gescannt hat (Namen und Zugangscodes liegen im
+// Gerät, der Start klappt also auch ohne Verbindung). Daten von Turnieren ohne Zugang werden aufgeräumt.
 export async function zeigeTurniere() {
     setzeStatus('');
-    inhalt().replaceChildren(h('h1', {}, 'Turnier wählen'), h('p', { class: 'hinweis' }, 'Lade …'));
-    try {
-        const { turniere } = await api.turniere();
-        try {
-            bereinigeAlte(window.localStorage, turniere.map(x => x.key));
-            window.localStorage.setItem(META_TURNIERE, JSON.stringify(turniere.map(x => ({ key: x.key, name: x.name, datum: x.datum }))));
-        } catch { /* ohne Speicher */ }
-        if (!turniere.length) {
-            inhalt().replaceChildren(h('h1', {}, 'Turnier wählen'), h('p', { class: 'hinweis' }, 'Zurzeit ist kein Turnier freigegeben.'));
-            return;
-        }
-        inhalt().replaceChildren(h('h1', {}, 'Turnier wählen'),
-            h('ul', { class: 'knopf-liste' }, turniere.map(x => h('li', {},
-                h('a', { href: `#/t/${encodeURIComponent(x.key)}`, 'data-testid': `turnier-${x.key}` }, `${x.name} · ${x.datum}`)))));
-    } catch {
-        // Ohne Verbindung (typisch in der Halle): die zuletzt geladene Übersicht je Turnier anbieten.
-        let gemerkt = [];
-        try { gemerkt = gecachteTurniere(window.localStorage); } catch { /* ohne Speicher */ }
-        let namen = [];
-        try { namen = JSON.parse(window.localStorage.getItem(META_TURNIERE)) || []; } catch { /* ohne Meta */ }
-        const hinweis = h('p', { class: 'hinweis' }, 'Keine Verbindung. Bitte später erneut versuchen.');
-        if (!gemerkt.length) { inhalt().replaceChildren(h('h1', {}, 'Turnier wählen'), hinweis); return; }
-        setzeStatus('Keine Verbindung', true);
-        inhalt().replaceChildren(h('h1', {}, 'Turnier wählen'), hinweis, h('p', {}, 'Zuletzt geladen:'),
-            h('ul', { class: 'knopf-liste' }, gemerkt.map(k => {
-                const meta = namen.find(x => x.key === k);
-                return h('li', {}, h('a', { href: `#/t/${encodeURIComponent(k)}/uebersicht`, 'data-testid': `zuletzt-${k}` },
-                    meta ? `${meta.name} · ${meta.datum}` : k));
-            })));
+    const zugaenge = listeZugaenge();
+    try { bereinigeAlte(window.localStorage, zugaenge.map((z) => z.key)); } catch { /* ohne Speicher */ }
+    const hinweis = h('p', { class: 'hinweis', 'data-testid': 'qr-hinweis' }, 'Scanne den QR-Code, der in der Halle aushängt, um ein Turnier zu öffnen.');
+    if (!zugaenge.length) {
+        inhalt().replaceChildren(h('h1', {}, 'Teilnehmer-App'), hinweis);
+        return;
     }
+    const offline = navigator.onLine === false;
+    if (offline) setzeStatus('Keine Verbindung', true);
+    inhalt().replaceChildren(h('h1', {}, 'Deine Turniere'),
+        h('ul', { class: 'knopf-liste' }, zugaenge.map((x) => h('li', {},
+            h('a', { href: `#/t/${encodeURIComponent(x.key)}${offline ? '/uebersicht' : ''}`, 'data-testid': `turnier-${x.key}` }, [x.name, x.datum].filter(Boolean).join(' · ') || x.key)))),
+        hinweis);
 }
 
 export async function zeigeStart({ key }) {

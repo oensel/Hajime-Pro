@@ -973,6 +973,10 @@ body.sidebar-collapsed .top-header-bar {
 .ta-fehler { color: #c62828; font-weight: 600; }
 [data-theme="dark"] .ta-fehler { color: #ef9a9a; }
 .ta-aktionen { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.ta-zugang { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.ta-zugang h4 { margin: 0 0 6px; font-size: 14px; }
+.ta-zugang-knoepfe { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.ta-zugang-knoepfe .btn { text-decoration: none; text-align: center; }
 
 /* Roter Kreis mit Anzahl offener Anträge hinter einem Menütext (z. B. Mitglieder) */
 .menu-badge {

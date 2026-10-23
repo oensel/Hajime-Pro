@@ -27,6 +27,14 @@
         dialog.verein-dialog input[type=text], dialog.verein-dialog select { width: 100%; box-sizing: border-box; }
         dialog.verein-dialog .dialog-hinweis { font-size: 13px; color: var(--text-muted); margin: 6px 0 0; }
         dialog.verein-dialog .dialog-fehler { color: #ef4444; font-weight: 700; font-size: 13px; min-height: 18px; margin-top: 8px; }
+        dialog.verein-dialog.breit { width: min(720px, 94vw); }
+        dialog.verein-dialog textarea { width: 100%; box-sizing: border-box; min-height: 140px; font-family: monospace; font-size: 13px; }
+        .import-tabelle { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+        .import-tabelle th, .import-tabelle td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); }
+        .import-scroll { max-height: 240px; overflow: auto; }
+        .status-neu { color: #16a34a; font-weight: 700; }
+        .status-ungueltig { color: #ef4444; font-weight: 700; }
+        .status-vorhanden, .status-doppelt { color: var(--text-muted); }
         dialog.verein-dialog .dialog-knoepfe { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
         .vereine-table th, .vereine-table td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border-color, #374151); vertical-align: middle; overflow-wrap: anywhere; }
         .vereine-table th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); position: sticky; top: 0; background: var(--bg-card); }
@@ -55,6 +63,7 @@
     <div class="vereine-werkzeuge">
         <input type="search" id="vereineFilter" class="vereine-filter" placeholder="Verein oder Bundesland suchen" aria-label="Vereine filtern">
         <button type="button" class="btn btn-raised" id="vereinNeuKnopf">Verein anlegen</button>
+        <button type="button" class="btn btn-outlined" id="importKnopf">Vereine importieren</button>
     </div>
     <div id="vereineMeldung" class="vereine-meldung" role="alert"></div>
     <p class="vereine-info" id="vereineInfo"></p>
@@ -96,6 +105,25 @@
         <div class="dialog-knoepfe">
             <button type="button" class="btn btn-outlined" id="zusammenAbbrechen">Abbrechen</button>
             <button type="submit" class="btn btn-raised" id="zusammenSpeichern">Zusammenführen</button>
+        </div>
+    </form>
+</dialog>
+
+<dialog class="verein-dialog breit" id="importDialog" aria-labelledby="importTitel">
+    <form method="dialog" id="importForm">
+        <h2 id="importTitel">Vereine importieren</h2>
+        <p class="dialog-hinweis">Ein Verein pro Zeile: <code>Name;Bundesland</code> (Semikolon, Tabulator oder Komma). Das Bundesland ist Pflicht, Name oder Kürzel (z. B. NRW). Eine Kopfzeile <code>Name;Bundesland</code> wird erkannt. Vorhandene Vereine werden übersprungen.</p>
+        <label for="importDatei">CSV- oder Textdatei (optional)</label>
+        <input type="file" id="importDatei" accept=".csv,.txt,text/csv,text/plain">
+        <label for="importText">Liste</label>
+        <textarea id="importText" spellcheck="false" placeholder="JC Beispielstadt;Nordrhein-Westfalen"></textarea>
+        <div id="importVorschau" class="import-scroll" hidden></div>
+        <p class="dialog-hinweis" id="importZusammenfassung"></p>
+        <div class="dialog-fehler" id="importFehler" role="alert"></div>
+        <div class="dialog-knoepfe">
+            <button type="button" class="btn btn-outlined" id="importAbbrechen">Schließen</button>
+            <button type="button" class="btn btn-outlined" id="importPruefen">Vorschau</button>
+            <button type="submit" class="btn btn-raised" id="importStarten" disabled>Importieren</button>
         </div>
     </form>
 </dialog>

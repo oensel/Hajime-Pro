@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hajime Pro - Sicherung</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <script src="/js/menu.js"></script>
+    <style>
+        .sicherung-box { border: 1px solid var(--border); border-radius: 4px; padding: 14px 16px; margin-bottom: 16px; }
+        .sicherung-box h2 { font-size: 15px; margin: 0 0 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .sicherung-box p { font-size: 13px; color: var(--text-muted); margin: 6px 0; }
+        .sicherung-box.gefahr { border-color: #c62828; }
+        .sicherung-zeile { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 10px; }
+        .sicherung-zeile input[type=text] { padding: 8px 10px; min-width: 200px; box-sizing: border-box; }
+        .sicherung-tabelle { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 8px; }
+        .sicherung-tabelle th, .sicherung-tabelle td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; overflow-wrap: anywhere; }
+        .sicherung-tabelle th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
+        .sicherung-tabelle td.zahl { white-space: nowrap; text-align: right; }
+        .sicherung-meldung { font-weight: 700; font-size: 13px; min-height: 18px; margin: 8px 0; }
+        .sicherung-meldung.fehler { color: #ef4444; }
+        .sicherung-meldung.ok { color: #16a34a; }
+        .mini { padding: 4px 10px; font-size: 12px; }
+    </style>
+</head>
+<body>
+
+<div class="kanji-left">柔</div>
+<div class="kanji-right">道</div>
+
+<div class="mdc-card" style="padding: 20px 24px; max-width: 980px;">
+    <div class="form-title-area">
+        <span class="material-icons">backup</span>
+        <h1>Sicherung</h1>
+        <span class="material-icons">backup</span>
+    </div>
+    <p style="color: var(--text-muted); font-size: 13px; margin-top: 0;">Komplettsicherung der gesamten Datenbank (alle Vereine, Benutzer, Turniere, Urkunden-Vorlagen …) als Datei und Wiedereinspielen. Nur für Super-Admins; jede Aktion braucht den aktuellen Code Ihrer Authenticator-App (oder einen Backup-Code). Die Datei enthält Personendaten und Passwort-Prüfwerte: sicher aufbewahren.</p>
+
+    <div class="sicherung-box">
+        <h2>Bestätigung</h2>
+        <div class="sicherung-zeile">
+            <label for="sicherungCode">Code der Authenticator-App</label>
+            <input type="text" id="sicherungCode" autocomplete="one-time-code" maxlength="20" placeholder="123 456" spellcheck="false">
+        </div>
+        <p>Ein Code gilt nur einmal: vor der nächsten Aktion bitte den nächsten Code der App abwarten (etwa 30 Sekunden).</p>
+    </div>
+
+    <div id="sicherungMeldung" class="sicherung-meldung" role="alert"></div>
+
+    <div class="sicherung-box">
+        <h2>Automatische Sicherung</h2>
+        <div id="automatikInfo" style="font-size: 13px;">Wird geladen …</div>
+        <div class="sicherung-zeile">
+            <button type="button" class="btn btn-outlined" id="automatikJetztKnopf">Jetzt ausführen (Probelauf)</button>
+        </div>
+        <p>Eingestellt wird sie in der <code>.env</code> des Servers: <code>SICHERUNG_PASSWORT</code> (verschlüsselt jede Sicherung, mindestens 20 Zeichen; oder <code>SICHERUNG_PASSWORT_DATEI</code>), <code>SICHERUNG_UHRZEIT</code>, <code>SICHERUNG_BEHALTEN</code>, <code>SICHERUNG_AUTOMATISCH=false</code> zum Abschalten. Eine Kopie an einem anderen Ort legen Sie mit <code>SICHERUNG_KOPIE_VERZEICHNIS</code> (z. B. ein eingehängtes Netzlaufwerk) oder <code>SICHERUNG_NACH_BEFEHL</code> (z. B. <code>rclone copy "$HAJIME_SICHERUNG_DATEI" speicher:hajime</code>) fest. Der Probelauf prüft Kopie und Befehl sofort.</p>
+    </div>
+
+    <div class="sicherung-box">
+        <h2>Sichern</h2>
+        <div class="sicherung-zeile">
+            <button type="button" class="btn btn-raised" id="herunterladenKnopf">Sicherung herunterladen</button>
+            <button type="button" class="btn btn-outlined" id="ablegenKnopf">Auf dem Server ablegen</button>
+        </div>
+        <p>Auf dem Server abgelegte Sicherungen liegen im Verzeichnis <code id="sicherungVerzeichnis">–</code> (die neuesten 30 bleiben erhalten). Für regelmäßige Sicherungen: <code>node scripts/sicherung.mjs sichern</code> per Cron.</p>
+        <table class="sicherung-tabelle">
+            <thead><tr><th>Datei</th><th>Erstellt</th><th class="zahl">Größe</th><th>Aktionen</th></tr></thead>
+            <tbody id="sicherungListe"><tr><td colspan="4">Wird geladen …</td></tr></tbody>
+        </table>
+    </div>
+
+    <div class="sicherung-box gefahr">
+        <h2>Wiedereinspielen</h2>
+        <p><strong>Ersetzt alle Daten der Plattform</strong> durch den Stand der Sicherung. Neuere Daten gehen verloren. Vorher wird automatisch der aktuelle Stand auf dem Server gesichert (<code>vor-wiederherstellung-…</code>). Die Sicherung muss zur selben Programmversion gehören.</p>
+        <div class="sicherung-zeile">
+            <input type="file" id="wiederDatei" accept=".gz,.enc,application/gzip,application/octet-stream">
+        </div>
+        <div class="sicherung-zeile">
+            <label for="wiederWort">Zur Bestätigung <strong>WIEDERHERSTELLEN</strong> eingeben</label>
+            <input type="text" id="wiederWort" autocomplete="off" spellcheck="false">
+            <button type="button" class="btn btn-raised" id="wiederKnopf">Wiederherstellen</button>
+        </div>
+        <p>Tipp: Das Wiederherstellen aus einer Datei auf dem Server geht in der Tabelle oben (Knopf „Wiederherstellen“; das Wort oben muss dazu ebenfalls eingegeben sein).</p>
+    </div>
+</div>
+
+<script src="/js/sicherung.js"></script>
+</body>
+</html>

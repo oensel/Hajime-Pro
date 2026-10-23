@@ -1,4 +1,5 @@
 import { loescheAbgelaufeneAbos } from './push.js';
+import { loescheVerwaisteZugaenge } from './zugang.js';
 
 // Löscht Live-Daten nach dem Turnier (Spec 6.1/10: Aufbewahrung 7 Tage). Die Kindtabellen folgen per ON DELETE CASCADE.
 export async function loescheAlteLiveDaten(knex, { tage = 7, jetzt = () => new Date() } = {}) {
@@ -18,6 +19,8 @@ export function starteAufbewahrung(knex, { tage = 7, intervallMs = 3_600_000, lo
     ).then(() => loescheAbgelaufeneAbos(knex)).then(
         (anzahl) => { if (anzahl) log.log(`[LiveCloud] ${anzahl} abgelaufene Push-Anmeldung(en) gelöscht`); },
         (fehler) => log.warn(`[LiveCloud] Löschen der Push-Anmeldungen fehlgeschlagen: ${fehler.message}`)
+    ).then(() => loescheVerwaisteZugaenge(knex)).catch(
+        (fehler) => log.warn(`[LiveCloud] Löschen der Zugänge fehlgeschlagen: ${fehler.message}`)
     );
     lauf();
     const timer = setInterval(lauf, intervallMs);

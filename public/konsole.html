@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hajime Pro - Konsole</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <script src="/js/menu.js"></script>
+    <style>
+        :root {
+            --k-info: #2563eb; --k-warn: #d97706; --k-error: #dc2626; --k-ok: #16a34a;
+            --k-term: #0f172a; --k-term-2: #131c31; --k-term-text: #e2e8f0; --k-term-dim: #94a3b8; --k-term-line: #1e293b;
+        }
+        .k-seite { position: relative; z-index: 1; }
+        .k-kopf { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin-bottom: 16px; }
+        .k-live { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border: 2px solid var(--border); border-radius: 999px; background: var(--bg-card); font-size: 13px; font-weight: 700; }
+        .k-live small { font-weight: 400; color: var(--text-muted); }
+        .k-puls { width: 10px; height: 10px; border-radius: 50%; background: var(--k-ok); box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.55); animation: puls 1.8s infinite; }
+        .k-live.pause .k-puls { background: #94a3b8; animation: none; }
+        .k-live.fehler .k-puls { background: var(--k-error); animation: none; }
+        @keyframes puls { 70% { box-shadow: 0 0 0 9px rgba(22, 163, 74, 0); } 100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0); } }
+
+        .k-kacheln { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+        .k-kachel { background: var(--bg-card); border: 2px solid var(--border); border-top-width: 5px; border-radius: 6px; padding: 12px 16px; cursor: pointer; text-align: left; font: inherit; color: inherit; }
+        .k-kachel:hover { border-color: var(--text-muted); }
+        .k-kachel .zahl { display: block; font-size: 30px; font-weight: 800; line-height: 1.1; }
+        .k-kachel .text { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
+        .k-kachel .text .material-icons { font-size: 16px; }
+        .k-kachel.alle { border-top-color: var(--primary); }
+        .k-kachel.info { border-top-color: var(--k-info); } .k-kachel.info .zahl { color: var(--k-info); }
+        .k-kachel.warn { border-top-color: var(--k-warn); } .k-kachel.warn .zahl { color: var(--k-warn); }
+        .k-kachel.error { border-top-color: var(--k-error); } .k-kachel.error .zahl { color: var(--k-error); }
+        .k-kachel.aktiv { outline: 3px solid var(--primary); outline-offset: 1px; }
+
+        .k-leiste { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 10px 14px; background: var(--bg-card); border: 2px solid var(--border); border-bottom: 0; border-radius: 6px 6px 0 0; }
+        .k-suche { flex: 1 1 260px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 2px solid var(--border); border-radius: 6px; background: var(--bg-main); }
+        .k-suche .material-icons { font-size: 20px; color: var(--text-muted); }
+        .k-suche input { flex: 1; border: 0; outline: 0; background: transparent; padding: 9px 0; font: inherit; color: var(--text-main); min-width: 0; }
+        .k-segment { display: inline-flex; border: 2px solid var(--border); border-radius: 6px; overflow: hidden; }
+        .k-segment button { border: 0; background: var(--bg-card); padding: 8px 13px; font: inherit; font-size: 13px; font-weight: 700; color: var(--text-muted); cursor: pointer; }
+        .k-segment button + button { border-left: 2px solid var(--border); }
+        .k-segment button.an { background: var(--primary); color: #fff; }
+        .k-schalter { display: inline-flex; align-items: center; gap: 8px; border: 0; background: transparent; font: inherit; font-size: 13px; font-weight: 700; color: var(--text-main); cursor: pointer; padding: 0; }
+        .k-schalter .spur { width: 38px; height: 22px; border-radius: 999px; background: var(--border); position: relative; transition: background 0.2s; }
+        .k-schalter .spur::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.2s; }
+        .k-schalter.an .spur { background: var(--k-ok); }
+        .k-schalter.an .spur::after { transform: translateX(16px); }
+        .k-icon { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border: 2px solid var(--border); border-radius: 6px; background: var(--bg-card); font: inherit; font-size: 13px; font-weight: 700; color: var(--text-main); cursor: pointer; }
+        .k-icon .material-icons { font-size: 18px; }
+        .k-icon.gefahr:hover { border-color: var(--k-error); color: var(--k-error); }
+
+        .k-terminal { background: var(--k-term); color: var(--k-term-text); border: 2px solid var(--border); border-radius: 0 0 6px 6px; overflow: hidden; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 13px; }
+        .k-zeile { display: grid; grid-template-columns: 92px 84px 74px 1fr auto; gap: 0 14px; align-items: start; padding: 9px 16px 9px 13px; border-left: 3px solid transparent; border-bottom: 1px solid var(--k-term-line); }
+        .k-zeile:hover { background: var(--k-term-2); }
+        .k-zeile.info { border-left-color: var(--k-info); }
+        .k-zeile.warn { border-left-color: var(--k-warn); background: rgba(217, 119, 6, 0.09); }
+        .k-zeile.error { border-left-color: var(--k-error); background: rgba(220, 38, 38, 0.12); }
+        .k-zeile.neu { animation: neu 3s ease-out; }
+        @keyframes neu { from { background: rgba(250, 204, 21, 0.28); } }
+        .k-zeit { color: var(--k-term-dim); font-variant-numeric: tabular-nums; padding-top: 2px; }
+        .k-zeit small { display: block; font-size: 11px; opacity: 0.75; }
+        .k-ebene { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; white-space: nowrap; }
+        .k-ebene .material-icons { font-size: 14px; }
+        .k-ebene.info { background: rgba(37, 99, 235, 0.22); color: #93c5fd; }
+        .k-ebene.warn { background: rgba(217, 119, 6, 0.25); color: #fcd34d; }
+        .k-ebene.error { background: rgba(220, 38, 38, 0.3); color: #fca5a5; }
+        .k-quelle { color: var(--k-term-dim); font-size: 12px; padding-top: 2px; }
+        .k-text { min-width: 0; overflow-wrap: anywhere; line-height: 1.5; }
+        .k-text .kopf { color: #fecaca; font-weight: 700; }
+        .k-zeile:not(.error) .k-text .kopf { color: var(--k-term-dim); font-weight: 400; }
+        .k-text .marke { color: #7dd3fc; }
+        .k-text .wert { color: #fde68a; }
+        .k-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+        .k-chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border: 1px solid var(--k-term-line); border-radius: 999px; font-size: 11px; color: var(--k-term-dim); background: rgba(255, 255, 255, 0.03); }
+        .k-chip .material-icons { font-size: 13px; }
+        .k-rechts { display: flex; gap: 4px; }
+        .k-rechts button { border: 0; background: transparent; color: var(--k-term-dim); padding: 2px; border-radius: 4px; cursor: pointer; }
+        .k-rechts button:hover { background: var(--k-term-line); color: #fff; }
+        .k-rechts .material-icons { font-size: 18px; }
+        .k-stack { margin: 8px 0 2px; padding: 10px 12px; background: #0a0f1d; border: 1px solid var(--k-term-line); border-radius: 4px; font-size: 12px; line-height: 1.55; color: var(--k-term-dim); white-space: pre-wrap; overflow-x: auto; max-height: 320px; }
+        .k-stack .hervor { color: #fecaca; }
+        .k-stack .eigen { color: #e2e8f0; }
+        .k-leer { padding: 28px 16px; text-align: center; color: var(--k-term-dim); font-family: inherit; }
+        .k-fuss { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 16px; background: var(--k-term-2); color: var(--k-term-dim); font-size: 12px; }
+        .k-fuss button { border: 1px solid var(--k-term-line); background: transparent; color: var(--k-term-text); padding: 5px 12px; border-radius: 4px; font: inherit; cursor: pointer; }
+        .k-meldung { color: #ef4444; font-weight: 700; min-height: 0; margin: 0 2px 10px; }
+        .k-meldung:empty { display: none; }
+
+        @media (max-width: 860px) {
+            .k-kacheln { grid-template-columns: repeat(2, 1fr); }
+            .k-zeile { grid-template-columns: 74px 1fr auto; row-gap: 4px; }
+            .k-zeile .k-quelle { grid-column: 2; grid-row: 1; padding: 0; }
+            .k-zeile .k-ebene { grid-column: 1; grid-row: 2; justify-self: start; }
+            .k-zeile .k-text { grid-column: 2 / span 2; grid-row: 2; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="kanji-left">柔</div>
+<div class="kanji-right">道</div>
+
+<div class="mdc-card k-seite" style="padding: 20px 24px; max-width: 1180px;">
+    <div class="form-title-area">
+        <span class="material-icons">terminal</span>
+        <h1>Konsole</h1>
+        <span class="material-icons">terminal</span>
+    </div>
+    <div class="k-kopf">
+        <p style="color: var(--text-muted); font-size: 13px; margin: 0; flex: 1 1 340px;">Fehler, Warnungen und wichtige Ereignisse von Server, Prozess und den Browsern der Nutzer. Zugangsdaten in Meldungen werden geschwärzt; Einträge werden nach 30 Tagen gelöscht (<code>FEHLER_AUFBEWAHRUNG_TAGE</code>).</p>
+        <span class="k-live" id="kLive"><span class="k-puls"></span><span id="kLiveText">Live</span> <small id="kLiveZeit"></small></span>
+    </div>
+
+    <div class="k-kacheln" id="kKacheln">
+        <button type="button" class="k-kachel alle aktiv" data-ebene="alle"><span class="zahl" id="zAlle">–</span><span class="text"><span class="material-icons">notes</span>Alle Einträge</span></button>
+        <button type="button" class="k-kachel info" data-ebene="info"><span class="zahl" id="zInfo">–</span><span class="text"><span class="material-icons">info</span>Infos</span></button>
+        <button type="button" class="k-kachel warn" data-ebene="warn"><span class="zahl" id="zWarn">–</span><span class="text"><span class="material-icons">warning</span>Warnungen</span></button>
+        <button type="button" class="k-kachel error" data-ebene="error"><span class="zahl" id="zError">–</span><span class="text"><span class="material-icons">error</span>Fehler</span></button>
+    </div>
+
+    <div class="k-leiste">
+        <label class="k-suche"><span class="material-icons">search</span><input type="search" id="kSuche" placeholder="Meldung, Pfad oder Benutzer suchen …" autocomplete="off"></label>
+        <span class="k-segment" role="group" aria-label="Quelle" id="kQuellen">
+            <button type="button" data-quelle="" class="an">Alle</button><button type="button" data-quelle="server">Server</button><button type="button" data-quelle="prozess">Prozess</button><button type="button" data-quelle="browser">Browser</button>
+        </span>
+        <button type="button" class="k-schalter" role="switch" aria-checked="false" id="kGruppiert"><span class="spur"></span>Gruppieren</button>
+        <button type="button" class="k-schalter an" role="switch" aria-checked="true" id="kLiveSchalter"><span class="spur"></span>Live</button>
+        <button type="button" class="k-icon gefahr" id="kLeeren"><span class="material-icons">delete_sweep</span>Leeren</button>
+    </div>
+
+    <div class="k-terminal" role="log" aria-label="Fehlerprotokoll">
+        <div id="kListe"><div class="k-leer">Wird geladen …</div></div>
+        <div class="k-fuss">
+            <span id="kFuss"></span>
+            <button type="button" id="kAelter" hidden>Ältere laden</button>
+        </div>
+    </div>
+    <div class="k-meldung" id="kMeldung" role="alert"></div>
+</div>
+
+<script src="/js/konsole.js"></script>
+</body>
+</html>

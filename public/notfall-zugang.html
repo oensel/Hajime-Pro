@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex">
+    <title>Hajime Pro - Notfall-Zugang</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <style>
+        body {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            min-height: 100vh !important;
+            margin: 0 !important;
+            padding: 0 16px !important;
+            background: #111827 !important;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+            box-sizing: border-box;
+        }
+        .login-card {
+            background: #1f2937;
+            border: 2px solid #374151;
+            border-radius: 8px;
+            padding: 40px;
+            width: 100%;
+            max-width: 460px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            color: #f3f4f6;
+            box-sizing: border-box;
+            text-align: center;
+        }
+        .login-title {
+            font-size: 24px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #3b82f6;
+            margin: 0 0 8px 0;
+        }
+        .login-subtitle {
+            font-size: 13px;
+            color: #9ca3af;
+            font-weight: 600;
+            margin: 0 0 24px 0;
+        }
+        .btn-login {
+            background: #3b82f6;
+            color: #ffffff;
+            border: none;
+            padding: 14px;
+            font-size: 14px;
+            font-weight: 700;
+            border-radius: 4px;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            width: 100%;
+            transition: background 0.2s;
+        }
+        .btn-login:hover { background: #2563eb; }
+        .btn-login:disabled { background: #4b5563; cursor: default; }
+        .meldung {
+            font-size: 15px;
+            font-weight: 700;
+            line-height: 1.5;
+            color: #f3f4f6;
+            display: none;
+        }
+        .error-message {
+            margin-top: 16px;
+            color: #ef4444;
+            font-size: 13px;
+            font-weight: 700;
+            display: none;
+        }
+        .form-group { text-align: left; margin-bottom: 16px; }
+        .form-group label { display: block; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #9ca3af; margin-bottom: 6px; }
+        .form-group textarea { width: 100%; box-sizing: border-box; padding: 12px; font-size: 13px; font-family: monospace; border-radius: 4px; border: 1px solid #4b5563; background: #111827; color: #f3f4f6; resize: vertical; }
+        .form-group input { width: 100%; box-sizing: border-box; padding: 12px; font-size: 14px; border-radius: 4px; border: 1px solid #4b5563; background: #111827; color: #f3f4f6; }
+        .form-group input:focus { outline: none; border-color: #3b82f6; }
+        .link { color: #93c5fd; font-size: 13px; display: inline-block; margin-top: 20px; }
+    </style>
+</head>
+<body>
+
+<div class="login-card">
+    <div style="font-size: 48px; margin-bottom: 16px;">🥋</div>
+    <h1 class="login-title">Hajime Pro</h1>
+    <p class="login-subtitle">Notfall-Zugang für Super-Admins</p>
+
+    <form id="notfallForm" autocomplete="off">
+        <div class="form-group">
+            <label for="schluessel">Notfall-Schlüssel</label>
+            <textarea id="schluessel" required rows="4" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="Der lange Schlüssel aus dem Ausdruck"></textarea>
+        </div>
+        <div class="form-group">
+            <label for="email">E-Mail-Adresse des Super-Admin-Kontos</label>
+            <input type="email" id="email" required autocomplete="username">
+        </div>
+        <div class="form-group">
+            <label for="neuPasswort">Neues Passwort</label>
+            <input type="password" id="neuPasswort" required minlength="8" maxlength="200" placeholder="mindestens 8 Zeichen" autocomplete="new-password">
+        </div>
+        <div class="form-group">
+            <label for="neuWiederholung">Passwort wiederholen</label>
+            <input type="password" id="neuWiederholung" required minlength="8" maxlength="200" autocomplete="new-password">
+        </div>
+        <button type="submit" class="btn-login" id="knopf">Passwort setzen</button>
+    </form>
+
+    <p id="meldung" class="meldung" role="status"></p>
+    <div id="errorMessage" class="error-message" role="alert"></div>
+    <a href="/login.html" class="link">Zur Anmeldung</a>
+</div>
+
+<script>
+    const form = document.getElementById('notfallForm');
+    const meldung = document.getElementById('meldung');
+    const errDiv = document.getElementById('errorMessage');
+
+    function zeigeFehler(text) {
+        errDiv.textContent = text;
+        errDiv.style.display = 'block';
+    }
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        errDiv.style.display = 'none';
+        const passwort = document.getElementById('neuPasswort').value;
+        if (passwort !== document.getElementById('neuWiederholung').value) {
+            zeigeFehler('Die beiden Passwörter stimmen nicht überein.');
+            return;
+        }
+        const knopf = document.getElementById('knopf');
+        knopf.disabled = true;
+        try {
+            const response = await fetch('/api/auth/notfall-zugang', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    schluessel: document.getElementById('schluessel').value.trim(),
+                    email: document.getElementById('email').value,
+                    passwort
+                })
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.error || 'Die Anfrage ist fehlgeschlagen.');
+            form.reset();
+            form.hidden = true;
+            meldung.textContent = data.message;
+            meldung.style.display = 'block';
+        } catch (err) {
+            knopf.disabled = false;
+            zeigeFehler(err.message);
+        }
+    });
+</script>
+</body>
+</html>

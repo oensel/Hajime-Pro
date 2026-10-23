@@ -10,6 +10,7 @@ import {
 import { erzeugeRatenbegrenzung, clientIp, ratenGrenzeAusEnv } from '../liveCloud/ratenbegrenzung.js';
 import { liesPushKonfig } from '../liveCloud/pushKonfig.js';
 import { meldeAn, meldeAb, pruefeUndSende } from '../liveCloud/push.js';
+import { pruefeZugang, loeseCodeAuf, holeOderErzeuge, erneuere, setzeGesperrt } from '../liveCloud/zugang.js';
 
 const SCHLUESSEL = /^[A-Za-z0-9_-]{1,64}$/;
 const POOL_ID = /^\d{1,9}$/;
@@ -19,6 +20,8 @@ export function getLiveRoutes(knex, {
     env = process.env,
     begrenzung = erzeugeRatenbegrenzung({ max: ratenGrenzeAusEnv(env) }),
     fehlerBegrenzung = erzeugeRatenbegrenzung({ max: 30, beiVollstand: 'sperren' }),
+    // Fehlversuche mit einem ungültigen Zugangscode je Absender (in der Halle teilen sich viele Geräte eine Adresse, daher großzügig; der Code hat 128 Bit)
+    zugangBegrenzung = erzeugeRatenbegrenzung({ max: 120, beiVollstand: 'sperren' }),
     // Push-Nachrichten (Phase 3): konfig aus LIVE_PUSH_*, sender sendet über web-push (im Test injiziert)
     push = { konfig: liesPushKonfig(env), sender: null }
 } = {}) {
@@ -53,6 +56,24 @@ export function getLiveRoutes(knex, {
         }
     });
 
+    // Zugangscode der Teilnehmer-App verwalten: mit dem Ingest-Token des Turniers (Hallen-Server). GET legt den Code beim ersten Aufruf an.
+    const mitTurnierToken = (aktion) => async (req, res) => {
+        try {
+            const auth = /^Bearer (.+)$/.exec(req.get('authorization') || '');
+            const token = auth ? await pruefeToken(knex, auth[1], { jetzt }) : null;
+            if (!token || !token.turnierKey) {
+                return res.status(fehlerBegrenzung.erlaube(clientIp(req, env)) ? 401 : 429).end();
+            }
+            res.json(await aktion(token.turnierKey, req.body && typeof req.body === 'object' ? req.body : {}));
+        } catch (fehler) {
+            console.error('[LiveCloud] Zugang fehlgeschlagen:', fehler.message);
+            res.status(500).end();
+        }
+    };
+    router.get('/zugang', mitTurnierToken((key) => holeOderErzeuge(knex, key)));
+    router.post('/zugang/erneuern', mitTurnierToken((key) => erneuere(knex, key)));
+    router.post('/zugang/sperren', mitTurnierToken((key, body) => setzeGesperrt(knex, key, body.gesperrt !== false)));
+
     // Ab hier die öffentliche App-API.
     router.use((req, res, next) => {
         if (!begrenzung.erlaube(clientIp(req, env))) return res.status(429).json({ error: 'Zu viele Anfragen' });
@@ -68,9 +89,34 @@ export function getLiveRoutes(knex, {
         res.status(500).json({ error: 'Abfrage fehlgeschlagen' });
     };
 
-    router.get('/turniere', async (req, res) => {
+    // Der Code aus dem QR-Code wird gegen das Turnier eingetauscht; ohne gültigen Code erfährt niemand etwas über Turniere.
+    // Eine Liste aller Turniere gibt es nicht mehr, die Schlüssel allein reichen nicht (Zugangspflicht unten).
+    const ABGEWIESEN = {
+        ungueltig: [401, { error: 'Zugang erforderlich', code: 'zugang' }],
+        gesperrt: [403, { error: 'Der Zugang wurde gesperrt', code: 'gesperrt' }],
+        abgelaufen: [403, { error: 'Der Zugang ist abgelaufen', code: 'abgelaufen' }]
+    };
+    const weise = (req, res, grund) => {
+        // Nur ein ungültiger Code zählt als Rateversuch; abgelaufen und gesperrt setzen einen richtigen Code voraus.
+        if (grund === 'ungueltig' && !zugangBegrenzung.erlaube(clientIp(req, env))) return res.status(429).json({ error: 'Zu viele Fehlversuche' });
+        const [status, koerper] = ABGEWIESEN[grund] || ABGEWIESEN.ungueltig;
+        return res.status(status).json(koerper);
+    };
+    router.post('/zugang/aufloesen', async (req, res) => {
         try {
-            res.json({ serverzeit: jetzt().toISOString(), turniere: await listeTurniere(knex, { jetzt }) });
+            const code = req.body && typeof req.body.code === 'string' ? req.body.code : '';
+            const r = await loeseCodeAuf(knex, code, { jetzt });
+            if (!r.ok) return weise(req, res, r.grund);
+            res.json({ key: r.key, name: r.name, datum: r.datum, serverzeit: jetzt().toISOString() });
+        } catch (f) { fehler500(res, f); }
+    });
+
+    // Alle Daten eines Turniers nur mit dem Code im Kopf X-Live-Zugang (auch Push-Anmeldung und Übersicht).
+    router.use('/turniere/:key', schluesselPruefen, async (req, res, next) => {
+        try {
+            const r = await pruefeZugang(knex, req.params.key, req.get('x-live-zugang') || '', { jetzt });
+            if (!r.ok) return weise(req, res, r.grund);
+            next();
         } catch (f) { fehler500(res, f); }
     });
 

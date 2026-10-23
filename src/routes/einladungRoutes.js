@@ -1,7 +1,7 @@
 import express from 'express';
 import { erzeugeAuthRatenbegrenzung } from '../middleware/authRatenbegrenzung.js';
 import { pruefeEinladung, loeseEinladungEin } from '../services/orgaEinladung.js';
-import { baueAnmeldeAntwort } from '../controllers/authController.js';
+import { anmeldungAbschliessen } from '../controllers/authController.js';
 
 /**
  * Einladung für Externe (/api/einladung, öffentlich: der Token im Link trägt die Berechtigung). Ratenbegrenzt je
@@ -34,7 +34,7 @@ export function getEinladungRoutes(knex) {
             const r = await loeseEinladungEin(knex, req.params.token, { password, vorname, nachname });
             if (!r.ok) return res.status(r.status).json({ success: false, error: r.error });
             const konto = await knex('benutzer').where({ id: r.benutzerId }).first();
-            res.json(await baueAnmeldeAntwort(knex, konto));
+            res.json(await anmeldungAbschliessen(knex, konto));
         } catch (error) {
             console.error('[Einladung-Einloesen]:', error);
             res.status(500).json({ success: false, error: 'Interner Server-Fehler.' });

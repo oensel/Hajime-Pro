@@ -157,6 +157,21 @@
     </form>
 </dialog>
 
+<dialog class="nutzer-dialog" id="zfDialog" aria-labelledby="zfTitel">
+    <form method="dialog" id="zfForm">
+        <h2 id="zfTitel">Zwei-Faktor-Anmeldung zurücksetzen</h2>
+        <p id="zfFuer" style="margin: 0; font-size: 13px; color: var(--text-muted);"></p>
+        <p style="margin: 6px 0 0; font-size: 13px; color: var(--text-muted);">Das Konto richtet die Zwei-Faktor-Anmeldung beim nächsten Login neu ein; seine Backup-Codes verfallen. Zur Bestätigung den aktuellen Code Ihrer eigenen Authenticator-App (oder einen Ihrer Backup-Codes) eingeben.</p>
+        <label for="zfCode">Ihr Code</label>
+        <input type="text" id="zfCode" autocomplete="one-time-code" maxlength="20" placeholder="123 456" spellcheck="false" required>
+        <div class="dialog-fehler" id="zfFehler" role="alert"></div>
+        <div class="dialog-knoepfe">
+            <button type="button" class="btn btn-outlined" id="zfAbbrechen">Abbrechen</button>
+            <button type="submit" class="btn btn-raised" id="zfSpeichern">Zurücksetzen</button>
+        </div>
+    </form>
+</dialog>
+
 <dialog class="nutzer-dialog" id="passwortDialog" aria-labelledby="passwortTitel">
     <form method="dialog" id="passwortForm">
         <h2 id="passwortTitel">Initialpasswort vergeben</h2>

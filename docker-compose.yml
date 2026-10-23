@@ -2,6 +2,8 @@
 #
 #   Gegen Supabase / vorhandenen PostgreSQL-Server (DB_URL in .env.cloud):
 #     docker compose --profile cloud up -d --build
+#   Sicherungen (Seite „Sicherung“) liegen auf dem Host in ./sicherungen (SICHERUNG_HOST_VERZEICHNIS); das Verzeichnis muss dem Benutzer
+#   mit der ID 1000 (dem Benutzer „node" im Container) gehören:  mkdir -p sicherungen && sudo chown 1000:1000 sicherungen
 #   Zum Ausprobieren mit lokalem PostgreSQL (keine Supabase-Zugangsdaten nötig):
 #     docker compose --profile lokal up --build
 #
@@ -16,6 +18,8 @@ services:
       PORT: 3000
     ports:
       - "${PORT:-3000}:3000"
+    volumes:
+      - ${SICHERUNG_HOST_VERZEICHNIS:-./sicherungen}:/var/backups/hajime
     restart: unless-stopped
 
   app-lokal:
@@ -35,6 +39,8 @@ services:
       JWT_SECRET: nur-zum-ausprobieren-aendern
     ports:
       - "${PORT:-3000}:3000"
+    volumes:
+      - sicherungen:/var/backups/hajime
 
   db:
     profiles: ["lokal"]
@@ -53,3 +59,4 @@ services:
 
 volumes:
   pgdaten:
+  sicherungen:

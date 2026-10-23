@@ -244,3 +244,7 @@ h1 + .abschnitt.trenner, h1 + div > .abschnitt.trenner:first-child { margin-top:
 .naechster .chip.blau { border-left-color: #007bff; }
 .naechster .chip.rot { border-left-color: #dc3545; }
 .naechster em { grid-column: 2; margin-left: 0; }
+
+/* Impressum und Datenschutz: unten auf jeder Seite, über der festen Reiterleiste */
+.rechtliches { text-align: center; font-size: 12px; margin: 0; padding: 10px 0 84px; color: var(--muted, #64748b); }
+.rechtliches a { color: inherit; }
