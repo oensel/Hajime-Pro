@@ -371,6 +371,8 @@ if (syncKonfig.istClient) {
         if (sicherungsKonfig.automatisch && process.env.NODE_ENV !== 'test') starteSicherungsPlaner(knex, sicherungsVerzeichnis(), sicherungsKonfig);
     }
     if (rechtlichesAktiv) app.use('/api/rechtliches', getRechtlichesApi(knex));
+    // Ohne Impressumsseiten (Hallen-Server) meldet die Fußzeile „nicht aktiv“, statt einen 404 in der Konsole zu erzeugen.
+    else app.get('/api/rechtliches/aktiv', (req, res) => res.json({ aktiv: false }));
     if (bm.istCloud && process.env.NODE_ENV !== 'test') {
         // Konten ohne bestätigte E-Mail-Adresse werden nach 30 Tagen gelöscht (Datenschutzerklärung, Abschnitt 3)
         const bereinigeKonten = () => loescheUnbestaetigteKonten(knex, Number(process.env.UNBESTAETIGT_TAGE) || UNBESTAETIGT_TAGE)

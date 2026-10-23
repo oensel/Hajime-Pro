@@ -315,6 +315,10 @@ export async function getTeilnehmerByTurnier(knex, req, res) {
 
         let query = knex('turnier_teilnehmer').where({ turnier_id: parseInt(turnierId) });
 
+        if (!istGastgeberVerein && !(await darfTurnierSehen(knex, user, turnier))) {
+            return res.status(404).json({ error: 'Turnier nicht gefunden.' });
+        }
+
         // Wer kein freigegebenes Mitglied des ausrichtenden Vereins ist, sieht
         // ausschließlich die Teilnehmer des eigenen Vereins.
         if (!istGastgeberVerein) {
@@ -1234,6 +1238,9 @@ async function ladeImportKontext(knex, req) {
     const istSuperAdmin = !!user.ist_super_admin;
 
     if (!istGastgeberVerein) {
+        if (!(await darfTurnierSehen(knex, user, turnier))) {
+            return { fehler: { status: 404, body: { success: false, error: 'Turnier nicht gefunden.' } } };
+        }
         if (ermittleEffektivenStatus(turnier, { hatEchteKaempfe }) !== 'veroeffentlicht') {
             return { fehler: { status: 403, body: { success: false, error: 'Die Anmeldung für dieses Turnier ist nicht geöffnet.' } } };
         }

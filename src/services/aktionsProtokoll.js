@@ -130,6 +130,12 @@ export async function ladeKontext(knex, benutzerId, { vereinId = null, turnierId
         const turnier = await knex('turniere').where({ id: turnierId }).first('verein_id');
         verein = turnier ? turnier.verein_id : null;
     }
+    // Eine Vereinsangabe aus der Anfrage zählt nur, wenn der Handelnde dort freigegebenes Mitglied (oder Super-Admin) ist; sonst könnte jemand
+    // Einträge in der Sicht eines fremden Vereins erzeugen. Dann gilt der aktive Verein.
+    if (verein != null && !superAktiv) {
+        const mitglied = await knex('benutzer_vereine').where({ benutzer_id: benutzerId, verein_id: verein }).first('freigegeben');
+        if (!mitglied || !mitglied.freigegeben) verein = null;
+    }
     // Im Super-Admin-Modus gehört eine Aktion ohne erkennbaren Verein keinem Verein; sonst dem aktiven Verein.
     if (verein == null && !superAktiv) verein = benutzer.aktiver_verein_id;
     let rolle = superAktiv ? 'super_admin' : null;
