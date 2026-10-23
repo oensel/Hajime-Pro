@@ -73,8 +73,9 @@ test('Update: nur der Secondary bekommt den Knopf, der Master wird abgelehnt, Ve
 });
 
 test('Update über die VIP: der Master stößt das Update des Secondary an, der Secondary prüft selbst', async ({ request, page }) => {
-    const master = await (await request.get(`${KNOTEN.server1.url}/api/cluster/status`)).json();
-    expect(master.update.partner).toMatchObject({ knopf: true, aktion: 'partner', ziel: '1.0.18' });
+    // Der Master kennt den Stand des Partners aus dessen Status (wird periodisch nachgeladen): kurz abwarten
+    await expect.poll(async () => (await (await request.get(`${KNOTEN.server1.url}/api/cluster/status`)).json()).update.partner,
+        { timeout: 15_000 }).toMatchObject({ knopf: true, aktion: 'partner', ziel: '1.0.18' });
     const secondary = await (await request.get(`${KNOTEN.server2.url}/api/cluster/status`)).json();
     expect(secondary.update.partner.knopf).toBe(false); // nur der Master stößt den Partner an
 
