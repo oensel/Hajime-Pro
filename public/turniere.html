@@ -659,7 +659,7 @@
             const eigeneTurniere = turniere.filter(gehoertZuEigenemVerein);
             const andereTurniere = turniere.filter(t => !gehoertZuEigenemVerein(t));
             // Super-Admins sehen die anstehenden Turniere aller Vereine und dürfen sie alle bearbeiten
-            const istSuperAdmin = !!currentUser.ist_super_admin;
+            const istSuperAdmin = !!currentUser.super_admin_aktiv;
 
             const jetzt = new Date();
 

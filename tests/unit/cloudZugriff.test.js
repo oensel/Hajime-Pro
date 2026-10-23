@@ -90,3 +90,16 @@ test('ladeExport: Token als Bearer, 403 der Cloud bleibt erhalten, ungültige An
     const leer = erzeugeCloudZugriff({ env, fetchFn: async () => antwort(200, { foo: 1 }) });
     await assert.rejects(() => leer.ladeExport('T', 7), (e) => e.statusCode === 502);
 });
+
+test('ladeExport: liveToken fordert das Live-Token der Cloud an, sonst keine Query', async () => {
+    const env = { CLOUD_URL: 'https://cloud.example.de' };
+    const urls = [];
+    const cloud = erzeugeCloudZugriff({
+        env,
+        fetchFn: async (url) => { urls.push(url); return antwort(200, { turnier: { bezeichnung: 'X' } }); }
+    });
+    await cloud.ladeExport('T', 5, { liveToken: true });
+    await cloud.ladeExport('T', 5);
+    assert.equal(urls[0], 'https://cloud.example.de/api/turniere/5/export?liveToken=1');
+    assert.equal(urls[1], 'https://cloud.example.de/api/turniere/5/export');
+});

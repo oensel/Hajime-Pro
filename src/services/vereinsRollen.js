@@ -8,6 +8,7 @@
 //   - Wer noch offene Helferdienste im Verein hat, kann nicht entfernt werden bzw. austreten.
 // Alle Funktionen liefern { ok: true, ... } oder { ok: false, status, error } statt zu werfen.
 import { istGueltigeRolle, rolleReicht } from '../shared/rollen.js';
+import { istSuperAdminAktiv } from '../utils/vereinHelper.js';
 // Offene Helferdienste (Dienste in noch nicht vergangenen Turnieren des Vereins) prüft der Helferplan-Service.
 import { hatOffeneDienste } from './helferPlan.js';
 
@@ -20,7 +21,7 @@ const EINZIGER_VEREIN_FEHLER = 'Sie können Ihren einzigen Verein nicht verlasse
 async function istSuperAdmin(knex, benutzerId) {
     if (!benutzerId) return false;
     const benutzer = await knex('benutzer').where({ id: benutzerId }).first();
-    return !!(benutzer && benutzer.ist_super_admin);
+    return istSuperAdminAktiv(benutzer);
 }
 
 async function istVereinsAdmin(knex, benutzerId, vereinId) {
@@ -76,7 +77,7 @@ export async function hatVereinAdmin(knex, vereinId) {
  * verbleibende Mitgliedschaft (oder null), ein Verein ohne jede Mitgliedschaft wird gelöscht.
  * @returns {Promise<boolean>} ob der Verein gelöscht wurde
  */
-async function loescheMitgliedschaft(knex, benutzerId, vereinId) {
+async function loescheMitgliedschaft(knex, benutzerId, vereinId, { vereinBehalten = false } = {}) {
     // Vor dem Löschen erfassen: das Löschen eines verwaisten Vereins setzt benutzer.aktiver_verein_id
     // per ON DELETE SET NULL bereits zurück, bevor wir nachschauen könnten.
     const benutzer = await knex('benutzer').where({ id: benutzerId }).first();
@@ -86,7 +87,7 @@ async function loescheMitgliedschaft(knex, benutzerId, vereinId) {
 
     let vereinGeloescht = false;
     const verbleibende = await knex('benutzer_vereine').where({ verein_id: vereinId }).count('* as anzahl').first();
-    if (parseInt(verbleibende.anzahl, 10) === 0) {
+    if (!vereinBehalten && parseInt(verbleibende.anzahl, 10) === 0) {
         await knex('vereine').where({ id: vereinId }).del();
         vereinGeloescht = true;
     }
@@ -183,12 +184,57 @@ export async function aendereRolle(knex, { vereinId, benutzerId, neueRolle, durc
 }
 
 /**
+ * Super-Admin weist einem Konto einen Verein mit Rolle zu: legt die Mitgliedschaft freigegeben an, gibt eine
+ * offene Beitrittsanfrage mit der Rolle frei oder ändert die Rolle einer bestehenden Mitgliedschaft.
+ * Hat das Konto noch keinen aktiven Verein, wird dieser Verein sein aktiver.
+ * @returns {Promise<{ ok: true, aktion: 'angelegt'|'freigegeben'|'rolle' } | { ok: false, status: number, error: string }>}
+ */
+export async function weiseMitgliedschaftZu(knex, { benutzerId, vereinId, rolle, durchId }) {
+    if (!(await istSuperAdmin(knex, durchId))) {
+        return fehler(403, 'Nur Super-Admins dürfen Vereine und Rollen zuweisen.');
+    }
+    if (!istGueltigeRolle(rolle)) {
+        return fehler(400, 'Bitte eine Rolle wählen (Admin, Benutzer oder Helfer).');
+    }
+    const vid = Number(vereinId);
+    if (!Number.isInteger(vid) || vid <= 0) return fehler(400, 'Bitte einen Verein wählen.');
+
+    return knex.transaction(async (trx) => {
+        const konto = await trx('benutzer').where({ id: benutzerId }).first('id', 'aktiver_verein_id');
+        if (!konto) return fehler(404, 'Konto nicht gefunden.');
+        const verein = await trx('vereine').where({ id: vid }).first('id');
+        if (!verein) return fehler(404, 'Verein nicht gefunden.');
+
+        // Admin-Zeilen sperren, damit sich Rollenänderungen nicht überholen (wie aendereRolle).
+        await trx('benutzer_vereine').where({ verein_id: vid, rolle: 'admin' }).forUpdate().select('id');
+        const mitgliedschaft = await trx('benutzer_vereine').where({ benutzer_id: benutzerId, verein_id: vid }).first();
+        const entschieden = { freigegeben: 1, rolle, entschieden_von: durchId, entschieden_am: trx.fn.now(), updated_at: trx.fn.now() };
+        let aktion;
+        if (!mitgliedschaft) {
+            await trx('benutzer_vereine').insert({ benutzer_id: benutzerId, verein_id: vid, angefragt_ueber: 'verwaltung', ...entschieden });
+            aktion = 'angelegt';
+        } else if (!mitgliedschaft.freigegeben) {
+            await trx('benutzer_vereine').where({ id: mitgliedschaft.id }).update(entschieden);
+            await entwerteFreischaltLinks(trx, benutzerId, vid);
+            aktion = 'freigegeben';
+        } else {
+            await trx('benutzer_vereine').where({ id: mitgliedschaft.id }).update({ rolle, updated_at: trx.fn.now() });
+            aktion = 'rolle';
+        }
+        if (!konto.aktiver_verein_id) {
+            await trx('benutzer').where({ id: benutzerId }).update({ aktiver_verein_id: vid, updated_at: trx.fn.now() });
+        }
+        return { ok: true, aktion };
+    });
+}
+
+/**
  * Entfernt ein Mitglied aus dem Verein (Admin/Super-Admin) oder lässt es austreten (durchId === benutzerId).
  * @returns {Promise<{ ok: true, vereinGeloescht: boolean } | { ok: false, status: number, error: string }>}
  */
-export async function entferneMitglied(knex, { vereinId, benutzerId, durchId }) {
+export async function entferneMitglied(knex, { vereinId, benutzerId, durchId, vereinBehalten = false, ueberVerwaltung = false }) {
     const durchSuperAdmin = await istSuperAdmin(knex, durchId);
-    const selbst = durchId === benutzerId;
+    const selbst = durchId === benutzerId && !ueberVerwaltung;
     if (!selbst && !durchSuperAdmin && !(await istVereinsAdmin(knex, durchId, vereinId))) {
         return fehler(403, 'Nur Admins dieses Vereins dürfen Mitglieder entfernen.');
     }
@@ -224,7 +270,7 @@ export async function entferneMitglied(knex, { vereinId, benutzerId, durchId }) 
                 : 'Das Mitglied ist noch für Helferdienste eingetragen. Bitte zuerst austragen.');
         }
 
-        const vereinGeloescht = await loescheMitgliedschaft(trx, benutzerId, vereinId);
+        const vereinGeloescht = await loescheMitgliedschaft(trx, benutzerId, vereinId, { vereinBehalten });
         return { ok: true, vereinGeloescht };
     });
 }

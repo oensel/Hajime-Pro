@@ -115,6 +115,7 @@ test('Zähler und Link der Technik-Zeile folgen den Posten; Technik öffnet die 
 
 test('Eingeklappte Seitenleiste: nur Icon, Klick auf Orga öffnet die Übersicht', async ({ page }) => {
     await page.goto(`/turnier.html?id=${turnierId}`);
+    await expect(page.locator('#sidebarCollapseBtn[data-bereit]')).toBeAttached();
     await page.locator('#sidebarCollapseBtn').click();
     await expect(page.locator('#nav-orga-liste')).toBeHidden();
     await expect(page.locator('#nav-orga-kopf .menu-text')).toBeHidden();

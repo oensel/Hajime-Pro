@@ -43,6 +43,16 @@ test('Grundzustand: server1 Master, synchrone Replikation, Secondary liest mit u
         .toBe((await (await request.get('/api/sync/status')).json()).instanz_id);
 });
 
+test('Teilnehmer-App: beide Knoten melden ihren Cloud-Stand im Cluster-Status, ohne Cloud-Adresse nicht erreichbar', async ({ request }) => {
+    const master = await (await request.get(`${KNOTEN.server1.url}/api/cluster/status`)).json();
+    const secondary = await (await request.get(`${KNOTEN.server2.url}/api/cluster/status`)).json();
+    for (const stand of [master.eigen.live_app, master.partner.live_app, secondary.eigen.live_app]) {
+        expect(stand).toMatchObject({ cloud_erreichbar: false, sendet: false, letzter_erfolg: null });
+    }
+    const app = await (await request.get(`${KNOTEN.server1.url}/api/live-app/status?turnierId=${turnierId}`)).json();
+    expect(app).toMatchObject({ verfuegbar: false, grund: 'cloud_nicht_konfiguriert', sender: 'keiner' });
+});
+
 test('Update: nur der Secondary bekommt den Knopf, der Master wird abgelehnt, Versionen beider Server sichtbar', async ({ request }) => {
     const master = await (await request.get(`${KNOTEN.server1.url}/api/cluster/status`)).json();
     const secondary = await (await request.get(`${KNOTEN.server2.url}/api/cluster/status`)).json();
@@ -63,8 +73,9 @@ test('Update: nur der Secondary bekommt den Knopf, der Master wird abgelehnt, Ve
 });
 
 test('Update über die VIP: der Master stößt das Update des Secondary an, der Secondary prüft selbst', async ({ request, page }) => {
-    const master = await (await request.get(`${KNOTEN.server1.url}/api/cluster/status`)).json();
-    expect(master.update.partner).toMatchObject({ knopf: true, aktion: 'partner', ziel: '1.0.18' });
+    // Der Master kennt den Stand des Partners aus dessen Status (wird periodisch nachgeladen): kurz abwarten
+    await expect.poll(async () => (await (await request.get(`${KNOTEN.server1.url}/api/cluster/status`)).json()).update.partner,
+        { timeout: 15_000 }).toMatchObject({ knopf: true, aktion: 'partner', ziel: '1.0.18' });
     const secondary = await (await request.get(`${KNOTEN.server2.url}/api/cluster/status`)).json();
     expect(secondary.update.partner.knopf).toBe(false); // nur der Master stößt den Partner an
 

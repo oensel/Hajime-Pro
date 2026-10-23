@@ -1,6 +1,16 @@
 import { istGueltigeRolle, rolleReicht, ROLLEN } from '../shared/rollen.js';
 
 /**
+ * Wirksamer Super-Admin: das Konto ist Super-Admin UND arbeitet gerade im Super-Admin-Modus. In einem Verein
+ * (super_admin_modus = false) gelten nur die Rechte der Vereinsrolle.
+ * @param {{ ist_super_admin?: any, super_admin_modus?: any }|null|undefined} benutzer Zeile aus `benutzer`
+ * @returns {boolean}
+ */
+export function istSuperAdminAktiv(benutzer) {
+    return !!(benutzer && benutzer.ist_super_admin && benutzer.super_admin_modus);
+}
+
+/**
  * Resolves a user's club name via the vereine table (verein_id) — the single source of
  * truth for a user's club (the legacy free-text benutzer.verein column has been removed).
  * @param {Object} knex - Knex instance
@@ -40,8 +50,10 @@ export async function ladeVerwaltendenVereinsnamen(knex, user) {
  * @returns {Promise<Object|undefined>}
  */
 export async function ladeBenutzerMitAktivemVerein(knex, benutzerId) {
-    const benutzer = await knex('benutzer').where({ id: benutzerId }).first();
-    if (!benutzer) return benutzer;
+    const rohBenutzer = await knex('benutzer').where({ id: benutzerId }).first();
+    if (!rohBenutzer) return rohBenutzer;
+    // Neben dem Konto-Merkmal ist_super_admin gilt für alle Rechteprüfungen super_admin_aktiv (Super-Admin-Modus).
+    const benutzer = { ...rohBenutzer, super_admin_aktiv: istSuperAdminAktiv(rohBenutzer) };
 
     if (!benutzer.aktiver_verein_id) {
         return { ...benutzer, verein_id: null, verein_freigegeben: 0, verein_rolle: null };
@@ -103,12 +115,25 @@ export async function setzeAktivenVerein(knex, benutzerId, vereinId) {
         throw new Error('Sie sind kein Mitglied dieses Vereins.');
     }
 
-    await knex('benutzer').where({ id: benutzerId }).update({ aktiver_verein_id: vereinId });
+    // Ein Vereinswechsel beendet den Super-Admin-Modus (Rechte nur noch laut Rolle in diesem Verein).
+    await knex('benutzer').where({ id: benutzerId }).update({ aktiver_verein_id: vereinId, super_admin_modus: false });
+}
+
+/**
+ * Schaltet einen Super-Admin in den Super-Admin-Modus (aktiver_verein_id bleibt als Rückweg erhalten).
+ * @throws {Error} wenn das Konto kein Super-Admin ist
+ */
+export async function setzeSuperAdminModus(knex, benutzerId) {
+    const benutzer = await knex('benutzer').where({ id: benutzerId }).first('ist_super_admin');
+    if (!benutzer || !benutzer.ist_super_admin) {
+        throw new Error('Nur Super-Admins können in den Super-Admin-Modus wechseln.');
+    }
+    await knex('benutzer').where({ id: benutzerId }).update({ super_admin_modus: true });
 }
 
 /**
  * Zugriffsregel für die Verwaltung von Turnieren: ein Benutzer darf ein Turnier verwalten, wenn
- * - er Super-Admin ist (alle Vereine), oder
+ * - er im Super-Admin-Modus ist (super_admin_aktiv, alle Vereine), oder
  * - sein aktiver Verein der Ausrichter ist (turnier.verein_id), seine Mitgliedschaft dort freigegeben
  *   ist und mindestens die Rolle 'benutzer' hat. Reine Helfer haben kein Verwaltungsrecht.
  * @param {Object} user - Ergebnis von ladeBenutzerMitAktivemVerein (verein_id, verein_freigegeben, verein_rolle)
@@ -117,7 +142,7 @@ export async function setzeAktivenVerein(knex, benutzerId, vereinId) {
  */
 export function hatVereinsZugriffAufTurnier(user, turnier) {
     if (!user || !turnier) return false;
-    if (user.ist_super_admin) return true;
+    if (user.super_admin_aktiv) return true;
     return !!(
         user.verein_freigegeben && user.verein_id &&
         turnier.verein_id && user.verein_id === turnier.verein_id &&
@@ -133,7 +158,7 @@ export function hatVereinsZugriffAufTurnier(user, turnier) {
 export async function hatHelferZugriffAufVerein(knex, benutzerId, vereinId) {
     const benutzer = await knex('benutzer').where({ id: benutzerId }).first();
     if (!benutzer) return false;
-    if (benutzer.ist_super_admin) return true;
+    if (istSuperAdminAktiv(benutzer)) return true;
     const mitgliedschaft = await knex('benutzer_vereine')
         .where({ benutzer_id: benutzerId, verein_id: vereinId, freigegeben: 1 })
         .first();

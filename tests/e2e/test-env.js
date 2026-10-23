@@ -44,6 +44,9 @@ export const testServerEnv = {
     VIDEO_VERZEICHNIS: VIDEO_TESTVERZEICHNIS,
     IS_OFFLINE: 'true',
     CLOUD_URL: FAKE_CLOUD_URL,
+    // Teilnehmer-App-Schalter: kurze Takte, damit die Specs nicht Sekunden warten (Standard 15 s / 5 s).
+    LIVE_APP_PRUEF_MS: '300',
+    LIVE_APP_TAKT_MS: '300',
     // Teilnehmer-App (Phase 2): Ingest und App-API sind sonst nur im Modus cloud eingehängt.
     LIVE_API_AKTIV: 'true',
     // Helfer-App (/api/helfer): sonst nur im Modus cloud eingehängt (tests/e2e/helfer-seiten.spec.js).

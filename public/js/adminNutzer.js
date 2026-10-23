@@ -1,5 +1,5 @@
 // Seite admin-nutzer.html („Benutzer“, nur Super-Admins): alle Konten mit Vereinen und Rollen, getrennt in
-// Super-Admins (oben, eigener Bereich) und übrige Benutzer; die Rolle je Verein ist änderbar, ebenso Super-Admin.
+// Super-Admins (oben, eigener Bereich) und übrige Benutzer; die Rolle je Verein ist änderbar; Super-Admins werden über „Hinzufügen“ ernannt und per Aktion entzogen.
 // API: GET /api/nutzer, PUT /api/nutzer/:id { vorname, nachname, email }, DELETE /api/nutzer/:id,
 // POST /api/nutzer/:id/passwort { passwort, aendernErforderlich }, POST /api/nutzer/:id/super-admin { wert },
 // POST /api/nutzer/:id/sperren { wert }, POST /api/nutzer/:id/bestaetigen, POST /api/nutzer/:id/bestaetigungs-mail,
@@ -31,6 +31,14 @@
         return td;
     }
 
+    const rollenName = (wert) => (ROLLEN.find(r => r[0] === wert) || [])[1] || wert;
+
+    async function frageBestaetigung(text, titel, icon) {
+        return window.zeigeZentraleBestaetigung
+            ? window.zeigeZentraleBestaetigung(text, titel, icon)
+            : window.confirm(text);
+    }
+
     async function aendereRolle(konto, mitgliedschaft, auswahl, vorher) {
         zeigeMeldung('');
         auswahl.disabled = true;
@@ -43,8 +51,7 @@
             const data = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(data.error || 'Die Rolle konnte nicht geändert werden.');
             mitgliedschaft.rolle = auswahl.value;
-            const rollenName = (ROLLEN.find(r => r[0] === auswahl.value) || [])[1] || auswahl.value;
-            zeigeMeldung(`${konto.vorname} ${konto.nachname}: Rolle in ${mitgliedschaft.verein_name} ist jetzt ${rollenName}.`, true);
+            zeigeMeldung(`${kontoName(konto)}: Rolle in ${mitgliedschaft.verein_name} ist jetzt ${rollenName(auswahl.value)}.`, true);
         } catch (err) {
             auswahl.value = vorher;
             zeigeMeldung(err.message);
@@ -72,6 +79,50 @@
         return auswahl;
     }
 
+    // Super-Admin ernennen (wert = true) oder entziehen (false); das Konto und seine Vereinsrollen bleiben unberührt.
+    async function postSuperAdmin(konto, wert) {
+        const response = await fetch(`/api/nutzer/${encodeURIComponent(konto.id)}/super-admin`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ wert })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'Ändern fehlgeschlagen.');
+        konto.ist_super_admin = wert;
+    }
+
+    async function entzieheSuperAdmin(konto) {
+        const ok = await frageBestaetigung(
+            `Super-Admin-Rechte von „${kontoName(konto)}“ entziehen? Das Konto und seine Rollen in den Vereinen bleiben erhalten.`,
+            'Super-Admin entziehen', 'remove_moderator');
+        if (!ok) return;
+        try {
+            await postSuperAdmin(konto, false);
+            zeichne();
+            zeigeMeldung(`${kontoName(konto)} ist kein Super-Admin mehr.`, true);
+        } catch (err) {
+            zeigeMeldung(err.message);
+        }
+    }
+
+    async function entferneZuordnung(konto, m) {
+        const ok = await frageBestaetigung(
+            `Zuordnung von „${kontoName(konto)}“ zum Verein „${m.verein_name}“ entfernen? Der Verein bleibt bestehen.`,
+            'Vereinszuordnung entfernen', 'link_off');
+        if (!ok) return;
+        zeigeMeldung('');
+        try {
+            const response = await fetch(`/api/nutzer/${encodeURIComponent(konto.id)}/mitgliedschaft/${encodeURIComponent(m.verein_id)}`, { method: 'DELETE' });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.error || 'Die Zuordnung konnte nicht entfernt werden.');
+            konto.mitgliedschaften = konto.mitgliedschaften.filter(x => x !== m);
+            zeichne();
+            zeigeMeldung(`${kontoName(konto)}: Zuordnung zu ${m.verein_name} entfernt.`, true);
+        } catch (err) {
+            zeigeMeldung(err.message);
+        }
+    }
+
     // Spalte Verein: je Mitgliedschaft eine Zeile (gleiche Höhe wie in der Spalte Rolle, damit beide untereinander passen)
     function vereinZelle(konto) {
         const td = document.createElement('td');
@@ -82,8 +133,18 @@
         for (const m of konto.mitgliedschaften) {
             const zeile = document.createElement('div');
             zeile.className = 'zeile';
-            zeile.textContent = m.verein_name;
-            zeile.title = m.verein_name;
+            const name = document.createElement('span');
+            name.className = 'verein-name';
+            name.textContent = m.verein_name;
+            name.title = m.verein_name;
+            const entfernen = document.createElement('button');
+            entfernen.type = 'button';
+            entfernen.className = 'zuordnung-entfernen';
+            entfernen.title = 'Vereinszuordnung entfernen';
+            entfernen.setAttribute('aria-label', `Zuordnung zu ${m.verein_name} entfernen: ${kontoName(konto)}`);
+            entfernen.innerHTML = '<span class="material-icons">close</span>';
+            entfernen.addEventListener('click', () => entferneZuordnung(konto, m));
+            zeile.append(name, entfernen);
             td.appendChild(zeile);
         }
         return td;
@@ -109,19 +170,6 @@
             }
             td.appendChild(zeile);
         }
-        return td;
-    }
-
-    function umschalterZelle(konto) {
-        const td = document.createElement('td');
-        const label = document.createElement('label');
-        const box = document.createElement('input');
-        box.type = 'checkbox';
-        box.checked = konto.ist_super_admin;
-        box.setAttribute('aria-label', `Super-Admin: ${konto.vorname} ${konto.nachname}`);
-        box.addEventListener('change', () => setzeSuperAdmin(konto, box));
-        label.appendChild(box);
-        td.appendChild(label);
         return td;
     }
 
@@ -159,6 +207,8 @@
         td.append(
             knopf('edit', 'Bearbeiten', '', () => oeffneBearbeiten(konto)),
             document.createTextNode(' '),
+            knopf('add_business', 'Verein und Rolle zuweisen', '', () => oeffneZuweisen(konto)),
+            document.createTextNode(' '),
             knopf('key', 'Initialpasswort vergeben', '', () => oeffnePasswort(konto)),
             document.createTextNode(' '),
             knopf('forward_to_inbox', 'Passwort-Zurücksetzen-Mail senden', '', () => sendePasswortMail(konto), konto.gesperrt || !konto.email_bestaetigt),
@@ -173,6 +223,13 @@
             );
         }
         const istSelbst = String(konto.id) === String(eigeneId);
+        if (konto.ist_super_admin) {
+            const anzahlSuper = konten.filter(k => k.ist_super_admin).length;
+            td.append(
+                knopf('remove_moderator', 'Super-Admin entziehen', '', () => entzieheSuperAdmin(konto), anzahlSuper <= 1),
+                document.createTextNode(' ')
+            );
+        }
         td.append(
             knopf(konto.gesperrt ? 'lock_open' : 'block', konto.gesperrt ? 'Entsperren' : 'Sperren', '', () => setzeGesperrt(konto, !konto.gesperrt), !konto.gesperrt && istSelbst),
             document.createTextNode(' '),
@@ -187,7 +244,7 @@
         if (eintraege.length === 0) {
             const tr = document.createElement('tr');
             const td = zelle(leerText);
-            td.colSpan = 6;
+            td.colSpan = 5;
             tr.appendChild(td);
             tbody.appendChild(tr);
             return;
@@ -200,7 +257,6 @@
             if (k.gesperrt) tr.classList.add('gesperrt');
             tr.appendChild(vereinZelle(k));
             tr.appendChild(rolleZelle(k));
-            tr.appendChild(umschalterZelle(k));
             tr.appendChild(aktionsZelle(k));
             tbody.appendChild(tr);
         }
@@ -213,27 +269,169 @@
         fuelle(liste, document.getElementById('nutzerAnzahl'), sichtbar.filter(k => !k.ist_super_admin), 'Keine Benutzer gefunden.');
     }
 
-    async function setzeSuperAdmin(konto, box) {
-        const wert = box.checked;
-        zeigeMeldung('');
-        box.disabled = true;
+    // --- Verein und Rolle zuweisen (neue Mitgliedschaft, offene Anfrage freigeben oder Rolle ändern) ---
+    const zuweisenDialog = document.getElementById('zuweisenDialog');
+    const zuweisenVerein = document.getElementById('zuweisenVerein');
+    const zuweisenVereineListe = document.getElementById('zuweisenVereineListe');
+    const zuweisenRolle = document.getElementById('zuweisenRolle');
+    const zuweisenFehler = document.getElementById('zuweisenFehler');
+    let zuweisenVereine = null;
+
+    for (const [wert, name] of ROLLEN) {
+        const option = document.createElement('option');
+        option.value = wert;
+        option.textContent = name;
+        zuweisenRolle.appendChild(option);
+    }
+
+    async function oeffneZuweisen(konto) {
+        aktuellerKonto = konto;
+        zuweisenFehler.textContent = '';
+        document.getElementById('zuweisenFuer').textContent = `${kontoName(konto)} (${konto.email})`;
         try {
-            const response = await fetch(`/api/nutzer/${encodeURIComponent(konto.id)}/super-admin`, {
+            if (!zuweisenVereine) {
+                const response = await fetch('/api/vereine');
+                if (!response.ok) throw new Error('Die Vereinsliste konnte nicht geladen werden.');
+                zuweisenVereine = await response.json();
+            }
+        } catch (err) {
+            zeigeMeldung(err.message);
+            return;
+        }
+        zuweisenVereineListe.textContent = '';
+        for (const v of zuweisenVereine) {
+            const option = document.createElement('option');
+            option.value = v.name;
+            const vorhanden = konto.mitgliedschaften.find(m => String(m.verein_id) === String(v.id));
+            if (vorhanden) option.label = `${v.name} (${vorhanden.freigegeben ? `bisher ${rollenName(vorhanden.rolle)}` : 'wartet auf Freischaltung'})`;
+            zuweisenVereineListe.appendChild(option);
+        }
+        zuweisenVerein.value = '';
+        zuweisenRolle.value = 'benutzer';
+        zuweisenDialog.showModal();
+        zuweisenVerein.focus();
+    }
+
+    document.getElementById('zuweisenAbbrechen').addEventListener('click', () => zuweisenDialog.close());
+    document.getElementById('zuweisenForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!aktuellerKonto) return;
+        const speichern = document.getElementById('zuweisenSpeichern');
+        speichern.disabled = true;
+        zuweisenFehler.textContent = '';
+        try {
+            const eingabe = zuweisenVerein.value.trim().toLowerCase();
+            const gewaehlt = zuweisenVereine.find(v => v.name.toLowerCase() === eingabe);
+            if (!gewaehlt) throw new Error('Bitte einen Verein aus der Liste wählen.');
+            const vereinId = gewaehlt.id;
+            const rolle = zuweisenRolle.value;
+            const response = await fetch(`/api/nutzer/${encodeURIComponent(aktuellerKonto.id)}/mitgliedschaft`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ wert })
+                body: JSON.stringify({ vereinId, rolle })
             });
             const data = await response.json().catch(() => ({}));
-            if (!response.ok) throw new Error(data.error || 'Ändern fehlgeschlagen.');
-            konto.ist_super_admin = wert;
-            zeichne(); // wechselt den Bereich (Super-Admins stehen oben, getrennt)
+            if (!response.ok) throw new Error(data.error || 'Die Zuweisung ist fehlgeschlagen.');
+            const vereinName = (zuweisenVereine.find(v => String(v.id) === String(vereinId)) || {}).name || '';
+            const vorhanden = aktuellerKonto.mitgliedschaften.find(m => String(m.verein_id) === String(vereinId));
+            if (vorhanden) Object.assign(vorhanden, { rolle, freigegeben: true });
+            else aktuellerKonto.mitgliedschaften.push({ verein_id: Number(vereinId), verein_name: vereinName, rolle, freigegeben: true });
+            aktuellerKonto.mitgliedschaften.sort((a, b) => a.verein_name.localeCompare(b.verein_name, 'de'));
+            zuweisenDialog.close();
+            zeichne();
+            zeigeMeldung(`${kontoName(aktuellerKonto)}: ${vereinName} als ${rollenName(rolle)} zugewiesen.`, true);
         } catch (err) {
-            box.checked = !wert;
-            zeigeMeldung(err.message);
+            zuweisenFehler.textContent = err.message;
         } finally {
-            box.disabled = false;
+            speichern.disabled = false;
+        }
+    });
+
+    // --- Super-Admin hinzufügen: Suche mit Autovervollständigung über die vorhandenen Konten ---
+    const hinzufuegenDialog = document.getElementById('superHinzufuegenDialog');
+    const hinzufuegenSuche = document.getElementById('superHinzufuegenSuche');
+    const hinzufuegenTreffer = document.getElementById('superHinzufuegenTreffer');
+    const hinzufuegenGewaehlt = document.getElementById('superHinzufuegenGewaehlt');
+    const hinzufuegenFehler = document.getElementById('superHinzufuegenFehler');
+    const hinzufuegenSpeichern = document.getElementById('superHinzufuegenSpeichern');
+    let hinzufuegenKonto = null;
+
+    function waehleHinzufuegenKonto(konto) {
+        hinzufuegenKonto = konto;
+        hinzufuegenGewaehlt.textContent = konto ? `Ausgewählt: ${kontoName(konto)} (${konto.email})` : '';
+        hinzufuegenSpeichern.disabled = !konto;
+    }
+
+    function zeigeHinzufuegenTreffer() {
+        const suche = hinzufuegenSuche.value.trim().toLowerCase();
+        hinzufuegenTreffer.textContent = '';
+        if (suche.length < 1) return;
+        const treffer = konten
+            .filter(k => !k.ist_super_admin)
+            .filter(k => [k.vorname, k.nachname, k.email].join(' ').toLowerCase().includes(suche))
+            .sort(nachName)
+            .slice(0, 8);
+        if (treffer.length === 0) {
+            const li = document.createElement('li');
+            li.className = 'leer';
+            li.textContent = 'Kein passendes Konto gefunden.';
+            hinzufuegenTreffer.appendChild(li);
+            return;
+        }
+        for (const k of treffer) {
+            const li = document.createElement('li');
+            const knopf = document.createElement('button');
+            knopf.type = 'button';
+            knopf.textContent = `${kontoName(k)} · ${k.email}`;
+            knopf.addEventListener('click', () => {
+                waehleHinzufuegenKonto(k);
+                hinzufuegenSuche.value = kontoName(k);
+                hinzufuegenTreffer.textContent = '';
+            });
+            li.appendChild(knopf);
+            hinzufuegenTreffer.appendChild(li);
         }
     }
+
+    document.getElementById('superHinzufuegenKnopf').addEventListener('click', () => {
+        hinzufuegenSuche.value = '';
+        hinzufuegenTreffer.textContent = '';
+        hinzufuegenFehler.textContent = '';
+        waehleHinzufuegenKonto(null);
+        hinzufuegenDialog.showModal();
+        hinzufuegenSuche.focus();
+    });
+    hinzufuegenSuche.addEventListener('input', () => {
+        waehleHinzufuegenKonto(null);
+        zeigeHinzufuegenTreffer();
+    });
+    document.getElementById('superHinzufuegenAbbrechen').addEventListener('click', () => hinzufuegenDialog.close());
+    document.getElementById('superHinzufuegenForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!hinzufuegenKonto) return;
+        const konto = hinzufuegenKonto;
+        // Das modale Dialogfenster liegt über der zentralen Bestätigung: für die Rückfrage kurz schließen.
+        hinzufuegenDialog.close();
+        const ok = await frageBestaetigung(
+            `„${kontoName(konto)}“ (${konto.email}) wirklich zum Super-Admin machen? Super-Admins dürfen im Super-Admin-Modus alles in allen Vereinen und können Benutzer, Vereine und Turniere verwalten.`,
+            'Super-Admin ernennen', 'admin_panel_settings');
+        if (!ok) {
+            hinzufuegenDialog.showModal();
+            return;
+        }
+        hinzufuegenDialog.showModal();
+        hinzufuegenSpeichern.disabled = true;
+        hinzufuegenFehler.textContent = '';
+        try {
+            await postSuperAdmin(konto, true);
+            hinzufuegenDialog.close();
+            zeichne();
+            zeigeMeldung(`${kontoName(konto)} ist jetzt Super-Admin.`, true);
+        } catch (err) {
+            hinzufuegenFehler.textContent = err.message;
+            hinzufuegenSpeichern.disabled = false;
+        }
+    });
 
     function zeigeVereinFilter() {
         if (!vereinFilterId || !vereinFilterBox) return;

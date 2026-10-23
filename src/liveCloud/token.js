@@ -29,6 +29,13 @@ export async function sperreToken(knex, id) {
     return geaendert > 0;
 }
 
+// Sperrt alle noch aktiven, älteren Tokens desselben Turniers. Aufgerufen, wenn ein Token benutzt wird: ein neu geholtes
+// Token ersetzt die früheren erst bei seiner ersten Benutzung (ein gescheitertes Holen darf das laufende Token nicht töten).
+export async function sperreAelterTokens(knex, turnierKey, neuesteId) {
+    return knex('live_ingest_tokens').where({ turnier_key: String(turnierKey) }).where('id', '<', neuesteId)
+        .whereNull('gesperrt_am').update({ gesperrt_am: knex.fn.now() });
+}
+
 export async function listeTokens(knex) {
     const zeilen = await knex('live_ingest_tokens').orderBy('id');
     return zeilen.map(z => ({

@@ -159,7 +159,7 @@ test('Beitritt zu einem weiteren Verein: E-Mail bestätigt, Freischaltungs-Link 
             { id: 'u-admin', email: 'admin@test.de', vorname: 'A', nachname: 'Dmin', email_bestaetigt_am: knex.fn.now() },
             { id: 'u-helfer', email: 'helfer@test.de', vorname: 'Hel', nachname: 'Fer', email_bestaetigt_am: knex.fn.now() },
             { id: 'u-offen', email: 'offen@test.de', vorname: 'Of', nachname: 'Fen', email_bestaetigt_am: null },
-            { id: 'u-super', email: 'super@test.de', vorname: 'S', nachname: 'Uper', ist_super_admin: true, email_bestaetigt_am: knex.fn.now() }
+            { id: 'u-super', email: 'super@test.de', vorname: 'S', nachname: 'Uper', ist_super_admin: true, super_admin_modus: true, email_bestaetigt_am: knex.fn.now() }
         ]);
         await knex('benutzer_vereine').insert([
             { benutzer_id: 'u-admin', verein_id: weiterer, freigegeben: 1, rolle: 'admin' },

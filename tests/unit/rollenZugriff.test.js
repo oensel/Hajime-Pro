@@ -43,7 +43,7 @@ test('Rollen: Turnierzugriff, Middlewares und Vereinslisten', async () => {
         for (const b of benutzer) {
             await knex('benutzer').insert({ id: `u-${b}`, email: `${b}@test.de`, vorname: b, nachname: 'Test' });
         }
-        await knex('benutzer').where({ id: 'u-super' }).update({ ist_super_admin: true });
+        await knex('benutzer').where({ id: 'u-super' }).update({ ist_super_admin: true, super_admin_modus: true });
         await knex('benutzer_vereine').insert([
             { benutzer_id: 'u-admin', verein_id: vereinA, freigegeben: 1, rolle: 'admin' },
             { benutzer_id: 'u-benutzer', verein_id: vereinA, freigegeben: 1, rolle: 'benutzer' },
@@ -164,7 +164,7 @@ test('Rollen: Fremdvereins-Pfad für Teilnehmer/Mannschaften und Turnier anlegen
         for (const b of ['admin', 'benutzer', 'helfer', 'super']) {
             await knex('benutzer').insert({ id: `g-${b}`, email: `g-${b}@test.de`, vorname: b, nachname: 'Gast' });
         }
-        await knex('benutzer').where({ id: 'g-super' }).update({ ist_super_admin: true });
+        await knex('benutzer').where({ id: 'g-super' }).update({ ist_super_admin: true, super_admin_modus: true });
         await knex('benutzer_vereine').insert(['admin', 'benutzer', 'helfer'].map(r => (
             { benutzer_id: `g-${r}`, verein_id: vereinA, freigegeben: 1, rolle: r })));
         for (const b of ['admin', 'benutzer', 'helfer']) await setzeAktivenVerein(knex, `g-${b}`, vereinA);
@@ -209,14 +209,14 @@ test('Rollen: Fremdvereins-Pfad für Teilnehmer/Mannschaften und Turnier anlegen
             assert.equal((await knex('mannschaften').where({ id: mannschaftId }).first()).bezeichnung, `Team ${u}`);
         }
 
-        // Super-Admin ohne aktiven Verein kann kein Turnier ohne Verein anlegen
+        // Super-Admin (Super-Admin-Modus) kann kein Turnier ohne gewählten ausrichtenden Verein anlegen
         const anzahlVorher = (await knex('turniere')).length;
         const res = fakeRes();
         await createTurnier(knex, { user: { id: 'g-super' }, app: { get: () => null }, body: {
             bezeichnung: 'Ohne Verein', ort: 'Halle', datum: '2099-12-02', ausrichter: 'X'
         } }, res);
         assert.equal(res.statusCode, 400);
-        assert.equal(res.body.error, 'Bitte zuerst einen aktiven Verein wählen.');
+        assert.equal(res.body.error, 'Bitte den ausrichtenden Verein aus der Liste wählen.');
         assert.equal((await knex('turniere')).length, anzahlVorher);
     } finally {
         await db.stoppe();

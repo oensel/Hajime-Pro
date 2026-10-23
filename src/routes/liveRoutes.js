@@ -2,7 +2,7 @@
 // Der Ingest antwortet nur mit Statuscodes; die App-API ist lesend, ratenbegrenzt und liefert nie mehr als die Kachel.
 import express from 'express';
 import { uebernimmPaket } from '../liveCloud/ingest.js';
-import { pruefeToken } from '../liveCloud/token.js';
+import { pruefeToken, sperreAelterTokens } from '../liveCloud/token.js';
 import {
     listeTurniere, ladeTurnier, suche, ladePool, ladeVerein, uebersicht, listePools, ladeDashboard,
     sucheMannschaften, listeMannschaftsPools, ladeMannschaft, uebersichtMannschaften
@@ -32,6 +32,8 @@ export function getLiveRoutes(knex, {
             if (!token) {
                 return res.status(fehlerBegrenzung.erlaube(clientIp(req, env)) ? 401 : 429).end();
             }
+            // Wird ein an ein Turnier gebundenes Token benutzt, verfallen die älteren Tokens dieses Turniers (neu geholt = ersetzt).
+            if (token.turnierKey) await sperreAelterTokens(knex, token.turnierKey, token.id);
             const paket = req.body;
             if (token.turnierKey && paket?.turnierKey !== token.turnierKey) return res.status(403).end();
             const ergebnis = await uebernimmPaket(knex, paket, { jetzt });

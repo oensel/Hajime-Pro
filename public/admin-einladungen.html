@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hajime Pro - Einladungen</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <script src="/js/menu.js"></script>
+    <style>
+        .einladung-seite label { display: block; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-muted); margin: 14px 0 4px; }
+        .einladung-seite input[type=text], .einladung-seite textarea { width: 100%; box-sizing: border-box; padding: 8px 10px; font: inherit; font-size: 14px; border: 2px solid var(--border); border-radius: 4px; background: var(--bg-card); color: var(--text-main); }
+        .einladung-seite textarea { min-height: 120px; resize: vertical; }
+        .einladung-hinweis { margin: 8px 0 0; font-size: 12px; color: var(--text-muted); }
+        .einladung-seite ul { margin: 10px 0 0; padding-left: 18px; font-size: 13px; color: var(--text-main); }
+        .einladung-fehler { color: #ef4444; font-weight: 700; font-size: 13px; min-height: 18px; margin-top: 8px; }
+    </style>
+</head>
+<body>
+
+<div class="kanji-left">柔</div>
+<div class="kanji-right">道</div>
+
+<div class="mdc-card einladung-seite" style="padding: 24px; max-width: 640px;">
+    <div class="form-title-area">
+        <span class="material-icons">forward_to_inbox</span>
+        <h1>Einladungen</h1>
+        <span class="material-icons">forward_to_inbox</span>
+    </div>
+    <p style="color: var(--text-muted); font-size: 13px; margin-top: 0;">Helfer per E-Mail einladen. Der Link in der Mail führt zur Registrierung mit vorausgefülltem Verein und E-Mail-Adresse; nach dem Speichern ist die Person sofort als Helfer freigeschaltet.</p>
+
+    <div id="einladungFehler" class="einladung-fehler" role="alert"></div>
+    <div id="einladungInhalt" hidden>
+        <label for="einladungVerein">Verein</label>
+        <input type="text" id="einladungVerein" list="einladungVereineListe" autocomplete="off" placeholder="Vereinsname eingeben …">
+        <datalist id="einladungVereineListe"></datalist>
+
+        <label for="einladungAdressen">E-Mail-Adressen</label>
+        <textarea id="einladungAdressen" placeholder="Eine Adresse pro Zeile oder getrennt durch Komma oder Semikolon (höchstens 100)"></textarea>
+        <div style="margin-top: 10px;"><button type="button" class="btn btn-raised" id="einladungSenden">Einladungen senden</button></div>
+        <p class="einladung-hinweis" id="einladungOffen"></p>
+        <ul id="einladungErgebnis" hidden></ul>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', async () => {
+        const fehler = document.getElementById('einladungFehler');
+        const inhalt = document.getElementById('einladungInhalt');
+        const vereinFeld = document.getElementById('einladungVerein');
+        const liste = document.getElementById('einladungVereineListe');
+        const adressen = document.getElementById('einladungAdressen');
+        const knopf = document.getElementById('einladungSenden');
+        const offen = document.getElementById('einladungOffen');
+        const ergebnis = document.getElementById('einladungErgebnis');
+        const meldeFehler = (text) => window.zeigeNotification ? window.zeigeNotification(text, 'error') : alert(text);
+        const meldeErfolg = (text) => { if (window.zeigeNotification) window.zeigeNotification(text); };
+        const STANDARD_HINWEIS = 'Erneutes Einladen entwertet den alten Link. Wer schon freigegebenes Mitglied ist, bekommt keine Mail.';
+
+        // Vereine, in denen eingeladen werden darf: Super-Admin alle, sonst die eigenen Vereine als Admin
+        let vereine = [];
+        try {
+            const { rolleReicht } = await import('/js/shared/rollen.js');
+            const me = (await (await fetch('/api/auth/me')).json()).user;
+            if (me.super_admin_aktiv) {
+                const antwort = await fetch('/api/vereine');
+                if (antwort.ok) vereine = (await antwort.json()).map(v => ({ id: v.id, name: v.name }));
+            } else {
+                vereine = (me.vereine || [])
+                    .filter(v => v.freigegeben && rolleReicht(v.rolle, 'admin'))
+                    .map(v => ({ id: v.verein_id, name: v.name }));
+            }
+        } catch (err) {
+            console.error('Fehler beim Laden der Vereine:', err);
+        }
+        if (vereine.length === 0) {
+            fehler.textContent = 'Einladungen können nur Admins eines Vereins und Super-Admins senden.';
+            return;
+        }
+        inhalt.hidden = false;
+        for (const v of vereine) {
+            const option = document.createElement('option');
+            option.value = v.name;
+            liste.appendChild(option);
+        }
+        if (vereine.length === 1) vereinFeld.value = vereine[0].name;
+
+        const gewaehlterVerein = () => {
+            const eingabe = vereinFeld.value.trim().toLowerCase();
+            return vereine.find(v => v.name.toLowerCase() === eingabe) || null;
+        };
+
+        async function ladeOffene() {
+            const verein = gewaehlterVerein();
+            ergebnis.hidden = true;
+            knopf.disabled = adressen.disabled = !verein;
+            offen.textContent = verein ? STANDARD_HINWEIS : 'Bitte einen Verein aus der Liste wählen.';
+            if (!verein) return;
+            try {
+                const antwort = await fetch(`/api/vereine/einladungen?vereinId=${encodeURIComponent(verein.id)}`);
+                const daten = await antwort.json().catch(() => ({}));
+                if (antwort.status === 409) {
+                    offen.textContent = daten.error || '';
+                    adressen.disabled = knopf.disabled = true;
+                    return;
+                }
+                if (!antwort.ok) return;
+                const n = (daten.einladungen || []).length;
+                offen.textContent = n === 0 ? STANDARD_HINWEIS
+                    : `Offene Einladungen: ${n} (${daten.einladungen.map(e => e.email).join(', ')})`;
+            } catch { /* ohne Liste weiter */ }
+        }
+        vereinFeld.addEventListener('input', ladeOffene);
+        ladeOffene();
+
+        const STATUS_TEXT = { gesendet: 'Einladung gesendet', bereits_mitglied: 'ist schon Mitglied, keine Mail', fehler: 'Mail konnte nicht gesendet werden' };
+        knopf.addEventListener('click', async () => {
+            const verein = gewaehlterVerein();
+            if (!verein) { meldeFehler('Bitte einen Verein aus der Liste wählen.'); return; }
+            if (!adressen.value.trim()) { meldeFehler('Bitte mindestens eine E-Mail-Adresse eintragen.'); return; }
+            knopf.disabled = true;
+            try {
+                const antwort = await fetch('/api/vereine/einladungen', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ vereinId: verein.id, emails: adressen.value })
+                });
+                const daten = await antwort.json().catch(() => ({}));
+                if (!antwort.ok) throw new Error(daten.error || 'Einladungen konnten nicht gesendet werden.');
+                ergebnis.replaceChildren(...[
+                    ...daten.ergebnisse.map(r => `${r.email}: ${STATUS_TEXT[r.status] || r.status}`),
+                    ...daten.ungueltig.map(u => `${u}: keine gültige E-Mail-Adresse`)
+                ].map(text => { const li = document.createElement('li'); li.textContent = text; return li; }));
+                ergebnis.hidden = false;
+                const gesendet = daten.ergebnisse.filter(r => r.status === 'gesendet').length;
+                if (gesendet > 0) { meldeErfolg(gesendet === 1 ? 'Einladung gesendet.' : `${gesendet} Einladungen gesendet.`); adressen.value = ''; }
+                const ergebnisListe = ergebnis.hidden;
+                await ladeOffene();
+                ergebnis.hidden = ergebnisListe;
+            } catch (err) {
+                meldeFehler(err.message);
+            } finally {
+                knopf.disabled = !gewaehlterVerein();
+            }
+        });
+    });
+</script>
+</body>
+</html>

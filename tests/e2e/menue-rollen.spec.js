@@ -15,6 +15,7 @@ function konto({ rolle, istSuperAdmin = false, vereine } = {}) {
         verein_rolle: liste[0] && liste[0].freigegeben ? liste[0].rolle : null,
         verein_wartet_auf_super_admin: false,
         ist_super_admin: istSuperAdmin,
+        super_admin_aktiv: istSuperAdmin,
         vereine: liste
     };
 }

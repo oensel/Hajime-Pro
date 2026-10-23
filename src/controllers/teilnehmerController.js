@@ -141,7 +141,7 @@ async function ermittleKontext(knex, req, turnier) {
     const istGastgeberVerein = istEinzelbenutzerBetrieb() || hatVereinsZugriffAufTurnier(user, turnier);
     return {
         istGastgeberVerein,
-        istPrivilegiert: istGastgeberVerein || !!(user && user.ist_super_admin),
+        istPrivilegiert: istGastgeberVerein || !!(user && user.super_admin_aktiv),
         userVereinName: await ladeVerwaltendenVereinsnamen(knex, user),
         userGefunden: !!user
     };
@@ -830,10 +830,8 @@ const HEADER_FIELD_MAP = {
 
 // Systemfelder für den Import — Reihenfolge bestimmt sowohl die Spalten der Vorlage (siehe
 // downloadImportVorlage) als auch die Optionen im Spalten-Zuordnungs-Dropdown der Vorschau
-// (siehe previewTeilnehmerImport/teilnehmer.js). "verein" gilt im Online-Betrieb funktional nicht
-// als Pflichtfeld (wird dort immer durch den Verein des anmeldenden Nutzers ersetzt), wird hier
-// aber einheitlich als Pflichtfeld geführt, da eine Vorlage nicht wissen kann, in welchem Modus
-// sie später verwendet wird.
+// (siehe previewTeilnehmerImport/teilnehmer.js). "verein" ist kein Pflichtfeld: fehlt er in der
+// Datei (Spalte fehlt, ignoriert oder leer), gilt der Verein des anmeldenden Nutzers.
 // "geburtsjahr" ("Geburtsdatum/-jahr") akzeptiert sowohl ein volles Datum als auch nur den
 // Jahrgang (siehe HEADER_FIELD_MAP und ermittleGeburtsjahrAusImportwert): Altersklassen basieren
 // ausschließlich auf dem Jahrgang, ein exaktes Tagesdatum ist daher nicht erforderlich.
@@ -846,7 +844,7 @@ const IMPORT_SYSTEMFELDER = [
     { feld: 'judopass_id', label: 'Passnr', pflicht: false },
     { feld: 'geburtsjahr', label: 'Geburtsdatum/-jahr', pflicht: true },
     { feld: 'geschlecht', label: 'Geschlecht', pflicht: true },
-    { feld: 'verein', label: 'Verein', pflicht: true },
+    { feld: 'verein', label: 'Verein', pflicht: false },
     { feld: 'mannschaft_name', label: 'Team-Name', pflicht: false },
     { feld: 'graduierung', label: 'Graduierung', pflicht: false },
     { feld: 'gewicht', label: 'Gewicht', pflicht: false }
@@ -1147,6 +1145,8 @@ function verarbeiteImportZeile(record, ctx) {
     if (!ctx.istOffline && !ctx.darfVereinAusDateiUebernehmen) {
         felder.verein = ctx.userVereinName || '';
     }
+    // Ohne Verein in der Datei (Spalte fehlt, ignoriert oder leer) gilt der Verein des Benutzers.
+    if (!felder.verein) felder.verein = ctx.userVereinName || '';
 
     // Ziel "auto": Ist "Team" gefüllt UND trägt das Turnier für die Altersklasse der Person
     // Mannschaften aus, wird sie als Mannschaftsteilnehmer gemeldet, sonst als Einzelkämpfer (je
@@ -1511,7 +1511,7 @@ export function downloadImportVorlage(req, res) {
             ['Passnr', 'Nein', 'Judopass-Nummer, falls vorhanden — verhindert Dubletten bei wiederholtem Import.'],
             ['Geburtsdatum/-jahr', 'Ja', 'Volles Datum (Format TT.MM.JJJJ, z.B. 01.05.2012) oder nur der Jahrgang (z.B. 2012) — beides wird akzeptiert, da Altersklassen ausschließlich auf dem Jahrgang beruhen.'],
             ['Geschlecht', 'Ja', '"männlich"/"m", "weiblich"/"w" oder "mixed"/"x"'],
-            ['Verein', 'Ja', 'Wird automatisch durch den Verein des anmeldenden Nutzers ersetzt — außer bei Super-Admin oder einem Mitglied des ausrichtenden Vereins, dort wird der Verein aus der Datei übernommen.'],
+            ['Verein', 'Nein', 'Leer oder fehlend: es gilt der Verein des anmeldenden Nutzers. Ein angegebener Verein wird nur bei Super-Admin oder einem Mitglied des ausrichtenden Vereins übernommen, sonst gilt ebenfalls der Verein des Nutzers.'],
             ['Team-Name', 'Ja*', 'Nur beim Import-Ziel "Mannschaften" Pflicht: Zeilen mit demselben Team-Namen + Verein werden automatisch zu einer gemeinsamen Mannschaft zusammengefasst (Gewichtsklassen-Position wird automatisch aus dem Gewicht abgeleitet). Beim Ziel "Einzel" bleibt die Spalte ungenutzt.'],
             ['Graduierung', 'Nein', 'z.B. "5. Kyu (orange)" oder "1. Dan"'],
             ['Gewicht', 'Nein', 'In kg, Komma oder Punkt als Dezimaltrennzeichen, z.B. "45,5"'],

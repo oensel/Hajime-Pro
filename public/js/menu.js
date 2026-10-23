@@ -65,6 +65,8 @@ const MENUE_AKTIVE_SEITEN = [
     ['nav-videobeweis', ['videobeweis.html']],
     ['nav-sync-konflikte', ['sync-konflikte.html']],
     ['nav-nutzer', ['admin-nutzer.html']],
+    ['nav-einladungen', ['admin-einladungen.html']],
+    ['nav-erstregistrierungen', ['admin-erstregistrierungen.html']],
     ['nav-vereine', ['admin-vereine.html', 'admin-turniere.html']],
     ['nav-server-update', ['server-update.html']],
     ['hallenServerBtn', ['cluster.html']]
@@ -398,6 +400,14 @@ function baueMenueGeruest() {
                     <span class="material-icons">admin_panel_settings</span>
                     <span class="menu-text">Benutzer</span>
                 </a>
+                <a href="/admin-einladungen.html" class="menu-item" id="nav-einladungen" data-ohne-turnier style="display: none;">
+                    <span class="material-icons">forward_to_inbox</span>
+                    <span class="menu-text">Einladungen</span>
+                </a>
+                <a href="/admin-erstregistrierungen.html" class="menu-item" id="nav-erstregistrierungen" data-ohne-turnier style="display: none;">
+                    <span class="material-icons">verified_user</span>
+                    <span class="menu-text">Erstregistrierungen<sup class="menu-sup" id="nav-erstregistrierungen-zaehler" style="display: none;"></sup></span>
+                </a>
                 <a href="/admin-vereine.html" class="menu-item" id="nav-vereine" data-ohne-turnier style="display: none;">
                     <span class="material-icons">groups</span>
                     <span class="menu-text">Vereine</span>
@@ -444,12 +454,18 @@ function baueMenueGeruest() {
                 <div class="verein-switcher-menu" id="vereinSwitcherMenu" style="display: none;"></div>
             </div>
             <div class="top-header-actions">
+            <span class="theme-toggle nur-anzeige" id="cloudAnzeige" title="Cloud-Server" role="img" aria-label="Cloud-Server" style="display: none;">
+                <span class="material-icons">cloud</span>
+            </span>
             <button type="button" class="theme-toggle" id="profileBtn" title="Mein Profil">
                 <span class="material-icons">account_circle</span>
                 <span class="nav-badge" id="superAdminNavBadge" style="display: none;"></span>
             </button>
             <button type="button" class="theme-toggle" id="themeToggle" title="Ansicht umschalten">
                 <span class="material-icons" id="themeIcon">dark_mode</span>
+            </button>
+            <button type="button" class="theme-toggle" id="teilnehmerAppBtn" title="Teilnehmer-App" style="display: none;">
+                <span class="material-icons">phone_iphone</span>
             </button>
             <a href="/cluster.html" class="theme-toggle theme-toggle-text" id="hallenServerBtn" title="Status des Server-Clusters" style="display: none;">
                 <span class="material-icons">dns</span>
@@ -823,6 +839,10 @@ async function initialisiereMenue() {
         console.error('Fehler beim Laden der System-Konfiguration:', error);
     }
 
+    // Cloud-Server: Cloud-Symbol oben rechts (nur Anzeige, am Hallen-Server fehlt es).
+    const cloudAnzeige = document.getElementById('cloudAnzeige');
+    if (cloudAnzeige && configGeladen && !istOffline) cloudAnzeige.style.display = '';
+
     // --- MENÜ-RECHTE NACH ROLLE (Helferverwaltung, src/shared/menueRechte.js) ---
     // Nur in der Cloud: reine Helfer (oder Konten ohne freigegebene Rolle im aktiven Verein) sehen kein
     // Verwaltungsmenü. Im Einzelbenutzerbetrieb (Hallen-Server, Client-Gerät) bleibt alles wie bisher; ebenso,
@@ -837,7 +857,7 @@ async function initialisiereMenue() {
     const rechte = menueRechte
         ? menueRechte.menueFuerRolle({
             rolle: currentUser && currentUser.verein_rolle,
-            istSuperAdmin: !!(currentUser && currentUser.ist_super_admin),
+            istSuperAdmin: !!(currentUser && currentUser.super_admin_aktiv),
             einzelbenutzer
         })
         : { verwaltung: true, helferPlan: true, nutzer: false, helferApp: false };
@@ -887,13 +907,20 @@ async function initialisiereMenue() {
 
         let anzahl = 0;
         const teile = [];
+        const erstZaehler = document.getElementById('nav-erstregistrierungen-zaehler');
+        if (erstZaehler) erstZaehler.style.display = 'none';
 
-        if (currentUser && currentUser.ist_super_admin) {
+        if (currentUser && currentUser.super_admin_aktiv) {
             try {
                 const resp = await fetch('/api/vereine/super/pending');
                 if (resp.ok) {
                     const pending = await resp.json();
                     const n = Array.isArray(pending) ? pending.length : 0;
+                    if (erstZaehler && n > 0) {
+                        erstZaehler.textContent = String(n);
+                        erstZaehler.title = `${n} offene Erstregistrierung${n === 1 ? '' : 'en'}`;
+                        erstZaehler.style.display = '';
+                    }
                     if (n > 0) {
                         anzahl += n;
                         teile.push(`${n} Erstregistrierung${n === 1 ? '' : 'en'}`);
@@ -934,6 +961,16 @@ async function initialisiereMenue() {
     };
     await window.hajimeAktualisiereGenehmigungsHinweis();
 
+    // Nach einem Rollenwechsel (anderer Verein oder Super-Admin-Modus) zeigt die App den Zustand, den die Rolle nach
+    // dem Login sähe: Startseite der Rolle (Turniere bzw. Helfer-App), keine Reste des vorigen Turniers. verein =
+    // gewählter Verein aus currentUser.vereine, null für den Super-Admin-Modus.
+    window.hajimeNachRollenwechsel = (verein) => {
+        const verwaltet = !verein || einzelbenutzer || (menueRechte && menueRechte.verwaltbareVereine([verein]).length > 0);
+        try { localStorage.removeItem('aktiveTurnierId'); } catch { /* localStorage nicht verfügbar */ }
+        vergissMenueStand();
+        window.location.href = verwaltet ? '/turniere.html' : '/helfer.html';
+    };
+
     // --- AKTIVER VEREIN IN DER KOPFLEISTE (Anzeige + Wechsler bei mehreren Vereinen) ---
     // Ein Benutzer ist immer mindestens einem Verein zugeordnet (keine anonymen Anmeldungen);
     // bei mehreren Mitgliedschaften kann er hier den gerade "aktiven" Verein wechseln, der
@@ -941,7 +978,11 @@ async function initialisiereMenue() {
     // in src/utils/vereinHelper.js).
     (function initVereinSwitcher() {
         const vereine = currentUser && Array.isArray(currentUser.vereine) ? currentUser.vereine : [];
-        if (vereine.length === 0) return;
+        // Super-Admins (Cloud) bekommen zusätzlich den Eintrag „Super-Admin“: globale Rechte; in einem Verein
+        // gelten nur die Rechte der Rolle dort (Server und Menü).
+        const kannSuperAdminModus = !!(currentUser && currentUser.ist_super_admin) && !einzelbenutzer;
+        const imSuperAdminModus = kannSuperAdminModus && !!currentUser.super_admin_aktiv;
+        if (vereine.length === 0 && !kannSuperAdminModus) return;
 
         const switcher = document.getElementById('vereinSwitcher');
         const btn = document.getElementById('vereinSwitcherBtn');
@@ -951,10 +992,10 @@ async function initialisiereMenue() {
         if (!switcher || !btn || !nameEl || !menu) return;
 
         const aktiverVerein = vereine.find(v => v.verein_id === currentUser.verein_id) || vereine[0];
-        nameEl.textContent = aktiverVerein.name;
+        nameEl.textContent = imSuperAdminModus || !aktiverVerein ? 'Super-Admin' : aktiverVerein.name;
         switcher.style.display = '';
 
-        if (vereine.length === 1) {
+        if (vereine.length + (kannSuperAdminModus ? 1 : 0) <= 1) {
             btn.classList.add('no-dropdown');
             return;
         }
@@ -974,10 +1015,24 @@ async function initialisiereMenue() {
             return v.rolle && rollenText[v.rolle] ? `Freigegeben · ${rollenText[v.rolle]}` : 'Freigegeben';
         };
 
-        menu.replaceChildren(...vereine.map(v => {
+        const superItem = () => {
             const item = document.createElement('button');
             item.type = 'button';
-            item.className = `verein-switcher-item${v.verein_id === aktiverVerein.verein_id ? ' aktiv' : ''}`;
+            item.className = `verein-switcher-item${imSuperAdminModus ? ' aktiv' : ''}`;
+            item.dataset.superAdmin = '1';
+            const name = document.createElement('span');
+            name.textContent = 'Super-Admin';
+            const status = document.createElement('span');
+            status.className = 'verein-switcher-item-status';
+            status.textContent = 'Alle Vereine verwalten';
+            item.append(name, status);
+            return item;
+        };
+
+        menu.replaceChildren(...(kannSuperAdminModus ? [superItem()] : []), ...vereine.map(v => {
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = `verein-switcher-item${!imSuperAdminModus && v.verein_id === aktiverVerein.verein_id ? ' aktiv' : ''}`;
             item.dataset.vereinId = String(v.verein_id);
             const name = document.createElement('span');
             name.textContent = v.name;
@@ -985,7 +1040,7 @@ async function initialisiereMenue() {
             status.className = 'verein-switcher-item-status';
             status.textContent = statusText(v);
             item.append(name, status);
-            if (!darfWechseln(v) && v.verein_id !== aktiverVerein.verein_id) {
+            if (!darfWechseln(v) && (imSuperAdminModus || v.verein_id !== aktiverVerein.verein_id)) {
                 item.disabled = true;
                 item.title = 'Nur für die Helfer-App: hier fehlt die Rolle Benutzer oder Admin.';
                 item.style.opacity = '0.55';
@@ -996,8 +1051,9 @@ async function initialisiereMenue() {
 
         menu.querySelectorAll('.verein-switcher-item:not([disabled])').forEach(item => {
             item.addEventListener('click', async () => {
+                const wechselZuSuperAdmin = item.dataset.superAdmin === '1';
                 const vereinId = item.getAttribute('data-verein-id');
-                if (parseInt(vereinId) === aktiverVerein.verein_id) {
+                if (wechselZuSuperAdmin ? imSuperAdminModus : (!imSuperAdminModus && parseInt(vereinId) === aktiverVerein.verein_id)) {
                     schliesseMenu();
                     return;
                 }
@@ -1005,12 +1061,11 @@ async function initialisiereMenue() {
                     const resp = await fetch('/api/vereine/aktiv', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ vereinId })
+                        body: JSON.stringify(wechselZuSuperAdmin ? { superAdmin: true } : { vereinId })
                     });
                     const data = await resp.json();
                     if (!resp.ok) throw new Error(data.error || 'Vereinswechsel fehlgeschlagen');
-                    vergissMenueStand();
-                    window.location.reload();
+                    window.hajimeNachRollenwechsel(wechselZuSuperAdmin ? null : vereine.find(v => String(v.verein_id) === String(vereinId)));
                 } catch (err) {
                     schliesseMenu();
                     if (window.zeigeNotification) window.zeigeNotification(err.message, 'error');
@@ -1089,6 +1144,15 @@ async function initialisiereMenue() {
         };
         holeNachzueglerZaehler();
         setInterval(holeNachzueglerZaehler, 30000);
+    }
+
+    // --- TEILNEHMER-APP (Schalter am Hallen-Server, public/js/teilnehmerApp.js): Icon links vom Cluster-Symbol ---
+    if (istOffline && !document.getElementById('teilnehmerAppSkript')) {
+        const skript = document.createElement('script');
+        skript.id = 'teilnehmerAppSkript';
+        skript.src = '/js/teilnehmerApp.js';
+        skript.onload = () => window.TeilnehmerApp && window.TeilnehmerApp.init();
+        document.head.appendChild(skript);
     }
 
     // --- SERVER-CLUSTER (Hallen-Server mit CLUSTER_KNOTEN, siehe src/cluster/) ---
@@ -1208,7 +1272,7 @@ async function initialisiereMenue() {
         versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-orga', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
 
         const istErlaubteSeite = currentPath.includes('turniere.html') || currentPath.includes('profil.html') || currentPath.includes('teilnehmer.html') ||
-            (rechte.nutzer && (currentPath.includes('admin-nutzer.html') || currentPath.includes('admin-vereine.html') || currentPath.includes('admin-turniere.html') || currentPath.includes('server-update.html')));
+            (rechte.nutzer && (currentPath.includes('admin-nutzer.html') || currentPath.includes('admin-einladungen.html') || currentPath.includes('admin-erstregistrierungen.html') || currentPath.includes('admin-vereine.html') || currentPath.includes('admin-turniere.html') || currentPath.includes('server-update.html')));
         if (!istErlaubteSeite) {
             window.location.href = '/turniere.html';
             return;
@@ -1282,7 +1346,7 @@ async function initialisiereMenue() {
                     // dürfen nur die Teilnehmer-Ansicht (gefiltert auf den eigenen Verein) sehen.
                     if (currentUser && !istOffline) {
                         // Super-Admins dürfen die Turniere aller Vereine verwalten
-                        const gehoertZuEigenemVerein = !!(currentUser.ist_super_admin || (currentUser.verein_id && turnier.verein_id === currentUser.verein_id));
+                        const gehoertZuEigenemVerein = !!(currentUser.super_admin_aktiv || (currentUser.verein_id && turnier.verein_id === currentUser.verein_id));
 
                         if (!gehoertZuEigenemVerein) {
                             // Bei einem fremden Verein dürfen nur "Turniere" und "Teilnehmer" sichtbar sein.
@@ -1331,6 +1395,11 @@ async function initialisiereMenue() {
     if (vereineLink && rechte.nutzer) {
         vereineLink.style.display = '';
     }
+    // Einladungen: Super-Admins und Admins des aktiven Vereins (nur Cloud); Erstregistrierungen: nur Super-Admins
+    const einladungenLink = document.getElementById('nav-einladungen');
+    if (einladungenLink && !einzelbenutzer && rechte.helferPlan) einladungenLink.style.display = '';
+    const erstregistrierungenLink = document.getElementById('nav-erstregistrierungen');
+    if (erstregistrierungenLink && rechte.nutzer) erstregistrierungenLink.style.display = '';
     const serverUpdateLink = document.getElementById('nav-server-update');
     if (serverUpdateLink && rechte.nutzer) {
         serverUpdateLink.style.display = '';
@@ -1338,7 +1407,7 @@ async function initialisiereMenue() {
     // Super-Admins: Benutzer, Vereine und Server-Update stehen im oberen Bereich der Seitenleiste (nicht unten)
     if (rechte.nutzer) {
         const oben = document.getElementById('sidebarNavPrimary');
-        if (oben) for (const link of [nutzerLink, vereineLink, serverUpdateLink]) if (link) oben.appendChild(link);
+        if (oben) for (const link of [nutzerLink, einladungenLink, erstregistrierungenLink, vereineLink, serverUpdateLink]) if (link) oben.appendChild(link);
     }
 
     // --- AKTIVEN REITER HERVORHEBEN ---
@@ -1462,6 +1531,7 @@ async function initialisiereMenue() {
             localStorage.setItem('hajime-sidebar-collapsed', String(neuerZustand));
             anwendenSidebarZustand(neuerZustand);
         });
+        sidebarCollapseBtn.dataset.bereit = '1'; // Klick-Handler ist gebunden (Tests warten darauf)
     }
 
     // --- PROFIL HANDLER ---

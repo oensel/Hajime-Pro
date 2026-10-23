@@ -48,7 +48,7 @@ test('Nutzer bearbeiten, löschen, Initialpasswort: Rechte, Prüfungen, Schutz d
     try {
         const verein = id((await knex('vereine').insert({ name: 'JC Bearbeiten' }).returning('id'))[0]);
         await knex('benutzer').insert([
-            { id: 'u-super', email: 'super@test.de', vorname: 'Su', nachname: 'Per', ist_super_admin: true, password_hash: hashPassword('super-passwort'), email_bestaetigt_am: knex.fn.now() },
+            { id: 'u-super', email: 'super@test.de', vorname: 'Su', nachname: 'Per', ist_super_admin: true, super_admin_modus: true, password_hash: hashPassword('super-passwort'), email_bestaetigt_am: knex.fn.now() },
             { id: 'u-normal', email: 'normal@test.de', vorname: 'No', nachname: 'Rmal', password_hash: hashPassword('altes-passwort'), email_bestaetigt_am: knex.fn.now() },
             { id: 'u-neu', email: 'neu@test.de', vorname: 'Ne', nachname: 'U', password_hash: hashPassword('irgendwas1') }, // E-Mail unbestätigt
             { id: 'u-weg', email: 'weg@test.de', vorname: 'We', nachname: 'G', password_hash: hashPassword('irgendwas2'), email_bestaetigt_am: knex.fn.now() }
@@ -113,7 +113,7 @@ test('Nutzer bearbeiten, löschen, Initialpasswort: Rechte, Prüfungen, Schutz d
         // --- Löschen: nicht das eigene, nicht der letzte Super-Admin, sonst samt Mitgliedschaften
         assert.equal((await aufruf('u-super', '/u-super', 'DELETE')).status, 409);
         assert.equal((await aufruf('u-super', '/u-gibtsnicht', 'DELETE')).status, 404);
-        await knex('benutzer').insert({ id: 'u-super2', email: 'super2@test.de', vorname: 'S', nachname: 'Zwei', ist_super_admin: true, password_hash: 'x' });
+        await knex('benutzer').insert({ id: 'u-super2', email: 'super2@test.de', vorname: 'S', nachname: 'Zwei', ist_super_admin: true, super_admin_modus: true, password_hash: 'x' });
         const weg = await aufruf('u-super', '/u-weg', 'DELETE');
         assert.equal(weg.status, 200);
         assert.equal(await knex('benutzer').where({ id: 'u-weg' }).first() ?? null, null);
@@ -121,7 +121,7 @@ test('Nutzer bearbeiten, löschen, Initialpasswort: Rechte, Prüfungen, Schutz d
         // Ein weiterer Super-Admin darf gelöscht werden, solange einer übrig bleibt
         assert.equal((await aufruf('u-super', '/u-super2', 'DELETE')).status, 200);
         // u-super ist wieder der einzige: ein anderer Super-Admin-Konto-Löschversuch zeigt den Schutz
-        await knex('benutzer').where({ id: 'u-normal' }).update({ ist_super_admin: true });
+        await knex('benutzer').where({ id: 'u-normal' }).update({ ist_super_admin: true, super_admin_modus: true });
         const letzter = await aufruf('u-normal', '/u-super', 'DELETE');
         assert.equal(letzter.status, 200); // zwei Super-Admins (u-super, u-normal): u-super darf gelöscht werden
         assert.equal((await aufruf('u-normal', '/u-normal', 'DELETE')).status, 409); // eigenes Konto

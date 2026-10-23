@@ -53,7 +53,7 @@ export async function ensureSuperAdmin(knex) {
 
             benutzer = { id };
         } else if (!benutzer.ist_super_admin) {
-            await knex('benutzer').where({ id: benutzer.id }).update({ ist_super_admin: true, updated_at: knex.fn.now() });
+            await knex('benutzer').where({ id: benutzer.id }).update({ ist_super_admin: true, super_admin_modus: true, updated_at: knex.fn.now() });
         }
 
         const mitgliedschaft = await knex('benutzer_vereine')

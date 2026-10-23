@@ -22,6 +22,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     const alleZuordnungenLoeschenBtn = document.getElementById('alleZuordnungenLoeschenBtn');
     const alleDruckenBtn = document.getElementById('alleDruckenBtn');
 
+    // --- TEILNEHMER-APP: Hinweis, sobald die Pools verteilt sind und die Cloud erreichbar ist (Status kommt von teilnehmerApp.js) ---
+    const taHinweis = document.getElementById('teilnehmerAppHinweis');
+    const taSpaeterSchluessel = `teilnehmerAppSpaeter:${turnierId}`;
+    const taSpaeterGewaehlt = () => {
+        try { return !!localStorage.getItem(taSpaeterSchluessel); } catch { return false; }
+    };
+    const aktualisiereTeilnehmerAppHinweis = (s) => {
+        if (!taHinweis) return;
+        taHinweis.hidden = !(s && s.verfuegbar && !s.aktiv && s.cloudErreichbar && s.poolsVerteilt && !taSpaeterGewaehlt());
+    };
+    window.addEventListener('teilnehmerapp:status', (e) => aktualisiereTeilnehmerAppHinweis(e.detail));
+    document.getElementById('taHinweisAktivieren')?.addEventListener('click', () => {
+        if (window.TeilnehmerApp) window.TeilnehmerApp.oeffneDialog({ einschalten: true });
+    });
+    document.getElementById('taHinweisSpaeter')?.addEventListener('click', () => {
+        try { localStorage.setItem(taSpaeterSchluessel, String(Date.now())); } catch { /* ohne localStorage: nur bis zum Neuladen */ }
+        if (taHinweis) taHinweis.hidden = true;
+    });
+    if (window.TeilnehmerApp) aktualisiereTeilnehmerAppHinweis(window.TeilnehmerApp.letzterStatus());
+
     // --- UTILITIES ---
     const zeigeNotification = (nachricht, typ = 'info') => {
         if (typeof window.zeigeNotification === 'function') {

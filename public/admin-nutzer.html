@@ -10,19 +10,18 @@
         .nutzer-table { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
         .nutzer-table th:nth-child(1) { width: 14%; }
         .nutzer-table th:nth-child(2) { width: 20%; }
-        .nutzer-table th:nth-child(3) { width: 21%; }
-        .nutzer-table th:nth-child(4) { width: 18%; }
-        .nutzer-table th:nth-child(5) { width: 11%; white-space: nowrap; }
-        .nutzer-table th:nth-child(6) { width: 16%; }
+        .nutzer-table th:nth-child(3) { width: 18%; }
+        .nutzer-table th:nth-child(4) { width: 14%; }
+        .nutzer-table th:nth-child(5) { width: 34%; }
         .nutzer-table th, .nutzer-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border-color, #374151); vertical-align: top; overflow-wrap: anywhere; }
         .nutzer-table th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
         /* Eine Zeile je Benutzer; jeder weitere Verein ist eine weitere Zeile in den Spalten Verein und Rolle (gleiche Zeilenhöhe) */
         .nutzer-table .zeile { height: 30px; display: flex; align-items: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         /* Name, E-Mail und Checkbox stehen auf der Höhe der ersten Zeile von Verein und Rolle */
         .nutzer-table td:nth-child(1), .nutzer-table td:nth-child(2) { line-height: 30px; }
-        .nutzer-table td:nth-child(5) label { display: flex; align-items: center; height: 30px; }
-        .nutzer-table td:nth-child(6) { white-space: normal; }
-        .nutzer-table td:nth-child(6) .aktion { margin: 0 2px 4px 0; }
+        .nutzer-table td:nth-child(5) { white-space: nowrap; }
+        .nutzer-table td:nth-child(5) .aktion { margin: 0 2px 4px 0; }
+        .nutzer-table tbody tr:last-child td { border-bottom: none; }
         .nutzer-table tr.gesperrt td { opacity: 0.6; }
         .nutzer-werkzeuge { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-bottom: 12px; }
         .nutzer-werkzeuge .nutzer-filter { margin-bottom: 0; }
@@ -32,14 +31,25 @@
         .nutzer-table .aktion.gefahr:hover:not(:disabled) { border-color: #c62828; color: #c62828; }
         .nutzer-table .aktion:disabled { opacity: 0.35; cursor: not-allowed; }
         .nutzer-table .aktion .material-icons { font-size: 18px; }
+        .treffer-liste { list-style: none; margin: 4px 0 0; padding: 0; border: 1px solid var(--border); border-radius: 4px; }
+        .treffer-liste:empty { display: none; }
+        .treffer-liste li + li { border-top: 1px solid var(--border); }
+        .treffer-liste button { width: 100%; text-align: left; padding: 6px 10px; border: 0; background: transparent; color: var(--text-main); cursor: pointer; font-size: 13px; }
+        .treffer-liste button:hover { background: rgba(30, 58, 138, 0.08); }
+        .treffer-liste .leer { padding: 6px 10px; font-size: 13px; color: var(--text-muted); }
         dialog.nutzer-dialog { border: 2px solid var(--border); border-radius: 4px; padding: 18px 20px; width: min(420px, 92vw); background: var(--bg-card); color: var(--text-main); }
         dialog.nutzer-dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
         dialog.nutzer-dialog h2 { margin: 0 0 10px; font-size: 15px; text-transform: uppercase; letter-spacing: 0.5px; }
         dialog.nutzer-dialog label { display: block; font-size: 12px; margin: 10px 0 3px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; }
+        dialog.nutzer-dialog select { width: 100%; box-sizing: border-box; }
         dialog.nutzer-dialog input[type=text], dialog.nutzer-dialog input[type=email], dialog.nutzer-dialog input[type=password] { width: 100%; box-sizing: border-box; }
         dialog.nutzer-dialog .zeile-check { display: flex; align-items: center; gap: 8px; margin-top: 12px; text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--text-main); }
         dialog.nutzer-dialog .dialog-fehler { color: #ef4444; font-weight: 700; font-size: 13px; min-height: 18px; margin-top: 8px; }
         dialog.nutzer-dialog .dialog-knoepfe { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
+        .nutzer-table .verein-name { overflow: hidden; text-overflow: ellipsis; flex: 1 1 auto; min-width: 0; }
+        .nutzer-table .zuordnung-entfernen { flex: none; border: 0; background: none; cursor: pointer; padding: 0 2px; color: var(--text-muted); line-height: 1; }
+        .nutzer-table .zuordnung-entfernen:hover { color: #ef4444; }
+        .nutzer-table .zuordnung-entfernen .material-icons { font-size: 16px; }
         .nutzer-table .zeile + .zeile { border-top: 1px dashed var(--border); }
         .nutzer-table .status { color: var(--text-muted); font-size: 12px; }
         .nutzer-table select { width: auto; max-width: 100%; height: 26px; font-size: 13px; }
@@ -76,13 +86,13 @@
     <div id="nutzerOk" class="nutzer-ok" role="status"></div>
 
     <section class="nutzer-bereich super" aria-labelledby="superTitel">
-        <h2 id="superTitel">Super-Admins <span class="anzahl" id="superAnzahl"></span></h2>
+        <h2 id="superTitel">Super-Admins <span class="anzahl" id="superAnzahl"></span> <button type="button" class="btn btn-outlined" id="superHinzufuegenKnopf"><span class="material-icons" style="font-size:16px;vertical-align:middle;">add</span> Hinzufügen</button></h2>
         <div class="tabelle-scroll">
             <table class="nutzer-table">
                 <thead>
-                    <tr><th>Name</th><th>E-Mail</th><th>Verein</th><th>Rolle</th><th>Super-Admin</th><th>Aktionen</th></tr>
+                    <tr><th>Name</th><th>E-Mail</th><th>Verein</th><th>Rolle</th><th>Aktionen</th></tr>
                 </thead>
-                <tbody id="superListe"><tr><td colspan="6">Wird geladen …</td></tr></tbody>
+                <tbody id="superListe"><tr><td colspan="5">Wird geladen …</td></tr></tbody>
             </table>
         </div>
     </section>
@@ -92,9 +102,9 @@
         <div class="tabelle-scroll">
             <table class="nutzer-table">
                 <thead>
-                    <tr><th>Name</th><th>E-Mail</th><th>Verein</th><th>Rolle</th><th>Super-Admin</th><th>Aktionen</th></tr>
+                    <tr><th>Name</th><th>E-Mail</th><th>Verein</th><th>Rolle</th><th>Aktionen</th></tr>
                 </thead>
-                <tbody id="nutzerListe"><tr><td colspan="6">Wird geladen …</td></tr></tbody>
+                <tbody id="nutzerListe"><tr><td colspan="5">Wird geladen …</td></tr></tbody>
             </table>
         </div>
     </section>
@@ -128,6 +138,38 @@
         <div class="dialog-knoepfe">
             <button type="button" class="btn btn-outlined" id="passwortAbbrechen">Abbrechen</button>
             <button type="submit" class="btn btn-raised" id="passwortSpeichern">Passwort setzen</button>
+        </div>
+    </form>
+</dialog>
+
+<dialog class="nutzer-dialog" id="zuweisenDialog" aria-labelledby="zuweisenTitel">
+    <form method="dialog" id="zuweisenForm">
+        <h2 id="zuweisenTitel">Verein und Rolle zuweisen</h2>
+        <p id="zuweisenFuer" style="margin: 0; font-size: 13px; color: var(--text-muted);"></p>
+        <label for="zuweisenVerein">Verein</label>
+        <input type="text" id="zuweisenVerein" list="zuweisenVereineListe" autocomplete="off" placeholder="Vereinsname eingeben …" required>
+        <datalist id="zuweisenVereineListe"></datalist>
+        <label for="zuweisenRolle">Rolle</label>
+        <select id="zuweisenRolle" required></select>
+        <div class="dialog-fehler" id="zuweisenFehler" role="alert"></div>
+        <div class="dialog-knoepfe">
+            <button type="button" class="btn btn-outlined" id="zuweisenAbbrechen">Abbrechen</button>
+            <button type="submit" class="btn btn-raised" id="zuweisenSpeichern">Zuweisen</button>
+        </div>
+    </form>
+</dialog>
+
+<dialog class="nutzer-dialog" id="superHinzufuegenDialog" aria-labelledby="superHinzufuegenTitel">
+    <form method="dialog" id="superHinzufuegenForm">
+        <h2 id="superHinzufuegenTitel">Super-Admin hinzufügen</h2>
+        <label for="superHinzufuegenSuche">Konto suchen (Name oder E-Mail)</label>
+        <input type="text" id="superHinzufuegenSuche" autocomplete="off" maxlength="254">
+        <ul class="treffer-liste" id="superHinzufuegenTreffer"></ul>
+        <p id="superHinzufuegenGewaehlt" style="margin: 8px 0 0; font-size: 13px;"></p>
+        <div class="dialog-fehler" id="superHinzufuegenFehler" role="alert"></div>
+        <div class="dialog-knoepfe">
+            <button type="button" class="btn btn-outlined" id="superHinzufuegenAbbrechen">Abbrechen</button>
+            <button type="submit" class="btn btn-raised" id="superHinzufuegenSpeichern" disabled>Zum Super-Admin machen</button>
         </div>
     </form>
 </dialog>

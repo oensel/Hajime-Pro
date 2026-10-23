@@ -1,8 +1,11 @@
+import crypto from 'node:crypto';
 import { hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
 import { gueltigeFarbe } from '../shared/kampfFarbe.js';
 import { exportiereVorlagen, importiereVorlagen } from '../services/urkundenVorlagenTransfer.js';
 import { exportiereHelferplan, ersetzeHelferplan } from '../services/helferTransfer.js';
 import { exportiereOrga, ersetzeOrga } from '../services/orgaTransfer.js';
+import { erzeugeToken } from '../liveCloud/token.js';
+import { istLiveApiAktiv } from '../liveCloud/liveApiAktiv.js';
 import { entfernungZuPlzInKm } from '../utils/entfernungHelper.js';
 import { turnierHatEchteKaempfe } from './poolController.js';
 import { FachFehler } from '../utils/fachFehler.js';
@@ -176,10 +179,18 @@ export async function createTurnier(knex, req, res) {
         const turnierzeit = leseTurnierzeit(req.body);
 
         // Turnier wird an den Verein des anlegenden Benutzers gekoppelt (nicht mehr an
-        // den Benutzer selbst), und zwar an seinen aktiven Verein. requireVereinFreigabe lässt den
-        // Super-Admin auch ohne aktiven Verein durch, daher hier die Prüfung, dass einer gewählt ist.
+        // den Benutzer selbst), und zwar an seinen aktiven Verein. Im Super-Admin-Modus gibt es keinen
+        // „eigenen“ Verein: dort wählt der Super-Admin den ausrichtenden Verein aus der Vereinsliste (verein_id).
         const user = await ladeBenutzerMitAktivemVerein(knex, userId);
-        const vereinId = user ? user.verein_id : null;
+        let vereinId = user ? user.verein_id : null;
+        if (user && user.super_admin_aktiv && !istEinzelbenutzerBetrieb()) {
+            const gewaehlt = /^\d+$/.test(String(req.body.verein_id ?? '')) ? parseInt(req.body.verein_id, 10) : null;
+            const verein = gewaehlt ? await knex('vereine').where({ id: gewaehlt }).first('id') : null;
+            if (!verein) {
+                return res.status(400).json({ success: false, error: 'Bitte den ausrichtenden Verein aus der Liste wählen.' });
+            }
+            vereinId = verein.id;
+        }
         if (!vereinId) {
             return res.status(400).json({ success: false, error: 'Bitte zuerst einen aktiven Verein wählen.' });
         }
@@ -380,6 +391,10 @@ export async function getTurnier(knex, req, res) {
         // läuft über GET /api/turniere/:id/ausschreibung (siehe ladeAusschreibung unten).
         turnier.hat_ausschreibung = !!turnier.ausschreibung_pdf;
         delete turnier.ausschreibung_pdf;
+        // Zugangsdaten der Teilnehmer-App verlassen den Server nie.
+        delete turnier.live_token;
+        delete turnier.live_geheimnis;
+        delete turnier.live_ruecknahme;
 
         res.json(turnier);
     } catch (error) {
@@ -423,7 +438,7 @@ export async function getTurniere(knex, req, res) {
         const { mine, zukuenftig, lat, lon } = req.query;
         const user = await ladeBenutzerMitAktivemVerein(knex, userId);
         // Super-Admins sehen die Turniere aller Vereine, auch Entwürfe (keine Vereinsfilter)
-        const istSuperAdmin = !!(user && user.ist_super_admin);
+        const istSuperAdmin = !!(user && user.super_admin_aktiv);
 
         // Explizite Spaltenliste ohne die (potenziell mehrere MB große) PDF-Binärspalte — dieser
         // Endpunkt liefert oft viele Turniere auf einmal (siehe turniere.html) und soll die
@@ -857,8 +872,14 @@ export async function importTurnier(knex, req, res) {
 // Kern des Turnier-Imports, gemeinsam für den Datei-Import (importTurnier) und das Holen aus der
 // Cloud (cloudRoutes.js). Legt ein neues Turnier an (ohne es zu aktivieren); wirft FachFehler bei
 // ungültigem Format oder Terminüberschneidung. Der Aufrufer prüft vorher den Einzelbenutzerbetrieb.
+// Ingest-Token der Cloud aus der Exportdatei (`live.token`); alles andere gilt als nicht vorhanden.
+function gueltigesLiveToken(wert) {
+    return typeof wert === 'string' && wert.length >= 10 && wert.length <= 200 ? wert : null;
+}
+
 export async function importiereTurnierDaten(knex, sync, daten) {
         const t = daten && daten.turnier;
+        const liveToken = gueltigesLiveToken(daten && daten.live && daten.live.token);
         const kampfflaechen = (daten && daten.kampfflaechen) || [];
         const pools = (daten && daten.pools) || [];
         const teilnehmer = (daten && daten.teilnehmer) || [];
@@ -927,6 +948,10 @@ export async function importiereTurnierDaten(knex, sync, daten) {
                 // Turnierzeit und Waagenanzahl (Helferplan); ältere Dateien ohne diese Felder: leer bzw. 1
                 ...importTurnierzeit(t),
                 planungs_tools: planungsToolsWert(t.planungs_tools, !istEinzelbenutzerBetrieb()),
+                // Teilnehmer-App: Token aus der Cloud und ein eigenes Geheimnis für die Teilnehmer-Schlüssel; ein geholtes
+                // Turnier startet immer mit ausgeschalteter Freigabe (Spalte live_freigabe bleibt auf ihrem Standard).
+                live_token: liveToken,
+                live_geheimnis: liveToken ? crypto.randomBytes(32).toString('hex') : null,
                 verein_id: verein.id,
                 // Hält die ID des Quell-Turniers fest, damit ein späterer Online-Reimport
                 // (importTurnierErgebnisse) dieses (neu angelegte, lokal andere) Offline-Turnier
@@ -1084,6 +1109,14 @@ export async function exportTurnier(knex, req, res) {
 
         const exportData = await baueTurnierExport(knex, turnierId, turnier);
 
+        // Teilnehmer-App: nur wer ausdrücklich ein Live-Token anfordert (der Hallen-Server beim Holen), bekommt eines. Frühere
+        // Tokens dieses Turniers verfallen erst, wenn das neue am Ingest benutzt wird (sperreAelterTokens in liveRoutes.js).
+        if (req.query.liveToken === '1' && istLiveApiAktiv()) {
+            const turnierKey = String(turnier.urspruengliche_id ?? turnier.id);
+            const { token } = await erzeugeToken(knex, { name: `Hallen-Server ${turnier.bezeichnung}`, turnierKey });
+            exportData.live = { token };
+        }
+
         const dateiname = `turnier_${turnierId}_export_${new Date().toISOString().slice(0, 10)}.json`;
         res.setHeader('Content-Type', 'application/json');
         res.setHeader('Content-Disposition', `attachment; filename="${dateiname}"`);
@@ -1143,7 +1176,8 @@ export async function baueTurnierExport(knex, turnierId, turnierZeile = null) {
         // Ausschreibungs-PDF (Buffer) als Base64-String exportieren statt als rohes Buffer-Objekt
         // ({"type":"Buffer","data":[...]}) — analog zum bestehenden contentBase64-Muster beim
         // Turnier-Import (siehe importTurnier unten).
-        const { ausschreibung_pdf, ...turnierOhnePdf } = turnier;
+        // Token und Geheimnis der Teilnehmer-App gehören nie in eine Exportdatei.
+        const { ausschreibung_pdf, live_token, live_geheimnis, live_ruecknahme, ...turnierOhnePdf } = turnier;
         const ausschreibungPdfBase64 = ausschreibung_pdf ? Buffer.from(ausschreibung_pdf).toString('base64') : null;
 
         const exportData = {

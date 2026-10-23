@@ -179,43 +179,6 @@
             letter-spacing: 0.4px;
             color: var(--text-muted);
         }
-        .einladung-box {
-            margin: 0 0 14px 0;
-            padding: 12px;
-            border: 1px solid var(--border);
-            border-radius: 4px;
-        }
-        .einladung-box h3 {
-            margin: 0 0 6px 0;
-            font-size: 12px;
-            text-transform: uppercase;
-            letter-spacing: 0.4px;
-            color: var(--text-muted);
-        }
-        .einladung-box textarea {
-            width: 100%;
-            min-height: 64px;
-            box-sizing: border-box;
-            padding: 6px 8px;
-            font: inherit;
-            font-size: 13px;
-            border: 2px solid var(--border);
-            border-radius: 4px;
-            background: var(--bg-card);
-            color: var(--text-main);
-            resize: vertical;
-        }
-        .einladung-box .einladung-hinweis {
-            margin: 6px 0 0 0;
-            font-size: 12px;
-            color: var(--text-muted);
-        }
-        .einladung-box ul {
-            margin: 8px 0 0 0;
-            padding-left: 18px;
-            font-size: 12px;
-            color: var(--text-main);
-        }
         @media (max-width: 850px) {
             .profil-card-row {
                 flex-direction: column;
@@ -295,14 +258,6 @@
     <div id="beitrittsanfragenListe" style="display: flex; flex-direction: column;"></div>
 </div>
 </div>
-</div>
-
-<div class="mdc-card" id="superAdminCard" style="margin-top: 24px; display: none;">
-    <div class="form-title-area">
-        <span class="material-icons">verified_user</span>
-        <h1>Erstregistrierungen prüfen</h1>
-    </div>
-    <div id="erstregistrierungenListe" style="display: flex; flex-direction: column;"></div>
 </div>
 
 <div class="mdc-card" id="mitgliederCard" style="margin-top: 24px; display: none;">
@@ -489,7 +444,8 @@
                     aktivKnopf.addEventListener('click', async () => {
                         try {
                             await sendePost('/api/vereine/aktiv', { vereinId: v.verein_id });
-                            window.location.reload();
+                            if (window.hajimeNachRollenwechsel) window.hajimeNachRollenwechsel(v);
+                            else window.location.reload();
                         } catch (err) {
                             meldeFehler(err.message);
                         }
@@ -595,38 +551,6 @@
 
         ladeUndRendereBeitrittsanfragen();
 
-        // --- SUPER-ADMIN: ERSTREGISTRIERUNGEN (Vereine ohne Admin) ---
-        // Standardrolle Admin: die erste freigegebene Person eines Vereins ohne Admin wird dessen Admin.
-        async function ladeUndRendereErstregistrierungen() {
-            const liste = document.getElementById('erstregistrierungenListe');
-            try {
-                const resp = await fetch('/api/vereine/super/pending');
-                if (!resp.ok) return;
-                const pending = await resp.json();
-
-                if (!Array.isArray(pending) || pending.length === 0) {
-                    liste.replaceChildren(el('p', {
-                        style: 'font-size: 13px; color: var(--text-muted); text-align: center;',
-                        text: 'Keine offenen Erstregistrierungen.'
-                    }));
-                    return;
-                }
-                liste.replaceChildren(...pending.map(p => anfrageZeile(p, {
-                    pfad: 'super/',
-                    vorbelegt: 'admin',
-                    freigabeText: 'Erstregistrierung freigegeben.',
-                    nachher: () => { ladeUndRendereErstregistrierungen(); ladeUndRendereMitglieder(); }
-                })));
-            } catch (err) {
-                console.error('Fehler beim Laden der Erstregistrierungen:', err);
-            }
-        }
-
-        if (aktuellerNutzer && aktuellerNutzer.ist_super_admin) {
-            document.getElementById('superAdminCard').style.display = 'block';
-            ladeUndRendereErstregistrierungen();
-        }
-
         // --- MITGLIEDERVERWALTUNG (Admins des Vereins, Super-Admins; nur in der Cloud) ---
         // Rolle ändern (/api/vereine/rolle) und Entfernen (/api/vereine/entfernen); der Server lehnt z. B. das
         // Herabstufen oder Entfernen des letzten Admins ab, die Meldung erscheint als Snackbar.
@@ -634,7 +558,7 @@
             if (einzelbenutzer) return [];
             if (!aktuellerNutzer || !Array.isArray(aktuellerNutzer.vereine)) return [];
             return aktuellerNutzer.vereine.filter(v =>
-                aktuellerNutzer.ist_super_admin || (v.freigegeben && rolleReicht(v.rolle, 'admin')));
+                aktuellerNutzer.super_admin_aktiv || (v.freigegeben && rolleReicht(v.rolle, 'admin')));
         }
 
         function mitgliedZeile(verein, m, neuLaden) {
@@ -685,64 +609,6 @@
                 el('td', {}, entfernen));
         }
 
-        /** Helfer per E-Mail einladen (einzelne Adresse oder Liste); Admin des Vereins bzw. Super-Admin. */
-        function einladungsBox(verein) {
-            const feld = el('textarea', {
-                placeholder: 'E-Mail-Adressen, eine pro Zeile oder getrennt durch Komma oder Semikolon',
-                'aria-label': `E-Mail-Adressen für ${verein.name}`
-            });
-            const knopf = kleinerKnopf('Einladungen senden', 'btn-raised');
-            const ergebnis = el('ul', { style: 'display: none;' });
-            const offen = el('p', { class: 'einladung-hinweis' });
-
-            async function ladeOffene() {
-                try {
-                    const resp = await fetch(`/api/vereine/einladungen?vereinId=${encodeURIComponent(verein.verein_id)}`);
-                    const daten = await resp.json().catch(() => ({}));
-                    if (resp.status === 409) {
-                        offen.textContent = daten.error || '';
-                        feld.disabled = true;
-                        knopf.disabled = true;
-                        return;
-                    }
-                    if (!resp.ok) return;
-                    const n = (daten.einladungen || []).length;
-                    offen.textContent = n === 0 ? 'Der Link in der Mail führt zur Registrierung mit vorausgefülltem Verein und E-Mail; nach dem Speichern ist die Person sofort als Helfer freigeschaltet.'
-                        : `Offene Einladungen: ${n} (${daten.einladungen.map(e => e.email).join(', ')})`;
-                } catch { /* ohne Liste weiter */ }
-            }
-
-            const STATUS_TEXT = { gesendet: 'Einladung gesendet', bereits_mitglied: 'ist schon Mitglied, keine Mail', fehler: 'Mail konnte nicht gesendet werden' };
-            knopf.addEventListener('click', async () => {
-                if (!feld.value.trim()) { meldeFehler('Bitte mindestens eine E-Mail-Adresse eintragen.'); return; }
-                knopf.disabled = true;
-                try {
-                    const resp = await fetch('/api/vereine/einladungen', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ vereinId: verein.verein_id, emails: feld.value })
-                    });
-                    const daten = await resp.json().catch(() => ({}));
-                    if (!resp.ok) throw new Error(daten.error || 'Einladungen konnten nicht gesendet werden.');
-                    ergebnis.replaceChildren(
-                        ...daten.ergebnisse.map(r => el('li', { text: `${r.email}: ${STATUS_TEXT[r.status] || r.status}` })),
-                        ...daten.ungueltig.map(u => el('li', { text: `${u}: keine gültige E-Mail-Adresse` }))
-                    );
-                    ergebnis.style.display = '';
-                    const gesendet = daten.ergebnisse.filter(r => r.status === 'gesendet').length;
-                    if (gesendet > 0) { meldeErfolg(gesendet === 1 ? 'Einladung gesendet.' : `${gesendet} Einladungen gesendet.`); feld.value = ''; }
-                    ladeOffene();
-                } catch (err) {
-                    meldeFehler(err.message);
-                } finally {
-                    knopf.disabled = false;
-                }
-            });
-            ladeOffene();
-            return el('div', { class: 'einladung-box' }, el('h3', { text: 'Helfer einladen' }), feld,
-                el('div', { style: 'margin-top: 8px;' }, knopf), offen, ergebnis);
-        }
-
         async function rendereMitgliederVerein(verein, ziel) {
             const neuLaden = () => rendereMitgliederVerein(verein, ziel);
             try {
@@ -770,7 +636,7 @@
             bereich.replaceChildren(...vereine.map(v => {
                 const ziel = el('div', { class: 'mitglieder-scroll', 'data-verein-id': String(v.verein_id) });
                 rendereMitgliederVerein(v, ziel);
-                return el('section', {}, el('h2', { class: 'mitglieder-verein', text: v.name }), einladungsBox(v), ziel);
+                return el('section', {}, el('h2', { class: 'mitglieder-verein', text: v.name }), ziel);
             }));
         }
 

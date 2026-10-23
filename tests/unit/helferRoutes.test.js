@@ -75,7 +75,7 @@ test('Helfer-API und Helferplan-API: Rechte, Eintragen, Frist, Fremdturniere, Ma
                 email_bestaetigt_am: knex.fn.now(), password_hash: hashPassword('altes-passwort')
             });
         }
-        await knex('benutzer').where({ id: 'u-super' }).update({ ist_super_admin: true });
+        await knex('benutzer').where({ id: 'u-super' }).update({ ist_super_admin: true, super_admin_modus: true });
         await knex('benutzer_vereine').insert([
             { benutzer_id: 'u-helfer', verein_id: vereinA, freigegeben: 1, rolle: 'helfer' },
             { benutzer_id: 'u-helfer2', verein_id: vereinA, freigegeben: 1, rolle: 'helfer' },

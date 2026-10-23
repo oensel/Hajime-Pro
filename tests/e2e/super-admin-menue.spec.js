@@ -6,7 +6,7 @@ import { test, expect } from '@playwright/test';
 const SUPER = {
     id: 'e2e-super', email: 'super@example.test', vorname: 'Sam', nachname: 'Super',
     verein_id: 1, verein_name: 'Administration', verein_freigegeben: true, verein_rolle: 'admin',
-    verein_wartet_auf_super_admin: false, ist_super_admin: true,
+    verein_wartet_auf_super_admin: false, ist_super_admin: true, super_admin_aktiv: true,
     vereine: [{ verein_id: 1, name: 'Administration', freigegeben: true, rolle: 'admin' }]
 };
 
@@ -50,4 +50,87 @@ test('Super-Admin: Anstehende Turniere zeigt die Turniere aller Vereine, alle be
     const beta = page.locator('.tournament-card', { hasText: 'Entwurf Beta' });
     await expect(beta).toContainText('Ausrichter: SV Beta');
     await expect(beta.getByRole('button', { name: 'Bearbeiten' })).toBeVisible();
+});
+
+// Wechsler in der Kopfleiste: „Super-Admin“ plus die Vereine mit Mitgliedschaft; im Verein gelten nur die Rechte der Rolle.
+const MEHRFACH = {
+    ...SUPER,
+    vereine: [
+        { verein_id: 1, name: 'Administration', freigegeben: true, rolle: 'admin' },
+        { verein_id: 2, name: 'JC Alpha', freigegeben: true, rolle: 'helfer' },
+        { verein_id: 3, name: 'JC Beta', freigegeben: true, rolle: 'benutzer' }
+    ]
+};
+
+async function oeffneMitKonto(page, user, aktiv) {
+    const gesendet = [];
+    await page.route('**/api/config', (route) => route.fulfill({ json: { isOffline: false, syncRolle: null, betriebsmodus: 'cloud' } }));
+    await page.route('**/api/auth/me', (route) => route.fulfill({ json: { success: true, user: { ...user, ...aktiv } } }));
+    await page.route('**/api/vereine/aktiv', (route) => { gesendet.push(route.request().postDataJSON()); return route.fulfill({ json: { success: true, vereine: [] } }); });
+    await page.goto('/profil.html');
+    return gesendet;
+}
+
+test('Super-Admin: Wechsler zeigt Super-Admin und die eigenen Vereine und wechselt in einen Verein', async ({ page }) => {
+    const gesendet = await oeffneMitKonto(page, MEHRFACH, {});
+    await expect(page.locator('#vereinSwitcherName')).toHaveText('Super-Admin');
+    await page.locator('#vereinSwitcherBtn').click();
+    const eintraege = page.locator('#vereinSwitcherMenu .verein-switcher-item');
+    await expect(eintraege).toHaveCount(4);
+    await expect(eintraege.first()).toContainText('Super-Admin');
+    await expect(eintraege.first()).toHaveClass(/aktiv/);
+    await eintraege.filter({ hasText: 'JC Beta' }).click();
+    await expect.poll(() => gesendet).toEqual([{ vereinId: '3' }]);
+    // Wie nach dem Login: Startseite der Rolle (Benutzer → Turniere)
+    await expect(page).toHaveURL(/\/turniere\.html$/);
+});
+
+test('Super-Admin: Wechsel in einen Helfer-Verein landet in der Helfer-App', async ({ page }) => {
+    const gesendet = await oeffneMitKonto(page, MEHRFACH, {});
+    await page.evaluate(() => localStorage.setItem('aktiveTurnierId', '42'));
+    await page.locator('#vereinSwitcherBtn').click();
+    await page.locator('#vereinSwitcherMenu .verein-switcher-item', { hasText: 'JC Alpha' }).click();
+    await expect.poll(() => gesendet).toEqual([{ vereinId: '2' }]);
+    await expect(page).toHaveURL(/\/helfer\.html$/);
+});
+
+test('Super-Admin im Vereinsmodus: Menü nach Rolle, kein Benutzer/Vereine, Rückweg über den Wechsler', async ({ page }) => {
+    const gesendet = await oeffneMitKonto(page, MEHRFACH, { super_admin_aktiv: false, verein_id: 3, verein_name: 'JC Beta', verein_rolle: 'benutzer' });
+    await expect(page.locator('#vereinSwitcherName')).toHaveText('JC Beta');
+    for (const id of ['nav-nutzer', 'nav-vereine', 'nav-server-update']) {
+        await expect(page.locator(`#${id}`)).toBeHidden();
+    }
+    await expect(page.locator('#nav-helfer-app')).toBeVisible();
+    await page.locator('#vereinSwitcherBtn').click();
+    await expect(page.locator('#vereinSwitcherMenu .verein-switcher-item.aktiv')).toContainText('JC Beta');
+    await page.locator('#vereinSwitcherMenu .verein-switcher-item', { hasText: 'Super-Admin' }).click();
+    await expect.poll(() => gesendet).toEqual([{ superAdmin: true }]);
+    await expect(page).toHaveURL(/\/turniere\.html$/);
+    expect(await page.evaluate(() => localStorage.getItem('aktiveTurnierId'))).toBeNull();
+});
+
+test('Super-Admin: Turnier anlegen verlangt die Wahl des Vereins aus einer Liste', async ({ page }) => {
+    let angelegt = null;
+    await page.route('**/api/config', (route) => route.fulfill({ json: { isOffline: false, syncRolle: null, betriebsmodus: 'cloud' } }));
+    await page.route('**/api/auth/me', (route) => route.fulfill({ json: { success: true, user: MEHRFACH } }));
+    await page.route('**/api/vereine', (route) => route.fulfill({ json: [{ id: 7, name: 'JC Alpha' }, { id: 8, name: 'SV Beta' }] }));
+    await page.route('**/api/turniere', (route) => {
+        if (route.request().method() !== 'POST') return route.fallback();
+        angelegt = route.request().postDataJSON();
+        return route.fulfill({ status: 400, json: { success: false, error: 'Testende' } });
+    });
+    await page.goto('/turnier.html');
+    await expect(page.locator('#vereinWahlGruppe')).toBeVisible();
+    await expect(page.locator('#vereinWahl option')).toHaveText(['Verein wählen …', 'JC Alpha', 'SV Beta']);
+    await expect(page.locator('#ausrichter')).toHaveValue('');
+    await page.locator('#vereinWahl').selectOption({ label: 'SV Beta' });
+    await expect(page.locator('#ausrichter')).toHaveValue('SV Beta');
+
+    await page.locator('#bezeichnung').fill('Super-Cup');
+    await page.locator('#plz').fill('48308');
+    await page.locator('#ort').fill('Senden');
+    await page.locator('#datum').fill('2099-05-05');
+    await page.locator('#bundesland').selectOption({ index: 1 });
+    await page.locator('#submitBtn').click();
+    await expect.poll(() => angelegt && angelegt.verein_id).toBe(8);
 });

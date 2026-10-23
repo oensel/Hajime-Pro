@@ -83,8 +83,10 @@ export function erzeugeCloudZugriff({ fetchFn = globalThis.fetch, env = process.
             return daten;
         },
 
-        async ladeExport(token, turnierId) {
-            const antwort = await anfrage(`/api/turniere/${encodeURIComponent(turnierId)}/export`, { token, timeoutMs: EXPORT_TIMEOUT_MS });
+        // liveToken: die Cloud stellt zusätzlich ein Ingest-Token für die Teilnehmer-App aus (nur beim Holen, nicht beim Aktualisieren des Helferplans).
+        async ladeExport(token, turnierId, { liveToken = false } = {}) {
+            const pfad = `/api/turniere/${encodeURIComponent(turnierId)}/export${liveToken ? '?liveToken=1' : ''}`;
+            const antwort = await anfrage(pfad, { token, timeoutMs: EXPORT_TIMEOUT_MS });
             const daten = await lesJson(antwort, 'Das Turnier konnte nicht aus der Cloud geholt werden.');
             if (!daten || typeof daten !== 'object' || !daten.turnier) {
                 throw new FachFehler(502, 'Unerwartete Antwort der Cloud beim Export.');

@@ -2,7 +2,7 @@ import express from 'express';
 import { erzeugeApiRatenbegrenzung } from '../middleware/apiRatenbegrenzung.js';
 import {
     listeNutzer, setzeSuperAdmin, listeVereine, setzeVereinBundesland, listeVereinTurniere, aendereNutzer, loescheNutzer, setzeInitialPasswort,
-    setzeGesperrt, bestaetigeKonto, sendeBestaetigungsMailRoute, sendePasswortMail, loescheUnbestaetigte,
+    weiseMitgliedschaftZuRoute, entferneMitgliedschaftRoute,setzeGesperrt, bestaetigeKonto, sendeBestaetigungsMailRoute, sendePasswortMail, loescheUnbestaetigte,
     legeVereinAnRoute, fuehreVereineZusammenRoute, loescheVereinRoute, archiviereTurnier, loescheTurnierAlsSuperAdmin
 } from '../controllers/nutzerController.js';
 import { requireAuth, requireSuperAdmin } from '../middleware/auth.js';
@@ -15,6 +15,9 @@ export function getNutzerRoutes(knex) {
     router.post('/:id/super-admin', (req, res) => setzeSuperAdmin(knex, req, res));
     // Benutzer bearbeiten, löschen und Initialpasswort setzen
     router.post('/:id/passwort', (req, res) => setzeInitialPasswort(knex, req, res));
+    // Verein mit Rolle zuweisen (neue Mitgliedschaft, offene Anfrage freigeben oder Rolle ändern)
+    router.post('/:id/mitgliedschaft', (req, res) => weiseMitgliedschaftZuRoute(knex, req, res));
+    router.delete('/:id/mitgliedschaft/:vereinId', (req, res) => entferneMitgliedschaftRoute(knex, req, res));
     // Vereinsübersicht: Vereine mit Bundesland, Benutzer- und Turnieranzahl; Turniere je Verein
     router.get('/vereine', (req, res) => listeVereine(knex, req, res));
     router.post('/vereine', (req, res) => legeVereinAnRoute(knex, req, res));

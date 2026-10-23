@@ -65,8 +65,8 @@ test('Super-Admin-Verwaltung: sperren, Passwort-Reset, Bestätigung, Vereine, Tu
 
     try {
         await knex('benutzer').insert([
-            { id: 'u-super', email: 'super@test.de', vorname: 'Su', nachname: 'Per', ist_super_admin: true, password_hash: hashPassword('super-passwort'), email_bestaetigt_am: knex.fn.now() },
-            { id: 'u-super2', email: 'super2@test.de', vorname: 'Su', nachname: 'Zwei', ist_super_admin: true, password_hash: hashPassword('super-passwort'), email_bestaetigt_am: knex.fn.now() },
+            { id: 'u-super', email: 'super@test.de', vorname: 'Su', nachname: 'Per', ist_super_admin: true, super_admin_modus: true, password_hash: hashPassword('super-passwort'), email_bestaetigt_am: knex.fn.now() },
+            { id: 'u-super2', email: 'super2@test.de', vorname: 'Su', nachname: 'Zwei', ist_super_admin: true, super_admin_modus: true, password_hash: hashPassword('super-passwort'), email_bestaetigt_am: knex.fn.now() },
             { id: 'u-normal', email: 'normal@test.de', vorname: 'No', nachname: 'Rmal', password_hash: hashPassword('altes-passwort'), email_bestaetigt_am: knex.fn.now() },
             { id: 'u-neu', email: 'neu@test.de', vorname: 'Ne', nachname: 'U', password_hash: hashPassword('irgendwas1') }
         ]);

@@ -80,7 +80,7 @@ export function getCloudRoutes(knex, { cloud, holeCluster = () => null }) {
             if (!Number.isInteger(turnierId) || turnierId <= 0) {
                 return res.status(400).json({ success: false, error: 'Ungültige Turnier-ID.' });
             }
-            const daten = await cloud.ladeExport(String(token), turnierId);
+            const daten = await cloud.ladeExport(String(token), turnierId, { liveToken: true });
             const ergebnis = await importiereTurnierDaten(knex, req.app.get('sync'), daten);
             return res.status(201).json({ success: true, ...ergebnis });
         } catch (e) {

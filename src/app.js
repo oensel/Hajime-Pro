@@ -29,6 +29,8 @@ import { getKampfRoutes } from './routes/kampfRoutes.js';
 import { getMannschaftRoutes, getMannschaftskampfRoutes } from './routes/mannschaftRoutes.js';
 import { getUrkundenRoutes } from './routes/urkundenRoutes.js';
 import { getLiveRoutes } from './routes/liveRoutes.js';
+import { getLiveAppRoutes } from './routes/liveAppRoutes.js';
+import { starteLiveAppDienst } from './liveApp/liveAppDienst.js';
 import { getOrgaRoutes } from './routes/orgaRoutes.js';
 import { getOrgaHelferRoutes } from './routes/orgaHelferRoutes.js';
 import { getEinladungRoutes } from './routes/einladungRoutes.js';
@@ -218,7 +220,16 @@ if (syncKonfig.istClient) {
         startModus: clusterKonfig.aktiv ? 'secondary' : 'master'
     });
     app.set('sync', sync);
-    const cluster = clusterKonfig.aktiv ? starteClusterDienst({ knex, clusterKonfig, syncKonfig, sync, version: appVersion }) : null;
+    // Teilnehmer-App (Schalter am Hallen-Server): Cloud-Prüfung und Uplink im Server-Prozess; den Cluster bindet er spät.
+    const cloudZugriff = erzeugeCloudZugriff();
+    const liveApp = bm.einzelbenutzer
+        ? starteLiveAppDienst({ knex, cloud: cloudZugriff, holeCluster: () => app.get('cluster') })
+        : null;
+    app.set('liveApp', liveApp);
+    const cluster = clusterKonfig.aktiv ? starteClusterDienst({
+        knex, clusterKonfig, syncKonfig, sync, version: appVersion,
+        holeLiveAppStatus: () => app.get('liveApp')?.statusFuerPartner() ?? null
+    }) : null;
     app.set('cluster', cluster);
 
     // /db (Dokument-DB) MUSS vor express.json() hängen — sonst konsumiert der JSON-Parser die
@@ -347,7 +358,8 @@ if (syncKonfig.istClient) {
     if ((bm.istCloud || process.env.HELFER_APP_AKTIV === 'true') && process.env.SMTP_HOST && process.env.NODE_ENV !== 'test') {
         startOrgaErinnerung(knex);
     }
-    app.use('/api/cloud', requireWriteAuth, getCloudRoutes(knex, { cloud: erzeugeCloudZugriff(), holeCluster: () => app.get('cluster') }));
+    app.use('/api/cloud', requireWriteAuth, getCloudRoutes(knex, { cloud: cloudZugriff, holeCluster: () => app.get('cluster') }));
+    if (liveApp) app.use('/api/live-app', requireWriteAuth, getLiveAppRoutes(liveApp));
     app.use('/api/sync', getSyncRoutes(() => app.get('sync')));
 
     // Teilnehmer-App (Phase 2): Ingest des Live-Prozesses und öffentliche App-API. Nur in der Cloud — ein Hallen-Server

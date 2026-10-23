@@ -140,3 +140,43 @@ test('Alters- und Mannschaftsklassen auswählen und mit dem Turnier speichern', 
     const karteVeroeffentlicht = page.locator('.tournament-card').filter({ hasText: TURNIER_NAME_KLASSEN });
     await expect(karteVeroeffentlicht.locator('.status-badge')).toHaveText('Geplant');
 });
+
+test('Abbrechen nach Eingaben fragt nach, unverändert nicht', async ({ page }) => {
+    await page.goto('/turnier.html');
+    await page.locator('#abbrechenBtn').click();
+    await expect(page).toHaveURL(/\/turniere\.html/);
+
+    await page.goto('/turnier.html');
+    await page.locator('#bezeichnung').fill('Rückfrage-Test');
+    await page.locator('#abbrechenBtn').click();
+    await expect(page.locator('#modalMessage')).toContainText('nicht gespeichert');
+    await page.locator('#modalCancelBtn').click();
+    await expect(page).toHaveURL(/\/turnier\.html/);
+    await expect(page.locator('#bezeichnung')).toHaveValue('Rückfrage-Test');
+    await page.locator('#abbrechenBtn').click();
+    await page.locator('#modalConfirmBtn').click();
+    await expect(page).toHaveURL(/\/turniere\.html/);
+});
+
+test('Cloud: Entwurf speichern und Speichern und veröffentlichen beim Anlegen', async ({ page }) => {
+    await page.route('**/api/config', async (route) => {
+        const antwort = await route.fetch();
+        await route.fulfill({ response: antwort, json: { ...(await antwort.json()), isOffline: false } });
+    });
+    const aufrufe = [];
+    await page.route('**/api/turniere/*/veroeffentlichen', (route) => { aufrufe.push(route.request().url()); return route.fulfill({ json: { success: true } }); });
+    await page.goto('/turnier.html');
+    await expect(page.locator('#submitBtn')).toHaveAttribute('aria-label', 'Als Entwurf speichern');
+    await expect(page.locator('#speichernVeroeffentlichenBtn')).toBeVisible();
+
+    await page.locator('#bezeichnung').fill(`E2E-Veröffentlichen ${Date.now()}`);
+    await page.locator('#datum').fill('2027-05-16');
+    await page.locator('#ort').fill('Senden');
+    await page.locator('#plz').fill('48308');
+    await page.locator('#ausrichter').fill('JC Senden');
+    await page.locator('#bundesland').selectOption('Nordrhein-Westfalen');
+    await page.locator('#speichernVeroeffentlichenBtn').click();
+    await page.locator('#modalConfirmBtn').click();
+    await expect(page).toHaveURL(/\/turnier\.html\?id=\d+/);
+    expect(aufrufe).toHaveLength(1);
+});

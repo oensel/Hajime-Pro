@@ -23,7 +23,7 @@ Entwurf: `docs/specs/2026-10-12-teilnehmer-app-design.md`.
 3. **Am Master** die Rolle anlegen (der Standby ist schreibgeschützt; die Rolle repliziert zum Slave):
    `DB_ADMIN_USER=postgres DB_ADMIN_PASSWORD=... LIVE_DB_PASSWORD=<aus live.env> npm run live:rolle`.
 4. Den ausgegebenen `LIVE_UPLINK_TOKEN` in der Cloud hinterlegen.
-5. Im Turnier die Checkbox „Live freigeben" setzen (nur Turniere aus der Cloud).
+5. Die Freigabe geschieht über das Icon der Teilnehmer-App in der Kopfleiste (siehe unten), nicht mehr über einen Haken im Turnier.
 
 ## Konfiguration (`/opt/hajime-pro/live.env`)
 | Variable | Bedeutung |
@@ -113,3 +113,12 @@ Die Cloud sendet nur an bekannte Push-Dienste (Google, Mozilla, Microsoft, Apple
 **Prüfliste am echten Gerät** (der Versand lässt sich nur so prüfen): Android Chrome, iPhone mit Home-Bildschirm-App,
 Desktop-Browser: Glocke setzen, Berechtigung erteilen, in der Halle einen Kampf bis auf 3 Positionen vorrücken lassen,
 Nachricht und Antippen (öffnet die Übersicht) prüfen, danach Glocke aus und prüfen, dass nichts mehr kommt.
+
+## Teilnehmer-App am Hallen-Server (ohne Linux-Dienst)
+
+Ab Version mit dem Schalter läuft der Uplink auch **im Server-Prozess**, ohne `live.env`, systemd und `install-live.sh`; so funktioniert er auf einem Windows-Notebook mit USB-Tethering am Handy.
+
+- Das Turnier muss aus der Cloud geholt sein (`CLOUD_URL` gesetzt): die Cloud stellt dabei ein an das Turnier gebundenes Token aus (und sperrt das vorige). Ein erneutes Holen ersetzt das Token.
+- Sind die Pools auf die Matten verteilt und ist die Cloud erreichbar, erscheint auf `matten.html` der Hinweis „Teilnehmer-App verfügbar“; ein- und ausgeschaltet wird über das Icon in der Kopfleiste (rot = Cloud nicht erreichbar, gelb = erreichbar, aber Senden scheitert, grün = es wird gesendet, grau = aus). Beim Einschalten werden Namen, Vereine und Paarungen in die Cloud gesendet; die Funktion läuft nach einem Neustart des Servers selbstständig weiter.
+- Im Cluster sendet genau ein Knoten: bevorzugt der Secondary (dort das Tethering-Handy), sonst der Master. **Der Linux-Dienst `hajime-live` und der neue Weg dürfen nicht gleichzeitig laufen** (doppeltes Senden); wer den neuen Weg nutzt, deaktiviert den Dienst.
+- Variablen: `LIVE_APP_PRUEF_MS` (Standard 15000) und `LIVE_APP_TAKT_MS` (Standard 5000).

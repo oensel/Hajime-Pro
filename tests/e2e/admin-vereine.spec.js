@@ -6,7 +6,7 @@ import { test, expect } from '@playwright/test';
 const SUPER = {
     id: 'e2e-super', email: 'super@example.test', vorname: 'Sam', nachname: 'Super',
     verein_id: 1, verein_name: 'Administration', verein_freigegeben: true, verein_rolle: 'admin',
-    verein_wartet_auf_super_admin: false, ist_super_admin: true,
+    verein_wartet_auf_super_admin: false, ist_super_admin: true, super_admin_aktiv: true,
     vereine: [{ verein_id: 1, name: 'Administration', freigegeben: true, rolle: 'admin' }]
 };
 
