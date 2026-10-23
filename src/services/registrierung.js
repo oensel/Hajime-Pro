@@ -61,7 +61,7 @@ Falls Sie sich nicht registriert haben, können Sie diese Mail ignorieren.`
  * Ein noch unbestätigtes Konto mit derselben Adresse bleibt unverändert (kein Überschreiben von Passwort, Name
  * oder Verein durch Dritte); es bekommt nur einen neuen Bestätigungslink wie bei sendeBestaetigungNeu. Die Antwort
  * ist dann dieselbe wie bei einer neuen Adresse (201), nur eine bestätigte Adresse verrät sich (409).
- * @param {{ email, password, vorname, nachname, vereinId?, quelle?: 'helfer-app'|'verwaltung', basisUrl: string }} daten
+ * @param {{ email, password, vorname, nachname, vereinId, quelle?: 'helfer-app'|'verwaltung', basisUrl: string }} daten
  * @param {{ sende?: Function }} [optionen]
  * @returns {Promise<{ status: 201|400|409, body: object }>}
  */
@@ -81,14 +81,11 @@ export async function registriere(knex, { email, password, vorname, nachname, ve
         return antwort(400, { error: 'Ungültige Quelle der Registrierung.' });
     }
 
-    let verein = null;
-    if (vereinId != null && vereinId !== '') {
-        const vid = Number(vereinId);
-        if (Number.isInteger(vid) && vid > 0) {
-            verein = await knex('vereine').where({ id: vid }).first();
-        }
-        if (!verein) return antwort(400, { error: 'Der gewählte Verein existiert nicht.' });
-    }
+    // Der Verein ist Pflicht: ohne ihn gäbe es nach der Bestätigung keine Beitrittsanfrage und keinen Admin, der freischaltet.
+    if (vereinId == null || vereinId === '') return antwort(400, { error: 'Bitte wähle deinen Verein aus der Liste.' });
+    const vid = Number(vereinId);
+    const verein = Number.isInteger(vid) && vid > 0 ? await knex('vereine').where({ id: vid }).first() : null;
+    if (!verein) return antwort(400, { error: 'Der gewählte Verein existiert nicht.' });
 
     const vorhanden = await findeKontoPerEmail(knex, norm);
     if (vorhanden && vorhanden.email_bestaetigt_am) {
@@ -110,7 +107,7 @@ export async function registriere(knex, { email, password, vorname, nachname, ve
             updated_at: knex.fn.now()
         });
         const token = await erzeugeToken(knex, {
-            benutzerId: id, zweck: 'email', vereinId: verein ? verein.id : null, angefragtUeber: herkunft
+            benutzerId: id, zweck: 'email', vereinId: verein.id, angefragtUeber: herkunft
         });
         await sendeBestaetigungsMail(sende, { id, email: norm, vorname: vor }, basisUrl, token);
     }

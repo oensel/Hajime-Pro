@@ -59,6 +59,32 @@ export async function pruefeEinladung(knex, token) {
     return { email: e.email, name: e.name, vereinName: verein ? verein.name : '', kontoVorhanden: !!(konto && konto.email_bestaetigt_am) };
 }
 
+/**
+ * Macht das Konto zum freigegebenen 'helfer' des Vereins: legt die Mitgliedschaft an bzw. schaltet eine wartende frei
+ * (offene Freischaltungs-Links dafür werden entwertet). Eine bereits freigegebene Mitgliedschaft bleibt unverändert.
+ * @returns {Promise<boolean>} true, wenn etwas geändert wurde
+ */
+export async function legeMitgliedschaftAn(trx, benutzerId, vereinId) {
+    const mitgliedschaft = await trx('benutzer_vereine').where({ benutzer_id: benutzerId, verein_id: vereinId }).first();
+    if (!mitgliedschaft) {
+        await trx('benutzer_vereine').insert({
+            benutzer_id: benutzerId, verein_id: vereinId, freigegeben: 1, rolle: 'helfer', angefragt_ueber: 'verwaltung'
+        });
+        return true;
+    }
+    if (Number(mitgliedschaft.freigegeben)) return false;
+    await trx('benutzer_vereine').where({ benutzer_id: benutzerId, verein_id: vereinId })
+        .update({
+            freigegeben: 1, rolle: 'helfer', entschieden_von: null,
+            entschieden_am: trx.fn.now(), updated_at: trx.fn.now()
+        });
+    await trx('token_einmal')
+        .where({ benutzer_id: benutzerId, zweck: 'freischaltung', verein_id: vereinId })
+        .whereNull('benutzt_am')
+        .update({ benutzt_am: trx.fn.now() });
+    return true;
+}
+
 class Abbruch extends Error {
     constructor(status, error) {
         super(error);
@@ -133,22 +159,7 @@ export async function loeseEinladungEin(knex, token, { password, vorname, nachna
                 });
             }
 
-            const mitgliedschaft = await trx('benutzer_vereine').where({ benutzer_id: benutzerId, verein_id: e.verein_id }).first();
-            if (!mitgliedschaft) {
-                await trx('benutzer_vereine').insert({
-                    benutzer_id: benutzerId, verein_id: e.verein_id, freigegeben: 1, rolle: 'helfer', angefragt_ueber: 'verwaltung'
-                });
-            } else if (!Number(mitgliedschaft.freigegeben)) {
-                await trx('benutzer_vereine').where({ benutzer_id: benutzerId, verein_id: e.verein_id })
-                    .update({
-                        freigegeben: 1, rolle: 'helfer', entschieden_von: null,
-                        entschieden_am: trx.fn.now(), updated_at: trx.fn.now()
-                    });
-                await trx('token_einmal')
-                    .where({ benutzer_id: benutzerId, zweck: 'freischaltung', verein_id: e.verein_id })
-                    .whereNull('benutzt_am')
-                    .update({ benutzt_am: trx.fn.now() });
-            }
+            await legeMitgliedschaftAn(trx, benutzerId, e.verein_id);
 
             // Offene Aufgaben dieser Adresse in Turnieren dieses Vereins gehören jetzt dem Konto (freie Felder bleiben).
             await trx('orga_aufgaben')

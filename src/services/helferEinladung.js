@@ -4,7 +4,7 @@
 import { sendeMail } from '../utils/mailer.js';
 import { FachFehler } from '../utils/fachFehler.js';
 import { HINWEIS_FEHLENDE_BASIS_URL } from '../utils/basisUrl.js';
-import { erzeugeEinladung, EINLADUNG_GUELTIG_TAGE } from './orgaEinladung.js';
+import { erzeugeEinladung, legeMitgliedschaftAn, EINLADUNG_GUELTIG_TAGE } from './orgaEinladung.js';
 import { findeKontoPerEmail, normalisiereEmail, MAX_EMAIL_LAENGE } from './registrierung.js';
 import { istFreigegebenesMitglied } from '../utils/vereinHelper.js';
 
@@ -37,7 +37,7 @@ export function zerlegeEmailListe(eingabe) {
     return { adressen, ungueltig };
 }
 
-function basis(basisUrl) {
+export function basis(basisUrl) {
     const b = typeof basisUrl === 'string' ? basisUrl.trim().replace(/\/+$/, '') : '';
     if (!b) {
         const e = new FachFehler(503, HINWEIS_FEHLENDE_BASIS_URL);
@@ -45,6 +45,15 @@ function basis(basisUrl) {
         throw e;
     }
     return b;
+}
+
+function zuordnungsMailText(vereinName, link) {
+    return `Hallo,
+
+${vereinName} hat Sie in Hajime Pro als Helfer aufgenommen. Sie können sich mit Ihrem bestehenden Konto anmelden und ${vereinName} im Vereinswechsler wählen:
+${link}
+
+Falls Sie das nicht erwartet haben, wenden Sie sich bitte an den Verein.`;
 }
 
 function mailText(vereinName, link) {
@@ -59,8 +68,10 @@ Falls Sie die Einladung nicht erwartet haben, können Sie diese Mail ignorieren.
 }
 
 /**
- * Versendet Helfer-Einladungen. Ergebnis je Adresse: 'gesendet', 'bereits_mitglied' (freigegebenes Mitglied des Vereins,
- * keine Mail) oder 'fehler' (Mailversand fehlgeschlagen; die Einladung wird dann entwertet statt offen zu bleiben).
+ * Nimmt Personen per E-Mail in den Verein auf. Ergebnis je Adresse: 'gesendet' (neue Adresse: Einladung mit Link zur
+ * Registrierung, danach sofort freigegeben), 'zugeordnet' (die Adresse hat schon ein Konto: es wird direkt als Helfer
+ * des Vereins freigegeben, weitere Vereine bleiben, kurze Info-Mail), 'bereits_mitglied' (freigegebenes Mitglied des
+ * Vereins, keine Mail) oder 'fehler' (Mailversand fehlgeschlagen; die Einladung wird dann entwertet statt offen zu bleiben).
  * @returns {Promise<{ ergebnisse: { email: string, status: string }[], ungueltig: string[] }>}
  */
 export async function sendeHelferEinladungen(knex, { vereinId, eingabe, basisUrl, sende = sendeMail }) {
@@ -82,6 +93,27 @@ export async function sendeHelferEinladungen(knex, { vereinId, eingabe, basisUrl
             ergebnisse.push({ email, status: 'bereits_mitglied' });
             continue;
         }
+        // Nur Konten, die schon irgendwo Mitglied sind, werden direkt zugeordnet (Vereins-Admins können Konten mit weiteren
+        // Vereinen nicht verwalten). Ein Konto ganz ohne Zuordnung bekäme der Admin sonst in die Hand: es geht über die
+        // Einladung, die die Person selbst mit ihrem Passwort einlöst.
+        if (konto && await knex('benutzer_vereine').where({ benutzer_id: konto.id }).first('verein_id')) {
+            await knex.transaction(async (trx) => {
+                await legeMitgliedschaftAn(trx, konto.id, vereinId);
+                await trx('benutzer').where({ id: konto.id }).whereNull('aktiver_verein_id')
+                    .update({ aktiver_verein_id: vereinId, updated_at: trx.fn.now() });
+            });
+            ergebnisse.push({ email, status: 'zugeordnet' });
+            try {
+                await sende({
+                    to: email,
+                    subject: `Hajime Pro: Sie gehören jetzt zu ${verein.name}`,
+                    text: zuordnungsMailText(verein.name, `${b}/login.html`)
+                });
+            } catch (err) {
+                console.error('[Helfer-Einladung] Info-Mail fehlgeschlagen:', err.message);
+            }
+            continue;
+        }
         const token = await erzeugeEinladung(knex, { email, vereinId });
         try {
             await sende({
@@ -93,6 +125,54 @@ export async function sendeHelferEinladungen(knex, { vereinId, eingabe, basisUrl
         } catch (err) {
             console.error('[Helfer-Einladung] Mail fehlgeschlagen:', err.message);
             await knex('orga_einladungen').where({ verein_id: vereinId, email }).whereNull('benutzt_am').update({ laeuft_ab_am: knex.fn.now() });
+            ergebnisse.push({ email, status: 'fehler' });
+        }
+    }
+    return { ergebnisse, ungueltig };
+}
+
+function registrierungsMailText(link) {
+    return `Hallo,
+
+Sie sind zu Hajime Pro eingeladen, der Turnierverwaltung für Judo-Wettkämpfe.
+
+Über diesen Link legen Sie Ihr Konto an und wählen dabei Ihren Verein (nach der Bestätigung Ihrer E-Mail-Adresse schaltet ein Admin des Vereins Sie frei):
+${link}
+
+Falls Sie die Einladung nicht erwartet haben, können Sie diese Mail ignorieren.`;
+}
+
+/**
+ * Lädt Personen ohne Angabe eines Vereins zur Registrierung ein. Die Mail führt auf die normale Registrierung
+ * (E-Mail vorbelegt); Verein, E-Mail-Bestätigung und Freischaltung laufen wie bei jeder Registrierung, es gibt
+ * keinen Einmal-Token und keine Sofort-Freischaltung. Ergebnis je Adresse: 'gesendet', 'bereits_konto' (die Adresse
+ * hat schon ein Konto, keine Mail) oder 'fehler' (Mailversand fehlgeschlagen).
+ * @returns {Promise<{ ergebnisse: { email: string, status: string }[], ungueltig: string[] }>}
+ */
+export async function sendeRegistrierungsEinladungen(knex, { eingabe, basisUrl, sende = sendeMail }) {
+    const { adressen, ungueltig } = zerlegeEmailListe(eingabe);
+    if (adressen.length === 0 && ungueltig.length === 0) {
+        throw Object.assign(new FachFehler(400, 'Bitte mindestens eine E-Mail-Adresse angeben.'), { status: 400 });
+    }
+    if (adressen.length > MAX_EINLADUNGEN_JE_ANFRAGE) {
+        throw Object.assign(new FachFehler(400, `Bitte höchstens ${MAX_EINLADUNGEN_JE_ANFRAGE} Adressen auf einmal einladen.`), { status: 400 });
+    }
+    const b = basis(basisUrl);
+    const ergebnisse = [];
+    for (const email of adressen) {
+        if (await findeKontoPerEmail(knex, email)) {
+            ergebnisse.push({ email, status: 'bereits_konto' });
+            continue;
+        }
+        try {
+            await sende({
+                to: email,
+                subject: 'Hajime Pro: Einladung zur Registrierung',
+                text: registrierungsMailText(`${b}/login.html?registrieren=1&email=${encodeURIComponent(email)}`)
+            });
+            ergebnisse.push({ email, status: 'gesendet' });
+        } catch (err) {
+            console.error('[Registrierungs-Einladung] Mail fehlgeschlagen:', err.message);
             ergebnisse.push({ email, status: 'fehler' });
         }
     }

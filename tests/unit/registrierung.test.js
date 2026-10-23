@@ -81,7 +81,7 @@ test('Registrierung: unbestätigt anlegen, bestätigen, Anfrage an den Verein', 
         // --- Drosselung: ist der letzte Bestätigungs-Token jünger als 2 Minuten, geht keine weitere Mail raus
         // (gleiche Antwort, der bisherige Link bleibt gültig)
         const gedrosselt = await registriere(knex, {
-            email: 'erika@example.de', password: 'geheim123', vorname: 'Erika', nachname: 'Muster', basisUrl: BASIS
+            email: 'erika@example.de', password: 'geheim123', vorname: 'Erika', nachname: 'Muster', vereinId: mitAdmin, basisUrl: BASIS
         }, { sende });
         assert.deepEqual(gedrosselt, r1);
         assert.deepEqual(await sendeBestaetigungNeu(knex, 'erika@example.de', BASIS, { sende }), { ok: true });
@@ -140,7 +140,7 @@ test('Registrierung: unbestätigt anlegen, bestätigen, Anfrage an den Verein', 
 
         // --- bestätigte Adresse bereits vergeben → 409 (auch in anderer Schreibweise), keine Mail
         const r409 = await registriere(knex, {
-            email: 'Erika@example.de', password: 'anderes123', vorname: 'X', nachname: 'Y', basisUrl: BASIS
+            email: 'Erika@example.de', password: 'anderes123', vorname: 'X', nachname: 'Y', vereinId: mitAdmin, basisUrl: BASIS
         }, { sende });
         assert.equal(r409.status, 409);
         assert.equal(gesendet.length, 3);
@@ -159,17 +159,13 @@ test('Registrierung: unbestätigt anlegen, bestätigen, Anfrage an den Verein', 
         assert.deepEqual(gesendet[4].to, ['super@test.de']);
         tokenAusLink(gesendet[4].text, 'freigabe.html');
 
-        // --- ohne vereinId (Altfluss): Bestätigung ohne Mitgliedschaft und ohne Admin-Mail
+        // --- ohne Verein: Pflichtangabe, es entsteht weder ein Konto noch eine Mail
         const r4 = await registriere(knex, {
             email: 'alt@example.de', password: 'geheim123', vorname: 'Alt', nachname: 'Fluss', basisUrl: BASIS
         }, { sende });
-        assert.equal(r4.status, 201);
-        const altToken = tokenAusLink(gesendet[5].text, 'bestaetigen.html');
-        assert.deepEqual(await bestaetige(knex, altToken, BASIS, { sende }), { ok: true });
-        const alt = await knex('benutzer').where({ email: 'alt@example.de' }).first();
-        assert.ok(alt.email_bestaetigt_am);
-        assert.equal(await knex('benutzer_vereine').where({ benutzer_id: alt.id }).first(), undefined);
-        assert.equal(gesendet.length, 6);
+        assert.equal(r4.status, 400);
+        assert.equal(await knex('benutzer').where({ email: 'alt@example.de' }).first(), undefined);
+        assert.equal(gesendet.length, 5);
 
         // --- Validierung
         const zuKurz = await registriere(knex, {
@@ -191,7 +187,7 @@ test('Registrierung: unbestätigt anlegen, bestätigen, Anfrage an den Verein', 
         }, { sende });
         assert.equal(zuLang.status, 400);
         assert.deepEqual(await sendeBestaetigungNeu(knex, `${'l'.repeat(250)}@x.de`, BASIS, { sende }), { ok: true });
-        assert.equal(gesendet.length, 6);
+        assert.equal(gesendet.length, 5);
         for (const e of ['kurz@example.de', 'unb@example.de', 'f@example.de', 'q@example.de']) {
             assert.equal(await knex('benutzer').where({ email: e }).first(), undefined);
         }
@@ -201,16 +197,16 @@ test('Registrierung: unbestätigt anlegen, bestätigen, Anfrage an den Verein', 
             email: 'neu@example.de', password: 'geheim123', vorname: 'Neu', nachname: 'Send',
             vereinId: mitAdmin, quelle: 'verwaltung', basisUrl: BASIS
         }, { sende });
-        const neuAlt = tokenAusLink(gesendet[6].text, 'bestaetigen.html');
+        const neuAlt = tokenAusLink(gesendet[5].text, 'bestaetigen.html');
         await altereEmailTokens((await knex('benutzer').where({ email: 'neu@example.de' }).first()).id);
         assert.deepEqual(await sendeBestaetigungNeu(knex, ' NEU@example.de', BASIS, { sende }), { ok: true });
-        assert.equal(gesendet.length, 8);
-        const neuToken = tokenAusLink(gesendet[7].text, 'bestaetigen.html');
+        assert.equal(gesendet.length, 7);
+        const neuToken = tokenAusLink(gesendet[6].text, 'bestaetigen.html');
         assert.equal(await pruefeToken(knex, neuAlt, 'email'), null);
         assert.equal((await pruefeToken(knex, neuToken, 'email')).verein_id, mitAdmin);
         assert.deepEqual(await sendeBestaetigungNeu(knex, 'gibtsnicht@example.de', BASIS, { sende }), { ok: true });
         assert.deepEqual(await sendeBestaetigungNeu(knex, 'erika@example.de', BASIS, { sende }), { ok: true });
-        assert.equal(gesendet.length, 8, 'unbekannte/bestätigte Adressen bekommen keine Mail');
+        assert.equal(gesendet.length, 7, 'unbekannte/bestätigte Adressen bekommen keine Mail');
         assert.deepEqual(await bestaetige(knex, neuToken, BASIS, { sende }), { ok: true, vereinId: mitAdmin });
         const neu = await knex('benutzer').where({ email: 'neu@example.de' }).first();
         assert.equal((await knex('benutzer_vereine').where({ benutzer_id: neu.id }).first()).angefragt_ueber, 'verwaltung');
@@ -238,7 +234,7 @@ ${mail.text}`); });
                 if (wert === undefined) delete process.env.PUBLIC_BASE_URL; else process.env.PUBLIC_BASE_URL = wert;
                 const res503 = fakeRes();
                 const log = await mitLog(() => register(knex, gefaelscht(
-                    { email: 'ctrl@example.de', password: 'geheim123', vorname: 'C', nachname: 'Trl' }), res503));
+                    { email: 'ctrl@example.de', password: 'geheim123', vorname: 'C', nachname: 'Trl', vereinId: mitAdmin }), res503));
                 assert.equal(res503.statusCode, 503, `PUBLIC_BASE_URL=${wert}`);
                 assert.equal(res503.body.error, 'Die Registrierung ist derzeit nicht verfügbar.');
                 assert.match(log, /PUBLIC_BASE_URL/);
@@ -256,7 +252,7 @@ ${mail.text}`); });
             process.env.PUBLIC_BASE_URL = ' https://hajime.example/irgendwas/ ';
             const res201 = fakeRes();
             const log201 = await mitLog(() => register(knex, gefaelscht(
-                { email: 'ctrl@example.de', password: 'geheim123', vorname: 'C', nachname: 'Trl' }), res201));
+                { email: 'ctrl@example.de', password: 'geheim123', vorname: 'C', nachname: 'Trl', vereinId: mitAdmin }), res201));
             assert.equal(res201.statusCode, 201);
             assert.equal(res201.body.token, undefined);
             assert.match(log201, /https:\/\/hajime\.example\/bestaetigen\.html\?token=/);
@@ -267,7 +263,7 @@ ${mail.text}`); });
             process.env.BETRIEBSMODUS = 'server';
             const resServer = fakeRes();
             const logServer = await mitLog(() => register(knex, gefaelscht(
-                { email: 'ctrl2@example.de', password: 'geheim123', vorname: 'C', nachname: 'Zwei' }), resServer));
+                { email: 'ctrl2@example.de', password: 'geheim123', vorname: 'C', nachname: 'Zwei', vereinId: mitAdmin }), resServer));
             assert.equal(resServer.statusCode, 201);
             assert.match(logServer, /http:\/\/boese\.example\/bestaetigen\.html\?token=/);
         } finally {
@@ -284,7 +280,7 @@ ${mail.text}`); });
         await login(knex, { body: { email: 'legacy@test.de', password: 'legacy123' } }, resLegacy);
         assert.equal(resLegacy.statusCode, 200);
         const rLegacy = await registriere(knex, {
-            email: 'legacy@test.de', password: 'geheim123', vorname: 'L', nachname: 'G', basisUrl: BASIS
+            email: 'legacy@test.de', password: 'geheim123', vorname: 'L', nachname: 'G', vereinId: mitAdmin, basisUrl: BASIS
         }, { sende });
         assert.equal(rLegacy.status, 409);
 

@@ -158,6 +158,44 @@
             margin-top: 8px;
             display: none;
         }
+        .popup-hintergrund {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            z-index: 100;
+        }
+        .popup-hintergrund.offen {
+            display: flex;
+        }
+        .popup-karte {
+            background: #1f2937;
+            border: 1px solid #374151;
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 360px;
+            width: 100%;
+            text-align: center;
+            color: #f3f4f6;
+        }
+        .popup-karte p {
+            margin: 0 0 8px;
+            font-size: 14px;
+            font-weight: 700;
+            line-height: 1.5;
+        }
+        .popup-karte .popup-info {
+            font-size: 13px;
+            font-weight: 400;
+            color: #93c5fd;
+            min-height: 20px;
+        }
+        .popup-karte .btn-link {
+            display: inline-block;
+        }
         .form-hinweis {
             font-size: 12px;
             color: #9ca3af;
@@ -252,14 +290,14 @@
             <input type="password" id="registerPassword" required placeholder="mindestens 8 Zeichen" minlength="8">
         </div>
         <div class="form-group">
-            <label for="registerVerein">Verein (optional)</label>
+            <label for="registerVerein">Verein</label>
             <div class="verein-suche">
                 <input type="text" id="registerVerein" autocomplete="off" role="combobox"
                        aria-autocomplete="list" aria-expanded="false" aria-controls="registerVereinListe"
-                       aria-describedby="registerVereinHinweis" placeholder="Vereinsname eingeben (ab 2 Zeichen)">
+                       aria-describedby="registerVereinHinweis" required placeholder="Vereinsname eingeben (ab 2 Zeichen)">
                 <ul id="registerVereinListe" class="verein-vorschlaege" role="listbox" hidden></ul>
             </div>
-            <span id="registerVereinHinweis" class="form-hinweis" role="status">Nur Vereine aus der Liste. Ohne Angabe wählst du den Verein nach der Anmeldung.</span>
+            <span id="registerVereinHinweis" class="form-hinweis" role="status">Nur Vereine aus der Liste. Ein Admin des Vereins schaltet dich nach der E-Mail-Bestätigung frei.</span>
         </div>
         <button type="submit" class="btn-login">Konto erstellen</button>
     </form>
@@ -267,6 +305,15 @@
     <div id="errorMessage" class="error-message"></div>
     <div id="infoMessage" class="info-message" role="status"></div>
     <button type="button" id="bestaetigungErneut" class="btn-link">Mail erneut senden</button>
+</div>
+
+<div id="registrierungPopup" class="popup-hintergrund" role="dialog" aria-modal="true" aria-labelledby="popupText">
+    <div class="popup-karte">
+        <p id="popupText">Wir haben dir eine E-Mail geschickt. Bitte bestätige deine Adresse über den Link.</p>
+        <p id="popupInfo" class="popup-info" role="status"></p>
+        <button type="button" id="popupErneut" class="btn-login">Mail erneut senden</button>
+        <button type="button" id="popupSchliessen" class="btn-link">Zur Anmeldung</button>
+    </div>
 </div>
 
 <script>
@@ -309,6 +356,35 @@
         }
     });
 
+    const popup = document.getElementById('registrierungPopup');
+    const popupInfo = document.getElementById('popupInfo');
+    const popupErneut = document.getElementById('popupErneut');
+
+    popupErneut.addEventListener('click', async () => {
+        if (!unbestaetigteEmail) return;
+        popupErneut.disabled = true;
+        try {
+            const response = await fetch('/api/auth/email-bestaetigung-erneut', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: unbestaetigteEmail })
+            });
+            const data = await response.json();
+            popupInfo.textContent = data.message || 'Bestätigungsmail wurde erneut gesendet.';
+        } catch (err) {
+            popupInfo.textContent = 'Senden fehlgeschlagen. Bitte versuche es später erneut.';
+        } finally {
+            popupErneut.disabled = false;
+        }
+    });
+
+    document.getElementById('popupSchliessen').addEventListener('click', () => {
+        popup.classList.remove('offen');
+        popupInfo.textContent = '';
+        showTab('login');
+        document.getElementById('loginEmail').value = unbestaetigteEmail;
+    });
+
     function showTab(tab) {
         versteckeMeldungen();
         if (tab === 'login') {
@@ -345,11 +421,34 @@
         }
     }
 
+    // Weiterleitungsziel (?weiter=… aus der Mail "Turnier teilen"): bleibt 7 Tage im Browser, damit es auch nach
+    // Registrierung, E-Mail-Bestätigung und erstem Login noch greift. Nur Seiten dieser Anwendung sind erlaubt.
+    const WEITER_SCHLUESSEL = 'hajime_weiter';
+    const WEITER_TAGE = 7;
+    async function sichereWeiter(wert) {
+        const { sichereWeiterleitung } = await import('/js/shared/weiterZiel.js');
+        return sichereWeiterleitung(wert);
+    }
+    async function gemerktesWeiterziel() {
+        try {
+            const gespeichert = JSON.parse(localStorage.getItem(WEITER_SCHLUESSEL) || 'null');
+            if (!gespeichert || gespeichert.bis < Date.now()) return null;
+            return await sichereWeiter(gespeichert.pfad);
+        } catch {
+            return null;
+        }
+    }
+
     // Ziel nach der Anmeldung: ohne Verein zur Vereinsauswahl (Altfluss), Konten ohne Verwaltungsrecht
     // (nur Helfer, Freischaltung ausstehend) zur Helfer-App, sonst zur Turnierübersicht. Ist der aktive
     // Verein ein reiner Helfer-Verein, gibt es aber einen verwaltbaren, wechselt menu.js dorthin.
     async function zielNachAnmeldung(user) {
         if (user.muss_passwort_aendern) return '/profil.html?passwortAendern=1';
+        const weiter = await gemerktesWeiterziel();
+        if (weiter) {
+            try { localStorage.removeItem(WEITER_SCHLUESSEL); } catch { /* localStorage gesperrt */ }
+            return weiter;
+        }
         if (!user.verein_id) return '/verein_auswahl.html';
         try {
             const { menueFuerRolle, verwaltbareVereine } = await geteilt;
@@ -370,7 +469,7 @@
     }
 
     // --- Verein mit Autovervollständigung (Registrierung) ---
-    // Nur Vereine aus der Liste sind wählbar; das Feld ist optional.
+    // Nur Vereine aus der Liste sind wählbar; das Feld ist Pflicht.
     const vereinEingabe = document.getElementById('registerVerein');
     const vereinListe = document.getElementById('registerVereinListe');
     const vereinHinweis = document.getElementById('registerVereinHinweis');
@@ -510,17 +609,15 @@
         const email = document.getElementById('registerEmail').value;
         const password = document.getElementById('registerPassword').value;
 
-        // Freitext ohne Auswahl aus der Liste wird nicht als Verein übernommen
-        const vereinText = vereinEingabe.value.trim();
-        if (vereinText && (!gewaehlterVerein || vereinEingabe.value !== gewaehlterVerein.name)) {
-            errDiv.textContent = 'Bitte wähle einen Verein aus der Liste oder lass das Feld leer.';
+        // Der Verein ist Pflicht und muss aus der Liste stammen (Freitext wird nicht übernommen)
+        if (!gewaehlterVerein || vereinEingabe.value !== gewaehlterVerein.name) {
+            errDiv.textContent = 'Bitte wähle deinen Verein aus der Liste.';
             errDiv.style.display = 'block';
             vereinEingabe.focus();
             return;
         }
 
-        const daten = { vorname, nachname, email, password, quelle: 'verwaltung' };
-        if (vereinText) daten.vereinId = gewaehlterVerein.id;
+        const daten = { vorname, nachname, email, password, vereinId: gewaehlterVerein.id, quelle: 'verwaltung' };
 
         try {
             const response = await fetch('/api/auth/register', {
@@ -534,17 +631,47 @@
                 throw new Error(data.error || 'Registrierung fehlgeschlagen');
             }
 
-            // Das Konto ist erst nach der E-Mail-Bestätigung nutzbar (kein Token). Mit Verein entsteht danach
-            // die Beitrittsanfrage, ohne Verein folgt der Beitritt über die Vereinsauswahl.
+            // Das Konto ist erst nach der E-Mail-Bestätigung nutzbar (kein Token). Danach entsteht
+            // die Beitrittsanfrage an den gewählten Verein.
             unbestaetigteEmail = email;
             registerForm.reset();
             gewaehlterVerein = null;
-            zeigeInfo('Wir haben dir eine E-Mail geschickt. Bitte bestätige deine Adresse über den Link.', true);
+            popupInfo.textContent = '';
+            popup.classList.add('offen');
+            popupErneut.focus();
         } catch (err) {
             errDiv.textContent = err.message;
             errDiv.style.display = 'block';
         }
     });
+
+    // Aufruf aus einer Mail: ?weiter=<Seite> (Ziel merken, bei bestehender Sitzung sofort dorthin) und
+    // ?registrieren=1&email=<Adresse> (Reiter "Konto erstellen" mit vorbelegter Adresse, Einladung ohne Verein).
+    (async () => {
+        const parameter = new URLSearchParams(window.location.search);
+        const weiter = parameter.get('weiter') ? await sichereWeiter(parameter.get('weiter')) : null;
+        if (weiter) {
+            try {
+                localStorage.setItem(WEITER_SCHLUESSEL, JSON.stringify({ pfad: weiter, bis: Date.now() + WEITER_TAGE * 86400000 }));
+            } catch { /* localStorage gesperrt: das Ziel geht dann verloren, die Anmeldung funktioniert trotzdem */ }
+            const token = localStorage.getItem('dokume_token');
+            if (token) {
+                try {
+                    const antwort = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } });
+                    if (antwort.ok) {
+                        localStorage.removeItem(WEITER_SCHLUESSEL);
+                        window.location.replace(weiter);
+                        return;
+                    }
+                } catch { /* ohne Prüfung: normale Anmeldung */ }
+            }
+        }
+        if (parameter.get('registrieren') === '1') {
+            showTab('register');
+            const email = parameter.get('email');
+            if (email) document.getElementById('registerEmail').value = email;
+        }
+    })();
 </script>
 </body>
 </html>

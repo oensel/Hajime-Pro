@@ -96,7 +96,8 @@ const NEUSTART_DATEI = path.join(WURZEL, 'data', 'neustart.anfordern');
 
 async function start() {
     if (!fs.existsSync(ENV_DATEI)) einrichten([]);
-    const env = { ...kindUmgebung(), HAJIME_UEBERWACHT: '1' };
+    // Die Umgebung wird bei jedem Neustart neu gelesen, damit Änderungen an .env.cloud-lokal ohne Neustart des Überwachers gelten.
+    let env = { ...kindUmgebung(), HAJIME_UEBERWACHT: '1' };
     fs.rmSync(NEUSTART_DATEI, { force: true });
     let beenden = false;
     let app = null;
@@ -107,6 +108,7 @@ async function start() {
             fuehreAus('scripts/lokale-pg.mjs', ['stopp'], env);
             fuehreVorgemerktenAustauschAus(WURZEL);
         }
+        env = { ...kindUmgebung(), HAJIME_UEBERWACHT: '1' };
         fuehreAus('scripts/lokale-pg.mjs', ['start'], env);
         fuehreAus('node_modules/knex/bin/cli.js', ['migrate:latest', '--knexfile', 'knexfile.cjs', '--env', 'online'], env);
         console.log(`Starte Cloud-Server auf Port ${PORT} (${env.PUBLIC_BASE_URL}) …`);

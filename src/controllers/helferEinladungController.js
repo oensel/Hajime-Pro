@@ -1,6 +1,7 @@
 // Helfer per E-Mail in den Verein einladen (Admins, nur außerhalb des Einzelbenutzerbetriebs): siehe services/helferEinladung.js.
 import { darfVereinVerwalten } from '../services/vereinsRollen.js';
-import { sendeHelferEinladungen, ladeOffeneEinladungen } from '../services/helferEinladung.js';
+import { sendeHelferEinladungen, sendeRegistrierungsEinladungen, ladeOffeneEinladungen } from '../services/helferEinladung.js';
+import { istSuperAdminAktiv, ladeVereinIdsMitRolle } from '../utils/vereinHelper.js';
 import { ermittleBasisUrl } from '../utils/basisUrl.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 import { sendeMail } from '../utils/mailer.js';
@@ -27,9 +28,29 @@ async function pruefeZugriff(knex, req, res) {
     return vereinId;
 }
 
-/** POST /api/vereine/einladungen  { vereinId, emails: string | string[] } */
+/** Ohne Verein einladen dürfen Admins irgendeines Vereins und Super-Admins. */
+async function darfOhneVereinEinladen(knex, benutzerId) {
+    const benutzer = await knex('benutzer').where({ id: benutzerId }).first();
+    if (istSuperAdminAktiv(benutzer)) return true;
+    return (await ladeVereinIdsMitRolle(knex, benutzerId, 'admin')).length > 0;
+}
+
+/** POST /api/vereine/einladungen  { vereinId?, emails: string | string[] } — ohne vereinId: Einladung zur Registrierung */
 export async function sendeEinladungenRoute(knex, req, res, { sende = sendeMail } = {}) {
     try {
+        const roh = (req.body || {}).vereinId;
+        if (roh === undefined || roh === null || roh === '') {
+            if (betriebsmodus.istEinzelbenutzerBetrieb()) {
+                return res.status(409).json({ success: false, error: 'Einladungen per E-Mail gibt es nur in der Cloud.' });
+            }
+            if (!(await darfOhneVereinEinladen(knex, req.user.id))) {
+                return res.status(403).json({ success: false, error: 'Nur Admins eines Vereins und Super-Admins dürfen einladen.' });
+            }
+            const antwort = await sendeRegistrierungsEinladungen(knex, {
+                eingabe: (req.body || {}).emails, basisUrl: ermittleBasisUrl(req), sende
+            });
+            return res.json({ success: true, ...antwort });
+        }
         const vereinId = await pruefeZugriff(knex, req, res);
         if (!vereinId) return;
         const antwort = await sendeHelferEinladungen(knex, {

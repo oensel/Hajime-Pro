@@ -26,12 +26,12 @@
         <h1>Einladungen</h1>
         <span class="material-icons">forward_to_inbox</span>
     </div>
-    <p style="color: var(--text-muted); font-size: 13px; margin-top: 0;">Helfer per E-Mail einladen. Der Link in der Mail führt zur Registrierung mit vorausgefülltem Verein und E-Mail-Adresse; nach dem Speichern ist die Person sofort als Helfer freigeschaltet.</p>
+    <p style="color: var(--text-muted); font-size: 13px; margin-top: 0;">Helfer per E-Mail einladen. Der Link in der Mail führt zur Registrierung mit vorausgefülltem Verein und E-Mail-Adresse; nach dem Speichern ist die Person sofort als Helfer freigeschaltet. Ohne Angabe eines Vereins führt der Link zur normalen Registrierung; die Person wählt ihren Verein selbst und wird danach vom Vereins-Admin freigeschaltet.</p>
 
     <div id="einladungFehler" class="einladung-fehler" role="alert"></div>
     <div id="einladungInhalt" hidden>
-        <label for="einladungVerein">Verein</label>
-        <input type="text" id="einladungVerein" list="einladungVereineListe" autocomplete="off" placeholder="Vereinsname eingeben …">
+        <label for="einladungVerein">Verein (optional)</label>
+        <input type="text" id="einladungVerein" list="einladungVereineListe" autocomplete="off" placeholder="Vereinsname eingeben oder leer lassen …">
         <datalist id="einladungVereineListe"></datalist>
 
         <label for="einladungAdressen">E-Mail-Adressen</label>
@@ -89,12 +89,20 @@
             return vereine.find(v => v.name.toLowerCase() === eingabe) || null;
         };
 
+        // Verein leer = Einladung zur Registrierung ohne Verein; ein eingetippter Name muss aus der Liste stammen.
+        const ohneVerein = () => vereinFeld.value.trim() === '';
+
         async function ladeOffene() {
             const verein = gewaehlterVerein();
             ergebnis.hidden = true;
-            knopf.disabled = adressen.disabled = !verein;
-            offen.textContent = verein ? STANDARD_HINWEIS : 'Bitte einen Verein aus der Liste wählen.';
-            if (!verein) return;
+            knopf.disabled = adressen.disabled = !verein && !ohneVerein();
+            if (!verein) {
+                offen.textContent = ohneVerein()
+                    ? 'Ohne Verein: Die Person registriert sich selbst, wählt dabei ihren Verein und wird nach der E-Mail-Bestätigung vom Vereins-Admin freigeschaltet.'
+                    : 'Bitte einen Verein aus der Liste wählen oder das Feld leer lassen.';
+                return;
+            }
+            offen.textContent = STANDARD_HINWEIS;
             try {
                 const antwort = await fetch(`/api/vereine/einladungen?vereinId=${encodeURIComponent(verein.id)}`);
                 const daten = await antwort.json().catch(() => ({}));
@@ -112,17 +120,17 @@
         vereinFeld.addEventListener('input', ladeOffene);
         ladeOffene();
 
-        const STATUS_TEXT = { gesendet: 'Einladung gesendet', bereits_mitglied: 'ist schon Mitglied, keine Mail', fehler: 'Mail konnte nicht gesendet werden' };
+        const STATUS_TEXT = { gesendet: 'Einladung gesendet', bereits_mitglied: 'ist schon Mitglied, keine Mail', bereits_konto: 'hat schon ein Konto, keine Mail', fehler: 'Mail konnte nicht gesendet werden' };
         knopf.addEventListener('click', async () => {
             const verein = gewaehlterVerein();
-            if (!verein) { meldeFehler('Bitte einen Verein aus der Liste wählen.'); return; }
+            if (!verein && !ohneVerein()) { meldeFehler('Bitte einen Verein aus der Liste wählen oder das Feld leer lassen.'); return; }
             if (!adressen.value.trim()) { meldeFehler('Bitte mindestens eine E-Mail-Adresse eintragen.'); return; }
             knopf.disabled = true;
             try {
                 const antwort = await fetch('/api/vereine/einladungen', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ vereinId: verein.id, emails: adressen.value })
+                    body: JSON.stringify(verein ? { vereinId: verein.id, emails: adressen.value } : { emails: adressen.value })
                 });
                 const daten = await antwort.json().catch(() => ({}));
                 if (!antwort.ok) throw new Error(daten.error || 'Einladungen konnten nicht gesendet werden.');
@@ -139,7 +147,7 @@
             } catch (err) {
                 meldeFehler(err.message);
             } finally {
-                knopf.disabled = !gewaehlterVerein();
+                knopf.disabled = !gewaehlterVerein() && !ohneVerein();
             }
         });
     });

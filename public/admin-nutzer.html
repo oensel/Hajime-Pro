@@ -59,9 +59,15 @@
         .nutzer-fehler { color: #ef4444; font-weight: 700; }
         .nutzer-ok { color: var(--text-muted); font-size: 13px; min-height: 18px; }
         .tabelle-scroll { overflow-x: auto; }
-        .nutzer-bereich { margin: 18px 0 0; padding: 10px 14px 4px; border: 1px solid var(--border); border-radius: 4px; background: rgba(30, 58, 138, 0.04); }
-        .nutzer-bereich h2 { font-size: 14px; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 8px; }
+        .nutzer-bereich, .beitritt-bereich { margin: 18px 0 0; padding: 10px 14px 4px; border: 1px solid var(--border); border-radius: 4px; background: rgba(30, 58, 138, 0.04); }
+        .nutzer-bereich h2, .beitritt-bereich h2 { font-size: 14px; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 8px; }
         .nutzer-bereich h2 .anzahl { font-size: 12px; font-weight: 400; color: var(--text-muted); text-transform: none; letter-spacing: 0; }
+        .erstregistrierung-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+        .erstregistrierung-row:last-child { border-bottom: none; }
+        .erstregistrierung-name { font-size: 14px; font-weight: 700; color: var(--text-main); }
+        .erstregistrierung-meta { font-size: 12px; color: var(--text-muted); overflow-wrap: anywhere; }
+        .erstregistrierung-actions { display: flex; gap: 8px; flex-shrink: 0; }
+        .rollen-auswahl { padding: 5px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-card); color: var(--text-main); font-size: 12px; }
     </style>
 </head>
 <body>
@@ -72,20 +78,25 @@
 <div class="mdc-card" style="padding: 20px 24px; max-width: 1180px;">
     <div class="form-title-area">
         <span class="material-icons">manage_accounts</span>
-        <h1>Benutzer</h1>
+        <h1 id="seitenTitel">Benutzer</h1>
         <span class="material-icons">manage_accounts</span>
     </div>
-    <p style="color: var(--text-muted); font-size: 13px; margin-top: 0;">Alle Benutzer mit ihren Vereinen und Rollen. Die Rolle je Verein lässt sich hier ändern. Super-Admins dürfen alles in allen Vereinen und bekommen die Anfragen für Vereine ohne Admin. Es bleibt immer mindestens ein Super-Admin. Gesperrte Konten können sich nicht anmelden; ihre Daten bleiben erhalten.</p>
+    <p id="seitenText" style="color: var(--text-muted); font-size: 13px; margin-top: 0;">Alle Benutzer mit ihren Vereinen und Rollen. Die Rolle je Verein lässt sich hier ändern. Super-Admins dürfen alles in allen Vereinen und bekommen die Anfragen für Vereine ohne Admin. Es bleibt immer mindestens ein Super-Admin. Gesperrte Konten können sich nicht anmelden; ihre Daten bleiben erhalten.</p>
     <div id="vereinFilterBox" class="verein-filter-box" hidden></div>
     <div class="nutzer-werkzeuge">
         <input type="search" id="nutzerFilter" class="nutzer-filter" placeholder="Name, E-Mail oder Verein suchen" aria-label="Benutzer filtern">
-        <label><input type="checkbox" id="nurUnbestaetigt"> Nur unbestätigte Konten</label>
+        <button type="button" class="btn btn-raised" id="mitgliedHinzufuegenKnopf"><span class="material-icons" style="font-size:16px;vertical-align:middle;">person_add</span> Mitglieder hinzufügen</button>
         <button type="button" class="btn btn-outlined" id="aufraeumenKnopf">Alte unbestätigte Konten löschen (&gt; 30 Tage)</button>
     </div>
     <div id="nutzerMeldung" class="nutzer-fehler" role="alert"></div>
     <div id="nutzerOk" class="nutzer-ok" role="status"></div>
 
-    <section class="nutzer-bereich super" aria-labelledby="superTitel">
+    <section class="beitritt-bereich" id="beitrittsanfragenCard" aria-labelledby="beitrittsanfragenTitel" hidden>
+        <h2 id="beitrittsanfragenTitel">Beitrittsanfragen</h2>
+        <div id="beitrittsanfragenListe" style="display: flex; flex-direction: column;"></div>
+    </section>
+
+    <section class="nutzer-bereich super" id="superBereich" aria-labelledby="superTitel">
         <h2 id="superTitel">Super-Admins <span class="anzahl" id="superAnzahl"></span> <button type="button" class="btn btn-outlined" id="superHinzufuegenKnopf"><span class="material-icons" style="font-size:16px;vertical-align:middle;">add</span> Hinzufügen</button></h2>
         <div class="tabelle-scroll">
             <table class="nutzer-table">
@@ -109,6 +120,25 @@
         </div>
     </section>
 </div>
+
+<dialog class="nutzer-dialog" id="mitgliedHinzufuegenDialog" aria-labelledby="mitgliedHinzufuegenTitel">
+    <form method="dialog" id="mitgliedHinzufuegenForm">
+        <h2 id="mitgliedHinzufuegenTitel">Mitglieder hinzufügen</h2>
+        <p style="margin: 0; font-size: 13px; color: var(--text-muted);">Neue Adressen bekommen eine Einladung per Mail und sind nach der Registrierung sofort als Helfer freigeschaltet. Wer schon ein Konto hat (auch in anderen Vereinen), wird dem Verein direkt zusätzlich zugeordnet. Die Rolle lässt sich danach in der Liste ändern.</p>
+        <label for="mitgliedHinzufuegenVerein" id="mitgliedHinzufuegenVereinLabel">Verein</label>
+        <input type="text" id="mitgliedHinzufuegenVerein" list="mitgliedHinzufuegenVereine" autocomplete="off" maxlength="255">
+        <datalist id="mitgliedHinzufuegenVereine"></datalist>
+        <p id="mitgliedHinzufuegenVereinHinweis" style="margin: 4px 0 0; font-size: 12px; color: var(--text-muted);"></p>
+        <label for="mitgliedHinzufuegenAdressen">E-Mail-Adressen</label>
+        <textarea id="mitgliedHinzufuegenAdressen" rows="6" style="width: 100%; box-sizing: border-box;" placeholder="Eine Adresse pro Zeile oder getrennt durch Komma oder Semikolon (höchstens 100)"></textarea>
+        <div class="dialog-fehler" id="mitgliedHinzufuegenFehler" role="alert"></div>
+        <ul id="mitgliedHinzufuegenErgebnis" style="margin: 6px 0 0; padding-left: 18px; font-size: 13px;" hidden></ul>
+        <div class="dialog-knoepfe">
+            <button type="button" class="btn btn-outlined" id="mitgliedHinzufuegenSchliessen">Schließen</button>
+            <button type="submit" class="btn btn-raised" id="mitgliedHinzufuegenSenden">Hinzufügen</button>
+        </div>
+    </form>
+</dialog>
 
 <dialog class="nutzer-dialog" id="bearbeitenDialog" aria-labelledby="bearbeitenTitel">
     <form method="dialog" id="bearbeitenForm">
@@ -175,5 +205,7 @@
 </dialog>
 
 <script src="/js/adminNutzer.js"></script>
+<script src="/js/beitrittsanfragen.js"></script>
+<script src="/js/mitgliederHinzufuegen.js"></script>
 </body>
 </html>
