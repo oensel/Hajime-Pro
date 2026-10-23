@@ -8,6 +8,7 @@ import { test, expect } from '@playwright/test';
 import crypto from 'node:crypto';
 import knexLib from 'knex';
 import { testDbVerbindung } from './test-env.js';
+import { zugangsKopf, merkeZugang } from './helpers/live-zugang.js';
 import { ladeSnapshots } from '../../src/live/snapshot.js';
 import {
     legeTurnierAn, legeKlasseAn, wiege, loseAus, verteileAufMatten,
@@ -88,7 +89,7 @@ test.describe.serial('Waage in Runden: Matte und Teilnehmer-App', () => {
     test('App zeigt vor Runde 2 nur den U13-Pool', async ({ request }) => {
         const snapshot = await sendeSnapshot(request);
         expect(snapshot.pools.map(p => p.altersklasse)).toEqual(['U13']);
-        const resp = await request.get(`/api/live/turniere/${turnierKey}/pools`);
+        const resp = await request.get(`/api/live/turniere/${turnierKey}/pools`, { headers: await zugangsKopf(turnierKey) });
         expect(resp.ok()).toBeTruthy();
         expect((await resp.json()).pools.map(p => p.altersklasse)).toEqual(['U13']);
     });
@@ -135,12 +136,13 @@ test.describe.serial('Waage in Runden: Matte und Teilnehmer-App', () => {
         expect(warteschlange.length).toBeGreaterThan(u13ReihenfolgeVorher.length - 1);
 
         // App-API
-        const poolListe = (await (await request.get(`/api/live/turniere/${turnierKey}/pools`)).json()).pools;
+        const poolListe = (await (await request.get(`/api/live/turniere/${turnierKey}/pools`, { headers: await zugangsKopf(turnierKey) })).json()).pools;
         expect(poolListe.filter(p => p.altersklasse === 'U15')).toHaveLength(2);
-        const detail = await (await request.get(`/api/live/turniere/${turnierKey}/pools/${u15[0].id}`)).json();
+        const detail = await (await request.get(`/api/live/turniere/${turnierKey}/pools/${u15[0].id}`, { headers: await zugangsKopf(turnierKey) })).json();
         expect(detail.kaempfe.length).toBeGreaterThan(0);
 
         // PWA
+        await merkeZugang(page, turnierKey);
         await page.goto(`/live/#/t/${turnierKey}`);
         await page.getByTestId('tab-pools').click();
         for (const p of u15) await expect(page.getByTestId(`pool-${p.id}`)).toContainText('U15');

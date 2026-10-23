@@ -18,6 +18,16 @@ import { getVereinRoutes } from './routes/vereinRoutes.js';
 import { getFreigabeRoutes } from './routes/freigabeRoutes.js';
 import { getNutzerRoutes } from './routes/nutzerRoutes.js';
 import { getCloudUpdateRoutes } from './routes/cloudUpdateRoutes.js';
+import { getSicherungRoutes } from './routes/sicherungRoutes.js';
+import { leseSicherungsKonfig, starteSicherungsPlaner } from './services/sicherungsPlaner.js';
+import { sicherungsVerzeichnis } from './services/datensicherung.js';
+import { getProtokollRoutes } from './routes/protokollRoutes.js';
+import { getRechtlichesSeiten, getRechtlichesApi } from './routes/rechtlichesRoutes.js';
+import { ladeRechtliches } from './services/rechtliches.js';
+import { loescheUnbestaetigteKonten, UNBESTAETIGT_TAGE } from './services/kontenAufraeumen.js';
+import { getKonsoleRoutes, getFehlerMeldeRoutes } from './routes/konsoleRoutes.js';
+import { installiereFehlerErfassung, meldeInfo, fehlerBehandlung, bereinigeFehler, STANDARD_AUFBEWAHRUNG_TAGE as FEHLER_TAGE } from './services/fehlerProtokoll.js';
+import { erzeugeProtokollMiddleware, bereinigeProtokoll, STANDARD_AUFBEWAHRUNG_TAGE } from './services/aktionsProtokoll.js';
 import { erzeugeCloudUpdate } from './utils/cloudUpdate.js';
 import { getTurnierRoutes } from './routes/turnierRoutes.js';
 import { getCloudRoutes } from './routes/cloudRoutes.js';
@@ -74,6 +84,8 @@ const knexConfig = require('../knexfile.cjs');
 // Betriebsmodus einmal auswerten (cloud | server | client, siehe src/config/betriebsmodus.cjs). Widersprüchliche
 // Einstellungen verhindern den Start — lieber gar nicht starten als in einem halben Zustand laufen.
 const bm = betriebsmodus.liesBetriebsmodus();
+// Fehlerprotokoll („Konsole“, src/services/fehlerProtokoll.js): in der Cloud an; FEHLERPROTOKOLL_AKTIV=true schaltet es außerhalb der Cloud ein (Tests)
+const fehlerAktiv = bm.istCloud || process.env.FEHLERPROTOKOLL_AKTIV === 'true';
 bm.warnungen.forEach(w => console.warn(`[Betriebsmodus] Hinweis: ${w}`));
 if (bm.fehler.length) {
     bm.fehler.forEach(f => console.error(`[Betriebsmodus] ${f}`));
@@ -183,6 +195,7 @@ if (syncKonfig.istClient) {
         try {
             const [, neue] = await migrationsKnex.migrate.latest();
             console.log(`[Datenbank] Schema aktuell${neue.length ? ` (${neue.length} Migration(en) ausgeführt)` : ''}.`);
+            if (neue.length) meldeInfo(`Datenbank-Migration angewendet: ${neue.join(', ')}`);
         } catch (e) {
             console.error(`[Datenbank] Migration fehlgeschlagen: ${e.message}`);
             process.exit(1);
@@ -199,6 +212,7 @@ if (syncKonfig.istClient) {
     }
 
     app.set('knex', knex);
+    const fehlerErfassung = fehlerAktiv ? installiereFehlerErfassung(knex) : null;
 
     // Kopplung neuer Desktop-Clients: ohne SYNC_SECRET in der .env erzeugt der Hallen-Server das
     // Geheimnis selbst (zero-config). Es muss VOR dem Sync-Dienst feststehen, der es prüft.
@@ -253,10 +267,23 @@ if (syncKonfig.istClient) {
     // Anmeldung/Registrierung/Profil (/api/auth, teils öffentlich) brauchen nur wenige Felder: kleines Limit (413).
     const jsonAuth = express.json({ limit: '10kb' });
     const IMPORT_ROUTE = /^\/api\/turniere\/(import|\d+\/import-ergebnisse)$/;
-    const AUTH_ROUTE = /^\/api\/auth(\/|$)/;
+    const AUTH_ROUTE = /^\/api\/(auth|fehler)(\/|$)/;
     app.use((req, res, next) => (IMPORT_ROUTE.test(req.path) ? jsonImport
         : AUTH_ROUTE.test(req.path) ? jsonAuth : jsonStandard)(req, res, next));
     app.use(bodyLeerFallback);
+    // Aktionsprotokoll (src/services/aktionsProtokoll.js): in der Cloud jede schreibende Aktion eines angemeldeten Kontos;
+    // PROTOKOLL_AKTIV=true schaltet es außerhalb der Cloud ein (Tests).
+    const protokollAktiv = bm.istCloud || process.env.PROTOKOLL_AKTIV === 'true';
+    if (protokollAktiv) app.use(erzeugeProtokollMiddleware(knex));
+    // Impressum und Datenschutzerklärung (öffentlich, vor dem statischen Ordner); RECHTLICHES_AKTIV=true schaltet sie außerhalb der Cloud ein (Tests)
+    const rechtlichesAktiv = bm.istCloud || process.env.RECHTLICHES_AKTIV === 'true';
+    if (rechtlichesAktiv) {
+        app.use(getRechtlichesSeiten());
+        const rechtliches = ladeRechtliches();
+        if (!rechtliches.vollstaendig) {
+            console.warn(`[Rechtliches] Impressum/Datenschutzerklärung unvollständig, es fehlen: ${rechtliches.fehlend.map((f) => f.pfad).join(', ')} (siehe docs/datenschutz/README.md)`);
+        }
+    }
     app.use(express.static(path.join(__dirname, '../public')));
 
     if (kopplung) {
@@ -335,6 +362,43 @@ if (syncKonfig.istClient) {
             repo: process.env.CLIENT_RELEASE_REPO || 'oensel/Hajime-Pro-Releases',
             token: process.env.CLIENT_RELEASE_TOKEN || process.env.GITHUB_TOKEN || ''
         })));
+    }
+    // Komplettsicherung und Wiedereinspielen durch den Super-Admin (src/services/datensicherung.js); SICHERUNG_AKTIV=true schaltet es außerhalb der Cloud ein (Tests).
+    if (bm.istCloud || process.env.SICHERUNG_AKTIV === 'true') {
+        const sicherungsKonfig = leseSicherungsKonfig();
+        app.use('/api/sicherung', getSicherungRoutes(knex, { verzeichnis: sicherungsVerzeichnis(), konfig: sicherungsKonfig }));
+        // Tägliche automatische Sicherung (src/services/sicherungsPlaner.js); SICHERUNG_AUTOMATISCH=false schaltet sie ab
+        if (sicherungsKonfig.automatisch && process.env.NODE_ENV !== 'test') starteSicherungsPlaner(knex, sicherungsVerzeichnis(), sicherungsKonfig);
+    }
+    if (rechtlichesAktiv) app.use('/api/rechtliches', getRechtlichesApi(knex));
+    // Ohne Impressumsseiten (Hallen-Server) meldet die Fußzeile „nicht aktiv“, statt einen 404 in der Konsole zu erzeugen.
+    else app.get('/api/rechtliches/aktiv', (req, res) => res.json({ aktiv: false }));
+    if (bm.istCloud && process.env.NODE_ENV !== 'test') {
+        // Konten ohne bestätigte E-Mail-Adresse werden nach 30 Tagen gelöscht (Datenschutzerklärung, Abschnitt 3)
+        const bereinigeKonten = () => loescheUnbestaetigteKonten(knex, Number(process.env.UNBESTAETIGT_TAGE) || UNBESTAETIGT_TAGE)
+            .then((n) => { if (n > 0) meldeInfo(`Aufräumen: ${n} unbestätigte Konten gelöscht`, { quelle: 'prozess' }); })
+            .catch((err) => console.error('[Konten] Aufräumen fehlgeschlagen:', err.message));
+        setTimeout(bereinigeKonten, 60_000).unref();
+        setInterval(bereinigeKonten, 24 * 60 * 60 * 1000).unref();
+    }
+    if (fehlerErfassung) {
+        app.use('/api/fehler', getFehlerMeldeRoutes(fehlerErfassung.erfasse));
+        app.use('/api/konsole', getKonsoleRoutes(knex));
+        const bereinigeFehlerprotokoll = () => bereinigeFehler(knex, Number(process.env.FEHLER_AUFBEWAHRUNG_TAGE) || FEHLER_TAGE)
+            .then((n) => { if (n > 0) meldeInfo(`Aufräumen: ${n} Konsoleneinträge älter als ${Number(process.env.FEHLER_AUFBEWAHRUNG_TAGE) || FEHLER_TAGE} Tage gelöscht`, { quelle: 'prozess' }); })
+            .catch((err) => console.error('[Fehlerprotokoll] Aufräumen fehlgeschlagen:', err.message));
+        bereinigeFehlerprotokoll();
+        setInterval(bereinigeFehlerprotokoll, 24 * 60 * 60 * 1000).unref();
+    }
+    if (protokollAktiv) {
+        app.use('/api/protokoll', getProtokollRoutes(knex));
+        // Aufbewahrung: beim Start und danach täglich ältere Einträge löschen (PROTOKOLL_AUFBEWAHRUNG_TAGE, Standard 365)
+        const tage = Number(process.env.PROTOKOLL_AUFBEWAHRUNG_TAGE) || STANDARD_AUFBEWAHRUNG_TAGE;
+        const bereinige = () => bereinigeProtokoll(knex, tage)
+            .then((n) => { if (n > 0) meldeInfo(`Aufräumen: ${n} Protokolleinträge älter als ${tage} Tage gelöscht`, { quelle: 'prozess' }); })
+            .catch((err) => console.error('[Protokoll] Aufräumen fehlgeschlagen:', err.message));
+        bereinige();
+        setInterval(bereinige, 24 * 60 * 60 * 1000).unref();
     }
     app.use('/api/turniere', requireWriteAuth, getTurnierRoutes(knex));
     app.use('/api/teilnehmer', requireWriteAuth, getTeilnehmerRoutes(knex));
@@ -461,11 +525,15 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, syncKonfig.istClient ? '../public/client.html' : '../public/turniere.html'));
 });
 
+// Fehlerbehandlung am Ende der Routen: 5xx werden protokolliert und als JSON ohne Interna beantwortet
+if (fehlerAktiv) app.use(fehlerBehandlung);
+
 // Bindeadresse (bm.listenHost): der Desktop-Client (desktop/main.js) setzt LISTEN_HOST=127.0.0.1, damit er nicht im
 // WLAN erreichbar ist und keine Firewall-Abfrage auslöst. Ein Server bindet sonst auf allen Schnittstellen — ob der
 // Browser lokal läuft oder ein Client im LAN zugreift, macht für ihn keinen Unterschied.
 const httpServer = app.listen(PORT, bm.listenHost, () => {
     console.log(`🚀 Hajime Pro läuft auf http://${bm.listenHost || 'localhost'}:${PORT} (Modus ${bm.modus})`);
+    meldeInfo(`Server gestartet: Modus ${bm.modus}, Port ${PORT}, Version ${appVersion}`);
 });
 
 if (bm.modus !== 'cloud') {

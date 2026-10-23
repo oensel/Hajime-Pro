@@ -1,3 +1,5 @@
+// Fehler im Browser an das Fehlerprotokoll melden (public/js/fehlerMelder.js) und die Fußzeile Impressum/Datenschutz (public/js/rechtsfuss.js)
+for (const datei of ['fehlerMelder.js', 'rechtsfuss.js']) { const s = document.createElement('script'); s.src = `/js/${datei}`; document.head.appendChild(s); }
 // public/js/navigation.js
 
 // Theme sofort beim Parsen setzen (menu.js steht im <head>), nicht erst nach DOMContentLoaded
@@ -70,6 +72,9 @@ const MENUE_AKTIVE_SEITEN = [
     ['nav-erstregistrierungen', ['admin-erstregistrierungen.html']],
     ['nav-vereine', ['admin-vereine.html', 'admin-turniere.html']],
     ['nav-server-update', ['server-update.html']],
+    ['nav-sicherung', ['sicherung.html']],
+    ['nav-protokoll', ['protokoll.html']],
+    ['nav-konsole', ['konsole.html']],
     ['hallenServerBtn', ['cluster.html']]
 ];
 
@@ -420,6 +425,18 @@ function baueMenueGeruest() {
                 <a href="/server-update.html" class="menu-item" id="nav-server-update" data-ohne-turnier style="display: none;">
                     <span class="material-icons">system_update</span>
                     <span class="menu-text">Server-Update</span>
+                </a>
+                <a href="/sicherung.html" class="menu-item" id="nav-sicherung" data-ohne-turnier style="display: none;">
+                    <span class="material-icons">backup</span>
+                    <span class="menu-text">Sicherung</span>
+                </a>
+                <a href="/protokoll.html" class="menu-item" id="nav-protokoll" data-ohne-turnier style="display: none;">
+                    <span class="material-icons">history</span>
+                    <span class="menu-text">Protokoll</span>
+                </a>
+                <a href="/konsole.html" class="menu-item" id="nav-konsole" data-ohne-turnier style="display: none;">
+                    <span class="material-icons">terminal</span>
+                    <span class="menu-text">Konsole</span>
                 </a>
                 <a href="/video-live.html" class="menu-item" id="nav-video-live" style="display: none;">
                     <span class="material-icons">videocam</span>
@@ -1257,7 +1274,7 @@ async function initialisiereMenue() {
         versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-orga', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
 
         const istErlaubteSeite = currentPath.includes('turniere.html') || currentPath.includes('profil.html') || currentPath.includes('teilnehmer.html') || currentPath.includes('turnier-ansicht.html') ||
-            (rechte.nutzer && (currentPath.includes('admin-nutzer.html') || currentPath.includes('admin-einladungen.html') || currentPath.includes('admin-erstregistrierungen.html') || currentPath.includes('admin-vereine.html') || currentPath.includes('admin-turniere.html') || currentPath.includes('server-update.html')));
+            (rechte.nutzer && (currentPath.includes('admin-nutzer.html') || currentPath.includes('admin-einladungen.html') || currentPath.includes('admin-erstregistrierungen.html') || currentPath.includes('admin-vereine.html') || currentPath.includes('admin-turniere.html') || currentPath.includes('server-update.html') || currentPath.includes('sicherung.html') || currentPath.includes('protokoll.html') || currentPath.includes('konsole.html')));
         if (!istErlaubteSeite) {
             window.location.href = '/turniere.html';
             return;
@@ -1393,10 +1410,19 @@ async function initialisiereMenue() {
     if (serverUpdateLink && rechte.nutzer) {
         serverUpdateLink.style.display = '';
     }
+    // Protokoll (nur Cloud): Admins des aktiven Vereins sehen ihre Vereine, Super-Admins alles
+    const protokollLink = document.getElementById('nav-protokoll');
+    if (protokollLink && !einzelbenutzer && rechte.protokoll) protokollLink.style.display = '';
+    // Konsole (Fehlerprotokoll, nur Cloud): Super-Admins
+    const konsoleLink = document.getElementById('nav-konsole');
+    if (konsoleLink && !einzelbenutzer && rechte.nutzer) konsoleLink.style.display = '';
+    const sicherungLink = document.getElementById('nav-sicherung');
+    // Die Sicherung gibt es nur in der Cloud (/api/sicherung)
+    if (sicherungLink && rechte.nutzer && !einzelbenutzer) sicherungLink.style.display = '';
     // Super-Admins: Benutzer, Vereine und Server-Update stehen im oberen Bereich der Seitenleiste (nicht unten)
     if (rechte.nutzer) {
         const oben = document.getElementById('sidebarNavPrimary');
-        if (oben) for (const link of [nutzerLink, einladungenLink, erstregistrierungenLink, vereineLink, serverUpdateLink]) if (link) oben.appendChild(link);
+        if (oben) for (const link of [nutzerLink, einladungenLink, erstregistrierungenLink, vereineLink, serverUpdateLink, sicherungLink, protokollLink, konsoleLink]) if (link) oben.appendChild(link);
     }
 
     // --- AKTIVEN REITER HERVORHEBEN ---

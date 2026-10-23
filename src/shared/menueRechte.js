@@ -3,7 +3,8 @@
 //   - Verwaltung (Turniere, Pools, …): Super-Admin oder Rolle Benutzer/Admin im aktiven Verein
 //   - Helferplan und Orga: nur Super-Admin oder Rolle Admin (Benutzer sind für Client-Geräte und als Helfer gedacht)
 //   - „Benutzer“ (admin-nutzer.html), „Vereine“ (admin-vereine.html, admin-turniere.html) und „Server-Update“
-//     (server-update.html): nur Super-Admins
+//     (server-update.html), „Sicherung“ (sicherung.html, nur Cloud): nur Super-Admins
+//   - „Protokoll“ (protokoll.html, nur Cloud): Super-Admin (alle Einträge) oder Rolle Admin (die der eigenen Vereine)
 //   - „Helfer-App“: jedes angemeldete Konto in der Cloud außer Super-Admins (die brauchen sie nicht)
 // Im Einzelbenutzerbetrieb (Hallen-Server, offline_user) bleibt das Menü wie bisher: alles Verwaltende sichtbar,
 // keine Helfer-App und keine Nutzerverwaltung (beide gibt es dort nicht).
@@ -14,15 +15,15 @@ export const ROLLEN_TEXT = { admin: 'Admin', benutzer: 'Benutzer', helfer: 'Helf
 /**
  * @param {{ rolle?: string|null, istSuperAdmin?: boolean, einzelbenutzer?: boolean }} eingabe
  *   rolle = Rolle im aktiven Verein (user.verein_rolle, null solange nicht freigegeben)
- * @returns {{ verwaltung: boolean, helferPlan: boolean, nutzer: boolean, helferApp: boolean }}
+ * @returns {{ verwaltung: boolean, helferPlan: boolean, nutzer: boolean, helferApp: boolean, protokoll: boolean }}
  */
 export function menueFuerRolle({ rolle = null, istSuperAdmin = false, einzelbenutzer = false } = {}) {
     if (einzelbenutzer) {
-        return { verwaltung: true, helferPlan: true, nutzer: false, helferApp: false };
+        return { verwaltung: true, helferPlan: true, nutzer: false, helferApp: false, protokoll: false };
     }
     const verwaltung = !!istSuperAdmin || rolleReicht(rolle, 'benutzer');
     const helferPlan = !!istSuperAdmin || rolleReicht(rolle, 'admin');
-    return { verwaltung, helferPlan, nutzer: !!istSuperAdmin, helferApp: !istSuperAdmin };
+    return { verwaltung, helferPlan, nutzer: !!istSuperAdmin, helferApp: !istSuperAdmin, protokoll: helferPlan };
 }
 
 /** Vereine, die sich als aktiver Verein der Verwaltung eignen: freigegeben mit Rolle Benutzer oder Admin. */

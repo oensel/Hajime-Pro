@@ -3,6 +3,7 @@
 // (admin-nutzer.html?vereinId=) bzw. Turnierliste (admin-turniere.html?vereinId=, Wettkampftag absteigend).
 // Verwaltung: anlegen (POST /api/nutzer/vereine), umbenennen (PUT /api/nutzer/vereine/:id { name }), zusammenführen
 // (POST /api/nutzer/vereine/:id/zusammenfuehren { zielId }) und leere Vereine löschen (DELETE /api/nutzer/vereine/:id).
+// Import: POST /api/nutzer/vereine/import { text, vorschau } (Liste „Name;Bundesland“, erst Vorschau, dann Anlegen).
 // API: GET /api/nutzer/vereine, PUT /api/nutzer/vereine/:id { bundesland }.
 (function () {
     const BUNDESLAENDER = [
@@ -278,6 +279,120 @@
             zeigeMeldung(err.message);
         }
     }
+
+    // --- Import (POST /api/nutzer/vereine/import) ---
+    const importDialog = document.getElementById('importDialog');
+    const importText = document.getElementById('importText');
+    const importDatei = document.getElementById('importDatei');
+    const importVorschau = document.getElementById('importVorschau');
+    const importFehler = document.getElementById('importFehler');
+    const importZusammenfassung = document.getElementById('importZusammenfassung');
+    const importStarten = document.getElementById('importStarten');
+    const importPruefen = document.getElementById('importPruefen');
+    const STATUS_TEXT = { neu: 'neu', vorhanden: 'vorhanden', doppelt: 'doppelt', ungueltig: 'ungültig' };
+    let geprueft = ''; // Text, für den die Vorschau gilt
+
+    function setzeImportZurueck() {
+        importVorschau.hidden = true;
+        importVorschau.textContent = '';
+        importZusammenfassung.textContent = '';
+        importFehler.textContent = '';
+        importStarten.disabled = true;
+        geprueft = '';
+    }
+
+    async function postImport(vorschau) {
+        const response = await fetch('/api/nutzer/vereine/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: importText.value, vorschau })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'Der Import ist fehlgeschlagen.');
+        return data;
+    }
+
+    function zeichneVorschau(data) {
+        const tabelle = document.createElement('table');
+        tabelle.className = 'import-tabelle';
+        const kopf = tabelle.createTHead().insertRow();
+        for (const text of ['Zeile', 'Verein', 'Bundesland', 'Status']) {
+            const th = document.createElement('th');
+            th.textContent = text;
+            kopf.appendChild(th);
+        }
+        const body = tabelle.createTBody();
+        for (const z of data.zeilen) {
+            const tr = body.insertRow();
+            tr.insertCell().textContent = String(z.zeile);
+            tr.insertCell().textContent = z.name || '–';
+            tr.insertCell().textContent = z.bundesland || '–';
+            const status = tr.insertCell();
+            status.className = `status-${z.status}`;
+            status.textContent = z.grund && z.status !== 'neu' ? `${STATUS_TEXT[z.status]}: ${z.grund}` : STATUS_TEXT[z.status];
+        }
+        importVorschau.textContent = '';
+        importVorschau.appendChild(tabelle);
+        importVorschau.hidden = false;
+        const a = data.anzahl;
+        importZusammenfassung.textContent = `${a.neu} neu, ${a.vorhanden} vorhanden, ${a.doppelt} doppelt, ${a.ungueltig} ungültig.`;
+        importStarten.disabled = a.neu === 0;
+    }
+
+    document.getElementById('importKnopf').addEventListener('click', () => {
+        importText.value = '';
+        importDatei.value = '';
+        setzeImportZurueck();
+        importDialog.showModal();
+        importText.focus();
+    });
+    document.getElementById('importAbbrechen').addEventListener('click', () => importDialog.close());
+    importText.addEventListener('input', () => { if (importText.value !== geprueft) importStarten.disabled = true; });
+
+    importDatei.addEventListener('change', async () => {
+        const datei = importDatei.files && importDatei.files[0];
+        if (!datei) return;
+        const bytes = await datei.arrayBuffer();
+        let text;
+        try {
+            text = new TextDecoder('utf-8', { fatal: true }).decode(bytes); // sonst Excel-CSV in Windows-1252
+        } catch (_) {
+            text = new TextDecoder('windows-1252').decode(bytes);
+        }
+        importText.value = text;
+        setzeImportZurueck();
+    });
+
+    importPruefen.addEventListener('click', async () => {
+        setzeImportZurueck();
+        importPruefen.disabled = true;
+        try {
+            const data = await postImport(true);
+            geprueft = importText.value;
+            zeichneVorschau(data);
+        } catch (err) {
+            importFehler.textContent = err.message;
+        } finally {
+            importPruefen.disabled = false;
+        }
+    });
+
+    document.getElementById('importForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (importText.value !== geprueft) { importFehler.textContent = 'Bitte die Liste zuerst prüfen (Vorschau).'; return; }
+        importStarten.disabled = true;
+        importFehler.textContent = '';
+        try {
+            const data = await postImport(false);
+            importDialog.close();
+            await lade();
+            zeigeMeldung('');
+            info.textContent = `Import abgeschlossen: ${data.angelegt} Vereine angelegt, ${data.uebersprungen} übersprungen.`;
+        } catch (err) {
+            importFehler.textContent = err.message;
+            importStarten.disabled = false;
+        }
+    });
 
     filter.addEventListener('input', zeichne);
     lade();

@@ -10,14 +10,14 @@ import {
 
 test('menueFuerRolle: Matrix über alle Rollen', () => {
     const faelle = [
-        [{ rolle: null, istSuperAdmin: true }, { verwaltung: true, helferPlan: true, nutzer: true, helferApp: false }],
-        [{ rolle: 'helfer', istSuperAdmin: true }, { verwaltung: true, helferPlan: true, nutzer: true, helferApp: false }],
-        [{ rolle: 'admin' }, { verwaltung: true, helferPlan: true, nutzer: false, helferApp: true }],
-        [{ rolle: 'benutzer' }, { verwaltung: true, helferPlan: false, nutzer: false, helferApp: true }],
-        [{ rolle: 'helfer' }, { verwaltung: false, helferPlan: false, nutzer: false, helferApp: true }],
-        [{ rolle: null }, { verwaltung: false, helferPlan: false, nutzer: false, helferApp: true }],
-        [{}, { verwaltung: false, helferPlan: false, nutzer: false, helferApp: true }],
-        [{ rolle: 'unbekannt' }, { verwaltung: false, helferPlan: false, nutzer: false, helferApp: true }]
+        [{ rolle: null, istSuperAdmin: true }, { verwaltung: true, helferPlan: true, nutzer: true, helferApp: false, protokoll: true }],
+        [{ rolle: 'helfer', istSuperAdmin: true }, { verwaltung: true, helferPlan: true, nutzer: true, helferApp: false, protokoll: true }],
+        [{ rolle: 'admin' }, { verwaltung: true, helferPlan: true, nutzer: false, helferApp: true, protokoll: true }],
+        [{ rolle: 'benutzer' }, { verwaltung: true, helferPlan: false, nutzer: false, helferApp: true, protokoll: false }],
+        [{ rolle: 'helfer' }, { verwaltung: false, helferPlan: false, nutzer: false, helferApp: true, protokoll: false }],
+        [{ rolle: null }, { verwaltung: false, helferPlan: false, nutzer: false, helferApp: true, protokoll: false }],
+        [{}, { verwaltung: false, helferPlan: false, nutzer: false, helferApp: true, protokoll: false }],
+        [{ rolle: 'unbekannt' }, { verwaltung: false, helferPlan: false, nutzer: false, helferApp: true, protokoll: false }]
     ];
     for (const [eingabe, erwartet] of faelle) {
         assert.deepEqual(menueFuerRolle(eingabe), erwartet, JSON.stringify(eingabe));
@@ -27,10 +27,10 @@ test('menueFuerRolle: Matrix über alle Rollen', () => {
 test('menueFuerRolle: Einzelbenutzerbetrieb zeigt die Verwaltung wie bisher, ohne Helfer-App und Nutzer', () => {
     for (const rolle of [null, 'helfer', 'benutzer', 'admin']) {
         assert.deepEqual(menueFuerRolle({ rolle, istSuperAdmin: false, einzelbenutzer: true }),
-            { verwaltung: true, helferPlan: true, nutzer: false, helferApp: false }, String(rolle));
+            { verwaltung: true, helferPlan: true, nutzer: false, helferApp: false, protokoll: false }, String(rolle));
     }
     assert.deepEqual(menueFuerRolle({ rolle: null, istSuperAdmin: true, einzelbenutzer: true }),
-        { verwaltung: true, helferPlan: true, nutzer: false, helferApp: false });
+        { verwaltung: true, helferPlan: true, nutzer: false, helferApp: false, protokoll: false });
 });
 
 test('verwaltbareVereine: nur freigegebene Mitgliedschaften als Benutzer oder Admin', () => {

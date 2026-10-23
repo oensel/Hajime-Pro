@@ -2,8 +2,8 @@ import express from 'express';
 import { erzeugeApiRatenbegrenzung } from '../middleware/apiRatenbegrenzung.js';
 import {
     listeNutzer, setzeSuperAdmin, listeVereine, setzeVereinBundesland, listeVereinTurniere, aendereNutzer, loescheNutzer, setzeInitialPasswort,
-    weiseMitgliedschaftZuRoute, entferneMitgliedschaftRoute,setzeGesperrt, bestaetigeKonto, sendeBestaetigungsMailRoute, sendePasswortMail, loescheUnbestaetigte,
-    legeVereinAnRoute, fuehreVereineZusammenRoute, loescheVereinRoute, archiviereTurnier, loescheTurnierAlsSuperAdmin
+    weiseMitgliedschaftZuRoute, setzeZweiFaktorZurueckRoute, entferneMitgliedschaftRoute,setzeGesperrt, bestaetigeKonto, sendeBestaetigungsMailRoute, sendePasswortMail, loescheUnbestaetigte,
+    legeVereinAnRoute, importiereVereineRoute, fuehreVereineZusammenRoute, loescheVereinRoute, archiviereTurnier, loescheTurnierAlsSuperAdmin
 } from '../controllers/nutzerController.js';
 import { requireAuth, requireSuperAdmin, requireNutzerVerwaltung } from '../middleware/auth.js';
 
@@ -18,12 +18,14 @@ export function getNutzerRoutes(knex) {
     router.get('/', verwaltung, (req, res) => listeNutzer(knex, req, res));
     router.post('/:id/super-admin', nurSuper, (req, res) => setzeSuperAdmin(knex, req, res));
     // Benutzer bearbeiten, löschen und Initialpasswort setzen
+    router.post('/:id/2fa-zuruecksetzen', nurSuper, (req, res) => setzeZweiFaktorZurueckRoute(knex, req, res));
     router.post('/:id/passwort', verwaltung, (req, res) => setzeInitialPasswort(knex, req, res));
     // Verein mit Rolle zuweisen (neue Mitgliedschaft, offene Anfrage freigeben oder Rolle ändern)
     router.post('/:id/mitgliedschaft', nurSuper, (req, res) => weiseMitgliedschaftZuRoute(knex, req, res));
     router.delete('/:id/mitgliedschaft/:vereinId', verwaltung, (req, res) => entferneMitgliedschaftRoute(knex, req, res));
     // Vereinsübersicht: Vereine mit Bundesland, Benutzer- und Turnieranzahl; Turniere je Verein
     router.get('/vereine', nurSuper, (req, res) => listeVereine(knex, req, res));
+    router.post('/vereine/import', nurSuper, (req, res) => importiereVereineRoute(knex, req, res));
     router.post('/vereine', nurSuper, (req, res) => legeVereinAnRoute(knex, req, res));
     router.put('/vereine/:id', nurSuper, (req, res) => setzeVereinBundesland(knex, req, res));
     router.post('/vereine/:id/zusammenfuehren', nurSuper, (req, res) => fuehreVereineZusammenRoute(knex, req, res));

@@ -4,7 +4,8 @@ FROM node:22-slim
 
 ENV NODE_ENV=production \
     BETRIEBSMODUS=cloud \
-    PORT=3000
+    PORT=3000 \
+    SICHERUNG_VERZEICHNIS=/var/backups/hajime
 
 WORKDIR /app
 
@@ -13,6 +14,10 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 COPY . .
+
+# Sicherungsverzeichnis (automatische Sicherung, Seite „Sicherung“): gehört dem Benutzer node und wird in docker-compose.yml als Volume
+# eingebunden, damit die Sicherungen ein Update des Containers überleben.
+RUN mkdir -p /var/backups/hajime && chown node:node /var/backups/hajime
 
 # Läuft nicht als root.
 USER node

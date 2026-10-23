@@ -20,7 +20,7 @@ async function neuesTurnier(extra = {}) {
 }
 
 // Fake-Cloud, Fake-Uplink, Fake-Snapshots und ein Fake-Cluster; Timer sind aus, die Tests rufen pruefeCloud()/tick() selbst.
-function umgebung({ erreichbar = true, cluster = null } = {}) {
+function umgebung({ erreichbar = true, cluster = null, holeUrl } = {}) {
     const zustand = { erreichbar, uplinks: [], gesendet: [], geheimnisse: [], jetzt: 1_000_000 };
     const cloud = { konfiguriert: () => true, pruefeErreichbar: async () => zustand.erreichbar };
     const erzeugeUplinkFn = ({ url, token }) => {
@@ -43,7 +43,7 @@ function umgebung({ erreichbar = true, cluster = null } = {}) {
     const ladeSnapshotsFn = async (knex, { geheimnis }) => { zustand.geheimnisse.push(geheimnis); return [{ turnierKey: '77', name: 'x' }]; };
     const dienst = starteLiveAppDienst({
         knex: db.knex, cloud, env: ENV, jetzt: () => zustand.jetzt, timer: false,
-        holeCluster: () => cluster, erzeugeUplinkFn, ladeSnapshotsFn
+        holeCluster: () => cluster, erzeugeUplinkFn, ladeSnapshotsFn, ...(holeUrl ? { holeUrl } : {})
     });
     return { dienst, zustand };
 }
@@ -201,4 +201,43 @@ test('Mehrere Turniere: Erfolg und Fehler werden je Turnier geführt, ein andere
     assert.equal((await dienst.status({ turnierId: a })).zustand, 'gelb');
     assert.deepEqual(Object.keys(dienst.statusFuerPartner().turniere).sort(), ['101', '102']);
     dienst.stoppe();
+});
+
+test('Zugangscode für den Aushang: abrufen, erneuern, sperren (Anfragen an die Cloud mit dem Token des Turniers)', async () => {
+    const aufrufe = [];
+    let status = 200;
+    const holeUrl = async (url, optionen) => {
+        aufrufe.push({ url, methode: optionen.method, auth: optionen.headers.Authorization, body: optionen.body ? JSON.parse(optionen.body) : null });
+        return {
+            status, ok: status < 400,
+            json: async () => ({ code: 'A'.repeat(22), erzeugtAm: '2026-10-24T08:00:00.000Z', gesperrt: false, gueltigBis: '2026-10-25T05:00:00.000Z' })
+        };
+    };
+    const { dienst } = umgebung({ holeUrl });
+    const id = await neuesTurnier();
+
+    const z = await dienst.zugang({ turnierId: id });
+    assert.equal(z.code, 'A'.repeat(22));
+    assert.equal(z.url, `http://127.0.0.1:9/live/#z=${'A'.repeat(22)}`, 'der QR-Code führt zur App mit dem Code hinter dem #');
+    assert.deepEqual(aufrufe[0], { url: 'http://127.0.0.1:9/api/live/zugang', methode: 'GET', auth: 'Bearer hjl_tokentoken', body: null });
+
+    await dienst.erneuereZugang({ turnierId: id });
+    assert.deepEqual(aufrufe[1], { url: 'http://127.0.0.1:9/api/live/zugang/erneuern', methode: 'POST', auth: 'Bearer hjl_tokentoken', body: {} });
+    await dienst.sperreZugang({ turnierId: id, gesperrt: true });
+    assert.deepEqual(aufrufe[2].body, { gesperrt: true });
+    await dienst.sperreZugang({ turnierId: id, gesperrt: false });
+    assert.deepEqual(aufrufe[3].body, { gesperrt: false });
+
+    // Fehlerfälle: kein Token, unbekanntes Turnier, kein Cloud-Turnier, Cloud lehnt das Token ab, Cloud nicht erreichbar, Cloud-Fehler
+    const ohneToken = await neuesTurnier({ live_token: null });
+    await assert.rejects(dienst.zugang({ turnierId: ohneToken }), (f) => f.statusCode === 409 && f.code === 'kein_token');
+    await assert.rejects(dienst.zugang({ turnierId: 999999 }), (f) => f.statusCode === 404);
+    const kein = await neuesTurnier({ urspruengliche_id: null });
+    await assert.rejects(dienst.zugang({ turnierId: kein }), (f) => f.code === 'kein_cloud_turnier');
+    status = 401;
+    await assert.rejects(dienst.zugang({ turnierId: id }), (f) => f.statusCode === 409 && /Token/.test(f.message));
+    status = 500;
+    await assert.rejects(dienst.zugang({ turnierId: id }), (f) => f.statusCode === 502 && f.code === 'cloud_fehler');
+    const { dienst: offline } = umgebung({ holeUrl: async () => { throw new Error('ECONNREFUSED'); } });
+    await assert.rejects(offline.zugang({ turnierId: id }), (f) => f.statusCode === 502 && f.code === 'cloud_nicht_erreichbar');
 });

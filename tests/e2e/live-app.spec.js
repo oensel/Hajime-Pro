@@ -3,11 +3,15 @@ import { test, expect } from '@playwright/test';
 import crypto from 'node:crypto';
 import knexLib from 'knex';
 import { testDbVerbindung } from './test-env.js';
+import { merkeZugang, qrAdresse, setzeSperre } from './helpers/live-zugang.js';
 
 // Eindeutig je Test: eine Rücknahme setzt die Sequenz hoch, spätere Pakete desselben Turniers würden sonst verworfen.
 let KEY = '';
 let zaehler = 0;
-test.beforeEach(() => { KEY = `E2E-LIVE-${Date.now()}-${zaehler++}`; });
+test.beforeEach(async ({ page }) => {
+    KEY = `E2E-LIVE-${Date.now()}-${zaehler++}`;
+    await merkeZugang(page, KEY, { name: 'Live-E2E-Turnier', datum: new Date().toISOString().slice(0, 10) });
+});
 const TOKEN = 'hjl_e2e_token_0123456789abcdef0123456789abcdef';
 const t = (key, vorname, nachname, extra = {}) => ({
     key, vorname, nachname, vereinKey: 'v1', verein: 'JC Muster', altersklasse: 'U15', gewichtsklasse: '-44', geschlecht: 'w',
@@ -96,10 +100,39 @@ test('Verein verfolgen zeigt alle seine Teilnehmer, Abschluss mit Platz, ohne Ne
     await expect(page.getByTestId('kachel-b1')).toContainText('Abgeschlossen · Platz 3');
 });
 
-test('Zurückgezogenes Turnier ist nicht mehr auswählbar', async ({ page, request }) => {
+test('Zurückgezogenes Turnier: der Zugang ist beendet und wird auf dem Gerät entfernt', async ({ page, request }) => {
+    await sende(request, paket(Date.now()));
     await sende(request, { version: 1, turnierKey: KEY, zurueckgezogen: true, stand: new Date().toISOString(), sequenz: Date.now() + 100000 });
-    await page.goto('/live/');
-    await expect(page.getByTestId(`turnier-${KEY}`)).toHaveCount(0);
+    await page.goto(`/live/#/t/${KEY}`);
+    await expect(page.getByTestId('zugang-meldung')).toContainText('abgelaufen');
+    expect(await page.evaluate((k) => localStorage.getItem(`hajime-live-zugang:${k}`), KEY)).toBeNull();
+});
+
+test('Ohne Zugangscode im Gerät: Hinweis auf den Aushang, keine Turnierdaten', async ({ request, browser }) => {
+    await sende(request, paket(Date.now()));
+    const frisch = await browser.newContext();
+    const seite = await frisch.newPage();
+    await seite.goto(`/live/#/t/${KEY}`);
+    await expect(seite.getByTestId('zugang-meldung')).toContainText('QR-Code');
+    await seite.goto('/live/#/');
+    await expect(seite.getByTestId('qr-hinweis')).toBeVisible();
+    await expect(seite.getByTestId(`turnier-${KEY}`)).toHaveCount(0);
+    expect((await request.get(`/api/live/turniere/${KEY}`)).status()).toBe(401);
+    await frisch.close();
+});
+
+test('Gesperrter Aushang: die App meldet den gesperrten Zugang', async ({ page, request }) => {
+    await sende(request, paket(Date.now()));
+    const adresse = await qrAdresse(KEY);
+    await setzeSperre(KEY, true);
+    await page.goto(adresse);
+    await expect(page.getByTestId('zugang-meldung')).toContainText('gesperrt');
+    await setzeSperre(KEY, false);
+});
+
+test('Falscher QR-Code wird abgewiesen', async ({ page }) => {
+    await page.goto('/live/#z=AAAAAAAAAAAAAAAAAAAAAA');
+    await expect(page.getByTestId('zugang-meldung')).toContainText('nicht');
 });
 
 test('Offline-Start: die Startseite bietet die zuletzt geladene Übersicht an', async ({ page, request, context }) => {
@@ -115,8 +148,8 @@ test('Offline-Start: die Startseite bietet die zuletzt geladene Übersicht an', 
 
     await context.setOffline(true);
     await page.reload();
-    await expect(page.getByTestId(`zuletzt-${KEY}`)).toContainText('Live-E2E-Turnier');
-    await page.getByTestId(`zuletzt-${KEY}`).click();
+    await expect(page.getByTestId(`turnier-${KEY}`)).toContainText('Live-E2E-Turnier');
+    await page.getByTestId(`turnier-${KEY}`).click();
     await expect(page.getByTestId('kachel-a1')).toContainText('nächster Kampf: in 3 Kämpfen');
     await expect(page.getByTestId('statuszeile')).toContainText('Keine Verbindung');
 });
@@ -130,9 +163,8 @@ test('Zurückgezogenes Turnier: die Übersicht zeigt keine alten Namen mehr und 
 
     await sende(request, { version: 1, turnierKey: KEY, zurueckgezogen: true, stand: new Date().toISOString(), sequenz: Date.now() + 200000 });
     await page.reload();
-    await expect(page.getByText('nicht mehr verfügbar')).toBeVisible();
+    await expect(page.getByTestId('zugang-meldung')).toContainText('abgelaufen');
     await expect(page.getByTestId('kachel-a1')).toHaveCount(0);
-    await expect(page.getByTestId('statuszeile')).not.toContainText('Keine Verbindung');
     const gemerkt = await page.evaluate((k) => localStorage.getItem(`hajime-live:cache:${k}`), KEY);
     expect(gemerkt).toBeNull();
 });

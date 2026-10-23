@@ -236,6 +236,11 @@
                 knopf('remove_moderator', 'Super-Admin entziehen', '', () => entzieheSuperAdmin(konto), anzahlSuper <= 1),
                 document.createTextNode(' ')
             );
+            // Zwei-Faktor-Anmeldung eines anderen Super-Admins zurücksetzen (z. B. Telefon verloren, keine Backup-Codes mehr)
+            td.append(
+                knopf('phonelink_lock', konto.zwei_faktor ? 'Zwei-Faktor-Anmeldung zurücksetzen' : 'Zwei-Faktor-Anmeldung noch nicht eingerichtet', '', () => oeffneZfReset(konto), istSelbst || !konto.zwei_faktor),
+                document.createTextNode(' ')
+            );
         }
         td.append(
             knopf(konto.gesperrt ? 'lock_open' : 'block', konto.gesperrt ? 'Entsperren' : 'Sperren', '', () => setzeGesperrt(konto, !konto.gesperrt), !voll || (!konto.gesperrt && istSelbst)),
@@ -538,6 +543,44 @@
             zeigeMeldung(`Passwort für ${aktuellerKonto.vorname} ${aktuellerKonto.nachname} gesetzt${data.aendernErforderlich ? ' (muss beim nächsten Anmelden geändert werden)' : ''}.`, true);
         } catch (err) {
             passwortFehler.textContent = err.message;
+        } finally {
+            speichern.disabled = false;
+        }
+    });
+
+    // --- Zwei-Faktor-Anmeldung eines anderen Super-Admins zurücksetzen (POST /api/nutzer/:id/2fa-zuruecksetzen) ---
+    const zfDialog = document.getElementById('zfDialog');
+    const zfCode = document.getElementById('zfCode');
+    const zfFehler = document.getElementById('zfFehler');
+    let zfKonto = null;
+
+    function oeffneZfReset(konto) {
+        zfKonto = konto;
+        document.getElementById('zfFuer').textContent = `Konto: ${konto.vorname} ${konto.nachname} (${konto.email})`;
+        zfCode.value = '';
+        zfFehler.textContent = '';
+        zfDialog.showModal();
+        zfCode.focus();
+    }
+
+    document.getElementById('zfAbbrechen').addEventListener('click', () => zfDialog.close());
+    document.getElementById('zfForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!zfKonto) return;
+        const speichern = document.getElementById('zfSpeichern');
+        speichern.disabled = true;
+        zfFehler.textContent = '';
+        try {
+            const response = await fetch(`/api/nutzer/${encodeURIComponent(zfKonto.id)}/2fa-zuruecksetzen`, {
+                method: 'POST', headers: { 'X-2FA-Code': zfCode.value.trim() }
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.error || 'Die Zwei-Faktor-Anmeldung konnte nicht zurückgesetzt werden.');
+            zfDialog.close();
+            zeigeMeldung(`Zwei-Faktor-Anmeldung von ${zfKonto.vorname} ${zfKonto.nachname} zurückgesetzt; sie wird beim nächsten Login neu eingerichtet.`, true);
+            await lade();
+        } catch (err) {
+            zfFehler.textContent = err.message;
         } finally {
             speichern.disabled = false;
         }

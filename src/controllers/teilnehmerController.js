@@ -3,6 +3,7 @@ import { readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { ladeVerwaltendenVereinsnamen, hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
+import { darfTurnierSehen } from '../services/turnierSichtbarkeit.js';
 import { turnierHatEchteKaempfe, mannschaftsPoolsHabenEchteKaempfe, ermittleAltersklassenPoolZustand, regeneriereKampfplanFuerPool, aktualisiereMatteNachPoolAenderung } from './poolController.js';
 import { FachFehler } from '../utils/fachFehler.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
@@ -143,7 +144,8 @@ async function ermittleKontext(knex, req, turnier) {
         istGastgeberVerein,
         istPrivilegiert: istGastgeberVerein || !!(user && user.super_admin_aktiv),
         userVereinName: await ladeVerwaltendenVereinsnamen(knex, user),
-        userGefunden: !!user
+        userGefunden: !!user,
+        turnierSichtbar: istGastgeberVerein || await darfTurnierSehen(knex, user, turnier)
     };
 }
 
@@ -159,6 +161,9 @@ export async function legeTeilnehmerAn(knex, daten, kontext) {
     // Turnier laden
     const turnier = await knex('turniere').where({ id: parseInt(turnier_id) }).first();
     if (!turnier) {
+        throw new FachFehler(404, 'Turnier nicht gefunden.');
+    }
+    if (kontext && kontext.turnierSichtbar === false) {
         throw new FachFehler(404, 'Turnier nicht gefunden.');
     }
 
@@ -309,6 +314,10 @@ export async function getTeilnehmerByTurnier(knex, req, res) {
         const istGastgeberVerein = istEinzelbenutzerBetrieb() || hatVereinsZugriffAufTurnier(user, turnier);
 
         let query = knex('turnier_teilnehmer').where({ turnier_id: parseInt(turnierId) });
+
+        if (!istGastgeberVerein && !(await darfTurnierSehen(knex, user, turnier))) {
+            return res.status(404).json({ error: 'Turnier nicht gefunden.' });
+        }
 
         // Wer kein freigegebenes Mitglied des ausrichtenden Vereins ist, sieht
         // ausschließlich die Teilnehmer des eigenen Vereins.
@@ -1229,6 +1238,9 @@ async function ladeImportKontext(knex, req) {
     const istSuperAdmin = !!user.ist_super_admin;
 
     if (!istGastgeberVerein) {
+        if (!(await darfTurnierSehen(knex, user, turnier))) {
+            return { fehler: { status: 404, body: { success: false, error: 'Turnier nicht gefunden.' } } };
+        }
         if (ermittleEffektivenStatus(turnier, { hatEchteKaempfe }) !== 'veroeffentlicht') {
             return { fehler: { status: 403, body: { success: false, error: 'Die Anmeldung für dieses Turnier ist nicht geöffnet.' } } };
         }

@@ -90,6 +90,6 @@ export async function setzePasswortZurueck(knex, token, passwort) {
             updated_at: trx.fn.now()
         });
         await entwerteTokens(trx, konto.id, 'passwort');
-        return { ok: true };
+        return { ok: true, benutzerId: konto.id };
     });
 }

@@ -26,7 +26,7 @@ const GRUND_TEXT = {
 
 export function starteLiveAppDienst({
     knex, cloud, holeCluster = () => null, env = process.env, jetzt = Date.now, timer = true,
-    erzeugeUplinkFn = erzeugeUplink, ladeSnapshotsFn = ladeSnapshots, log = console
+    erzeugeUplinkFn = erzeugeUplink, ladeSnapshotsFn = ladeSnapshots, log = console, holeUrl = (...a) => fetch(...a)
 }) {
     const pruefMs = Number(env.LIVE_APP_PRUEF_MS) || 15000;
     const taktMs = Number(env.LIVE_APP_TAKT_MS) || 5000;
@@ -197,6 +197,34 @@ export function starteLiveAppDienst({
         return status({ turnierId: turnier.id });
     }
 
+    // --- Zugangscode der Teilnehmer-App (QR-Code für den Aushang): wird in der Cloud verwaltet, hier mit dem Token des Turniers abgefragt ---
+    async function zugangAnfrage(turnierId, methode, pfad, body) {
+        const turnier = await ladeTurnier(turnierId);
+        if (!turnier) throw fehlerMitGrund(404, GRUND_TEXT.kein_turnier, 'kein_turnier');
+        if (!cloud.konfiguriert()) throw fehlerMitGrund(409, GRUND_TEXT.cloud_nicht_konfiguriert, 'cloud_nicht_konfiguriert');
+        if (turnier.urspruengliche_id == null) throw fehlerMitGrund(409, GRUND_TEXT.kein_cloud_turnier, 'kein_cloud_turnier');
+        if (!turnier.live_token) throw fehlerMitGrund(409, GRUND_TEXT.kein_token, 'kein_token');
+        const basis = liesCloudUrl(env);
+        let antwort;
+        try {
+            antwort = await holeUrl(`${basis}/api/live${pfad}`, {
+                method: methode, signal: AbortSignal.timeout(10_000),
+                headers: { Authorization: `Bearer ${turnier.live_token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+                ...(body ? { body: JSON.stringify(body) } : {})
+            });
+        } catch {
+            throw fehlerMitGrund(502, 'Die Cloud ist nicht erreichbar. Der QR-Code braucht eine Internetverbindung.', 'cloud_nicht_erreichbar');
+        }
+        if (antwort.status === 401) throw fehlerMitGrund(409, 'Das Cloud-Token ist ungültig. Bitte das Turnier erneut aus der Cloud holen.', 'kein_token');
+        if (!antwort.ok) throw fehlerMitGrund(502, `Die Cloud hat den Zugang nicht geliefert (${antwort.status}).`, 'cloud_fehler');
+        const daten = await antwort.json();
+        return { ...daten, url: `${basis}/live/#z=${daten.code}` };
+    }
+
+    const zugang = ({ turnierId }) => zugangAnfrage(turnierId, 'GET', '/zugang');
+    const erneuereZugang = ({ turnierId }) => zugangAnfrage(turnierId, 'POST', '/zugang/erneuern', {});
+    const sperreZugang = ({ turnierId, gesperrt }) => zugangAnfrage(turnierId, 'POST', '/zugang/sperren', { gesperrt: gesperrt !== false });
+
     // Was der Partner im Cluster-Status über diesen Knoten sieht.
     function statusFuerPartner() {
         const turniere = {};
@@ -227,5 +255,5 @@ export function starteLiveAppDienst({
         for (const t of timerIds) t.unref?.();
     }
 
-    return { status, schalte, statusFuerPartner, pruefeCloud, tick, stoppe: () => timerIds.forEach(clearInterval) };
+    return { status, schalte, zugang, erneuereZugang, sperreZugang, statusFuerPartner, pruefeCloud, tick, stoppe: () => timerIds.forEach(clearInterval) };
 }

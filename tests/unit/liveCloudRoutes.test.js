@@ -9,6 +9,7 @@ import { loescheAlteLiveDaten } from '../../src/liveCloud/aufbewahrung.js';
 import { erzeugeToken } from '../../src/liveCloud/token.js';
 import { erzeugeRatenbegrenzung } from '../../src/liveCloud/ratenbegrenzung.js';
 import { uebernimmPaket } from '../../src/liveCloud/ingest.js';
+import { holeOderErzeuge } from '../../src/liveCloud/zugang.js';
 
 const t = (key, vorname, nachname, extra = {}) => ({
     key, vorname, nachname, vereinKey: 'v1', verein: 'JC Muster', altersklasse: 'U15', gewichtsklasse: '-44', geschlecht: 'w',
@@ -22,11 +23,19 @@ const paket = (turnierKey, extra = {}) => ({
 });
 
 let db, server, basis, token, gebundenerToken;
-const sende = (pfad, { methode = 'GET', header = {}, body, gzip = false } = {}) => {
+// Turnierdaten gibt es nur mit dem Zugangscode (X-Live-Zugang): für bekannte Turniere trägt `sende` ihn automatisch ein, für unbekannte
+// bleibt er weg (ohne Code antwortet die Cloud nie anders als bei einem falschen Code). `ohneCode: true` lässt ihn bewusst weg.
+const codeFuer = async (pfad) => {
+    const treffer = /^\/turniere\/([^/?]+)/.exec(pfad);
+    if (!treffer || !(await db.knex('live_turniere').where({ turnier_key: treffer[1] }).first('turnier_key'))) return null;
+    return (await holeOderErzeuge(db.knex, treffer[1])).code;
+};
+const sende = async (pfad, { methode = 'GET', header = {}, body, gzip = false, ohneCode = false } = {}) => {
     const daten = body === undefined ? undefined : (gzip ? zlib.gzipSync(JSON.stringify(body)) : JSON.stringify(body));
+    const code = ohneCode || header['X-Live-Zugang'] ? null : await codeFuer(pfad);
     return fetch(`${basis}${pfad}`, {
         method: methode, body: daten,
-        headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(gzip ? { 'Content-Encoding': 'gzip' } : {}), ...header }
+        headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(gzip ? { 'Content-Encoding': 'gzip' } : {}), ...(code ? { 'X-Live-Zugang': code } : {}), ...header }
     });
 };
 const mitToken = (extra = {}) => ({ header: { Authorization: `Bearer ${token}` }, ...extra });
@@ -57,9 +66,11 @@ test('Ingest: ohne und mit falschem Token 401, mit Token 204 (auch gzip), Daten 
     const r = await sende('/ingest', { methode: 'POST', body: paket('R1'), ...mitToken({ gzip: true }) });
     assert.equal(r.status, 204);
     assert.equal(await r.text(), '');
-    const liste = await (await sende('/turniere')).json();
-    assert.ok(liste.turniere.some(x => x.key === 'R1'));
-    assert.equal(liste.serverzeit, '2026-10-12T10:01:00.000Z');
+    const turnier = await (await sende('/turniere/R1')).json();
+    assert.equal(turnier.name, 'Turnier R1');
+    assert.equal(turnier.serverzeit, '2026-10-12T10:01:00.000Z');
+    // eine Liste aller Turniere gibt es nicht mehr
+    assert.equal((await sende('/turniere')).status, 404);
 });
 
 test('Ingest: ungültiges Paket 400, veraltetes Paket 409 ohne Änderung, gebundenes Token nur für sein Turnier', async () => {
@@ -83,12 +94,13 @@ test('Ingest: wiederholt falsche Token werden begrenzt (429), das gültige Token
     assert.equal((await sende('/ingest', { methode: 'POST', body: paket('R4'), ...mitToken() })).status, 204);
 });
 
-test('Rücknahme über den Ingest: Turnier verschwindet aus der Liste', async () => {
+test('Rücknahme über den Ingest: der Zugang endet sofort (403 abgelaufen)', async () => {
     await sende('/ingest', { methode: 'POST', body: paket('R5', { sequenz: 10 }), ...mitToken() });
     const rueck = { version: 1, turnierKey: 'R5', zurueckgezogen: true, stand: '2026-10-12T10:00:00.000Z', sequenz: 20 };
     assert.equal((await sende('/ingest', { methode: 'POST', body: rueck, ...mitToken() })).status, 204);
-    assert.equal((await sende('/turniere/R5')).status, 404);
-    assert.ok(!(await (await sende('/turniere')).json()).turniere.some(x => x.key === 'R5'));
+    const danach = await sende('/turniere/R5');
+    assert.equal(danach.status, 403);
+    assert.equal((await danach.json()).code, 'abgelaufen');
 });
 
 test('App-API: Turnier, Suche, Pool, Verein', async () => {
@@ -108,7 +120,7 @@ test('App-API: Turnier, Suche, Pool, Verein', async () => {
     assert.equal((await sende('/turniere/R1/pools/999')).status, 404);
 
     assert.equal((await (await sende('/turniere/R1/vereine/v1')).json()).teilnehmer.length, 2);
-    assert.equal((await sende('/turniere/gibtsnicht')).status, 404);
+    assert.equal((await sende('/turniere/gibtsnicht')).status, 401, 'unbekanntes Turnier: wie ein falscher Code');
 });
 
 test('App-API: Übersicht mit Schlüsseln, unbekannt/leer/zurückgezogen', async () => {
@@ -120,7 +132,7 @@ test('App-API: Übersicht mit Schlüsseln, unbekannt/leer/zurückgezogen', async
     const leer = await sende('/turniere/R1/uebersicht', { methode: 'POST', body: {} });
     assert.equal(leer.status, 200);
     assert.deepEqual((await leer.json()).teilnehmer, []);
-    assert.equal((await sende('/turniere/R5/uebersicht', { methode: 'POST', body: { teilnehmer: ['a1'] } })).status, 404);
+    assert.equal((await sende('/turniere/R5/uebersicht', { methode: 'POST', body: { teilnehmer: ['a1'] } })).status, 403, 'zurückgezogen');
     assert.equal((await sende('/turniere/R1/uebersicht', { methode: 'POST', body: 'kaputt' })).status, 400);
 });
 
@@ -135,15 +147,15 @@ test('App-API: Pools und Dashboard', async () => {
     const dash = await (await sende('/turniere/R8/dashboard')).json();
     assert.equal(dash.matten[0].laufend.k1.name, 'Anna Muster');
     assert.ok(dash.serverzeit);
-    assert.equal((await sende('/turniere/gibtsnicht/dashboard')).status, 404);
-    assert.equal((await sende('/turniere/gibtsnicht/pools')).status, 404);
+    assert.equal((await sende('/turniere/gibtsnicht/dashboard')).status, 401);
+    assert.equal((await sende('/turniere/gibtsnicht/pools')).status, 401);
     const pool = await (await sende('/turniere/R8/pools/10')).json();
     assert.equal(pool.kaempfe.length, 1);
 });
 
 test('App-API ist ratenbegrenzt (429), der Ingest nicht', async () => {
     const stati = [];
-    for (let i = 0; i < 60; i++) stati.push((await sende('/turniere')).status);
+    for (let i = 0; i < 60; i++) stati.push((await sende('/turniere/R1')).status);
     assert.ok(stati.includes(429));
     assert.equal((await sende('/ingest', { methode: 'POST', body: paket('R6'), ...mitToken() })).status, 204);
 });

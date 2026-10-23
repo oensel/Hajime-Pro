@@ -8,6 +8,10 @@ import {
     MIN_PASSWORT_LAENGE, MAX_EMAIL_LAENGE, MELDUNG_EMAIL_ZU_LANG, normalisiereEmail, sendeBestaetigungAnKonto, bestaetigeKontoManuell
 } from '../services/registrierung.js';
 import { sendeResetLink } from '../services/passwortReset.js';
+import { BUNDESLAENDER } from '../shared/bundeslaender.js';
+import { loescheUnbestaetigteKonten } from '../services/kontenAufraeumen.js';
+import { bewerteVereinsImport, importiereVereine } from '../services/vereinsImport.js';
+import { pruefeCodeFuerAktion, setzeZweiFaktorZurueck } from '../services/zweiFaktor.js';
 import { legeVereinAn, benenneVereinUm, fuehreVereineZusammen, loescheLeerenVerein } from '../services/vereinsVerwaltung.js';
 import { ermittleBasisUrl, HINWEIS_FEHLENDE_BASIS_URL } from '../utils/basisUrl.js';
 import { vergesseSperrStand } from '../utils/kontoSperre.js';
@@ -93,7 +97,7 @@ export async function listeNutzer(knex, req, res) {
                         .whereIn('verein_id', scope.vereinIds).where({ freigegeben: 1 }).select('benutzer_id'));
                 }
             })
-            .select('id', 'vorname', 'nachname', 'email', 'ist_super_admin', 'email_bestaetigt_am', 'gesperrt', 'created_at')
+            .select('id', 'vorname', 'nachname', 'email', 'ist_super_admin', 'email_bestaetigt_am', 'gesperrt', 'created_at', 'totp_aktiv_am')
             .orderBy([{ column: 'ist_super_admin', order: 'desc' }, { column: 'nachname' }, { column: 'vorname' }, { column: 'email' }]);
         const mitgliedschaften = await knex('benutzer_vereine')
             .join('vereine', 'vereine.id', 'benutzer_vereine.verein_id')
@@ -130,6 +134,8 @@ export async function listeNutzer(knex, req, res) {
             ist_super_admin: !!k.ist_super_admin,
             email_bestaetigt: !!k.email_bestaetigt_am,
             gesperrt: !!k.gesperrt,
+            // Zwei-Faktor-Anmeldung eingerichtet (nur für Super-Admin-Konten ein Wert)
+            zwei_faktor: k.ist_super_admin ? !!k.totp_aktiv_am : null,
             erstellt_am: k.created_at ? new Date(k.created_at).toISOString() : null,
             mitgliedschaften: jeKonto.get(k.id) || [],
             // false: das Konto gehört auch zu Vereinen, die der Aufrufer nicht verwaltet (nur Rolle/Zuordnung änderbar)
@@ -179,11 +185,7 @@ export async function setzeSuperAdmin(knex, req, res) {
 
 // --- Vereinsübersicht (Super-Admin): alle Vereine mit Bundesland, Anzahl Benutzer und Turniere ---
 
-export const BUNDESLAENDER = [
-    'Baden-Württemberg', 'Bayern', 'Berlin', 'Brandenburg', 'Bremen', 'Hamburg', 'Hessen', 'Mecklenburg-Vorpommern',
-    'Niedersachsen', 'Nordrhein-Westfalen', 'Rheinland-Pfalz', 'Saarland', 'Sachsen', 'Sachsen-Anhalt',
-    'Schleswig-Holstein', 'Thüringen'
-];
+export { BUNDESLAENDER };
 
 /** GET /api/nutzer/vereine — alle Vereine mit Bundesland, benutzer_anzahl (alle Mitgliedschaften, Rolle egal) und turniere_anzahl. */
 export async function listeVereine(knex, req, res) {
@@ -264,6 +266,27 @@ export async function legeVereinAnRoute(knex, req, res) {
     } catch (error) {
         console.error('[Verein-Anlegen-Fehler]:', error);
         res.status(500).json({ success: false, error: 'Fehler beim Anlegen des Vereins.' });
+    }
+}
+
+/**
+ * POST /api/nutzer/vereine/import { text, vorschau? } — Vereinsliste („Name;Bundesland“, Bundesland ist Pflicht) auswerten
+ * (vorschau: true, schreibt nichts) bzw. die neuen Vereine anlegen.
+ */
+export async function importiereVereineRoute(knex, req, res) {
+    try {
+        const { text, vorschau } = req.body || {};
+        if (vorschau === true) {
+            const bewertung = await bewerteVereinsImport(knex, text);
+            if (!bewertung.ok) return res.status(bewertung.status).json({ success: false, error: bewertung.error });
+            return res.json({ success: true, zeilen: bewertung.zeilen, anzahl: bewertung.anzahl });
+        }
+        const ergebnis = await importiereVereine(knex, text);
+        if (!ergebnis.ok) return res.status(ergebnis.status).json({ success: false, error: ergebnis.error });
+        res.json({ success: true, angelegt: ergebnis.angelegt, uebersprungen: ergebnis.uebersprungen });
+    } catch (error) {
+        console.error('[Vereinsimport-Fehler]:', error);
+        res.status(500).json({ success: false, error: 'Fehler beim Import der Vereine.' });
     }
 }
 
@@ -421,6 +444,28 @@ export async function loescheNutzer(knex, req, res) {
  * Person es beim nächsten Anmelden ändern (aendernErforderlich: false hebt das auf). Ein noch unbestätigtes Konto gilt
  * damit als freigegeben (E-Mail bestätigt), weil der Super-Admin die Zugangsdaten übergibt.
  */
+/**
+ * POST /api/nutzer/:id/2fa-zuruecksetzen — entfernt die Zwei-Faktor-Anmeldung eines anderen Super-Admin-Kontos (es richtet sie
+ * beim nächsten Login neu ein). Header X-2FA-Code: aktueller Code des handelnden Super-Admins.
+ */
+export async function setzeZweiFaktorZurueckRoute(knex, req, res) {
+    try {
+        if (req.params.id === req.user.id) {
+            return res.status(400).json({ success: false, error: 'Die eigene Zwei-Faktor-Anmeldung lässt sich nicht zurücksetzen.' });
+        }
+        const pruefung = await pruefeCodeFuerAktion(knex, req.user.id, req.get('x-2fa-code'));
+        if (!pruefung.ok) return res.status(pruefung.status).json({ success: false, error: pruefung.error });
+        const ziel = await knex('benutzer').where({ id: req.params.id }).first('id', 'ist_super_admin');
+        if (!ziel) return res.status(404).json({ success: false, error: 'Konto nicht gefunden.' });
+        if (!ziel.ist_super_admin) return res.status(400).json({ success: false, error: 'Nur Super-Admin-Konten haben eine Zwei-Faktor-Anmeldung.' });
+        await setzeZweiFaktorZurueck(knex, ziel.id);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('[2FA-Zuruecksetzen-Fehler]:', error);
+        res.status(500).json({ success: false, error: 'Fehler beim Zurücksetzen der Zwei-Faktor-Anmeldung.' });
+    }
+}
+
 export async function setzeInitialPasswort(knex, req, res) {
     try {
         const zielId = leseKontoId(req);
@@ -556,11 +601,7 @@ export async function loescheUnbestaetigte(knex, req, res) {
         if (!Number.isInteger(tage) || tage < 1 || tage > 3650) {
             return res.status(400).json({ success: false, error: 'aelterAlsTage muss eine ganze Zahl zwischen 1 und 3650 sein.' });
         }
-        const geloescht = await knex('benutzer')
-            .whereNull('email_bestaetigt_am')
-            .where({ ist_super_admin: false })
-            .whereRaw("created_at < now() - (? * interval '1 day')", [tage])
-            .del();
+        const geloescht = await loescheUnbestaetigteKonten(knex, tage);
         res.json({ success: true, geloescht });
     } catch (error) {
         console.error('[Nutzer-Unbestaetigte-Fehler]:', error);

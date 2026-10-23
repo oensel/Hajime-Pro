@@ -66,6 +66,17 @@
                 <p class="ta-hinweis">${INTERNET}</p>
                 <p class="ta-hinweis" id="taSender" hidden></p>
                 <p class="ta-fehler" id="taFehler" hidden></p>
+                <div class="ta-zugang" id="taZugang" hidden>
+                    <h4>Zugang für Besucher</h4>
+                    <p class="ta-hinweis">Die Teilnehmer-App zeigt Daten nur Besuchern, die den ausgehängten QR-Code gescannt haben. Hängen Sie ihn nur in der Halle aus.</p>
+                    <p class="ta-hinweis" id="taZugangText"></p>
+                    <div class="ta-zugang-knoepfe">
+                        <a class="btn btn-outlined" id="taAushang" href="#" target="_blank" rel="noopener">QR-Code für den Aushang</a>
+                        <button type="button" class="btn btn-outlined" id="taErneuern">Neuen Code erzeugen</button>
+                        <button type="button" class="btn btn-outlined" id="taSperren">Zugang sperren</button>
+                    </div>
+                    <p class="ta-fehler" id="taZugangFehler" hidden></p>
+                </div>
                 <div class="ta-aktionen">
                     <button type="button" class="btn btn-outlined" id="taEinschalten" hidden>Einschalten</button>
                     <button type="button" class="btn btn-outlined" id="taSchliessen">Schließen</button>
@@ -82,6 +93,8 @@
             }
         });
         wurzel.querySelector('#taEinschalten').addEventListener('click', () => setze(true));
+        wurzel.querySelector('#taErneuern').addEventListener('click', erneuereZugang);
+        wurzel.querySelector('#taSperren').addEventListener('click', () => sperreZugang());
         wurzel.querySelector('#taSchliessen').addEventListener('click', schliesse);
         wurzel.addEventListener('click', (e) => { if (e.target === wurzel) schliesse(); });
         document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !wurzel.hidden) schliesse(); });
@@ -103,6 +116,80 @@
         const sender = dialog.querySelector('#taSender');
         sender.hidden = !(status.aktiv && status.senderKnoten);
         sender.textContent = status.senderKnoten ? `Sendet: ${status.senderKnoten}` : '';
+        const zugangBox = dialog.querySelector('#taZugang');
+        zugangBox.hidden = !status.aktiv;
+        dialog.querySelector('#taAushang').href = `/live-aushang.html?turnierId=${encodeURIComponent(turnierId)}`;
+        if (status.aktiv && !zugang && !zugangLaedt) ladeZugang();
+    }
+
+    // --- Zugangscode (QR-Code für den Aushang) ---
+    let zugang = null;
+    let zugangLaedt = false;
+
+    function zeigeZugang() {
+        if (!dialog) return;
+        const text = dialog.querySelector('#taZugangText');
+        const sperre = dialog.querySelector('#taSperren');
+        if (!zugang) { text.textContent = 'Der Zugang wird geladen …'; return; }
+        const bis = zugang.gueltigBis ? new Date(zugang.gueltigBis).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : null;
+        text.textContent = zugang.gesperrt
+            ? 'Der Zugang ist gesperrt: Besucher sehen nichts, bis Sie ihn freigeben.'
+            : `Der Code gilt${bis ? ` bis ${bis} Uhr (Ende des Turniertags)` : ''}. „Neuen Code erzeugen“ macht ausgehängte QR-Codes sofort ungültig.`;
+        sperre.textContent = zugang.gesperrt ? 'Zugang freigeben' : 'Zugang sperren';
+    }
+
+    function zugangFehler(meldung) {
+        const feld = dialog && dialog.querySelector('#taZugangFehler');
+        if (!feld) return;
+        feld.textContent = meldung || '';
+        feld.hidden = !meldung;
+    }
+
+    async function zugangAnfrage(pfad, methode, body) {
+        const antwort = await fetch(`/api/live-app/zugang${pfad}`, {
+            method: methode, cache: 'no-store',
+            ...(body ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {})
+        });
+        const daten = await antwort.json().catch(() => ({}));
+        if (!antwort.ok) throw new Error(daten.error || `Fehler ${antwort.status}`);
+        return daten;
+    }
+
+    async function ladeZugang() {
+        zugangLaedt = true;
+        zugangFehler('');
+        try {
+            zugang = await zugangAnfrage(`?turnierId=${encodeURIComponent(turnierId)}`, 'GET');
+        } catch (e) {
+            zugang = null;
+            zugangFehler(e.message);
+        } finally {
+            zugangLaedt = false;
+            zeigeZugang();
+        }
+    }
+
+    async function erneuereZugang() {
+        const text = 'Einen neuen Code erzeugen? Alle bereits ausgehängten QR-Codes werden sofort ungültig und müssen neu gedruckt werden.';
+        const ok = window.zeigeZentraleBestaetigung ? await window.zeigeZentraleBestaetigung(text, 'Neuen Code erzeugen', 'qr_code') : window.confirm(text);
+        if (!ok) return;
+        zugangFehler('');
+        try {
+            zugang = await zugangAnfrage('/erneuern', 'POST', { turnierId: Number(turnierId) });
+        } catch (e) {
+            zugangFehler(e.message);
+        }
+        zeigeZugang();
+    }
+
+    async function sperreZugang() {
+        zugangFehler('');
+        try {
+            zugang = await zugangAnfrage('/sperren', 'POST', { turnierId: Number(turnierId), gesperrt: !(zugang && zugang.gesperrt) });
+        } catch (e) {
+            zugangFehler(e.message);
+        }
+        zeigeZugang();
     }
 
     async function setze(aktiv) {
@@ -135,6 +222,7 @@
         if (!dialog) dialog = baueDialog();
         dialog.hidden = false;
         dialog.querySelector('#taFehler').hidden = true;
+        zugang = null;
         zeigeDialog();
         if (einschalten && status && status.verfuegbar && !status.aktiv) {
             dialog.querySelector('#taSchalter').checked = true;

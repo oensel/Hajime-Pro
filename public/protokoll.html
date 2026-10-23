@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hajime Pro - Protokoll</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <script src="/js/menu.js"></script>
+    <style>
+        .protokoll-filter [hidden] { display: none; }
+        .protokoll-filter { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; margin-bottom: 12px; }
+        .protokoll-filter label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-muted); }
+        .protokoll-filter input, .protokoll-filter select { padding: 7px 9px; box-sizing: border-box; min-width: 150px; }
+        .protokoll-tabelle { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .protokoll-tabelle th, .protokoll-tabelle td { text-align: left; padding: 6px 9px; border-bottom: 1px solid var(--border); vertical-align: top; overflow-wrap: anywhere; }
+        .protokoll-tabelle th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); position: sticky; top: 0; background: var(--bg-card); }
+        .protokoll-tabelle td.zeit { white-space: nowrap; }
+        .protokoll-tabelle .klein { display: block; font-size: 12px; color: var(--text-muted); }
+        .rolle { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; border: 1px solid var(--border); }
+        .rolle-super_admin { color: #c62828; border-color: #c62828; }
+        .rolle-admin { color: #1565c0; border-color: #1565c0; }
+        .protokoll-seiten { display: flex; gap: 12px; align-items: center; margin-top: 12px; font-size: 13px; }
+        .protokoll-meldung { color: #ef4444; font-weight: 700; min-height: 18px; }
+        .tabelle-scroll { overflow-x: auto; }
+    </style>
+</head>
+<body>
+
+<div class="kanji-left">柔</div>
+<div class="kanji-right">道</div>
+
+<div class="mdc-card" style="padding: 20px 24px; max-width: 1280px;">
+    <div class="form-title-area">
+        <span class="material-icons">history</span>
+        <h1>Protokoll</h1>
+        <span class="material-icons">history</span>
+    </div>
+    <p id="protokollHinweis" style="color: var(--text-muted); font-size: 13px; margin-top: 0;">Wer hat wann was getan: Anmeldungen und jede schreibende Aktion. Es werden nie Passwörter oder Eingaben gespeichert. Einträge werden nach einer Aufbewahrungsfrist (Standard 12 Monate) gelöscht.</p>
+
+    <form class="protokoll-filter" id="protokollFilter">
+        <label>Von <input type="date" id="fVon"></label>
+        <label>Bis <input type="date" id="fBis"></label>
+        <label>Benutzer <input type="search" id="fBenutzer" placeholder="Name oder E-Mail"></label>
+        <label>Aktion <input type="search" id="fSuche" placeholder="z. B. Turnier, gelöscht"></label>
+        <label id="fVereinBox">Verein <select id="fVerein"><option value="">Alle</option></select></label>
+        <button type="submit" class="btn btn-raised">Filtern</button>
+        <button type="button" class="btn btn-outlined" id="fZurueck">Zurücksetzen</button>
+    </form>
+
+    <div id="protokollMeldung" class="protokoll-meldung" role="alert"></div>
+    <div class="tabelle-scroll">
+        <table class="protokoll-tabelle">
+            <thead><tr><th>Zeit</th><th>Benutzer</th><th>Verein</th><th>Aktion</th><th>Einzelheiten</th></tr></thead>
+            <tbody id="protokollListe"><tr><td colspan="5">Wird geladen …</td></tr></tbody>
+        </table>
+    </div>
+    <div class="protokoll-seiten">
+        <button type="button" class="btn btn-outlined" id="seiteZurueck">Zurück</button>
+        <span id="seiteInfo"></span>
+        <button type="button" class="btn btn-outlined" id="seiteWeiter">Weiter</button>
+    </div>
+</div>
+
+<script src="/js/protokoll.js"></script>
+</body>
+</html>

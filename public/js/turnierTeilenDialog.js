@@ -23,7 +23,7 @@
             className: 'mdc-card',
             style: 'max-width: 480px; width: 90%; padding: 24px; border-radius: 4px; border: 2px solid var(--border); box-shadow: var(--shadow); background-color: var(--bg-card);'
         });
-        const titel = el('h2', { text: 'Turnier teilen', style: 'margin: 0 0 4px 0; font-size: 18px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;' });
+        const titel = el('h2', { text: 'Vereine einladen', style: 'margin: 0 0 4px 0; font-size: 18px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;' });
         const unterzeile = el('p', { text: `Direktlink zu „${turnier.bezeichnung}“ per E-Mail. Wer schon ein Konto hat, meldet sich an; alle anderen registrieren sich zuerst.`, style: 'margin: 0 0 16px 0; font-size: 13px; color: var(--text-muted);' });
         const label = el('label', { text: 'E-Mail-Adressen', htmlFor: 'teilenAdressen', style: 'display: block; font-size: 12px; font-weight: 700; margin-bottom: 4px;' });
         const adressen = el('textarea', {
@@ -42,7 +42,7 @@
         const ergebnis = el('ul', { id: 'teilenErgebnis', style: 'display: none; margin: 12px 0 0 0; padding-left: 18px; font-size: 13px;' });
         const fehler = el('p', { id: 'teilenFehler', style: 'display: none; margin: 12px 0 0 0; font-size: 13px; font-weight: 700; color: #c62828;' });
         const schliessenKnopf = el('button', { type: 'button', className: 'btn btn-outlined', text: 'Schließen', style: 'padding: 8px 20px; font-size: 12px;' });
-        const senden = el('button', { type: 'button', className: 'btn btn-raised', text: 'Link senden', id: 'teilenSendenBtn', style: 'padding: 8px 20px; font-size: 12px;' });
+        const senden = el('button', { type: 'button', className: 'btn btn-raised', text: 'Einladen', id: 'teilenSendenBtn', style: 'padding: 8px 20px; font-size: 12px;' });
         const knoepfe = el('div', { style: 'display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px;' }, [schliessenKnopf, senden]);
 
         [titel, unterzeile, label, adressen, vereinLabel, vereinFeld, vereinListe, gewaehlt, ergebnis, fehler, knoepfe].forEach(k => karte.appendChild(k));

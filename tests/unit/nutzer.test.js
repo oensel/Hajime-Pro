@@ -117,7 +117,7 @@ test('Nutzer-Verwaltung: nur Super-Admins, ernennen, letzter Super-Admin bleibt'
         const vereine = await (await aufruf('u-admin', '/vereine')).json();
         const v1 = vereine.find(v => v.name === 'JC Nutzer');
         const v2 = vereine.find(v => v.name === 'SV Zweiter');
-        assert.deepEqual([v1.benutzer_anzahl, v1.turniere_anzahl, v1.bundesland], [1, 0, null]);
+        assert.deepEqual([v1.benutzer_anzahl, v1.turniere_anzahl, v1.bundesland], [1, 0, 'Nordrhein-Westfalen']); // Standard-Bundesland neuer Vereine
         assert.deepEqual([v2.benutzer_anzahl, v2.turniere_anzahl, v2.bundesland], [2, 3, 'Bayern']); // wartende Mitgliedschaft zählt mit
         assert.deepEqual(vereine.map(v => v.name), [...vereine.map(v => v.name)].sort((a, b) => a.localeCompare(b)));
 

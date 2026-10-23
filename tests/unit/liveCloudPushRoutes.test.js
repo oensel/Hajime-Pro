@@ -7,6 +7,7 @@ import { getLiveRoutes } from '../../src/routes/liveRoutes.js';
 import { erzeugeToken } from '../../src/liveCloud/token.js';
 import { erzeugeRatenbegrenzung } from '../../src/liveCloud/ratenbegrenzung.js';
 import { liesPushKonfig } from '../../src/liveCloud/pushKonfig.js';
+import { holeOderErzeuge } from '../../src/liveCloud/zugang.js';
 
 const konfig = liesPushKonfig({ LIVE_PUSH_VAPID_PUBLIC: 'oeffentlich', LIVE_PUSH_VAPID_PRIVATE: 'privat', LIVE_PUSH_BETREFF: 'mailto:a@b.de' });
 const ENDPUNKT = 'https://fcm.googleapis.com/fcm/send/geraet-1';
@@ -29,10 +30,19 @@ const sender = async (abo, nachricht) => {
     if (senderFehler) throw new Error('Push-Dienst kaputt');
     gesendet.push({ endpoint: abo.endpoint, ...nachricht });
 };
-const sende = (pfad, { methode = 'GET', body, header = {} } = {}) => fetch(`${basis}${pfad}`, {
-    method: methode, body: body === undefined ? undefined : JSON.stringify(body),
-    headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...header }
-});
+// Turnierdaten (auch die Push-Anmeldung) brauchen den Zugangscode: für bekannte Turniere trägt `sende` ihn ein, für unbekannte bleibt er weg.
+const codeFuer = async (pfad) => {
+    const treffer = /^\/turniere\/([^/?]+)/.exec(pfad);
+    if (!treffer || !(await db.knex('live_turniere').where({ turnier_key: treffer[1] }).first('turnier_key'))) return null;
+    return (await holeOderErzeuge(db.knex, treffer[1])).code;
+};
+const sende = async (pfad, { methode = 'GET', body, header = {}, ohneCode = false } = {}) => {
+    const code = ohneCode ? null : await codeFuer(pfad);
+    return fetch(`${basis}${pfad}`, {
+        method: methode, body: body === undefined ? undefined : JSON.stringify(body),
+        headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(code ? { 'X-Live-Zugang': code } : {}), ...header }
+    });
+};
 const ingest = (p) => sende('/ingest', { methode: 'POST', body: p, header: { Authorization: `Bearer ${token}` } });
 const anmeldung = (extra = {}) => ({ abo: { endpoint: ENDPUNKT, keys: { p256dh: 'pk', auth: 'ak' } }, glocken: { teilnehmer: ['a'], vereine: [], ausnahmen: [] }, ...extra });
 
@@ -64,7 +74,8 @@ test('Push ohne Konfiguration: Schlüssel und Anmeldung liefern 503', async () =
     const b = `http://127.0.0.1:${aus.address().port}/api/live`;
     try {
         assert.equal((await fetch(`${b}/push/schluessel`)).status, 503);
-        assert.equal((await fetch(`${b}/turniere/R/push`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(anmeldung()) })).status, 503);
+        // die Zugangsprüfung kommt vor der Push-Konfiguration: ohne Code 401, nie ein Hinweis auf die Einrichtung
+        assert.equal((await fetch(`${b}/turniere/R/push`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(anmeldung()) })).status, 401);
     } finally {
         await new Promise(r => aus.close(r));
     }
@@ -76,7 +87,9 @@ test('Push-Routen: Schlüssel, Anmelden, Fehlerfälle, Abmelden', async () => {
     assert.deepEqual(await schluessel.json(), { schluessel: 'oeffentlich' });
 
     assert.equal((await ingest(paket([t('a', 'Anna')]))).status, 204);
-    assert.equal((await sende('/turniere/gibtsnicht/push', { methode: 'PUT', body: anmeldung() })).status, 404);
+    assert.equal((await sende('/turniere/gibtsnicht/push', { methode: 'PUT', body: anmeldung() })).status, 401);
+    assert.equal((await sende('/turniere/R/push', { methode: 'PUT', body: anmeldung(), ohneCode: true })).status, 401, 'ohne Code keine Anmeldung');
+    assert.equal((await sende('/turniere/R/push', { methode: 'DELETE', body: { endpoint: ENDPUNKT }, ohneCode: true })).status, 401);
     assert.equal((await sende('/turniere/R/push', { methode: 'PUT', body: anmeldung({ abo: { endpoint: 'https://evil.example/x', keys: { p256dh: 'p', auth: 'a' } } }) })).status, 400);
     assert.equal((await sende('/turniere/R/push', { methode: 'PUT', body: {} })).status, 400);
     assert.equal((await sende('/turniere/R/push', { methode: 'PUT', body: anmeldung() })).status, 204);
