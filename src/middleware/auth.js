@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
-import { hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein, istSuperAdminAktiv } from '../utils/vereinHelper.js';
+import { hatVereinsZugriffAufTurnier, ladeBenutzerMitAktivemVerein, istSuperAdminAktiv, ladeVereinIdsMitRolle } from '../utils/vereinHelper.js';
 import { rolleReicht } from '../shared/rollen.js';
 import * as steuerungPasswort from '../utils/steuerungPasswort.js';
 import { istKontoGesperrt, MELDUNG_KONTO_GESPERRT } from '../utils/kontoSperre.js';
@@ -359,6 +359,31 @@ export function requireSuperAdmin(knex) {
             next();
         } catch (error) {
             console.error('[Super-Admin-Check-Fehler]:', error);
+            return res.status(500).json({ success: false, error: 'Interner Server-Fehler bei der Berechtigungsprüfung.' });
+        }
+    };
+}
+
+/**
+ * Benutzerverwaltung (Seite „Benutzer“/„Mitglieder“): Super-Admins im Super-Admin-Modus (alle Konten) und Admins
+ * mindestens eines Vereins (nur die Konten ihrer Vereine). Setzt req.nutzerScope = { superAdmin, vereinIds }.
+ */
+export function requireNutzerVerwaltung(knex) {
+    return async (req, res, next) => {
+        try {
+            const benutzer = await knex('benutzer').where({ id: req.user.id }).first();
+            if (istSuperAdminAktiv(benutzer)) {
+                req.nutzerScope = { superAdmin: true, vereinIds: [] };
+                return next();
+            }
+            const vereinIds = await ladeVereinIdsMitRolle(knex, req.user.id, 'admin');
+            if (vereinIds.length === 0) {
+                return res.status(403).json({ success: false, error: 'Nur Admins eines Vereins und Super-Admins haben Zugriff auf diese Funktion.' });
+            }
+            req.nutzerScope = { superAdmin: false, vereinIds };
+            next();
+        } catch (error) {
+            console.error('[Nutzerverwaltung-Check-Fehler]:', error);
             return res.status(500).json({ success: false, error: 'Interner Server-Fehler bei der Berechtigungsprüfung.' });
         }
     };

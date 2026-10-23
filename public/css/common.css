@@ -270,24 +270,6 @@ body {
 .theme-toggle.theme-toggle-text .material-icons { font-size: 20px; }
 .theme-toggle.theme-toggle-text.active { background-color: var(--border); }
 
-/* Hinweis-Punkt auf dem Profil-Icon (z.B. für den Super-Admin: freizugebende Erstregistrierungen) */
-.nav-badge {
-    position: absolute;
-    top: -6px;
-    right: -6px;
-    min-width: 16px;
-    height: 16px;
-    padding: 0 4px;
-    border-radius: 8px;
-    background: #ef4444;
-    color: #ffffff;
-    font-size: 10px;
-    font-weight: 800;
-    line-height: 16px;
-    text-align: center;
-    box-sizing: border-box;
-}
-
 /* --- KOPFLEISTE: ANZEIGE + WECHSLER DES AKTIVEN VEREINS --- */
 .top-header-right {
     display: flex;
@@ -991,6 +973,24 @@ body.sidebar-collapsed .top-header-bar {
 .ta-fehler { color: #c62828; font-weight: 600; }
 [data-theme="dark"] .ta-fehler { color: #ef9a9a; }
 .ta-aktionen { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+/* Roter Kreis mit Anzahl offener Anträge hinter einem Menütext (z. B. Mitglieder) */
+.menu-badge {
+    display: inline-block;
+    margin-left: 6px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 8px;
+    background: #ef4444;
+    color: #ffffff;
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 16px;
+    text-align: center;
+    box-sizing: border-box;
+    vertical-align: middle;
+}
 
 /* Hochgestellte Anzahl offener Anträge hinter einem Menütext (z. B. Erstregistrierungen) */
 .menu-sup {

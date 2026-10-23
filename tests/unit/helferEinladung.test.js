@@ -70,7 +70,7 @@ test('Helfer-Einladung: Admin lädt per Liste ein, Rechte, Einlösen mit soforti
         assert.equal((await aufruf(null, 'POST', '/api/vereine/einladungen', { vereinId: vA, emails: 'a@x.de' })).status, 401);
         assert.equal((await aufruf('u-benutzer', 'POST', '/api/vereine/einladungen', { vereinId: vA, emails: 'a@x.de' })).status, 403);
         assert.equal((await aufruf('u-adminb', 'POST', '/api/vereine/einladungen', { vereinId: vA, emails: 'a@x.de' })).status, 403);
-        assert.equal((await aufruf('u-admin', 'POST', '/api/vereine/einladungen', { emails: 'a@x.de' })).status, 400);
+        assert.equal((await aufruf('u-admin', 'POST', '/api/vereine/einladungen', { vereinId: 'abc', emails: 'a@x.de' })).status, 400);
         assert.equal((await aufruf('u-admin', 'POST', '/api/vereine/einladungen', { vereinId: vA, emails: '  ' })).status, 400);
         const zuViele = Array.from({ length: MAX_EINLADUNGEN_JE_ANFRAGE + 1 }, (_, i) => `p${i}@x.de`);
         assert.equal((await aufruf('u-admin', 'POST', '/api/vereine/einladungen', { vereinId: vA, emails: zuViele })).status, 400);
@@ -121,6 +121,28 @@ test('Helfer-Einladung: Admin lädt per Liste ein, Rechte, Einlösen mit soforti
         mailKaputt = false;
         const nachFehler = await aufruf('u-admin', 'GET', `/api/vereine/einladungen?vereinId=${vA}`);
         assert.ok(!nachFehler.daten.einladungen.some((e) => e.email === 'pech@extern.de'));
+
+        // Vorhandene Konten werden direkt zugeordnet: auch mit anderem Verein (bleibt bestehen) bzw. wartender Anfrage
+        await knex('benutzer').insert({ id: 'u-wartet', email: 'wartet@test.de', vorname: 'Wartet', nachname: 'Test', email_bestaetigt_am: knex.fn.now() });
+        await knex('benutzer_vereine').insert({ benutzer_id: 'u-wartet', verein_id: vA, freigegeben: 0, rolle: 'helfer' });
+        const mailsVorher = mails.length;
+        const zuordnen = await aufruf('u-admin', 'POST', '/api/vereine/einladungen', { vereinId: vA, emails: 'adminb@test.de, wartet@test.de' });
+        assert.deepEqual(zuordnen.daten.ergebnisse, [
+            { email: 'adminb@test.de', status: 'zugeordnet' },
+            { email: 'wartet@test.de', status: 'zugeordnet' }
+        ]);
+        const zeilenB = await knex('benutzer_vereine').where({ benutzer_id: 'u-adminb' }).orderBy('verein_id');
+        assert.deepEqual(zeilenB.map((z) => [z.verein_id, z.rolle, Number(z.freigegeben)]), [[vA, 'helfer', 1], [vB, 'admin', 1]]);
+        const wartet = await knex('benutzer_vereine').where({ benutzer_id: 'u-wartet', verein_id: vA }).first();
+        assert.equal(Number(wartet.freigegeben), 1);
+        assert.equal((await knex('benutzer').where({ id: 'u-adminb' }).first()).aktiver_verein_id, vB);
+        assert.equal(mails.length, mailsVorher + 2);
+        assert.equal(mails.length > 0 && (await knex('orga_einladungen').where({ email: 'adminb@test.de' })).length, 0);
+        // Konto ohne jede Zuordnung: keine Direktzuordnung, nur Einladung (Einlösen mit dem eigenen Passwort)
+        await knex('benutzer').insert({ id: 'u-frei', email: 'frei@test.de', vorname: 'Frei', nachname: 'Test', email_bestaetigt_am: knex.fn.now() });
+        const frei = await aufruf('u-admin', 'POST', '/api/vereine/einladungen', { vereinId: vA, emails: 'frei@test.de' });
+        assert.deepEqual(frei.daten.ergebnisse, [{ email: 'frei@test.de', status: 'gesendet' }]);
+        assert.equal((await knex('benutzer_vereine').where({ benutzer_id: 'u-frei' })).length, 0);
     } finally {
         server.close();
         await db.stoppe();

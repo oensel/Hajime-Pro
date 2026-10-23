@@ -440,6 +440,7 @@
 
 <script src="/js/ausschreibung-viewer.js"></script>
 <script src="/js/turnierDuplizieren.js"></script>
+<script src="/js/turnierTeilenDialog.js"></script>
 <script>
     // Turnierdaten können aus Importen oder der Cloud stammen: vor dem Einsetzen in HTML immer maskieren.
     function escHtml(wert) {
@@ -647,8 +648,22 @@
                 throw new Error('Fehler beim Laden der Turniere.');
             }
 
-            const turniere = await response.json();
-            if (turniere.length === 0) {
+            const alleTurniere = await response.json();
+
+            // Einladungen: Turniere, zu denen ein Verein, in dem ich Admin bin, per "Turnier teilen" eingeladen wurde
+            // (nur Cloud; ohne Admin-Rolle bleibt die Liste leer). Sie stehen oben und fehlen dann in der übrigen Liste.
+            let einladungen = [];
+            if (!istOffline && istFreigegeben) {
+                try {
+                    const einladungenResp = await fetch('/api/turniere/einladungen');
+                    if (einladungenResp.ok) einladungen = await einladungenResp.json();
+                } catch (err) {
+                    console.error('Fehler beim Laden der Einladungen:', err);
+                }
+            }
+            const eingeladeneIds = new Set(einladungen.map(t => t.id));
+            const turniere = alleTurniere.filter(t => !eingeladeneIds.has(t.id));
+            if (turniere.length === 0 && einladungen.length === 0) {
                 container.innerHTML = `<div class="no-data-msg">Keine anstehenden Turniere vorhanden.</div>`;
                 return;
             }
@@ -833,6 +848,11 @@
                                     <span class="material-icons">business</span>
                                     <span>Ausrichter: ${escHtml(t.ausrichter)}</span>
                                 </div>
+                                ${t.eingeladene_vereine && t.eingeladene_vereine.length ? `
+                                <div class="detail-item">
+                                    <span class="material-icons">forward_to_inbox</span>
+                                    <span>Eingeladen: ${escHtml(t.eingeladene_vereine.join(', '))}</span>
+                                </div>` : ''}
                                 <div class="detail-item">
                                     <span class="material-icons">layers</span>
                                     <span>Matten: ${t.anzahl_kampfflaechen}</span>
@@ -883,6 +903,8 @@
                                  des EIGENEN Turniers braucht die Freigabe. -->
                             ${(istFreigegeben || !isEditable) ? `<button type="button" class="btn btn-raised" onclick="window.location.href='/teilnehmer.html?turnierId=${encodeURIComponent(t.id)}'">Auswählen</button>` : ''}
                             ${isEditable && istFreigegeben ? `<button type="button" class="btn btn-outlined" onclick="window.location.href='/turnier.html?id=${t.id}'">Bearbeiten</button>` : ''}
+                            ${(!istOffline && isEditable && istFreigegeben && ['veroeffentlicht', 'anmeldung_geschlossen', 'in_durchfuehrung', 'abgeschlossen'].includes(t.status_effektiv))
+                                ? `<button type="button" class="btn btn-outlined" data-aktion="teilen" data-id="${t.id}" aria-label="Turnier per E-Mail teilen" data-tooltip="Turnier per E-Mail teilen"><span class="material-icons" style="font-size:18px; vertical-align:middle;">share</span> Teilen</button>` : ''}
                             ${istOffline ? hallenAktionen(t) : ''}
                         </div>
                     </div>
@@ -976,6 +998,16 @@
                 return;
             }
 
+            // Section 0: Einladungen (Admins eingeladener Vereine)
+            if (einladungen.length > 0) {
+                htmlContent += `
+                    <h2 class="section-title" id="einladungenTitel"><span class="material-icons" style="font-size:20px;">forward_to_inbox</span> Einladungen (${einladungen.length})</h2>
+                    <div class="tournaments-grid" id="einladungenGrid">
+                        ${einladungen.map(t => renderCard(t, false)).join('')}
+                    </div>
+                `;
+            }
+
             // Section 1: Eigene Turniere (Only if exists)
             if (eigeneTurniere.length > 0) {
                 htmlContent += `
@@ -998,6 +1030,12 @@
             }
 
             container.innerHTML = htmlContent;
+            container.addEventListener('click', (e) => {
+                const knopf = e.target.closest('button[data-aktion="teilen"]');
+                if (!knopf) return;
+                const turnier = turniere.find(t => String(t.id) === knopf.dataset.id);
+                if (turnier) window.TurnierTeilen.oeffne(turnier);
+            });
         } catch (err) {
             container.innerHTML = `<div class="no-data-msg" style="color: #b83232;">Fehler: ${err.message}</div>`;
         }

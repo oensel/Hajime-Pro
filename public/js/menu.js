@@ -65,6 +65,7 @@ const MENUE_AKTIVE_SEITEN = [
     ['nav-videobeweis', ['videobeweis.html']],
     ['nav-sync-konflikte', ['sync-konflikte.html']],
     ['nav-nutzer', ['admin-nutzer.html']],
+    ['nav-mitglieder', ['admin-nutzer.html']],
     ['nav-einladungen', ['admin-einladungen.html']],
     ['nav-erstregistrierungen', ['admin-erstregistrierungen.html']],
     ['nav-vereine', ['admin-vereine.html', 'admin-turniere.html']],
@@ -400,6 +401,10 @@ function baueMenueGeruest() {
                     <span class="material-icons">admin_panel_settings</span>
                     <span class="menu-text">Benutzer</span>
                 </a>
+                <a href="/admin-nutzer.html" class="menu-item" id="nav-mitglieder" data-ohne-turnier style="display: none;">
+                    <span class="material-icons">manage_accounts</span>
+                    <span class="menu-text">Mitglieder<span class="menu-badge" id="nav-mitglieder-zaehler" style="display: none;"></span></span>
+                </a>
                 <a href="/admin-einladungen.html" class="menu-item" id="nav-einladungen" data-ohne-turnier style="display: none;">
                     <span class="material-icons">forward_to_inbox</span>
                     <span class="menu-text">Einladungen</span>
@@ -459,7 +464,6 @@ function baueMenueGeruest() {
             </span>
             <button type="button" class="theme-toggle" id="profileBtn" title="Mein Profil">
                 <span class="material-icons">account_circle</span>
-                <span class="nav-badge" id="superAdminNavBadge" style="display: none;"></span>
             </button>
             <button type="button" class="theme-toggle" id="themeToggle" title="Ansicht umschalten">
                 <span class="material-icons" id="themeIcon">dark_mode</span>
@@ -901,14 +905,10 @@ async function initialisiereMenue() {
     // profil.html/turniere.html den Hinweis nach einer eigenen Freigabe-/Ablehnungs-Aktion sofort
     // live aktualisieren können, ohne auf einen Seiten-Reload angewiesen zu sein.
     window.hajimeAktualisiereGenehmigungsHinweis = async () => {
-        const badge = document.getElementById('superAdminNavBadge');
-        const profileBtn = document.getElementById('profileBtn');
-        if (!badge || !profileBtn) return;
-
-        let anzahl = 0;
-        const teile = [];
         const erstZaehler = document.getElementById('nav-erstregistrierungen-zaehler');
         if (erstZaehler) erstZaehler.style.display = 'none';
+        const mitgliederZaehler = document.getElementById('nav-mitglieder-zaehler');
+        if (mitgliederZaehler) mitgliederZaehler.style.display = 'none';
 
         if (currentUser && currentUser.super_admin_aktiv) {
             try {
@@ -921,42 +921,27 @@ async function initialisiereMenue() {
                         erstZaehler.title = `${n} offene Erstregistrierung${n === 1 ? '' : 'en'}`;
                         erstZaehler.style.display = '';
                     }
-                    if (n > 0) {
-                        anzahl += n;
-                        teile.push(`${n} Erstregistrierung${n === 1 ? '' : 'en'}`);
-                    }
                 }
             } catch (error) {
                 console.error('Fehler beim Laden der Erstregistrierungs-Warteschlange:', error);
             }
         }
 
-        // Peer-Warteschlange (weitere Funktionäre des eigenen Vereins) — relevant für jedes
-        // freigegebene Vereinsmitglied, unabhängig vom Super-Admin-Status. Liefert 403, wenn der
-        // Benutzer in keinem Verein freigegebenes Mitglied ist — das ist kein Fehlerfall, sondern
-        // schlicht "keine Genehmigungsrechte", daher stillschweigend übersprungen.
+        // Beitrittsanfragen des eigenen Vereins (roter Kreis am Menüpunkt „Mitglieder“). Liefert 403, wenn das Konto in
+        // keinem Verein Admin ist — das ist kein Fehlerfall, sondern schlicht "keine Genehmigungsrechte".
         try {
             const resp = await fetch('/api/vereine/pending');
             if (resp.ok) {
                 const pending = await resp.json();
                 const n = Array.isArray(pending) ? pending.length : 0;
-                if (n > 0) {
-                    anzahl += n;
-                    teile.push(`${n} Beitrittsanfrage${n === 1 ? '' : 'n'}`);
+                if (mitgliederZaehler && n > 0) {
+                    mitgliederZaehler.textContent = String(n);
+                    mitgliederZaehler.title = `${n} offene Beitrittsanfrage${n === 1 ? '' : 'n'}`;
+                    mitgliederZaehler.style.display = '';
                 }
             }
         } catch (error) {
             console.error('Fehler beim Laden der Beitrittsanfragen-Warteschlange:', error);
-        }
-
-        if (anzahl > 0) {
-            badge.textContent = String(anzahl);
-            badge.title = `${teile.join(', ')} wartet/warten auf Prüfung`;
-            badge.style.display = 'inline-block';
-            profileBtn.title = `Mein Profil — ${teile.join(', ')} wartet/warten auf Prüfung`;
-        } else {
-            badge.style.display = 'none';
-            profileBtn.title = 'Mein Profil';
         }
     };
     await window.hajimeAktualisiereGenehmigungsHinweis();
@@ -1271,7 +1256,7 @@ async function initialisiereMenue() {
     if (wartetAufFreigabe) {
         versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-orga', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
 
-        const istErlaubteSeite = currentPath.includes('turniere.html') || currentPath.includes('profil.html') || currentPath.includes('teilnehmer.html') ||
+        const istErlaubteSeite = currentPath.includes('turniere.html') || currentPath.includes('profil.html') || currentPath.includes('teilnehmer.html') || currentPath.includes('turnier-ansicht.html') ||
             (rechte.nutzer && (currentPath.includes('admin-nutzer.html') || currentPath.includes('admin-einladungen.html') || currentPath.includes('admin-erstregistrierungen.html') || currentPath.includes('admin-vereine.html') || currentPath.includes('admin-turniere.html') || currentPath.includes('server-update.html')));
         if (!istErlaubteSeite) {
             window.location.href = '/turniere.html';
@@ -1380,7 +1365,7 @@ async function initialisiereMenue() {
     if (!rechte.helferPlan) {
         versteckeOrgaPunkte();
         // Orga und Helferplan sind Admin-Sache: wer nur Benutzer ist, landet bei den Teilnehmern
-        if (['orga.html', 'orga-aufgabe.html', 'helfer-plan.html'].some(seite => currentPath.includes(seite)) && turnierId) {
+        if (['orga.html', 'orga-aufgabe.html', 'helfer-plan.html', 'admin-nutzer.html'].some(seite => currentPath.includes(seite)) && turnierId) {
             window.location.href = `/teilnehmer.html?turnierId=${encodeURIComponent(turnierId)}`;
             return;
         }
@@ -1391,13 +1376,17 @@ async function initialisiereMenue() {
     if (nutzerLink && rechte.nutzer) {
         nutzerLink.style.display = '';
     }
+    // Mitglieder (Beitrittsanfragen, Rollen): Admins des aktiven Vereins, nur Cloud; Super-Admins nutzen „Benutzer“
+    const mitgliederLink = document.getElementById('nav-mitglieder');
+    if (mitgliederLink && !einzelbenutzer && !rechte.nutzer && rechte.helferPlan) mitgliederLink.style.display = '';
     const vereineLink = document.getElementById('nav-vereine');
     if (vereineLink && rechte.nutzer) {
         vereineLink.style.display = '';
     }
-    // Einladungen: Super-Admins und Admins des aktiven Vereins (nur Cloud); Erstregistrierungen: nur Super-Admins
+    // Einladungen (auch ohne Verein): Super-Admins; Vereins-Admins laden über „Mitglieder hinzufügen“ ein.
+    // Erstregistrierungen: nur Super-Admins
     const einladungenLink = document.getElementById('nav-einladungen');
-    if (einladungenLink && !einzelbenutzer && rechte.helferPlan) einladungenLink.style.display = '';
+    if (einladungenLink && !einzelbenutzer && rechte.nutzer) einladungenLink.style.display = '';
     const erstregistrierungenLink = document.getElementById('nav-erstregistrierungen');
     if (erstregistrierungenLink && rechte.nutzer) erstregistrierungenLink.style.display = '';
     const serverUpdateLink = document.getElementById('nav-server-update');

@@ -62,7 +62,7 @@
             const auswahl = el('select', { class: 'rollen-auswahl', 'aria-label': `Rolle für ${name}` });
             for (const rolle of ['helfer', 'benutzer', 'admin']) {
                 const option = el('option', { value: rolle, text: ROLLEN_TEXT[rolle] });
-                if (rolle === 'admin') option.selected = true;
+                if (rolle === (p.verein_hat_admin ? 'benutzer' : 'admin')) option.selected = true;
                 auswahl.append(option);
             }
             const freigeben = knopf('Freigeben', 'btn-raised');
@@ -75,7 +75,7 @@
                     const daten = { userId: p.id, vereinId: p.verein_id };
                     if (aktion === 'approve') daten.rolle = auswahl.value;
                     await sendePost(`/api/vereine/super/${aktion}`, daten);
-                    meldeErfolg(aktion === 'approve' ? 'Erstregistrierung freigegeben.' : 'Anfrage abgelehnt.');
+                    meldeErfolg(aktion === 'approve' ? 'Anfrage freigegeben.' : 'Anfrage abgelehnt.');
                     lade();
                     if (window.hajimeAktualisiereGenehmigungsHinweis) window.hajimeAktualisiereGenehmigungsHinweis();
                 } catch (err) {
@@ -96,12 +96,12 @@
             try {
                 const resp = await fetch('/api/vereine/super/pending');
                 if (!resp.ok) {
-                    liste.replaceChildren(el('p', { style: 'font-size: 13px; color: var(--text-muted); text-align: center;', text: 'Nur Super-Admins können Erstregistrierungen prüfen.' }));
+                    liste.replaceChildren(el('p', { style: 'font-size: 13px; color: var(--text-muted); text-align: center;', text: 'Nur Super-Admins können Anfragen prüfen.' }));
                     return;
                 }
                 const pending = await resp.json();
                 if (!Array.isArray(pending) || pending.length === 0) {
-                    liste.replaceChildren(el('p', { style: 'font-size: 13px; color: var(--text-muted); text-align: center;', text: 'Keine offenen Erstregistrierungen.' }));
+                    liste.replaceChildren(el('p', { style: 'font-size: 13px; color: var(--text-muted); text-align: center;', text: 'Keine offenen Anfragen.' }));
                     return;
                 }
                 liste.replaceChildren(...pending.map(zeile));

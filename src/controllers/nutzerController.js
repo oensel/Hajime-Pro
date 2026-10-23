@@ -13,11 +13,52 @@ import { ermittleBasisUrl, HINWEIS_FEHLENDE_BASIS_URL } from '../utils/basisUrl.
 import { vergesseSperrStand } from '../utils/kontoSperre.js';
 import { weiseMitgliedschaftZu, entferneMitglied } from '../services/vereinsRollen.js';
 
+/**
+ * Darf der Aufrufer dieses Konto verwalten? Super-Admins (im Super-Admin-Modus) immer. Ein Vereins-Admin nur Konten, die
+ * freigegeben in einem seiner Vereine sind, keine Super-Admins und mit ausschließlich Mitgliedschaften in seinen Vereinen
+ * (sonst würde er über Passwort, E-Mail oder Sperre in das Konto eines Admins eines anderen Vereins eingreifen).
+ * @returns {Promise<{ ok: true } | { ok: false, status: number, error: string }>}
+ */
+async function pruefeKontoZugriff(knex, req, zielId, { fremdeVereineErlaubt = false } = {}) {
+    const scope = req.nutzerScope;
+    if (scope && scope.superAdmin) return { ok: true };
+    const nichtGefunden = { ok: false, status: 404, error: 'Konto nicht gefunden.' };
+    if (!scope || !zielId) return nichtGefunden;
+    const ziel = await knex('benutzer').where({ id: zielId }).first('id', 'ist_super_admin');
+    if (!ziel) return nichtGefunden;
+    const zeilen = await knex('benutzer_vereine').where({ benutzer_id: zielId }).select('verein_id', 'freigegeben');
+    const eigeneFreigegeben = zeilen.some(z => z.freigegeben && scope.vereinIds.includes(z.verein_id));
+    if (!eigeneFreigegeben) return nichtGefunden;
+    if (ziel.ist_super_admin) return { ok: false, status: 403, error: 'Super-Admins können nur von Super-Admins verwaltet werden.' };
+    if (!fremdeVereineErlaubt && zeilen.some(z => !scope.vereinIds.includes(z.verein_id))) {
+        return { ok: false, status: 403, error: 'Dieses Konto gehört auch zu anderen Vereinen. Sie können hier nur seine Rolle in Ihrem Verein ändern oder die Zuordnung entfernen.' };
+    }
+    return { ok: true };
+}
+
+/** Schickt die Ablehnung der Zugriffsprüfung; liefert true, wenn abgelehnt wurde. */
+async function verweigertKontoZugriff(knex, req, res, zielId, optionen) {
+    const z = await pruefeKontoZugriff(knex, req, zielId, optionen);
+    if (z.ok) return false;
+    res.status(z.status).json({ success: false, error: z.error });
+    return true;
+}
+
 /** DELETE /api/nutzer/:id/mitgliedschaft/:vereinId — Vereinszuordnung entfernen; der Verein bleibt auch ohne Mitglieder bestehen. */
 export async function entferneMitgliedschaftRoute(knex, req, res) {
     try {
         const vereinId = parseInt(req.params.vereinId, 10);
         if (!vereinId) return res.status(400).json({ success: false, error: 'Ungültiger Verein.' });
+        // Vereins-Admins: nur Mitglieder ihrer Vereine, nie Super-Admin-Konten
+        const scope = req.nutzerScope;
+        if (scope && !scope.superAdmin) {
+            const nichtGefunden = () => res.status(404).json({ success: false, error: 'Konto nicht gefunden.' });
+            if (!scope.vereinIds.includes(vereinId)) return nichtGefunden();
+            const ziel = await knex('benutzer').where({ id: req.params.id }).first('ist_super_admin');
+            const zuordnung = await knex('benutzer_vereine').where({ benutzer_id: req.params.id, verein_id: vereinId }).first('id');
+            if (!ziel || !zuordnung) return nichtGefunden();
+            if (ziel.ist_super_admin) return res.status(403).json({ success: false, error: 'Super-Admins können nur von Super-Admins verwaltet werden.' });
+        }
         const ergebnis = await entferneMitglied(knex, { vereinId, benutzerId: req.params.id, durchId: req.user.id, vereinBehalten: true, ueberVerwaltung: true });
         if (!ergebnis.ok) return res.status(ergebnis.status).json({ success: false, error: ergebnis.error });
         res.json({ success: true });
@@ -43,17 +84,33 @@ export async function weiseMitgliedschaftZuRoute(knex, req, res) {
 /** GET /api/nutzer — alle Konten (ohne Passwort-Hash) mit Mitgliedschaften. */
 export async function listeNutzer(knex, req, res) {
     try {
+        const scope = req.nutzerScope || { superAdmin: true, vereinIds: [] };
         const konten = await knex('benutzer')
+            .modify(q => {
+                // Vereins-Admins sehen nur freigegebene Mitglieder ihrer Vereine, nie Super-Admin-Konten
+                if (!scope.superAdmin) {
+                    q.where({ ist_super_admin: false }).whereIn('id', knex('benutzer_vereine')
+                        .whereIn('verein_id', scope.vereinIds).where({ freigegeben: 1 }).select('benutzer_id'));
+                }
+            })
             .select('id', 'vorname', 'nachname', 'email', 'ist_super_admin', 'email_bestaetigt_am', 'gesperrt', 'created_at')
             .orderBy([{ column: 'ist_super_admin', order: 'desc' }, { column: 'nachname' }, { column: 'vorname' }, { column: 'email' }]);
         const mitgliedschaften = await knex('benutzer_vereine')
             .join('vereine', 'vereine.id', 'benutzer_vereine.verein_id')
+            .modify(q => { if (!scope.superAdmin) q.whereIn('benutzer_vereine.verein_id', scope.vereinIds); })
             .select(
                 'benutzer_vereine.benutzer_id as benutzer_id', 'vereine.id as verein_id', 'vereine.name as verein_name',
                 'benutzer_vereine.rolle as rolle', 'benutzer_vereine.freigegeben as freigegeben'
             )
             .orderBy('vereine.name');
 
+        const alleVereineJe = new Map();
+        if (!scope.superAdmin && konten.length) {
+            for (const z of await knex('benutzer_vereine').whereIn('benutzer_id', konten.map(k => k.id)).select('benutzer_id', 'verein_id')) {
+                if (!alleVereineJe.has(z.benutzer_id)) alleVereineJe.set(z.benutzer_id, []);
+                alleVereineJe.get(z.benutzer_id).push(z.verein_id);
+            }
+        }
         const jeKonto = new Map();
         for (const m of mitgliedschaften) {
             if (!jeKonto.has(m.benutzer_id)) jeKonto.set(m.benutzer_id, []);
@@ -74,7 +131,9 @@ export async function listeNutzer(knex, req, res) {
             email_bestaetigt: !!k.email_bestaetigt_am,
             gesperrt: !!k.gesperrt,
             erstellt_am: k.created_at ? new Date(k.created_at).toISOString() : null,
-            mitgliedschaften: jeKonto.get(k.id) || []
+            mitgliedschaften: jeKonto.get(k.id) || [],
+            // false: das Konto gehört auch zu Vereinen, die der Aufrufer nicht verwaltet (nur Rolle/Zuordnung änderbar)
+            vollverwaltbar: scope.superAdmin || !(alleVereineJe.get(k.id) || []).some(v => !scope.vereinIds.includes(v))
         })));
     } catch (error) {
         console.error('[Nutzer-Liste-Fehler]:', error);
@@ -287,6 +346,7 @@ function leseKontoId(req) {
 export async function aendereNutzer(knex, req, res) {
     try {
         const zielId = leseKontoId(req);
+        if (await verweigertKontoZugriff(knex, req, res, zielId)) return;
         const body = req.body || {};
         const vorname = typeof body.vorname === 'string' ? body.vorname.trim() : '';
         const nachname = typeof body.nachname === 'string' ? body.nachname.trim() : '';
@@ -320,8 +380,22 @@ export async function aendereNutzer(knex, req, res) {
 export async function loescheNutzer(knex, req, res) {
     try {
         const zielId = leseKontoId(req);
+        if (await verweigertKontoZugriff(knex, req, res, zielId, { fremdeVereineErlaubt: true })) return;
         if (zielId && String(zielId) === String(req.user.id)) {
             return res.status(409).json({ success: false, error: 'Das eigene Konto kann nicht gelöscht werden.' });
+        }
+        // Vereins-Admin und Konto in weiteren Vereinen: gelöscht wird nur die Zuordnung zu den eigenen Vereinen,
+        // das Konto und seine übrigen Zuordnungen bleiben bestehen.
+        const scope = req.nutzerScope;
+        if (scope && !scope.superAdmin) {
+            const zuordnungen = await knex('benutzer_vereine').where({ benutzer_id: zielId }).select('verein_id');
+            if (zuordnungen.some(z => !scope.vereinIds.includes(z.verein_id))) {
+                for (const z of zuordnungen.filter(x => scope.vereinIds.includes(x.verein_id))) {
+                    const r = await entferneMitglied(knex, { vereinId: z.verein_id, benutzerId: zielId, durchId: req.user.id, vereinBehalten: true, ueberVerwaltung: true });
+                    if (!r.ok) return res.status(r.status).json({ success: false, error: r.error });
+                }
+                return res.json({ success: true, nurZuordnung: true });
+            }
         }
         const ergebnis = await knex.transaction(async (trx) => {
             // Super-Admin-Zeilen sperren, damit nicht zwei gleichzeitige Löschungen den letzten entfernen
@@ -350,6 +424,7 @@ export async function loescheNutzer(knex, req, res) {
 export async function setzeInitialPasswort(knex, req, res) {
     try {
         const zielId = leseKontoId(req);
+        if (await verweigertKontoZugriff(knex, req, res, zielId)) return;
         const body = req.body || {};
         const passwort = body.passwort;
         if (typeof passwort !== 'string' || passwort.length < MIN_PASSWORT_LAENGE) {
@@ -383,6 +458,7 @@ const BASIS_URL_FEHLT = 'Die Basis-URL für Links in Mails ist nicht konfigurier
 export async function setzeGesperrt(knex, req, res) {
     try {
         const zielId = leseKontoId(req);
+        if (await verweigertKontoZugriff(knex, req, res, zielId)) return;
         const wert = req.body ? req.body.wert : undefined;
         if (typeof wert !== 'boolean') return res.status(400).json({ success: false, error: 'wert muss true oder false sein.' });
         if (wert && zielId && String(zielId) === String(req.user.id)) {
@@ -451,6 +527,7 @@ export async function sendeBestaetigungsMailRoute(knex, req, res) {
 export async function sendePasswortMail(knex, req, res) {
     try {
         const zielId = leseKontoId(req);
+        if (await verweigertKontoZugriff(knex, req, res, zielId)) return;
         const ziel = zielId ? await knex('benutzer').where({ id: zielId }).first() : null;
         if (!ziel) return res.status(404).json({ success: false, error: 'Konto nicht gefunden.' });
         if (ziel.gesperrt) return res.status(409).json({ success: false, error: 'Das Konto ist gesperrt. Zuerst entsperren.' });

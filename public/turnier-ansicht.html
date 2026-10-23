@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hajime Pro - Turnier</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <script src="/js/menu.js"></script>
+    <style>
+        .ansicht-karte { max-width: 640px; padding: 28px; }
+        .ansicht-karte h1 { font-size: 22px; margin: 0 0 4px; color: var(--primary); }
+        .ansicht-status { display: inline-block; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-muted); margin-bottom: 14px; }
+        .ansicht-zeile { display: flex; gap: 10px; align-items: flex-start; margin: 8px 0; font-size: 14px; color: var(--text-main); }
+        .ansicht-zeile .material-icons { font-size: 20px; color: var(--primary); }
+        .ansicht-hinweis { margin: 18px 0 0; padding: 10px 12px; border-radius: 4px; background: var(--bg-card); border: 1px solid var(--border); font-size: 13px; color: var(--text-muted); }
+        .ansicht-aktionen { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+        .ansicht-fehler { color: #ef4444; font-weight: 700; font-size: 14px; }
+    </style>
+</head>
+<body>
+
+<div class="kanji-left">柔</div>
+<div class="kanji-right">道</div>
+
+<div class="mdc-card ansicht-karte" id="ansichtKarte">
+    <div id="ansichtInhalt">Turnier wird geladen …</div>
+</div>
+
+<script src="/js/ausschreibung-viewer.js"></script>
+<script src="/js/turnierAnsicht.js"></script>
+</body>
+</html>

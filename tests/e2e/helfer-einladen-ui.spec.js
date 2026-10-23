@@ -76,3 +76,63 @@ test('Benutzer und Helfer sehen die Einladungsfunktion nicht', async ({ page }) 
     await expect(page.locator('#einladungInhalt')).toBeHidden();
     await expect(page.locator('#einladungFehler')).toContainText('nur Admins');
 });
+
+test('Mitglieder: „Mitglieder hinzufügen“ trägt Adressen für den Verein ein und lädt die Liste neu', async ({ page }) => {
+    let gesendet = null;
+    let listenAufrufe = 0;
+    await alsCloudKonto(page, 'admin', {
+        senden: (route) => {
+            gesendet = route.request().postDataJSON();
+            return route.fulfill({
+                json: {
+                    success: true,
+                    ergebnisse: [
+                        { email: 'neu@extern.de', status: 'gesendet' },
+                        { email: 'vorhanden@extern.de', status: 'zugeordnet' }
+                    ],
+                    ungueltig: []
+                }
+            });
+        }
+    });
+    await page.route('**/api/nutzer', (route) => { listenAufrufe += 1; return route.fulfill({ json: [] }); });
+    await page.route('**/api/vereine/pending', (route) => route.fulfill({ json: [] }));
+    await page.goto('/admin-nutzer.html');
+    await expect(page.locator('#nav-einladungen')).toBeHidden();
+
+    await page.getByRole('button', { name: 'Mitglieder hinzufügen' }).click();
+    await expect(page.locator('#mitgliedHinzufuegenVerein')).toHaveValue('JC Einladen');
+    await page.locator('#mitgliedHinzufuegenAdressen').fill('neu@extern.de\nvorhanden@extern.de');
+    await page.getByRole('button', { name: 'Hinzufügen', exact: true }).click();
+
+    const ergebnis = page.locator('#mitgliedHinzufuegenErgebnis');
+    await expect(ergebnis).toContainText('neu@extern.de: Einladung gesendet');
+    await expect(ergebnis).toContainText('vorhanden@extern.de: dem Verein zugeordnet');
+    expect(gesendet).toEqual({ vereinId: 7, emails: 'neu@extern.de\nvorhanden@extern.de' });
+    await expect.poll(() => listenAufrufe).toBeGreaterThan(1);
+});
+
+test('Mitglieder hinzufügen: Super-Admin lässt den Verein leer und lädt zur Registrierung ein', async ({ page }) => {
+    let gesendet = null;
+    await page.route('**/api/config', (route) => route.fulfill({ json: CLOUD_CONFIG }));
+    await page.route('**/api/auth/me', (route) => route.fulfill({ json: { success: true, user: {
+        id: 'e2e-sa', email: 'sa@example.test', vorname: 'Sam', nachname: 'Super', verein_id: null, verein_name: null,
+        verein_freigegeben: false, verein_rolle: null, verein_wartet_auf_super_admin: false,
+        ist_super_admin: true, super_admin_aktiv: true, vereine: [] } } }));
+    await page.route('**/api/vereine', (route) => route.fulfill({ json: [{ id: 3, name: 'JC Eins' }] }));
+    await page.route('**/api/vereine/super/pending', (route) => route.fulfill({ json: [] }));
+    await page.route('**/api/vereine/pending', (route) => route.fulfill({ json: [] }));
+    await page.route('**/api/nutzer', (route) => route.fulfill({ json: [] }));
+    await page.route('**/api/vereine/einladungen**', (route) => {
+        gesendet = route.request().postDataJSON();
+        return route.fulfill({ json: { success: true, ergebnisse: [{ email: 'x@extern.de', status: 'gesendet' }], ungueltig: [] } });
+    });
+    await page.goto('/admin-nutzer.html');
+    await expect(page.locator('#nurUnbestaetigt')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Mitglieder hinzufügen' }).click();
+    await expect(page.locator('#mitgliedHinzufuegenVerein')).toHaveValue('');
+    await page.locator('#mitgliedHinzufuegenAdressen').fill('x@extern.de');
+    await page.getByRole('button', { name: 'Hinzufügen', exact: true }).click();
+    await expect(page.locator('#mitgliedHinzufuegenErgebnis')).toContainText('x@extern.de: Einladung gesendet');
+    expect(gesendet).toEqual({ emails: 'x@extern.de' });
+});

@@ -1,4 +1,5 @@
-// Seite admin-nutzer.html („Benutzer“, nur Super-Admins): alle Konten mit Vereinen und Rollen, getrennt in
+// Seite admin-nutzer.html („Benutzer“ für Super-Admins, „Mitglieder“ für Vereins-Admins mit denselben Einstellungen, aber nur
+// für die Konten der eigenen Vereine und ohne Super-Admin-Funktionen): alle Konten mit Vereinen und Rollen, getrennt in
 // Super-Admins (oben, eigener Bereich) und übrige Benutzer; die Rolle je Verein ist änderbar; Super-Admins werden über „Hinzufügen“ ernannt und per Aktion entzogen.
 // API: GET /api/nutzer, PUT /api/nutzer/:id { vorname, nachname, email }, DELETE /api/nutzer/:id,
 // POST /api/nutzer/:id/passwort { passwort, aendernErforderlich }, POST /api/nutzer/:id/super-admin { wert },
@@ -15,6 +16,8 @@
     const filter = document.getElementById('nutzerFilter');
     let konten = [];
     let eigeneId = null;
+    // Vereins-Admins (kein aktiver Super-Admin-Modus) dürfen nur ihre Vereine verwalten und niemanden zum Super-Admin machen
+    let istSuper = true;
     let aktuellerKonto = null;
     // Gefiltert auf einen Verein (Link aus der Vereinsübersicht: admin-nutzer.html?vereinId=)
     const vereinFilterId = new URLSearchParams(window.location.search).get('vereinId');
@@ -116,6 +119,8 @@
             const data = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(data.error || 'Die Zuordnung konnte nicht entfernt werden.');
             konto.mitgliedschaften = konto.mitgliedschaften.filter(x => x !== m);
+            // Vereins-Admins sehen nur Mitglieder ihrer Vereine: ohne Zuordnung verschwindet das Konto aus der Liste
+            if (!istSuper && konto.mitgliedschaften.length === 0) konten = konten.filter(k => k !== konto);
             zeichne();
             zeigeMeldung(`${kontoName(konto)}: Zuordnung zu ${m.verein_name} entfernt.`, true);
         } catch (err) {
@@ -173,10 +178,7 @@
         return td;
     }
 
-    const nurUnbestaetigt = document.getElementById('nurUnbestaetigt');
-
     function passt(konto, suche) {
-        if (nurUnbestaetigt && nurUnbestaetigt.checked && konto.email_bestaetigt) return false;
         if (vereinFilterId && !konto.mitgliedschaften.some(m => String(m.verein_id) === String(vereinFilterId))) return false;
         if (!suche) return true;
         const text = [konto.vorname, konto.nachname, konto.email, ...konto.mitgliedschaften.map(m => m.verein_name)]
@@ -190,6 +192,8 @@
 
     function aktionsZelle(konto) {
         const td = document.createElement('td');
+        // Konto mit weiteren Vereinen: ein Vereins-Admin darf nur Rolle und Zuordnung in seinem Verein ändern
+        const voll = konto.vollverwaltbar !== false;
         const knopf = (icon, text, klasse, handler, gesperrt = false) => {
             const b = document.createElement('button');
             b.type = 'button';
@@ -205,16 +209,19 @@
             return b;
         };
         td.append(
-            knopf('edit', 'Bearbeiten', '', () => oeffneBearbeiten(konto)),
-            document.createTextNode(' '),
-            knopf('add_business', 'Verein und Rolle zuweisen', '', () => oeffneZuweisen(konto)),
-            document.createTextNode(' '),
-            knopf('key', 'Initialpasswort vergeben', '', () => oeffnePasswort(konto)),
-            document.createTextNode(' '),
-            knopf('forward_to_inbox', 'Passwort-Zurücksetzen-Mail senden', '', () => sendePasswortMail(konto), konto.gesperrt || !konto.email_bestaetigt),
+            knopf('edit', 'Bearbeiten', '', () => oeffneBearbeiten(konto), !voll),
             document.createTextNode(' ')
         );
-        if (!konto.email_bestaetigt) {
+        if (istSuper) {
+            td.append(knopf('add_business', 'Verein und Rolle zuweisen', '', () => oeffneZuweisen(konto)), document.createTextNode(' '));
+        }
+        td.append(
+            knopf('key', 'Initialpasswort vergeben', '', () => oeffnePasswort(konto), !voll),
+            document.createTextNode(' '),
+            knopf('forward_to_inbox', 'Passwort-Zurücksetzen-Mail senden', '', () => sendePasswortMail(konto), !voll || konto.gesperrt || !konto.email_bestaetigt),
+            document.createTextNode(' ')
+        );
+        if (istSuper && !konto.email_bestaetigt) {
             td.append(
                 knopf('mark_email_read', 'E-Mail von Hand bestätigen', '', () => bestaetige(konto)),
                 document.createTextNode(' '),
@@ -223,7 +230,7 @@
             );
         }
         const istSelbst = String(konto.id) === String(eigeneId);
-        if (konto.ist_super_admin) {
+        if (konto.ist_super_admin && istSuper) {
             const anzahlSuper = konten.filter(k => k.ist_super_admin).length;
             td.append(
                 knopf('remove_moderator', 'Super-Admin entziehen', '', () => entzieheSuperAdmin(konto), anzahlSuper <= 1),
@@ -231,9 +238,9 @@
             );
         }
         td.append(
-            knopf(konto.gesperrt ? 'lock_open' : 'block', konto.gesperrt ? 'Entsperren' : 'Sperren', '', () => setzeGesperrt(konto, !konto.gesperrt), !konto.gesperrt && istSelbst),
+            knopf(konto.gesperrt ? 'lock_open' : 'block', konto.gesperrt ? 'Entsperren' : 'Sperren', '', () => setzeGesperrt(konto, !konto.gesperrt), !voll || (!konto.gesperrt && istSelbst)),
             document.createTextNode(' '),
-            knopf('delete', 'Löschen', 'gefahr', () => loesche(konto), istSelbst)
+            knopf('delete', voll ? 'Löschen' : 'Aus meinem Verein entfernen', 'gefahr', () => loesche(konto), istSelbst)
         );
         return td;
     }
@@ -265,7 +272,7 @@
     function zeichne() {
         const suche = filter.value.trim().toLowerCase();
         const sichtbar = konten.filter(k => passt(k, suche)).sort(nachName);
-        fuelle(superListe, document.getElementById('superAnzahl'), sichtbar.filter(k => k.ist_super_admin), 'Keine Super-Admins gefunden.');
+        if (istSuper) fuelle(superListe, document.getElementById('superAnzahl'), sichtbar.filter(k => k.ist_super_admin), 'Keine Super-Admins gefunden.');
         fuelle(liste, document.getElementById('nutzerAnzahl'), sichtbar.filter(k => !k.ist_super_admin), 'Keine Benutzer gefunden.');
     }
 
@@ -633,9 +640,12 @@
     // --- Löschen ---
     async function loesche(konto) {
         const name = `${konto.vorname} ${konto.nachname}`.trim() || konto.email;
-        const text = `Benutzer „${name}“ (${konto.email}) wirklich löschen? Die Mitgliedschaften in allen Vereinen und eingetragene Helferdienste gehen verloren.`;
+        const nurZuordnung = !istSuper && konto.vollverwaltbar === false;
+        const text = nurZuordnung
+            ? `„${name}“ gehört auch zu anderen Vereinen. Es wird nur die Zuordnung zu Ihrem Verein entfernt, das Konto und die übrigen Zuordnungen bleiben bestehen. Fortfahren?`
+            : `Benutzer „${name}“ (${konto.email}) wirklich löschen? Die Mitgliedschaften in allen Vereinen und eingetragene Helferdienste gehen verloren.`;
         const bestaetigt = window.zeigeZentraleBestaetigung
-            ? await window.zeigeZentraleBestaetigung(text, 'Benutzer löschen', 'delete')
+            ? await window.zeigeZentraleBestaetigung(text, nurZuordnung ? 'Aus Verein entfernen' : 'Benutzer löschen', 'delete')
             : window.confirm(text);
         if (!bestaetigt) return;
         zeigeMeldung('');
@@ -645,17 +655,37 @@
             if (!response.ok) throw new Error(data.error || 'Das Konto konnte nicht gelöscht werden.');
             konten = konten.filter(k => k.id !== konto.id);
             zeichne();
-            zeigeMeldung(`Gelöscht: ${name}`, true);
+            zeigeMeldung(nurZuordnung ? `${name} wurde aus Ihrem Verein entfernt.` : `Gelöscht: ${name}`, true);
         } catch (err) {
             zeigeMeldung(err.message);
         }
     }
 
+    // Vereins-Admin: Super-Admin-Bereich, Hinzufügen, Aufräumen und Bestätigungsfilter gibt es nicht
+    function bereiteVereinsAdminAnsichtVor() {
+        for (const id of ['superBereich', 'aufraeumenKnopf']) {
+            const el = document.getElementById(id);
+            if (el) el.hidden = true;
+        }
+        const titel = document.getElementById('seitenTitel');
+        if (titel) titel.textContent = 'Mitglieder';
+        const text = document.getElementById('seitenText');
+        if (text) text.textContent = 'Die freigegebenen Mitglieder Ihrer Vereine. Sie können Rollen ändern, Stammdaten bearbeiten, Passwörter vergeben, Konten sperren und Mitglieder entfernen oder löschen. Konten, die auch zu anderen Vereinen gehören, lassen sich nur in Rolle und Zuordnung ändern.';
+        const bereichTitel = document.getElementById('nutzerTitel');
+        if (bereichTitel) bereichTitel.firstChild.textContent = 'Mitglieder ';
+        document.dispatchEvent(new CustomEvent('nutzer:vereinsadmin'));
+    }
+
     async function ladeEigeneId() {
         try {
             const response = await fetch('/api/auth/me');
-            if (response.ok) eigeneId = (await response.json()).user.id;
+            if (response.ok) {
+                const user = (await response.json()).user;
+                eigeneId = user.id;
+                istSuper = !!user.super_admin_aktiv;
+            }
         } catch { /* ohne eigene ID bleibt Löschen des eigenen Kontos serverseitig gesperrt */ }
+        if (!istSuper) bereiteVereinsAdminAnsichtVor();
     }
 
     async function lade() {
@@ -674,7 +704,7 @@
         }
     }
 
+    document.addEventListener('nutzer:neuladen', lade);
     filter.addEventListener('input', zeichne);
-    if (nurUnbestaetigt) nurUnbestaetigt.addEventListener('change', zeichne);
     lade();
 })();

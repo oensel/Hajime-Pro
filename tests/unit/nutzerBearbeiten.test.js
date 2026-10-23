@@ -58,11 +58,11 @@ test('Nutzer bearbeiten, löschen, Initialpasswort: Rechte, Prüfungen, Schutz d
             { benutzer_id: 'u-weg', verein_id: verein, freigegeben: 1, rolle: 'helfer' }
         ]);
 
-        // --- Rechte: nur Super-Admins
+        // --- Rechte: Vereins-Admins erreichen nur Konten ihrer Vereine (fremde Konten: 404), Super-Admin-Funktionen bleiben 403
         assert.equal((await aufruf(null, '/u-neu', 'PUT', { vorname: 'a', nachname: 'b', email: 'c@d.de' })).status, 401);
-        assert.equal((await aufruf('u-normal', '/u-neu', 'PUT', { vorname: 'a', nachname: 'b', email: 'c@d.de' })).status, 403);
-        assert.equal((await aufruf('u-normal', '/u-neu', 'DELETE')).status, 403);
-        assert.equal((await aufruf('u-normal', '/u-neu/passwort', 'POST', { passwort: 'langes-passwort' })).status, 403);
+        assert.equal((await aufruf('u-normal', '/u-neu', 'PUT', { vorname: 'a', nachname: 'b', email: 'c@d.de' })).status, 404);
+        assert.equal((await aufruf('u-normal', '/u-neu', 'DELETE')).status, 404);
+        assert.equal((await aufruf('u-normal', '/u-neu/passwort', 'POST', { passwort: 'langes-passwort' })).status, 404);
 
         // --- Ändern: Pflichtfelder, Format, Dublette, Erfolg (E-Mail klein und getrimmt)
         assert.equal((await aufruf('u-super', '/u-neu', 'PUT', { vorname: '', nachname: 'b', email: 'c@d.de' })).status, 400);

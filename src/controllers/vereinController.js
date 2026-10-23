@@ -345,10 +345,10 @@ export async function getMitglieder(knex, req, res) {
     }
 }
 
-// --- Super-Admin: Anfragen für Vereine ohne Admin ---
+// --- Super-Admin: alle offenen Anfragen ---
 // Getrennt von getPendingRequests/approveMember/rejectMember oben: jene sind für Admins, die Mitglieder
-// ihres eigenen Vereins freischalten. Hat ein Verein noch keinen Admin (Erstregistrierung, Altbestand),
-// gibt es dort niemanden, der das könnte. Diese Anfragen sieht ausschließlich der Super-Admin.
+// ihres eigenen Vereins freischalten. Der Super-Admin sieht und entscheidet die offenen Anfragen aller Vereine;
+// bei Vereinen ohne Admin (Erstregistrierung, Altbestand) ist er der Einzige, der das kann (`verein_hat_admin`).
 
 export async function getSuperAdminPendingRequests(knex, req, res) {
     try {
@@ -356,41 +356,31 @@ export async function getSuperAdminPendingRequests(knex, req, res) {
             .join('benutzer', 'benutzer.id', 'benutzer_vereine.benutzer_id')
             .join('vereine', 'vereine.id', 'benutzer_vereine.verein_id')
             .where('benutzer_vereine.freigegeben', 0)
-            .whereNotExists(function () {
-                this.select('*').from('benutzer_vereine as bv2')
-                    .whereRaw('bv2.verein_id = benutzer_vereine.verein_id')
-                    .andWhere('bv2.freigegeben', 1)
-                    .andWhere('bv2.rolle', 'admin');
-            })
             .select(
                 'benutzer.id as id', 'benutzer.email as email',
                 'benutzer.vorname as vorname', 'benutzer.nachname as nachname',
                 'vereine.id as verein_id', 'vereine.name as verein_name'
-            );
+            )
+            .orderBy('benutzer_vereine.created_at');
 
-        res.json(pending);
+        const mitAdmin = new Set();
+        for (const vereinId of new Set(pending.map(p => p.verein_id))) {
+            if (await hatVereinAdmin(knex, vereinId)) mitAdmin.add(vereinId);
+        }
+        res.json(pending.map(p => ({ ...p, verein_hat_admin: mitAdmin.has(p.verein_id) })));
     } catch (error) {
         console.error('[Super-Admin-Pending-Fehler]:', error);
         res.status(500).json({ success: false, error: 'Fehler beim Laden der Erstregistrierungen.' });
     }
 }
 
-async function pruefeVereinOhneAdmin(knex, vereinId) {
-    if (await hatVereinAdmin(knex, vereinId)) {
-        return { ok: false, status: 409, error: 'Dieser Verein hat bereits einen Admin — die Freigabe obliegt jetzt ihm.' };
-    }
-    return { ok: true };
-}
-
 export async function superApproveMember(knex, req, res) {
     try {
         const { userId, vereinId } = leseZiel(req);
         if (!userId || !vereinId) return fehlendesZiel(res);
-        const check = await pruefeVereinOhneAdmin(knex, vereinId);
-        if (!check.ok) return sendeErgebnis(res, check);
 
-        // Ohne Angabe wird die erste freigegebene Person eines Vereins ohne Admin dessen Admin.
-        const rolle = req.body.rolle === undefined ? 'admin' : req.body.rolle;
+        // Ohne Angabe wird die erste freigegebene Person eines Vereins ohne Admin dessen Admin, sonst Benutzer.
+        const rolle = req.body.rolle === undefined ? ((await hatVereinAdmin(knex, vereinId)) ? 'benutzer' : 'admin') : req.body.rolle;
         const ergebnis = await entscheideAnfrage(knex, {
             vereinId, benutzerId: userId, entscheiderId: req.user.id, entscheidung: 'freigeben', rolle
         });
@@ -405,8 +395,6 @@ export async function superRejectMember(knex, req, res) {
     try {
         const { userId, vereinId } = leseZiel(req);
         if (!userId || !vereinId) return fehlendesZiel(res);
-        const check = await pruefeVereinOhneAdmin(knex, vereinId);
-        if (!check.ok) return sendeErgebnis(res, check);
 
         // Ablehnen räumt auch einen dadurch verwaisten Verein ab (siehe entscheideAnfrage).
         const ergebnis = await entscheideAnfrage(knex, {
