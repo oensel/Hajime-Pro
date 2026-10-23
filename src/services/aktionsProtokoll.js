@@ -158,14 +158,15 @@ const ganzzahl = (w) => (/^\d+$/.test(String(w ?? '')) && Number(w) <= 214748364
 
 /** Express-Middleware: protokolliert nach der Antwort jede erfolgreiche schreibende Anfrage eines angemeldeten Kontos. */
 export function erzeugeProtokollMiddleware(knex) {
-    return (req, res, next) => {
+    return async (req, res, next) => {
         const methode = req.method;
         const url = req.originalUrl || req.url;
         const { pfad, ids } = normalisierePfad(url);
         if (!istProtokollierbar(methode, String(url).split('?')[0])) return next();
         // Das Ziel eines Benutzer-Eingriffs vor dem Löschen merken (Name/E-Mail), sonst fehlt es im Eintrag
         const zielId = pfad.startsWith('/api/nutzer/') ? ids.find((i) => UUID.test(i)) : null;
-        const zielVorab = zielId ? knex('benutzer').where({ id: zielId }).first('vorname', 'nachname', 'email').catch(() => null) : null;
+        // Abgewartet, bevor die Anfrage weiterläuft: sonst kann das Löschen vor der Abfrage durchlaufen (Wettlauf um die Datenbankverbindung).
+        const ziel = zielId ? await knex('benutzer').where({ id: zielId }).first('vorname', 'nachname', 'email').catch(() => null) : null;
 
         res.on('finish', async () => {
             try {
@@ -181,10 +182,7 @@ export function erzeugeProtokollMiddleware(knex) {
                 if (!kontext) return;
                 const { aktion, beschreibung } = beschreibeAktion(methode, pfad);
                 const details = { ids };
-                if (zielVorab) {
-                    const ziel = await zielVorab;
-                    if (ziel) details.ziel = `${ziel.vorname || ''} ${ziel.nachname || ''}`.trim() + ` <${ziel.email}>`;
-                }
+                if (ziel) details.ziel = `${ziel.vorname || ''} ${ziel.nachname || ''}`.trim() + ` <${ziel.email}>`;
                 if (turnierId != null) details.turnierId = turnierId;
                 await protokolliere(knex, { ...kontext, turnierId, aktion, beschreibung, methode, pfad, status: res.statusCode, details });
             } catch (err) {
