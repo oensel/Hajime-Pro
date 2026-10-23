@@ -47,9 +47,11 @@ test('Nutzer-Verwaltung: nur Super-Admins, ernennen, letzter Super-Admin bleibt'
         ]);
         await knex('benutzer_vereine').insert({ benutzer_id: 'u-admin', verein_id: verein, freigegeben: 1, rolle: 'admin' });
 
-        // --- Routen: ohne Anmeldung 401, Nicht-Super-Admin (auch Vereins-Admin) 403
+        // --- Routen: ohne Anmeldung 401; ein Vereins-Admin sieht nur Konten seines Vereins (nie Super-Admins) und darf niemanden ernennen
         assert.equal((await aufruf(null)).status, 401);
-        assert.equal((await aufruf('u-admin')).status, 403);
+        const adminListe = await aufruf('u-admin');
+        assert.equal(adminListe.status, 200);
+        assert.deepEqual((await adminListe.json()).map(k => k.id), ['u-admin']);
         const ernennenOhneRecht = await aufruf('u-admin', '/u-admin/super-admin', { method: 'POST', body: JSON.stringify({ wert: true }) });
         assert.equal(ernennenOhneRecht.status, 403);
         assert.equal((await knex('benutzer').where({ id: 'u-admin' }).first()).ist_super_admin, false);
