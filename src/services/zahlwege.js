@@ -41,7 +41,8 @@ export async function speichereZahlweg(knex, { turnier, vereinName, vereinId, be
     if (ausrichter && ausrichter === vereinName) {
         throw new FachFehler(403, 'Der ausrichtende Verein wählt keinen Zahlweg.');
     }
-    let angeboten = parseAngeboteneZahlwege(turnier.angebotene_zahlwege);
+    // Lastschrift ist reserviert und wird in Stufe 1 nie angeboten.
+    let angeboten = parseAngeboteneZahlwege(turnier.angebotene_zahlwege).filter((z) => STANDARD_ANGEBOTEN.includes(z));
     if (angeboten.length === 0) angeboten = [...STANDARD_ANGEBOTEN];
     const { fehler, werte } = pruefeZahlwegEingabe(eingabe, angeboten);
     if (fehler) throw new FachFehler(400, fehler);

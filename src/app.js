@@ -37,6 +37,7 @@ import { getPoolRoutes } from './routes/poolRoutes.js';
 import { getKampfflaecheRoutes } from './routes/kampfflaecheRoutes.js';
 import { getKampfRoutes } from './routes/kampfRoutes.js';
 import { getMannschaftRoutes, getMannschaftskampfRoutes } from './routes/mannschaftRoutes.js';
+import { getZahlwegRoutes } from './routes/zahlwegRoutes.js';
 import { getUrkundenRoutes } from './routes/urkundenRoutes.js';
 import { getLiveRoutes } from './routes/liveRoutes.js';
 import { getLiveAppRoutes } from './routes/liveAppRoutes.js';
@@ -437,6 +438,8 @@ if (syncKonfig.istClient) {
     app.use('/api/mannschaften', requireWriteAuth, getMannschaftRoutes(knex));
     app.use('/api/mannschaftskaempfe', requireWriteAuth, getMannschaftskampfRoutes(knex));
     app.use('/api/urkunden', requireWriteAuth, getUrkundenRoutes(knex));
+    // Startgeld-Zahlweg: Anmelder wählen in der Cloud, die Kasse nutzt auch der Hallen-Server (dort hinter dem Turnierleitungs-Passwort).
+    app.use('/api/zahlweg', requireWriteAuth, getZahlwegRoutes(knex));
     // Helferplan der Orga (Spec Helferverwaltung 6): überall, im Hallenbetrieb hinter dem Turnierleitungs-Passwort.
     app.use('/api/helfer-plan', requireWriteAuth, getHelferPlanRoutes(knex));
     // Orga-Planer (Checkliste der Orga): überall, im Hallenbetrieb hinter dem Turnierleitungs-Passwort.
