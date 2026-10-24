@@ -60,6 +60,25 @@ test('Kampfbereitschaft nutzt den abgeleiteten Zahlstatus', async () => {
         await tc.bestaetigeKampfbereitschaft(knex, a.id, privilegiert);
         await assert.rejects(() => tc.bestaetigeKampfbereitschaft(knex, b.id, privilegiert), /Startgeld ist noch nicht bezahlt/);
 
+        // Vereinswechsel leitet das Flag neu ab
+        const flagNach = async (i, neuerVerein) => {
+            await tc.aktualisiereTeilnehmerDaten(knex, i, { verein: neuerVerein }, privilegiert);
+            return status(i);
+        };
+        const wechsler = await anlegen('JC A', privilegiert);
+        const w1 = await flagNach(wechsler, 'JC B');
+        assert.equal(w1.startgeld_zahlweg_gesichert, false);
+        assert.equal(w1.status, 'angemeldet');
+        const w2 = await flagNach(wechsler, 'JC Ausrichter');
+        assert.equal(w2.startgeld_zahlweg_gesichert, true);
+        assert.equal(w2.status, 'kampfbereit');
+        const w3 = await flagNach(wechsler, 'JC Ohne Zeile');
+        assert.equal(w3.startgeld_zahlweg_gesichert, false);
+        assert.equal(w3.status, 'angemeldet');
+        const w4 = await flagNach(wechsler, 'JC A');
+        assert.equal(w4.startgeld_zahlweg_gesichert, true);
+        assert.equal(w4.status, 'kampfbereit');
+
         // Model
         assert.equal(mapTeilnehmer(a).startgeldZahlwegGesichert, true);
         assert.equal(mapTeilnehmer(b).startgeldZahlwegGesichert, false);

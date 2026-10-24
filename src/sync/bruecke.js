@@ -24,6 +24,7 @@ import {
 } from '../controllers/teilnehmerController.js';
 
 const KAMPF_ERGEBNIS_FELDER = ['status', 'sieger_id', 'unterbewertung_kaempfer1', 'unterbewertung_kaempfer2', 'kampfzeit_in_sekunden'];
+// startgeld_zahlweg_gesichert fehlt bewusst: serverseitig aus dem Zahlweg des Vereins abgeleitet, Geräte dürfen es nicht schreiben.
 const TEILNEHMER_WAAGE_FELDER = [
     'vorname', 'nachname', 'judopass_id', 'verein', 'geburtsjahr', 'lizenz_ablauf', 'geschlecht',
     'gewicht', 'altersklasse', 'gewichtsklasse', 'graduierung', 'startgeld_bezahlt', 'gewogen'

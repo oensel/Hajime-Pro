@@ -151,6 +151,15 @@ async function ermittleKontext(knex, req, turnier) {
     };
 }
 
+// Zahlweg-Flag eines Teilnehmers aus seinem Verein: Ausrichter-Verein oder gesicherter Zahlweg-Eintrag des Vereins.
+export async function leiteZahlwegGesichertAb(knex, turnier, vereinName) {
+    if (!vereinName) return false;
+    const ausrichter = turnier.verein_id == null ? null
+        : await knex('vereine').where({ id: turnier.verein_id }).first('name');
+    if (ausrichter && ausrichter.name === vereinName) return true;
+    return istZahlwegGesichert(await ladeZahlwegFuerVerein(knex, turnier.id, vereinName));
+}
+
 // Service-Funktion ohne req/res (REST-Route createTeilnehmer UND Sync-Brücke): legt einen
 // Teilnehmer an und liefert seine ID. Rechte kommen aus dem kontext (siehe HALLEN_KONTEXT).
 export async function legeTeilnehmerAn(knex, daten, kontext) {
@@ -268,14 +277,7 @@ export async function legeTeilnehmerAn(knex, daten, kontext) {
     if (dokument_id) neuerTeilnehmer.dokument_id = dokument_id;
 
     // Zahlweg-Flag vor der Kampfbereitschaft bestimmen: Verein = Ausrichter oder gesicherter Zahlweg des Vereins.
-    const ausrichterVerein = turnier.verein_id == null ? null
-        : await knex('vereine').where({ id: turnier.verein_id }).first('name');
-    if (ausrichterVerein && ausrichterVerein.name === verein) {
-        neuerTeilnehmer.startgeld_zahlweg_gesichert = true;
-    } else if (verein) {
-        neuerTeilnehmer.startgeld_zahlweg_gesichert =
-            istZahlwegGesichert(await ladeZahlwegFuerVerein(knex, turnier.id, verein));
-    }
+    neuerTeilnehmer.startgeld_zahlweg_gesichert = await leiteZahlwegGesichertAb(knex, turnier, verein);
 
     // Direkt bei der Neuanlage kampfbereit setzen, wenn schon alle Kriterien erfüllt sind
     // (z.B. QR-Scan am Wiegetisch: Judopass bekannt, Lizenz gültig, Gewicht + gewogen +
@@ -490,6 +492,10 @@ export async function aktualisiereTeilnehmerDaten(knex, id, daten, kontext) {
     // Kampfbereitschaft nach der Änderung neu bewerten (z.B. Gewicht korrigiert und im
     // gleichen Zug als gewogen bestätigt -> automatisch kampfbereit; Gewicht ohne erneute
     // Gewogen-Bestätigung geändert -> ggf. zurück auf "angemeldet", siehe waage-modal.js).
+    // Vereinswechsel: Zahlweg-Flag neu ableiten, bevor die Kampfbereitschaft geprüft wird.
+    if (updates.verein !== athlet.verein) {
+        updates.startgeld_zahlweg_gesichert = await leiteZahlwegGesichertAb(knex, turnier, updates.verein);
+    }
     const merged = { ...athlet, ...updates };
     const { erfuellt } = pruefeKampfbereitschaft(merged, turnier);
     updates.status = leiteStatusAusKampfbereitschaftAb(athlet.status, erfuellt);
@@ -1394,7 +1400,8 @@ export async function importTeilnehmer(knex, req, res) {
                     // Steuert nur die Anzeige ("... Team") in teilnehmer.html (siehe
                     // formatiereAltersklasse in teilnehmer.js) — der Judoka bleibt ein normaler
                     // turnier_teilnehmer, der z.B. auch für Einzelwettkämpfe startberechtigt ist.
-                    fuer_mannschaft: zeilenZiel === 'mannschaft'
+                    fuer_mannschaft: zeilenZiel === 'mannschaft',
+                    startgeld_zahlweg_gesichert: await leiteZahlwegGesichertAb(knex, turnier, felder.verein)
                 }).returning('id');
 
                 imported++;

@@ -1405,9 +1405,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         }).length;
         const lizenzProzent = basisAnzahl > 0 ? Math.round((lizenzAnzahl / basisAnzahl) * 100) : 0;
 
-        // Bewusst der rohe Wert (nicht die turnierKostenlos-Maskierung aus berechneStatus): die
-        // Kachel soll den tatsächlichen Bezahlt-Status abbilden, den auch das Icon je Teilnehmer
-        // zeigt/umschaltet — sonst stünde hier "100%", obwohl einzelne Icons "unbezahlt" zeigen.
+        // Bei kostenlosen Turnieren bewusst nicht maskiert (nur der rohe Haken zählt, wie beim Icon);
+        // sonst zählt auch ein durch den Zahlweg des Vereins gesicherter Kämpfer als bezahlt.
         const bezahltAnzahl = basis.filter(a => !!a.startgeld_bezahlt || (!turnierKostenlos && !!a.startgeld_zahlweg_gesichert)).length;
         const unbezahltAnzahl = basisAnzahl - bezahltAnzahl;
         const bezahltProzent = basisAnzahl > 0 ? Math.round((bezahltAnzahl / basisAnzahl) * 100) : 0;
