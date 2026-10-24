@@ -10,7 +10,9 @@ test-results
 !.env.cloud.example
 docs
 deploy
-desktop
+desktop/*
+!desktop/updateLogik.js
+!desktop/update-schluessel.pub
 tests
 *.md
 !README.md

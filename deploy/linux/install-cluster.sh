@@ -99,6 +99,9 @@ done
 
 # CLOUD_URL aus der bisherigen .env behalten, wenn --cloud-url nicht angegeben wurde. Hier, nicht in
 # rendere_env: dessen Ausgabe wird per Pipe in dieselbe Datei geschrieben, die Datei wäre schon überschrieben.
+if [ -z "$CLOUD_URL" ] && [ -f "$QUELLE/.hajime-release-url" ]; then
+    CLOUD_URL="$(tr -d ' \r\n' < "$QUELLE/.hajime-release-url")"
+fi
 if [ -z "$CLOUD_URL" ] && [ -f "$ENV_DATEI" ]; then
     CLOUD_URL="$(grep -E '^CLOUD_URL=' "$ENV_DATEI" | head -n1 | cut -d= -f2- || true)"
 fi
@@ -449,10 +452,13 @@ log "Anwendung nach $INSTALL_DIR kopieren"
 id "$APP_USER" >/dev/null 2>&1 || useradd --system --create-home --home-dir "$INSTALL_DIR" --shell /usr/sbin/nologin "$APP_USER"
 mkdir -p "$INSTALL_DIR"
 rsync -a --delete \
-    --exclude '.git' --exclude 'node_modules' --exclude 'data' --exclude '.env' --exclude '.update' \
+    --exclude '.git' --exclude 'node_modules' --exclude 'data' --exclude '.env' --exclude '.update' --exclude '.hajime-release-*' \
     --exclude 'dist-desktop' --exclude 'dist-server' --exclude 'test-results' --exclude 'playwright-report' \
     "$QUELLE"/ "$INSTALL_DIR"/
 mkdir -p "$INSTALL_DIR/data/dokumente" "$INSTALL_DIR/data/client-downloads"
+# Cloud-Zugang aus holen.sh (Geräteschlüssel für Updates) übernehmen
+. "$QUELLE/deploy/linux/release-schluessel.sh"
+uebernehme_release_schluessel "$QUELLE" "$INSTALL_DIR" "$APP_USER"
 chown -R "$APP_USER":"$APP_USER" "$INSTALL_DIR"
 
 log "Node-Abhängigkeiten installieren (dauert einige Minuten)"

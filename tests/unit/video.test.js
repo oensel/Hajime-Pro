@@ -16,6 +16,9 @@ test('Speicher: Clip anlegen, schreiben, Marken, schließen, listen, löschen', 
         clip.schreibe(Buffer.from([4, 5]));
         clip.marke('geladen', 0);
         clip.marke('start', 12345.6);
+        clip.marke('wertung', 40000, 'Waza-ari Weiß');
+        clip.marke('strafe', 50000, 'Shido Blau (1)');
+        clip.marke('haltegriff', 60000, 'Haltegriff Weiß');
         clip.marke('ungueltig', 5); // unbekannter Typ wird ignoriert
         clip.marke('ergebnis', 99000, 'Sieger Weiß');
         clip.schliesse({ ergebnis: 'Sieger Weiß' });
@@ -28,7 +31,8 @@ test('Speicher: Clip anlegen, schreiben, Marken, schließen, listen, löschen', 
         assert.equal(liste[0].abgebrochen, false);
         assert.equal(liste[0].ergebnis, 'Sieger Weiß');
         assert.equal(liste[0].farbe2, 'rot');
-        assert.deepEqual(liste[0].marken.map(m => [m.typ, m.ms]), [['geladen', 0], ['start', 12346], ['ergebnis', 99000]]);
+        assert.deepEqual(liste[0].marken.map(m => [m.typ, m.ms]), [['geladen', 0], ['start', 12346], ['wertung', 40000], ['strafe', 50000], ['haltegriff', 60000], ['ergebnis', 99000]]);
+        assert.equal(liste[0].marken[2].text, 'Waza-ari Weiß');
         assert.equal(speicher.liste({ matteId: 3 }).length, 0);
         assert.equal(speicher.speicher().clips, 1);
         assert.equal(speicher.speicher().belegt, 5);

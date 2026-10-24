@@ -18,6 +18,7 @@ import { merkeVersuch, pruefeUndLade } from './selbstUpdate.js';
 import { baueInstallFensterBefehl } from './installFenster.js';
 import { starteLoesgeloest, startBefehl, tauscheAppImage } from '../updater.js';
 import { MELDUNG, ladeText } from '../../src/shared/updateAnzeige.js';
+import { ermittleReleaseQuelle, leseCodeAusDateiname, liesCloudUrl, liesInstallerNamen, loescheDatei, loeseEinloesecodeEin } from '../../src/utils/releaseQuelle.js';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const WURZEL = path.resolve(hier, '../..');
@@ -250,6 +251,27 @@ function selbstUpdateAktiv() {
     return app.isPackaged && plattformUnterstuetzt() && !eigenesProfil && process.env.HAJIME_SELBSTUPDATE !== 'false';
 }
 
+// Standardadresse der Cloud: die Release-Pipeline legt sie ins Paket (desktop/cloud-url.txt), update.json und CLOUD_URL gehen vor.
+const CLOUD_URL_DATEI = path.join(WURZEL, 'desktop/cloud-url.txt');
+
+// Ersteinrichtung ohne Handarbeit: der Installer aus der Cloud trägt einen Einlösecode im Dateinamen (Windows: der Installer
+// legt seinen Namen ab, siehe desktop/build/server-installer.nsh; Linux: der Name der AppImage). Der Code wird einmalig gegen
+// den Geräteschlüssel getauscht, mit dem sich der Server danach selbst aktualisiert. Scheitert das (offline, abgelaufen),
+// bleibt alles wie es ist: GitHub bzw. spätere Anmeldung bei „Turnier aus der Cloud holen“.
+async function loeseInstallerCodeEin() {
+    const installerDateien = ['ProgramData', 'APPDATA'].filter(v => process.env[v]).map(v => path.join(process.env[v], 'HajimeProInstall', 'installer-name.txt'));
+    const namen = [process.env.APPIMAGE ? path.basename(process.env.APPIMAGE) : '', liesInstallerNamen(installerDateien)];
+    const code = namen.map(leseCodeAusDateiname).find(Boolean);
+    if (!code) return;
+    const datenDir = datenverzeichnis();
+    const ergebnis = await loeseEinloesecodeEin({
+        code, datenDir, cloudUrl: liesCloudUrl({ datenDir, standardDatei: CLOUD_URL_DATEI }),
+        beiAbgelehnt: () => installerDateien.forEach(loescheDatei)
+    });
+    if (ergebnis.status === 'eingeloest') { console.log('[Selbst-Update] Geräteschlüssel der Cloud eingerichtet.'); installerDateien.forEach(loescheDatei); }
+    else if (ergebnis.status === 'fehler') console.warn(`[Selbst-Update] Einlösecode nicht eingelöst: ${ergebnis.grund}`);
+}
+
 function liesUpdateKonfig() {
     try { return JSON.parse(readFileSync(path.join(datenverzeichnis(), 'update.json'), 'utf8')) || {}; } catch { return {}; }
 }
@@ -289,11 +311,19 @@ async function pruefeSelbstUpdate({ manuell = false, beiStart = false } = {}) {
     let letzteAnzeige = 0;
     let holeMeldung = false;
     let ergebnis;
+    let quelle = { art: 'github' };
     try {
         const { liesOeffentlichenSchluessel } = await import(pathToFileURL(path.join(WURZEL, 'src/sync/clientDateien.js')).href);
+        // Cloud, sobald ein Geräteschlüssel da ist; bis dahin wie bisher GitHub (src/utils/releaseQuelle.js).
+        await loeseInstallerCodeEin();
+        quelle = ermittleReleaseQuelle({
+            datenDir: datenverzeichnis(), standardDatei: CLOUD_URL_DATEI,
+            githubRepo: process.env.CLIENT_RELEASE_REPO || konfig.repo, githubToken: process.env.CLIENT_RELEASE_TOKEN || konfig.token
+        });
         ergebnis = await pruefeUndLade({
-            repo: process.env.CLIENT_RELEASE_REPO || konfig.repo || 'oensel/Hajime-Pro-Releases',
-            token: process.env.CLIENT_RELEASE_TOKEN || konfig.token || '',
+            repo: quelle.repo,
+            token: quelle.token,
+            ...(quelle.apiBasis ? { apiBasis: quelle.apiBasis } : {}),
             aktuelleVersion: app.getVersion(),
             schluessel: liesOeffentlichenSchluessel(),
             ...(process.env.HAJIME_RELEASE_API ? { apiBasis: process.env.HAJIME_RELEASE_API } : {}), // nur für Tests gegen ein Release-Double
@@ -335,9 +365,9 @@ async function pruefeSelbstUpdate({ manuell = false, beiStart = false } = {}) {
                 meldung('Das Update konnte nicht fertig geladen werden.', `${ergebnis.grund}\nDer Download wird später fortgesetzt.`);
                 return ergebnis.status;
             }
-            zeige(MELDUNG.keineVerbindung('GitHub', app.getVersion()));
+            zeige(MELDUNG.keineVerbindung(quelle.art === 'cloud' ? 'Cloud' : 'GitHub', app.getVersion()));
             setzeUpdateStatus('');
-            meldung('Keine Verbindung zu GitHub.', 'Es konnte nicht nach Updates gesucht werden.');
+            meldung(`Keine Verbindung zu ${quelle.art === 'cloud' ? 'Cloud' : 'GitHub'}.`, 'Es konnte nicht nach Updates gesucht werden.');
             break;
         case 'fehler':
             zeige(`Update fehlgeschlagen: ${ergebnis.grund} – starte Version ${app.getVersion()}`);

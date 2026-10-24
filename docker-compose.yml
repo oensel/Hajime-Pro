@@ -20,6 +20,8 @@ services:
       - "${PORT:-3000}:3000"
     volumes:
       - ${SICHERUNG_HOST_VERZEICHNIS:-./sicherungen}:/var/backups/hajime
+      # Gespiegelte Installer/Updates (Seite „Downloads“, Spec docs/specs/2026-10-24-downloads-ueber-cloud-design.md); Besitzer wie bei den Sicherungen (ID 1000)
+      - ${RELEASE_HOST_VERZEICHNIS:-./releases}:/var/lib/hajime/releases
     restart: unless-stopped
 
   app-lokal:
@@ -41,6 +43,7 @@ services:
       - "${PORT:-3000}:3000"
     volumes:
       - sicherungen:/var/backups/hajime
+      - releases:/var/lib/hajime/releases
 
   db:
     profiles: ["lokal"]
@@ -60,3 +63,4 @@ services:
 volumes:
   pgdaten:
   sicherungen:
+  releases:

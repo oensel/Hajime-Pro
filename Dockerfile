@@ -5,7 +5,7 @@ FROM node:22-slim
 ENV NODE_ENV=production \
     BETRIEBSMODUS=cloud \
     PORT=3000 \
-    SICHERUNG_VERZEICHNIS=/var/backups/hajime
+    SICHERUNG_VERZEICHNIS=/var/backups/hajime \n    RELEASE_VERZEICHNIS=/var/lib/hajime/releases
 
 WORKDIR /app
 
@@ -17,7 +17,7 @@ COPY . .
 
 # Sicherungsverzeichnis (automatische Sicherung, Seite „Sicherung“): gehört dem Benutzer node und wird in docker-compose.yml als Volume
 # eingebunden, damit die Sicherungen ein Update des Containers überleben.
-RUN mkdir -p /var/backups/hajime && chown node:node /var/backups/hajime
+RUN mkdir -p /var/backups/hajime /var/lib/hajime/releases && chown node:node /var/backups/hajime /var/lib/hajime/releases
 
 # Läuft nicht als root.
 USER node

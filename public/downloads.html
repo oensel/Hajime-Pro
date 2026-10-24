@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hajime Pro - Downloads</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <script src="/js/menu.js"></script>
+    <style>
+        .dl-box { border: 1px solid var(--border); border-radius: 4px; padding: 14px 16px; margin-bottom: 16px; }
+        .dl-box h2 { font-size: 15px; margin: 0 0 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .dl-box p { font-size: 13px; color: var(--text-muted); margin: 6px 0; }
+        .dl-tabelle { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 8px; }
+        .dl-tabelle th, .dl-tabelle td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; overflow-wrap: anywhere; }
+        .dl-tabelle th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
+        .dl-tabelle td.zahl { white-space: nowrap; text-align: right; }
+        .dl-tabelle code { font-size: 12px; color: var(--text-muted); }
+        .dl-meldung { font-weight: 700; font-size: 13px; min-height: 18px; margin: 8px 0; }
+        .dl-meldung.fehler { color: #ef4444; }
+        .dl-meldung.ok { color: #16a34a; }
+        .dl-befehl { display: block; font-family: monospace; font-size: 12px; background: var(--surface-2, rgba(127, 127, 127, 0.12)); padding: 10px 12px; border-radius: 4px; overflow-wrap: anywhere; user-select: all; margin: 8px 0; }
+        .mini { padding: 4px 10px; font-size: 12px; }
+    </style>
+</head>
+<body>
+
+<div class="kanji-left">柔</div>
+<div class="kanji-right">道</div>
+
+<div class="mdc-card" style="padding: 20px 24px; max-width: 980px;">
+    <div class="form-title-area">
+        <span class="material-icons">download</span>
+        <h1>Downloads</h1>
+        <span class="material-icons">download</span>
+    </div>
+    <p style="color: var(--text-muted); font-size: 13px; margin-top: 0;">Installer für Hallen-Server und Client-Geräte. Sie stehen nur freigeschalteten Benutzern, Admins und Super-Admins zur Verfügung. Die Dateien sind signiert; die Programme prüfen die Signatur bei jedem Update selbst.</p>
+
+    <div id="dlMeldung" class="dl-meldung" role="alert"></div>
+    <div id="dlInhalt"></div>
+
+    <div class="dl-box" id="dlLinuxBox" hidden>
+        <h2>Linux-Dienst einrichten</h2>
+        <p>Für einen Linux-Server ohne Oberfläche (systemd, optional als Cluster). Der Befehl enthält einen persönlichen Geräteschlüssel, mit dem sich der Server danach selbst aktualisiert. Er gilt für Ihr Konto und lässt sich unten jederzeit widerrufen.</p>
+        <button type="button" class="btn btn-outlined" id="dlBefehlKnopf">Installationsbefehl erzeugen</button>
+        <code class="dl-befehl" id="dlBefehl" hidden></code>
+    </div>
+
+    <div class="dl-box" id="dlSpiegelBox" hidden>
+        <h2>Quelle der Releases (Super-Admin)</h2>
+        <div id="dlSpiegelInfo" style="font-size: 13px;">Wird geladen …</div>
+        <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 10px;">
+            <label for="dlCode">Code der Authenticator-App</label>
+            <input type="text" id="dlCode" autocomplete="one-time-code" maxlength="20" placeholder="123 456" spellcheck="false" style="padding: 8px 10px; min-width: 140px; box-sizing: border-box;">
+            <button type="button" class="btn btn-outlined" id="dlSpiegelKnopf">Jetzt nach neuer Version suchen</button>
+        </div>
+        <p>Die Cloud spiegelt neue Releases stündlich aus dem privaten Repository (<code>RELEASE_QUELLE_REPO</code>, <code>RELEASE_QUELLE_TOKEN</code> in der <code>.env</code>).</p>
+    </div>
+
+    <div class="dl-box" id="dlSchluesselBox" hidden>
+        <h2>Geräteschlüssel</h2>
+        <p>Mit einem Geräteschlüssel holt ein Hallen-Server Updates aus der Cloud, ohne dass jemand eingreifen muss. Er entsteht beim Installieren (Windows: Code im Dateinamen des Installers), beim Befehl oben und bei der ersten Anmeldung an der Cloud über „Turnier aus der Cloud holen“. Er endet automatisch, wenn das zugehörige Konto gesperrt oder nicht mehr freigeschaltet ist.</p>
+        <div id="dlSchluessel">Wird geladen …</div>
+    </div>
+</div>
+
+<script src="/js/downloads.js"></script>
+</body>
+</html>

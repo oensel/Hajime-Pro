@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hajime Pro – Turnierverwaltung für Judo</title>
+    <meta name="description" content="Hajime Pro organisiert Ihr Judo-Turnier nach den Regeln des DJB: von der Anmeldung über Auslosung, Waage und Matten bis zur Siegerliste. Auch ohne Internet in der Halle.">
+    <link rel="icon" href="/hajime_zeichen.png">
+    <link rel="stylesheet" href="/css/schriften.css">
+    <style>
+        :root {
+            --tinte: #14264f;
+            --tinte-tief: #0d1a38;
+            --papier: #f7f4ec;
+            --papier-dunkel: #ece7da;
+            --linie: #d9d4c7;
+            --text: #1b2437;
+            --text-leise: #566178;
+            --matte: #5e8a52;
+            --gong: #c43b2f;
+            --rand: clamp(20px, 5vw, 64px);
+        }
+        * { box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+        body {
+            margin: 0; background: var(--papier); color: var(--text);
+            font-family: 'Plus Jakarta Sans', system-ui, sans-serif; font-size: 17px; line-height: 1.6;
+        }
+        h1, h2, h3 { font-family: 'Outfit', system-ui, sans-serif; line-height: 1.08; margin: 0; letter-spacing: -0.015em; }
+        a { color: inherit; }
+        :focus-visible { outline: 3px solid var(--gong); outline-offset: 3px; }
+        .innen { max-width: 1160px; margin: 0 auto; padding: 0 var(--rand); }
+
+        /* Kopfzeile */
+        .kopf { display: flex; align-items: center; justify-content: space-between; padding: 18px 0; }
+        .kopf img { height: 40px; display: block; filter: brightness(0) invert(1); }
+        .kopf nav { display: flex; gap: 22px; align-items: center; font-size: 15px; font-weight: 500; }
+        .kopf nav a { text-decoration: none; opacity: .85; }
+        .kopf nav a:hover { opacity: 1; text-decoration: underline; }
+
+        .knopf {
+            display: inline-block; padding: 13px 26px; border-radius: 6px; font-weight: 700; text-decoration: none;
+            font-family: 'Outfit', sans-serif; font-size: 17px; background: var(--papier); color: var(--tinte);
+            border: 2px solid var(--papier);
+        }
+        .knopf:hover { background: #fff; }
+        .knopf.leise { background: transparent; color: inherit; border-color: currentColor; }
+        .knopf.leise:hover { background: rgba(255,255,255,.1); }
+        .knopf.dunkel { background: var(--tinte); color: #fff; border-color: var(--tinte); }
+        .knopf.dunkel:hover { background: var(--tinte-tief); }
+
+        /* Hero */
+        .hero { background: var(--tinte); color: #fff; overflow: hidden; }
+        .hero-raster { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 40px; align-items: center; padding: 40px 0 88px; }
+        .hero h1 { font-size: clamp(2.6rem, 6vw, 4.6rem); font-weight: 800; }
+        .hero p.lead { font-size: 1.2rem; max-width: 34ch; margin: 24px 0 32px; color: #cfd8ee; }
+        .hero .aktionen { display: flex; gap: 14px; flex-wrap: wrap; }
+        .baum { width: 100%; height: auto; display: block; }
+        .baum .linie { fill: none; stroke: #5d74a8; stroke-width: 2; }
+        .baum .sieg { fill: none; stroke: #fff; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 0; }
+        .baum text { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 13px; fill: #b7c3e0; }
+        .baum text.gewinner { fill: #fff; font-weight: 700; }
+        .baum .gong { fill: var(--gong); }
+        @media (prefers-reduced-motion: no-preference) {
+            .baum .sieg { animation: zeichnen 2.6s .4s cubic-bezier(.5,.1,.2,1) both; }
+            @keyframes zeichnen { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+        }
+
+        /* Ablauf */
+        section { padding: 88px 0; }
+        .abschnittskopf { max-width: 640px; margin-bottom: 48px; }
+        .abschnittskopf h2 { font-size: clamp(2rem, 4vw, 3rem); font-weight: 800; color: var(--tinte); }
+        .abschnittskopf p { color: var(--text-leise); font-size: 1.1rem; margin: 16px 0 0; }
+
+        .ablauf { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(6, 1fr); border-top: 3px solid var(--tinte); }
+        .ablauf li { padding: 22px 18px 0 0; position: relative; }
+        .ablauf li::before { content: ''; position: absolute; top: -9px; left: 0; width: 15px; height: 15px; border-radius: 50%; background: var(--papier); border: 3px solid var(--tinte); }
+        .ablauf li:last-child::before { background: var(--gong); border-color: var(--gong); }
+        .ablauf b { display: block; font-family: 'Outfit', sans-serif; font-size: 1.25rem; color: var(--tinte); margin-bottom: 4px; }
+        .ablauf span { font-size: 15px; color: var(--text-leise); display: block; }
+
+        /* Highlights */
+        .highlights { background: #fff; border-top: 1px solid var(--linie); border-bottom: 1px solid var(--linie); }
+        .merkmal { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 56px; padding: 44px 0; border-top: 1px solid var(--linie); align-items: start; }
+        .merkmal:first-of-type { border-top: 0; padding-top: 0; }
+        .merkmal h3 { font-size: clamp(1.6rem, 3vw, 2.2rem); font-weight: 700; color: var(--tinte); }
+        .merkmal p { margin: 0 0 12px; max-width: 62ch; }
+        .merkmal ul { margin: 12px 0 0; padding-left: 1.2em; color: var(--text-leise); }
+        .merkmal li { margin-bottom: 6px; }
+        .merkmal .kern { font-size: 1.12rem; }
+
+        /* Betriebsarten */
+        .betrieb { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; border: 2px solid var(--tinte); }
+        .betrieb > div { padding: 28px 26px 32px; border-left: 2px solid var(--tinte); }
+        .betrieb > div:first-child { border-left: 0; }
+        .betrieb h3 { font-size: 1.6rem; color: var(--tinte); margin-bottom: 10px; }
+        .betrieb p { margin: 0; color: var(--text-leise); font-size: 16px; }
+        .betrieb .fuer { font-weight: 700; color: var(--text); margin-bottom: 10px; }
+
+        /* Schaufenster: App, Videobeweis, Urkunden */
+        @font-face { font-family: 'Cinzel'; src: url('/fonts/urkunden/Cinzel-Regular.ttf') format('truetype'); font-display: swap; }
+        .schau { padding: 40px 0 88px; }
+        .schau-block { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 64px; align-items: center; padding: 56px 0; }
+        .schau-block + .schau-block { border-top: 1px solid var(--linie); }
+        .schau-block.umgekehrt .schau-text { order: 2; }
+        .schau-text h2 { font-size: clamp(2rem, 4vw, 3rem); font-weight: 800; color: var(--tinte); }
+        .schau-text p { margin: 18px 0 0; font-size: 1.1rem; max-width: 48ch; }
+        .schau-text ul { margin: 18px 0 0; padding-left: 1.2em; color: var(--text-leise); max-width: 48ch; }
+        .schau-text li { margin-bottom: 8px; }
+        .schau-bild { display: flex; justify-content: center; position: relative; }
+
+        /* Teilnehmer-App: Telefon */
+        .telefon { width: 270px; border: 9px solid var(--tinte); border-radius: 36px; background: #fff; padding: 16px 14px 20px; box-shadow: 0 24px 40px -24px rgba(20,38,79,.5); }
+        .telefon .leiste { font-family: 'Outfit', sans-serif; font-weight: 700; color: var(--tinte); font-size: 15px; margin-bottom: 10px; }
+        .telefon .suche { border: 1px solid var(--linie); border-radius: 8px; padding: 8px 10px; font-size: 14px; margin-bottom: 12px; }
+        .telefon .treffer { border-left: 5px solid var(--matte); background: var(--papier); padding: 10px 12px; border-radius: 0 8px 8px 0; margin-bottom: 10px; }
+        .telefon .treffer.spaeter { border-color: var(--linie); }
+        .telefon .treffer b { display: block; font-size: 15px; }
+        .telefon .treffer span { font-size: 13px; color: var(--text-leise); display: block; }
+        .telefon .treffer .gross { font-family: 'Outfit', sans-serif; font-size: 22px; font-weight: 800; color: var(--tinte); margin-top: 4px; }
+        .benachrichtigung { position: absolute; right: -4px; top: 34px; max-width: 220px; background: var(--tinte); color: #fff; border-radius: 12px; padding: 10px 14px; font-size: 14px; line-height: 1.35; box-shadow: 0 12px 24px -12px rgba(20,38,79,.7); }
+        .benachrichtigung b { display: block; font-size: 13px; color: #b7c3e0; font-weight: 600; }
+        .qr { position: absolute; left: 0; bottom: 18px; width: 92px; height: 92px; background: #fff; border: 1px solid var(--linie); padding: 7px; border-radius: 6px; }
+        .qr svg { width: 100%; height: 100%; display: block; }
+
+        /* Urkunden-Designer */
+        @font-face { font-family: 'Great Vibes'; src: url('/fonts/urkunden/GreatVibes-Regular.ttf') format('truetype'); font-display: swap; }
+        @font-face { font-family: 'Noto Serif'; src: url('/fonts/urkunden/NotoSerif-Regular.ttf') format('truetype'); font-style: normal; font-display: swap; }
+        @font-face { font-family: 'Noto Serif'; src: url('/fonts/urkunden/NotoSerif-Italic.ttf') format('truetype'); font-style: italic; font-display: swap; }
+        .stapel { position: relative; width: min(100%, 380px); margin: 12px 0; }
+        .stapel .blatt { position: absolute; inset: 0; background: #fffdf8; border: 1px solid var(--linie); box-shadow: 0 10px 20px -14px rgba(20,38,79,.5); }
+        .stapel .b1 { transform: rotate(5deg) translate(18px, 6px); }
+        .stapel .b2 { transform: rotate(-3.5deg) translate(-12px, 4px); }
+        .stapel .urkunde { position: relative; display: block; width: 100%; height: auto; box-shadow: 0 26px 44px -24px rgba(20,38,79,.6); }
+
+        /* Anzeigetafel und Steuerung */
+        .telefone { display: flex; gap: 18px; justify-content: center; align-items: flex-start; }
+        .telefone img { width: calc(50% - 9px); max-width: 260px; height: auto; border: 6px solid var(--tinte); border-radius: 30px; box-shadow: 0 24px 40px -24px rgba(20,38,79,.6); }
+        .telefone img + img { margin-top: 36px; }
+        .bildschirm { margin: 0; width: 100%; max-width: 640px; }
+        .bildschirm:has(img[src*="scoreboard-tv"]) { max-width: 700px; }
+        .bildschirm img[src*="videobeweis"] { max-width: 560px; }
+        .bildschirm img[src*="scoreboard-tv"] { border: 0; border-radius: 0; box-shadow: none; }
+        .bildschirm img { display: block; width: 100%; height: auto; border-radius: 8px; box-shadow: 0 24px 40px -24px rgba(20,38,79,.6); border: 1px solid var(--linie); }
+        .bildschirm figcaption { margin-top: 10px; font-size: 14px; color: var(--text-leise); }
+
+        /* Abgrenzung + Schluss */
+        .ehrlich { background: var(--papier-dunkel); padding: 56px 0; }
+        .ehrlich p { max-width: 70ch; margin: 0; font-size: 1.08rem; }
+        .ehrlich strong { font-family: 'Outfit', sans-serif; font-size: 1.4rem; color: var(--tinte); display: block; margin-bottom: 8px; }
+
+        .schluss { background: var(--tinte); color: #fff; text-align: left; }
+        .schluss h2 { font-size: clamp(2.2rem, 5vw, 3.6rem); font-weight: 800; max-width: 16ch; }
+        .schluss p { color: #cfd8ee; max-width: 46ch; margin: 18px 0 30px; font-size: 1.15rem; }
+        .schluss .aktionen { display: flex; gap: 14px; flex-wrap: wrap; }
+        footer.fuss { background: var(--tinte-tief); color: #8d9ac0; font-size: 14px; padding: 22px 0 56px; }
+        footer.fuss .innen { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+        footer.fuss a { color: #b7c3e0; }
+
+        @media (max-width: 900px) {
+            .hero-raster { grid-template-columns: 1fr; padding-bottom: 56px; }
+            .ablauf { grid-template-columns: repeat(2, 1fr); border-top: 0; gap: 0 16px; }
+            .ablauf li { border-top: 3px solid var(--tinte); margin-bottom: 28px; }
+            .merkmal { grid-template-columns: 1fr; gap: 14px; }
+            .schau-block { grid-template-columns: 1fr; gap: 36px; padding: 40px 0; }
+            .schau-block.umgekehrt .schau-text { order: 0; }
+            .benachrichtigung { right: 0; top: auto; bottom: 150px; }
+            .betrieb { grid-template-columns: 1fr; }
+            .betrieb > div { border-left: 0; border-top: 2px solid var(--tinte); }
+            .betrieb > div:first-child { border-top: 0; }
+            section { padding: 64px 0; }
+            .kopf nav a.nav-text { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <header class="hero">
+        <div class="innen">
+            <div class="kopf">
+                <img src="/hajime_pro.png" alt="Hajime Pro">
+                <nav aria-label="Hauptnavigation">
+                    <a class="nav-text" href="#highlights">Highlights</a>
+                    <a class="nav-text" href="#funktionen">Funktionen</a>
+                    <a class="nav-text" href="#betrieb">Betriebsarten</a>
+                    <a href="/login.html">Anmelden</a>
+                </nav>
+            </div>
+            <div class="hero-raster">
+                <div>
+                    <h1>Vom ersten Hajime bis zur Siegerliste.</h1>
+                    <p class="lead">Hajime Pro organisiert Ihr Judo-Turnier nach den Regeln des DJB: Anmeldung, Waage, Auslosung, Matten und Ergebnisse. Auch dann, wenn in der Halle das Internet ausfällt.</p>
+                    <div class="aktionen">
+                        <a class="knopf" href="/login.html?registrieren=1">Kostenlos registrieren</a>
+                        <a class="knopf leise" href="#funktionen">Was Hajime Pro kann</a>
+                    </div>
+                </div>
+                <svg class="baum" id="baum" viewBox="0 0 540 400" role="img" aria-label="Ein Turnierbaum mit acht Kämpfern, der Weg des Siegers ist hervorgehoben"></svg>
+            </div>
+        </div>
+    </header>
+
+    <section>
+        <div class="innen">
+            <div class="abschnittskopf">
+                <h2>Ein Turniertag, eine Software</h2>
+                <p>Alles, was Sie von der Einladung bis zur Siegerehrung brauchen, hängt zusammen. Gewogene Daten fließen in die Auslosung, die Auslosung in die Mattenpläne, die Ergebnisse in die Siegerliste.</p>
+            </div>
+            <ol class="ablauf">
+                <li><b>Anmelden</b><span>Vereine melden online, oder Sie importieren Listen und E-Mails.</span></li>
+                <li><b>Wiegen</b><span>Judopass-QR scannen, Gewicht eintragen, fertig.</span></li>
+                <li><b>Auslosen</b><span>Pools nach Alters- und Gewichtsklasse, je nach Wiegefortschritt.</span></li>
+                <li><b>Kämpfen</b><span>Die Matten bekommen ihre Kämpfe, die Bäume füllen sich selbst.</span></li>
+                <li><b>Informieren</b><span>Anzeigetafeln und Teilnehmer-App zeigen, wann wer dran ist.</span></li>
+                <li><b>Ehren</b><span>Siegerliste und Urkunden auf Knopfdruck.</span></li>
+            </ol>
+        </div>
+    </section>
+
+    <section class="schau" id="highlights">
+        <div class="innen">
+            <div class="schau-block">
+                <div class="schau-text">
+                    <h2>Der Helferplan zeigt auf einen Blick, wo noch jemand fehlt</h2>
+                    <p>Für jede Matte, jede Waage und den Aufbau legen Sie Dienste mit Zeitfenstern an. Helfer tragen sich selbst ein, und die Farben sagen sofort, wo es noch hakt.</p>
+                    <ul>
+                        <li>Grün ist voll besetzt, Gelb teilweise, Rot noch leer</li>
+                        <li>Zeitfenster per Maus verschieben und in der Länge ändern</li>
+                        <li>Helferausweise mit den Diensten als PDF zum Ausdrucken</li>
+                        <li>Der Orga-Planer führt mit einer Vorlage durch alle Aufgaben vor dem Turnier, inklusive Mitbringliste für das Catering, und erinnert per E-Mail an Fristen</li>
+                    </ul>
+                </div>
+                <div class="schau-bild">
+                    <figure class="bildschirm"><img src="/bilder/helferplan.png" width="1193" height="894" loading="lazy" alt="Der Helferplan im Dunkelmodus: Zeitstrahl mit Diensten an den Matten und Waagen, die Zeitfenster sind grün (besetzt), gelb (teilweise) oder rot (leer)"><figcaption>Der Helferplan eines Turniers mit drei Matten und zwei Waagen.</figcaption></figure>
+                </div>
+            </div>
+
+            <div class="schau-block umgekehrt">
+                <div class="schau-text">
+                    <h2>Wiegen mit dem Handy</h2>
+                    <p>Die Waage läuft in der Android-App: Judopass-QR scannen, Gewicht eintragen, „Gewogen“ tippen. Die Liste zeigt sofort, wer schon gewogen ist und wer noch fehlt.</p>
+                    <ul>
+                        <li>Scan des QR-Codes im Judopass füllt Name, Verein und Lizenz aus</li>
+                        <li>Abgelaufene oder fehlende Lizenz wird gemeldet, bevor gewogen wird</li>
+                        <li>Wer zu spät kommt, wird als Nachzügler vorgeschlagen und passt, wenn möglich, noch in einen laufenden Pool</li>
+                        <li>Jede Altersklasse wird ausgelost, sobald ihr Wiegen fertig ist</li>
+                        <li>Ohne WLAN geht es weiter, die Eingaben werden später abgeglichen</li>
+                    </ul>
+                </div>
+                <div class="schau-bild">
+                    <div class="telefone">
+                        <img src="/bilder/waage-liste.png" width="780" height="1020" loading="lazy" alt="Die Teilnehmerliste in der App mit Suche, Knöpfen Hinzufügen und Scan sowie dem Gewicht der bereits gewogenen Kämpferinnen">
+                        <img src="/bilder/waage-modal.png" width="780" height="1020" loading="lazy" alt="Das Waage-Fenster in der App mit Name, Verein, Gewichtsfeld und dem Knopf Gewogen">
+                    </div>
+                </div>
+            </div>
+
+            <div class="schau-block">
+                <div class="schau-text">
+                    <h2>Turnierbäume, die sich selbst füllen</h2>
+                    <p>Nach der Auslosung steht der ganze Baum fest. Jedes Ergebnis schiebt Sieger und Verlierer automatisch in den nächsten Kampf, bis dahin zeigen die Felder „Sieger T2“ oder „Verlierer HF1“.</p>
+                    <ul>
+                        <li>Doppel-KO mit 8, 16 oder 32 Kämpfern, mit Trostrunde und kleinen Finals um Platz 3</li>
+                        <li>Fehlt ein Kämpfer zur vollen Größe, entstehen Freilose von selbst</li>
+                        <li>Auch Jeder gegen jeden und Gruppen mit Überkreuzkämpfen</li>
+                        <li>Eltern sehen denselben Baum in der Teilnehmer-App</li>
+                    </ul>
+                </div>
+                <div class="schau-bild">
+                    <figure class="bildschirm"><img src="/bilder/dko8.png" width="1423" height="984" loading="lazy" alt="Der Kampfplan eines Doppel-KO-Turniers mit acht Kämpfern: Hauptrunde mit Viertelfinale, Halbfinale und Finale sowie Trostrunde mit kleinen Finals, bereits entschiedene Kämpfe sind grün umrandet"><figcaption>Ein Doppel-KO mit acht Kämpfern, mitten im Turnier.</figcaption></figure>
+                </div>
+            </div>
+
+            <div class="schau-block umgekehrt">
+                <div class="schau-text">
+                    <h2>Anzeigetafel und Steuerung für jede Matte</h2>
+                    <p>Am Mattentisch bedient ein Helfer die Steuerung, auf dem Bildschirm in der Halle läuft die Anzeigetafel. Zeit, Wertungen, Strafen und Haltegriff stehen groß und für alle lesbar da.</p>
+                    <ul>
+                        <li>Große Namen und Vereine, auch aus der letzten Reihe lesbar. Zu lange Namen kürzt die Tafel selbst auf „Lückmann, P.“</li>
+                        <li>Kampfzeit starten und stoppen mit einer Taste, Haltegriff getrennt für beide Kämpfer, die Haltezeit steht im Zeitbalken</li>
+                        <li>Bei Gleichstand startet der Golden Score von selbst, ein Signalton meldet das Ende der Zeit und einen Ippon durch Haltegriff</li>
+                        <li>Der Sieg ergibt sich aus Ippon, Haltegriff oder dem dritten Shido, ein Klick sendet das Ergebnis</li>
+                        <li>Danach zeigt die Tafel die nächsten Kämpfe, damit sich alle vorbereiten können</li>
+                    </ul>
+                </div>
+                <div class="schau-bild">
+                    <figure class="bildschirm"><img src="/bilder/scoreboard-tv.png" width="1300" height="840" loading="lazy" alt="Die Steuerung der Anzeigetafel am Mattentisch im Dunkelmodus, davor ein Fernseher mit der Anzeige desselben Kampfes: Kämpfer in Weiß und Blau mit Wertungen, Shido und der Kampfzeit 03:57"><figcaption>Die Steuerung am Mattentisch und davor der Fernseher in der Halle: dieselbe Anzeige, nur ohne Bedienknöpfe. Der Fernseher hängt gegenüber, deshalb sind die Seiten vertauscht.</figcaption></figure>
+                </div>
+            </div>
+
+            <div class="schau-block">
+                <div class="schau-text">
+                    <h2>Die Teilnehmer-App für Eltern und Trainer</h2>
+                    <p>Ein QR-Code im Aushang öffnet die App im Browser. Besucher suchen ihr Kind oder ihren Verein und sehen sofort, auf welcher Matte es kämpft und wie viele Kämpfe noch davor liegen.</p>
+                    <ul>
+                        <li>Benachrichtigung aufs Handy, bevor der Pool beginnt oder der gefolgte Kämpfer dran ist</li>
+                        <li>Turnierbäume und Ergebnisse live, auch für Mannschaften</li>
+                        <li>Keine Installation aus dem App-Store, kein Konto nötig</li>
+                        <li>Der Zugang gilt nur mit dem Code aus dem Aushang und endet am Morgen nach dem Turnier</li>
+                    </ul>
+                </div>
+                <div class="schau-bild">
+                    <div class="telefone">
+                        <img src="/bilder/app-suche.png" width="780" height="1688" loading="lazy" alt="Die Teilnehmer-App mit Suche: Treffer mit Verein, Klasse, Matte und der Zahl der Kämpfe bis zum nächsten Kampf">
+                        <img src="/bilder/app-uebersicht.png" width="780" height="1688" loading="lazy" alt="Die Übersicht der Teilnehmer-App mit gefolgten Kämpfern, Matten-Nummer in Farbe und Glocke für Benachrichtigungen">
+                    </div>
+                </div>
+            </div>
+
+            <div class="schau-block umgekehrt">
+                <div class="schau-text">
+                    <h2>Videobeweis an jeder Matte</h2>
+                    <p>Eine USB-Kamera am Matten-Gerät nimmt jeden Kampf als eigenen Clip auf. Zeit, Wertungen, Strafen und Haltegriff werden direkt ins Bild eingeblendet. Bei einer Frage schaut die Turnierleitung nach, statt zu diskutieren.</p>
+                    <ul>
+                        <li>Die Zeitleiste trägt Marken für Start, Wertungen, Strafen, Haltegriff, Stopp und Ergebnis, ein Klick springt dorthin</li>
+                        <li>Zeitlupe und Einzelbild für die genaue Prüfung</li>
+                        <li>Der Kampf läuft weiter, während Sie das bisherige Video ansehen</li>
+                        <li>Live-Wand mit allen Kameras der Halle</li>
+                        <li>Bricht das WLAN weg, wird der Clip später nachgeliefert</li>
+                    </ul>
+                </div>
+                <div class="schau-bild">
+                    <figure class="bildschirm"><img src="/bilder/videobeweis.png" width="717" height="653" loading="lazy" alt="Die Videoansicht in der Steuerung: zwei Kämpfer auf der Matte mit eingeblendeter Kampfzeit und Namen, darunter die Zeitleiste mit farbigen Marken für Start, Wertungen, Strafen, Haltegriff und Stopp"><figcaption>Die Videoansicht in der Steuerung. Die farbigen Striche auf der Zeitleiste sind Start, Wertung, Strafe, Haltegriff und Stopp.</figcaption></figure>
+                </div>
+            </div>
+
+            <div class="schau-block">
+                <div class="schau-text">
+                    <h2>Urkunden im eigenen Layout</h2>
+                    <p>Im Urkunden-Designer gestalten Sie die Urkunde einmal so, wie Ihr Verein sie haben möchte. Nach dem Abschluss eines Pools druckt Hajime Pro alle Urkunden in einem Rutsch, mit den richtigen Namen und Plätzen.</p>
+                    <ul>
+                        <li>Eigenes PDF als Vorlage oder einer von fünf fertigen Rahmen</li>
+                        <li>Logos und Bilder, Linien und mitgelieferte Schriften</li>
+                        <li>Platzhalter für Name, Verein, Platz und Pool, zu lange Namen werden automatisch kleiner</li>
+                        <li>Reihenfolge wie bei der Siegerehrung: der letzte Platz zuerst</li>
+                        <li>Vorlagen lassen sich zwischen Vereinen austauschen</li>
+                    </ul>
+                </div>
+                <div class="schau-bild">
+                    <div class="stapel" role="img" aria-label="Beispiel einer fertigen Urkunde für den dritten Platz">
+                        <span class="blatt b1"></span><span class="blatt b2"></span>
+                        <svg class="urkunde" viewBox="0 0 420 594" xmlns="http://www.w3.org/2000/svg">
+                            <defs>
+                                <g id="ecke" fill="none" stroke="#b08d3c" stroke-width="1.2">
+                                    <path d="M30 62 A32 32 0 0 0 62 30"/>
+                                    <path d="M30 50 A20 20 0 0 0 50 30"/>
+                                    <circle cx="30" cy="30" r="3.2" fill="#b08d3c" stroke="none"/>
+                                </g>
+                                <linearGradient id="bronze" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d89a58"/><stop offset="1" stop-color="#94572a"/></linearGradient>
+                            </defs>
+                            <rect width="420" height="594" fill="#fffdf8"/>
+                            <rect x="16" y="16" width="388" height="562" fill="none" stroke="#14264f" stroke-width="3.5"/>
+                            <rect x="24" y="24" width="372" height="546" fill="none" stroke="#b08d3c" stroke-width="1"/>
+                            <use href="#ecke"/>
+                            <use href="#ecke" transform="translate(420 0) scale(-1 1)"/>
+                            <use href="#ecke" transform="translate(0 594) scale(1 -1)"/>
+                            <use href="#ecke" transform="translate(420 594) scale(-1 -1)"/>
+                            <text x="210" y="102" text-anchor="middle" font-family="Cinzel, serif" font-size="42" letter-spacing="7" fill="#14264f">URKUNDE</text>
+                            <g stroke="#b08d3c" stroke-width="1.2"><line x1="118" y1="124" x2="192" y2="124"/><line x1="228" y1="124" x2="302" y2="124"/></g>
+                            <path d="M210 117 l7 7 -7 7 -7 -7z" fill="#b08d3c"/>
+                            <text x="210" y="158" text-anchor="middle" font-family="Cinzel, serif" font-size="13" letter-spacing="2.5" fill="#14264f">STADTMEISTERSCHAFT U15</text>
+                            <text x="210" y="198" text-anchor="middle" font-family="'Noto Serif', serif" font-style="italic" font-size="13" fill="#566178">Diese Urkunde erhält</text>
+                            <text x="210" y="258" text-anchor="middle" font-family="'Great Vibes', cursive" font-size="58" fill="#14264f">Mia Schneider</text>
+                            <line x1="92" y1="274" x2="328" y2="274" stroke="#b08d3c" stroke-width="1"/>
+                            <text x="210" y="298" text-anchor="middle" font-family="'Noto Serif', serif" font-size="14" fill="#1b2437">JC Musterstadt</text>
+                            <text x="210" y="342" text-anchor="middle" font-family="'Noto Serif', serif" font-style="italic" font-size="13" fill="#566178">für ihren Erfolg in der Klasse</text>
+                            <text x="210" y="368" text-anchor="middle" font-family="Cinzel, serif" font-size="16" letter-spacing="1.5" fill="#14264f">weiblich bis 44 kg</text>
+                            <text x="210" y="436" text-anchor="middle" font-family="Cinzel, serif" font-size="52" fill="#14264f">3. Platz</text>
+                            <path d="M196 456 h12 l8 26 h-12z" fill="#14264f"/><path d="M224 456 h-12 l-8 26 h12z" fill="#c43b2f"/>
+                            <circle cx="210" cy="496" r="24" fill="url(#bronze)"/><circle cx="210" cy="496" r="17" fill="none" stroke="#f3d3a8" stroke-width="1.5"/>
+                            <text x="210" y="503" text-anchor="middle" font-family="Cinzel, serif" font-size="20" fill="#fbe9d2">3</text>
+                            <g stroke="#14264f" stroke-width="1"><line x1="84" y1="540" x2="176" y2="540"/><line x1="244" y1="540" x2="336" y2="540"/></g>
+                            <g font-family="'Noto Serif', serif" font-size="9.5" fill="#566178" text-anchor="middle"><text x="130" y="554">Turnierleitung</text><text x="290" y="554">24. Oktober 2026</text></g>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </section>
+
+    <section class="highlights" id="funktionen">
+        <div class="innen">
+            <div class="abschnittskopf">
+                <h2>Und das alles steckt noch drin</h2>
+            </div>
+
+            <div class="merkmal">
+                <h3>Regeln, die schon eingebaut sind</h3>
+                <div>
+                    <p class="kern">Alters- und Gewichtsklassen, Kampfzeiten, Mindestpausen und Golden Score folgen der Wettkampfordnung des Deutschen Judo-Bundes. Sie müssen nichts nachschlagen und nichts von Hand rechnen.</p>
+                    <ul>
+                        <li>Jeder gegen jeden, Doppel-KO mit 8, 16 oder 32 sowie Gruppen mit Überkreuzkämpfen</li>
+                        <li>Mannschaftskämpfe mit automatischem Stichkampf bei Gleichstand</li>
+                        <li>Mindestpausen zwischen den Kämpfen einer Person werden bei der Planung beachtet</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="merkmal">
+                <h3>Gebaut für schwierige WLANs</h3>
+                <div>
+                    <p class="kern">Hallen-WLAN ist selten perfekt. Der Hallen-Server steht bei Ihnen vor Ort und braucht kein Internet. Matten und Waage speichern ihre Eingaben auch selbst: Fällt das Funknetz weg, arbeiten sie weiter und gleichen sich danach von selbst ab.</p>
+                    <ul>
+                        <li>Videoclips werden bei Funkabbruch später nachgeliefert, nichts geht verloren</li>
+                        <li>Turnier vorbereiten in der Cloud, am Wettkampftag in die Halle holen</li>
+                        <li>Optional zwei Server im Verbund: fällt einer aus, übernimmt der andere</li>
+                        <li>Installation auf einem normalen Notebook, ohne Datenbank-Kenntnisse</li>
+                    </ul>
+                </div>
+            </div>
+
+
+            <div class="merkmal">
+                <h3>Die Matte weiß, was als Nächstes kommt</h3>
+                <div>
+                    <p class="kern">Die Matten-Steuerung zeigt den aktuellen und die kommenden Kämpfe, prognostiziert Uhrzeiten und meldet, wenn eine Matte hinter dem Plan liegt. Folgekämpfe füllen sich, sobald beide Kämpfer feststehen.</p>
+                    <ul>
+                        <li>Zeitplan-Simulation vor dem Turnier: wann ist welcher Pool fertig?</li>
+                        <li>Hinweis zur Durchsage, wenn ein neuer Pool beginnt</li>
+                        <li>Live-Durchsage per Tastendruck direkt über die Hallenlautsprecher</li>
+                    </ul>
+                </div>
+            </div>
+
+        </div>
+    </section>
+
+    <section id="betrieb">
+        <div class="innen">
+            <div class="abschnittskopf">
+                <h2>Drei Arten, Hajime Pro zu nutzen</h2>
+                <p>Sie suchen sich aus, wie viel Technik Sie vor Ort haben möchten. Ein Turnier lässt sich zwischen allen Varianten verschieben.</p>
+            </div>
+            <div class="betrieb">
+                <div>
+                    <h3>Cloud</h3>
+                    <p class="fuer">Für die Vorbereitung</p>
+                    <p>Anmeldung, Vereinsverwaltung, Helferplan und Orga laufen online. Jeder Verein meldet seine Teilnehmer selbst.</p>
+                </div>
+                <div>
+                    <h3>Hallen-Server</h3>
+                    <p class="fuer">Für den Wettkampftag</p>
+                    <p>Ein Notebook in der Halle führt das Turnier. Es braucht kein Internet und startet seine Datenbank selbst mit.</p>
+                </div>
+                <div>
+                    <h3>Client-Geräte</h3>
+                    <p class="fuer">Für Matte und Waage</p>
+                    <p>Notebook, Tablet oder Android-Gerät verbindet sich mit dem Server und arbeitet bei Funkabbrüchen weiter.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="schluss">
+        <div class="innen">
+            <h2>Bereit für Ihr nächstes Turnier?</h2>
+            <p>Legen Sie ein Konto für Ihren Verein an und planen Sie Ihr erstes Turnier. Das Konto wird von Ihrem Vereinsadmin freigeschaltet.</p>
+            <div class="aktionen">
+                <a class="knopf" href="/login.html?registrieren=1">Kostenlos registrieren</a>
+                <a class="knopf leise" href="/login.html">Ich habe schon ein Konto</a>
+            </div>
+        </div>
+    </section>
+
+    <footer class="fuss">
+        <div class="innen">
+            <span>Hajime Pro – Turnierverwaltung für Judo</span>
+            <span><a href="/impressum.html">Impressum</a> · <a href="/datenschutz.html">Datenschutz</a></span>
+        </div>
+    </footer>
+
+    <script>
+    // Turnierbaum für acht Kämpfer; der Weg des Siegers wird einmal nachgezeichnet.
+    (function () {
+        const svg = document.getElementById('baum');
+        const NS = 'http://www.w3.org/2000/svg';
+        const namen = ['Yamada', 'Keller', 'Okafor', 'Brandt', 'Sato', 'Lindqvist', 'Meier', 'Novak'];
+        const gewinner = 3; // Index von Brandt
+        const spaltenX = [0, 150, 270, 390, 510]; // Beginn jeder Runde, 8 -> 4 -> 2 -> 1
+        const hoehe = 44, oben = 36;
+        const el = (name, attr, text) => {
+            const e = document.createElementNS(NS, name);
+            for (const k in attr) e.setAttribute(k, attr[k]);
+            if (text !== undefined) e.textContent = text;
+            svg.appendChild(e);
+            return e;
+        };
+        const ys = namen.map((_, i) => oben + i * hoehe);
+        namen.forEach((n, i) => {
+            const y = ys[i];
+            const gew = i === gewinner;
+            el('line', { x1: spaltenX[0], x2: spaltenX[1] - 20, y1: y, y2: y, class: 'linie' });
+            el('text', { x: spaltenX[0] + 2, y: y - 7, class: gew ? 'gewinner' : '' }, n);
+        });
+        let aktuell = ys;
+        for (let runde = 1; runde <= 3; runde++) {
+            const x0 = spaltenX[runde] - 20, x1 = spaltenX[runde + 1] - 20;
+            const naechste = [];
+            for (let i = 0; i < aktuell.length; i += 2) {
+                const a = aktuell[i], b = aktuell[i + 1], m = (a + b) / 2;
+                el('path', { d: `M${x0},${a} V${b}`, class: 'linie' });
+                el('line', { x1: x0, x2: x1, y1: m, y2: m, class: 'linie' });
+                naechste.push(m);
+            }
+            aktuell = naechste;
+        }
+        // Siegerweg: vom Gewinner-Slot jeweils zur Mitte seines Paares
+        let d = `M${spaltenX[0]},${ys[gewinner]} H${spaltenX[1] - 20}`;
+        let idx = gewinner, cur = ys;
+        for (let runde = 1; runde <= 3; runde++) {
+            const x1 = spaltenX[runde + 1] - 20;
+            const next = [];
+            for (let i = 0; i < cur.length; i += 2) next.push((cur[i] + cur[i + 1]) / 2);
+            idx >>= 1;
+            d += ` V${next[idx]} H${x1}`;
+            cur = next;
+        }
+        const sieg = el('path', { d, class: 'sieg', pathLength: 1 });
+        const endY = cur[0];
+        el('circle', { cx: spaltenX[4] - 20, cy: endY, r: 7, class: 'gong' });
+        el('text', { x: spaltenX[4] - 20, y: endY - 16, 'text-anchor': 'end', class: 'gewinner' }, 'Brandt');
+    })();
+    </script>
+    <script src="/js/rechtsfuss.js"></script>
+</body>
+</html>

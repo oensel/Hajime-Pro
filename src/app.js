@@ -73,6 +73,10 @@ import { erzeugeVideoSpeicher } from './video/videoSpeicher.js';
 import { erzeugeVideoDienst, VIDEO_PFAD, VIDEO_LIVE_PFAD } from './video/videoDienst.js';
 import { getVideoRoutes } from './routes/videoRoutes.js';
 import { dienstUpdateAktiv, pruefeUndAktualisiereDienst } from './utils/dienstUpdate.js';
+import { getDownloadRoutes, getReleaseFassadeRoutes } from './routes/downloadRoutes.js';
+import { erzeugeReleaseSpiegel, leseSpiegelKonfig } from './services/releaseSpiegelDienst.js';
+import { erzeugeLokalenReleaseZugriff, neuesteLokaleVersion, releaseVerzeichnis } from './services/releaseSpeicher.js';
+import { ermittleReleaseQuelle } from './utils/releaseQuelle.js';
 
 dotenv.config({ quiet: true });
 
@@ -100,11 +104,12 @@ if (dienstUpdateAktiv()) {
     const { liesOeffentlichenSchluessel } = await import('./sync/clientDateien.js');
     const installDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
     const aktuelleVersion = JSON.parse(readFileSync(path.join(installDir, 'package.json'), 'utf8')).version;
+    // Quelle: die Cloud, sobald dieser Server einen Geräteschlüssel hat (src/utils/releaseQuelle.js), sonst GitHub.
+    const quelle = ermittleReleaseQuelle({ datenDir: path.join(installDir, 'data') });
     const ergebnis = await pruefeUndAktualisiereDienst({
         installDir, aktuelleVersion,
         schluessel: liesOeffentlichenSchluessel(),
-        repo: process.env.CLIENT_RELEASE_REPO || 'oensel/Hajime-Pro-Releases',
-        token: process.env.CLIENT_RELEASE_TOKEN || process.env.GITHUB_TOKEN || ''
+        repo: quelle.repo, token: quelle.token, apiBasis: quelle.apiBasis
     });
     if (ergebnis === 'neustart') process.exit(0);
 }
@@ -297,12 +302,16 @@ if (syncKonfig.istClient) {
         // damit nach der Installation keine Handarbeit nötig ist. In den Tests aus (kein Netzzugriff).
         // Erst hier geladen: das Modul braucht desktop/ (Signaturprüfung), das im Cloud-Docker-Image fehlt.
         const { erzeugeClientDateien } = await import('./sync/clientDateien.js');
+        // Cloud (Geräteschlüssel vorhanden) oder bisher GitHub; Datenverzeichnis des Servers: dort liegt der Geräteschlüssel.
+        const clientDateienQuelle = () => {
+            const q = ermittleReleaseQuelle({ datenDir: syncKonfig.datenverzeichnis ? path.dirname(path.resolve(syncKonfig.datenverzeichnis)) : '' });
+            return { repo: q.repo, token: q.token, ...(q.apiBasis ? { apiBasis: q.apiBasis } : {}) };
+        };
         const clientDateien = erzeugeClientDateien({
             downloadsVerzeichnis,
             version: serverVersion,
             mitgeliefert: process.env.CLIENT_DATEIEN_MITGELIEFERT || '',
-            repo: process.env.CLIENT_RELEASE_REPO || 'oensel/Hajime-Pro-Releases',
-            token: process.env.CLIENT_RELEASE_TOKEN || process.env.GITHUB_TOKEN || '',
+            ...clientDateienQuelle(),
             autoHolen: process.env.CLIENT_AUTO_HOLEN ? process.env.CLIENT_AUTO_HOLEN !== 'false' : process.env.NODE_ENV !== 'test'
         });
         clientDateien.starte();
@@ -357,11 +366,31 @@ if (syncKonfig.istClient) {
     // Update des Cloud-Servers durch den Super-Admin (src/utils/cloudUpdate.js).
     if (bm.istCloud) {
         const installDir = path.resolve(__dirname, '..');
+        // Mit eingerichteter Spiegelung (RELEASE_QUELLE_REPO) aktualisiert sich die Cloud aus ihrer eigenen Ablage, sonst wie bisher aus GitHub.
+        let lokal = {};
+        if (leseSpiegelKonfig().repo) {
+            const zugriff = erzeugeLokalenReleaseZugriff(releaseVerzeichnis());
+            const { pruefeUndLade } = await import('../desktop/server/selbstUpdate.js');
+            lokal = {
+                repo: zugriff.repo, neuesteVersionFn: async () => neuesteLokaleVersion(releaseVerzeichnis()),
+                ladeFn: (argumente) => pruefeUndLade({ ...argumente, fetchFn: zugriff.fetchFn, apiBasis: zugriff.apiBasis })
+            };
+        }
         app.use('/api/cloud-update', getCloudUpdateRoutes(knex, erzeugeCloudUpdate({
             installDir, aktuelleVersion: appVersion,
             repo: process.env.CLIENT_RELEASE_REPO || 'oensel/Hajime-Pro-Releases',
-            token: process.env.CLIENT_RELEASE_TOKEN || process.env.GITHUB_TOKEN || ''
+            token: process.env.CLIENT_RELEASE_TOKEN || process.env.GITHUB_TOKEN || '',
+            ...lokal
         })));
+    }
+    // Installer und Updates für freigeschaltete Konten und Hallen-Server (src/routes/downloadRoutes.js); RELEASES_AKTIV=true schaltet es außerhalb der Cloud ein (Tests).
+    if (bm.istCloud || process.env.RELEASES_AKTIV === 'true') {
+        // Erst hier geladen: clientDateien.js braucht desktop/ (Signaturprüfung); das Cloud-Image enthält davon nur updateLogik.js und den öffentlichen Schlüssel.
+        const { liesOeffentlichenSchluessel } = await import('./sync/clientDateien.js');
+        const spiegel = erzeugeReleaseSpiegel({ konfig: leseSpiegelKonfig(), schluessel: liesOeffentlichenSchluessel() });
+        app.use('/api/downloads', getDownloadRoutes(knex, { dir: releaseVerzeichnis(), spiegel }));
+        app.use('/api/releases/v1', getReleaseFassadeRoutes(knex, { dir: releaseVerzeichnis() }));
+        if (process.env.NODE_ENV !== 'test') spiegel.starte();
     }
     // Komplettsicherung und Wiedereinspielen durch den Super-Admin (src/services/datensicherung.js); SICHERUNG_AKTIV=true schaltet es außerhalb der Cloud ein (Tests).
     if (bm.istCloud || process.env.SICHERUNG_AKTIV === 'true') {
@@ -422,7 +451,7 @@ if (syncKonfig.istClient) {
     if ((bm.istCloud || process.env.HELFER_APP_AKTIV === 'true') && process.env.SMTP_HOST && process.env.NODE_ENV !== 'test') {
         startOrgaErinnerung(knex);
     }
-    app.use('/api/cloud', requireWriteAuth, getCloudRoutes(knex, { cloud: cloudZugriff, holeCluster: () => app.get('cluster') }));
+    app.use('/api/cloud', requireWriteAuth, getCloudRoutes(knex, { cloud: cloudZugriff, holeCluster: () => app.get('cluster'), datenDir: syncKonfig.datenverzeichnis ? path.dirname(path.resolve(syncKonfig.datenverzeichnis)) : '' }));
     if (liveApp) app.use('/api/live-app', requireWriteAuth, getLiveAppRoutes(liveApp));
     app.use('/api/sync', getSyncRoutes(() => app.get('sync')));
 
@@ -520,6 +549,9 @@ if (syncKonfig.istClient) {
     // Alle übrigen /api-Lesezugriffe beantwortet der Client aus seinen lokalen Dokumenten.
     app.use('/api', getClientApiRoutes(() => app.get('sync')));
 }
+
+// Vorstellungsseite für Interessenten (öffentlich, ohne Anmeldung)
+app.get('/willkommen', (req, res) => res.sendFile(path.join(__dirname, '../public/willkommen.html')));
 
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, syncKonfig.istClient ? '../public/client.html' : '../public/turniere.html'));

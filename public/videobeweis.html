@@ -19,7 +19,7 @@
         <h1>Video-Archiv</h1>
         <span class="material-icons">video_library</span>
     </div>
-    <p class="video-seite-hinweis">Je Kampf ein Clip (von „Nächsten Kampf holen“ bis „Ergebnis senden“) mit Marken für START, STOPP und Ergebnis. <a href="/video-live.html">Zur Live-Ansicht aller Kameras</a></p>
+    <p class="video-seite-hinweis">Je Kampf ein Clip (von „Nächsten Kampf holen“ bis „Ergebnis senden“) mit Marken für Start, Stopp, Wertungen, Strafen, Haltegriff und Ergebnis. <a href="/video-live.html">Zur Live-Ansicht aller Kameras</a></p>
 
     <div class="video-filter">
         <label>Matte: <select id="vbMatte"><option value="">Alle</option></select></label>
@@ -28,9 +28,10 @@
         <button type="button" id="vbAlleLoeschen" class="video-knopf video-knopf-gefahr">Alle Clips löschen</button>
     </div>
 
-    <div id="vbPlayer" class="video-player" hidden>
+    <div id="vbPlayer" class="video-player vb-karte" hidden>
         <div id="vbTitel" class="video-live-titel"></div>
         <video id="vbVideo" class="video-live" controls playsinline></video>
+        <div id="vbSpur" class="vb-spur" title="Klicken zum Springen"><span id="vbStand" class="vb-stand"></span></div>
         <div id="vbMarken" class="video-marken"></div>
         <div class="video-steuer">
             <button type="button" id="vbBildZurueck" class="video-knopf" title="Ein Bild zurück">◀ Bild</button>

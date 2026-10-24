@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const ID_MUSTER = /^[\w-]{1,80}$/;
-const MARKEN_TYPEN = new Set(['geladen', 'start', 'stopp', 'ergebnis']);
+const MARKEN_TYPEN = new Set(['geladen', 'start', 'stopp', 'ergebnis', 'wertung', 'strafe', 'haltegriff']);
 
 function sicher(text, ersatz = 'x') {
     return String(text ?? ersatz).replace(/[^\w-]/g, '_').slice(0, 40) || ersatz;

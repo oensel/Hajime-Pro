@@ -95,7 +95,7 @@ test('Videoaufnahme: live zum Server, Live-Raster, Ansehen in der Steuerung, vol
     await expect(review).toBeVisible();
     const spieler = page.locator('#videoReviewPlayer');
     await expect.poll(() => spieler.evaluate(v => Number.isFinite(v.duration) && v.duration > 2), { timeout: 20_000 }).toBe(true);
-    await expect(page.locator('#videoReviewMarken .video-review-knopf')).toHaveCount(3); // geladen, START, STOPP
+    await expect(page.locator('#videoReviewSpur .video-review-tick')).toHaveCount(2); // START, STOPP ("Kampf geladen" hat keinen Strich)
     await review.locator('[data-sprung="-10"]').click();
     await expect.poll(() => spieler.evaluate(v => v.currentTime)).toBe(0);
     await review.locator('[data-sprung="5"]').click();
@@ -124,7 +124,7 @@ test('Videoaufnahme: live zum Server, Live-Raster, Ansehen in der Steuerung, vol
         const clips = await (await request.get('/api/video/clips')).json();
         clip = clips[0];
         return clip && clip.ende && clip.groesse > 20_000 ? clip.marken.map(m => m.typ).join(',') : '';
-    }, { timeout: 20_000 }).toBe('geladen,start,stopp,ergebnis');
+    }, { timeout: 20_000 }).toBe('geladen,start,stopp,wertung,ergebnis');
     expect(clip.pool).toBe('Video Pool');
     expect(clip.abgebrochen).toBe(false);
     expect(clip.farbe2).toBe('rot');
@@ -147,9 +147,9 @@ test('Videoaufnahme: live zum Server, Live-Raster, Ansehen in der Steuerung, vol
     await expect(zeile.locator('.video-farbmarke-rot')).toHaveCount(1);
     await expect(zeile.locator('.video-kaempfer div')).toHaveCount(2); // Kämpfer untereinander
     await zeile.locator('.video-ansehen').click();
-    await expect(beweis.locator('#vbMarken .video-marke')).toHaveCount(4);
+    await expect(beweis.locator('#vbMarken .video-marke')).toHaveCount(5);
     await expect.poll(() => beweis.locator('#vbVideo').evaluate(v => Number.isFinite(v.duration) && v.duration > 1), { timeout: 20_000 }).toBe(true);
-    await beweis.locator('.video-marke-stopp').click();
+    await beweis.locator('#vbMarken .video-marke-stopp').click();
     await expect.poll(() => beweis.locator('#vbVideo').evaluate(v => v.currentTime)).toBeGreaterThan(0.5);
 
     // Löschen
@@ -201,7 +201,7 @@ test('Ohne Verbindung bleibt der Clip lokal (auch nach Neuladen) und geht späte
         const clips = await (await request.get('/api/video/clips')).json();
         clip = clips[0];
         return clip && clip.ende && clip.groesse > 20_000 ? clip.marken.map(m => m.typ).join(',') : '';
-    }, { timeout: 60_000 }).toBe('geladen,start,stopp,ergebnis');
+    }, { timeout: 60_000 }).toBe('geladen,start,stopp,wertung,ergebnis');
     expect(clip.ergebnis).toBe('Sieger Weiß');
     expect(clip.abgebrochen).toBe(false);
     await expect(page.locator('#videoUebertragung')).toContainText('Alle Clips sind am Server gespeichert', { timeout: 15_000 });

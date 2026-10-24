@@ -1,7 +1,7 @@
 // Electron-Hauptprozess des Desktop-Clients (Spec Desktop-Client Abschnitte 3, 4): Server per mDNS
 // suchen, ggf. selbst aktualisieren, einmalig koppeln, dann den bestehenden Client-Knoten
 // (src/app.js mit SYNC_ROLLE=client) auf einem freien localhost-Port starten und client.html zeigen.
-import { app, BrowserWindow, dialog, ipcMain, session, shell, systemPreferences } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, screen, session, shell, systemPreferences } from 'electron';
 import net from 'net';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -10,6 +10,7 @@ import { sucheServer } from './serverSuche.js';
 import { pruefeUndAktualisiere } from './updater.js';
 import { richteLinuxIntegrationEin } from './linuxIntegration.js';
 import { normalisiereServerAdresse } from './updateLogik.js';
+import { anzeigeFensterOptionen, istAnzeigeSeite } from './anzeigeFenster.js';
 
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const VERBINDUNG_WEG_MS = 10000;
@@ -225,6 +226,12 @@ function sichereFenster() {
             oeffneExtern(url);
         });
         wc.setWindowOpenHandler(({ url }) => {
+            if (istLokal(url) && istAnzeigeSeite(url)) {
+                // Anzeigetafel: auf einen zweiten Bildschirm (TV) im Vollbild, sonst als normales Fenster.
+                const eltern = BrowserWindow.fromWebContents(wc);
+                const aktuell = eltern ? screen.getDisplayMatching(eltern.getBounds()).id : null;
+                return { action: 'allow', overrideBrowserWindowOptions: anzeigeFensterOptionen(screen.getAllDisplays(), aktuell) };
+            }
             if (istLokal(url)) return { action: 'allow', overrideBrowserWindowOptions: { autoHideMenuBar: true } };
             oeffneExtern(url);
             return { action: 'deny' };

@@ -76,6 +76,14 @@ export function erzeugeCloudZugriff({ fetchFn = globalThis.fetch, env = process.
             return { token: daten.token, user: daten.user || null };
         },
 
+        // Geräteschlüssel für Updates (Spec docs/specs/2026-10-24-downloads-ueber-cloud-design.md): gebunden an den angemeldeten Benutzer.
+        async holeGeraeteSchluessel(token, bezeichnung = 'Hallen-Server') {
+            const antwort = await anfrage('/api/downloads/geraet', { methode: 'POST', token, body: { bezeichnung } });
+            const daten = await lesJson(antwort, 'Der Geräteschlüssel konnte nicht aus der Cloud geholt werden.');
+            if (!daten || !daten.schluessel) throw new FachFehler(502, 'Unerwartete Antwort der Cloud beim Geräteschlüssel.');
+            return daten.schluessel;
+        },
+
         async listeTurniere(token) {
             const antwort = await anfrage('/api/turniere', { token });
             const daten = await lesJson(antwort, 'Turniere konnten nicht aus der Cloud geladen werden.');

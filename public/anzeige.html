@@ -6,11 +6,16 @@
     <link rel="stylesheet" href="css/scoreboard.css">
 </head>
 <body class="body-anzeige">
+    <!-- Fernseher-Modus: alles außer der eingebetteten Live-Vorschau der Steuerung (?controls=1), siehe ".anzeige-tv" in scoreboard.css.
+         Gesetzt vor dem ersten Zeichnen, damit die Tafel nicht erst im alten Layout aufblitzt. -->
+    <script>if (!/[?&]controls(=|&|$)/.test(location.search)) document.body.classList.add('anzeige-tv');</script>
 
     <div class="wrapper">
         <!-- Overlays -->
         <div id="ovTime" class="overlay overlay-time">TIME</div>
         <div id="ovHantei" class="overlay overlay-hantei">HANTEI</div>
+        <!-- IPPON als Vollbild-Overlay: nur im Fernseher-Modus (scoreboard.js); die Vorschau der Steuerung zeigt weiter das Banner -->
+        <div id="ovIppon" class="overlay overlay-ippon">IPPON</div>
         <!-- Vorschau auf die nächsten Kämpfe (nach "Ergebnis senden"), damit sich die
              Kämpfer schon vorbereiten können. Verschwindet über "Nächsten Kampf holen" oder
              "Overlay schließen" (siehe closeOverlay()/naechstenKampfHolen() in scoreboard.js). -->
@@ -155,6 +160,15 @@
         </div>
     </div>
 
+    <script>
+        // Als eigenes Fenster am TV: Doppelklick wechselt in den Vollbildmodus und zurück.
+        if (window.self === window.top) {
+            document.addEventListener('dblclick', () => {
+                if (document.fullscreenElement) document.exitFullscreen();
+                else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
+            });
+        }
+    </script>
     <script src="js/zeitAnzeige.js"></script>
     <script type="module" src="js/scoreboard.js"></script>
 </body>

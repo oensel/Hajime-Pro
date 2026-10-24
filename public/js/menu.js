@@ -73,6 +73,7 @@ const MENUE_AKTIVE_SEITEN = [
     ['nav-vereine', ['admin-vereine.html', 'admin-turniere.html']],
     ['nav-server-update', ['server-update.html']],
     ['nav-sicherung', ['sicherung.html']],
+    ['nav-downloads', ['downloads.html']],
     ['nav-protokoll', ['protokoll.html']],
     ['nav-konsole', ['konsole.html']],
     ['hallenServerBtn', ['cluster.html']]
@@ -425,6 +426,10 @@ function baueMenueGeruest() {
                 <a href="/server-update.html" class="menu-item" id="nav-server-update" data-ohne-turnier style="display: none;">
                     <span class="material-icons">system_update</span>
                     <span class="menu-text">Server-Update</span>
+                </a>
+                <a href="/downloads.html" class="menu-item" id="nav-downloads" data-ohne-turnier style="display: none;">
+                    <span class="material-icons">download</span>
+                    <span class="menu-text">Downloads</span>
                 </a>
                 <a href="/sicherung.html" class="menu-item" id="nav-sicherung" data-ohne-turnier style="display: none;">
                     <span class="material-icons">backup</span>
@@ -1416,6 +1421,9 @@ async function initialisiereMenue() {
     // Konsole (Fehlerprotokoll, nur Cloud): Super-Admins
     const konsoleLink = document.getElementById('nav-konsole');
     if (konsoleLink && !einzelbenutzer && rechte.nutzer) konsoleLink.style.display = '';
+    // Downloads (Installer und Updates, nur Cloud): freigeschaltete Benutzer, Admins und Super-Admins
+    const downloadsLink = document.getElementById('nav-downloads');
+    if (downloadsLink && !einzelbenutzer && rechte.verwaltung) downloadsLink.style.display = '';
     const sicherungLink = document.getElementById('nav-sicherung');
     // Die Sicherung gibt es nur in der Cloud (/api/sicherung)
     if (sicherungLink && rechte.nutzer && !einzelbenutzer) sicherungLink.style.display = '';

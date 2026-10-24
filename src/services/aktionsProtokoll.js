@@ -55,12 +55,17 @@ const AKTIONEN = {
     'POST /api/sicherung/wiederherstellen': ['sicherung.wiederherstellen', 'Sicherung wiedereingespielt (alle Daten ersetzt)'],
     'POST /api/cloud-update/start': ['server.update', 'Server-Update gestartet'],
     'POST /api/sicherung/automatisch-jetzt': ['sicherung.automatik', 'Automatische Sicherung von Hand gestartet'],
+    'POST /api/downloads/ticket': ['downloads.ticket', 'Download angefordert'],
+    'POST /api/downloads/geraet': ['downloads.geraet', 'Geräteschlüssel für einen Hallen-Server angelegt'],
+    'POST /api/downloads/einloesecode': ['downloads.code', 'Einlösecode erzeugt'],
+    'DELETE /api/downloads/schluessel/:id': ['downloads.widerruf', 'Geräteschlüssel widerrufen'],
+    'POST /api/downloads/spiegel/pruefen': ['downloads.spiegel', 'Spiegelung der Releases angestoßen'],
     'DELETE /api/konsole': ['konsole.leeren', 'Fehlerprotokoll (Konsole) geleert']
 };
 const RESSOURCEN = {
     turniere: 'Turnier', teilnehmer: 'Teilnehmer', pools: 'Pool', kampfflaechen: 'Matte', kaempfe: 'Kampf', mannschaften: 'Mannschaft',
     mannschaftskaempfe: 'Mannschaftskampf', orga: 'Orga-Aufgabe', 'helfer-plan': 'Helferplan', helfer: 'Helfer-App', urkunden: 'Urkunden',
-    vereine: 'Verein', nutzer: 'Benutzer', freigabe: 'Freischaltung', auth: 'Konto', sicherung: 'Sicherung', einladung: 'Einladung'
+    vereine: 'Verein', nutzer: 'Benutzer', freigabe: 'Freischaltung', auth: 'Konto', sicherung: 'Sicherung', downloads: 'Download', einladung: 'Einladung'
 };
 const VERBEN = { POST: 'angelegt bzw. ausgeführt', PUT: 'geändert', PATCH: 'geändert', DELETE: 'gelöscht' };
 

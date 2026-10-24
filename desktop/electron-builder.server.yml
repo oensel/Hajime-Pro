@@ -20,6 +20,8 @@ files:
   # Selbst-Update unter Linux (AppImage tauschen, neu starten): desktop/server/main.js importiert Bausteine daraus.
   - desktop/updater.js
   - desktop/update-schluessel.pub
+  # Standardadresse der Cloud für Updates und Geräteschlüssel (die Release-Pipeline schreibt sie, siehe release.yml)
+  - desktop/cloud-url.txt
   - src/**
   - public/**
   - migrations/**

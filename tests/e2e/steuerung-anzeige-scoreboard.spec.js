@@ -161,8 +161,9 @@ test.describe.serial('Steuerung + Anzeigetafel: Scoreboard-Kernfunktionen (steue
         await expect(steuerungPage.locator('#nameB')).toHaveValue('Fighter1B, Blau');
         await expect(steuerungPage.locator('#poolName')).toHaveValue('U18 männlich -73kg');
 
-        await expect(anzeigePage.locator('#outNameW')).toHaveText('Fighter1A, Weiss');
-        await expect(anzeigePage.locator('#outNameB')).toHaveText('Fighter1B, Blau');
+        // Am Fernseher kürzt die Anzeige zu lange Namen auf "Nachname, V." (hängt von der Fenstergröße ab, siehe anzeige-fernseher.spec.js)
+        await expect(anzeigePage.locator('#outNameW')).toHaveText(/^(Fighter1A, Weiss|Fighter1A, W\.)$/);
+        await expect(anzeigePage.locator('#outNameB')).toHaveText(/^(Fighter1B, Blau|Fighter1B, B\.)$/);
         await expect(anzeigePage.locator('#outMeta')).toHaveText('U18 männlich -73kg');
         await expect(anzeigePage.locator('#outTimer')).toHaveText('04:00');
 
@@ -289,13 +290,21 @@ test.describe.serial('Steuerung + Anzeigetafel: Scoreboard-Kernfunktionen (steue
 
         await steuerungPage.locator('#btnStartStopLive').click(); // aktiviert Golden Score
         await expect(anzeigePage.locator('#outGsIndicator')).toBeVisible();
+        await expect(anzeigePage.locator('.timer-bar')).toHaveClass(/gs-aktiv/);
+        // Marke und Zeit liegen vollständig im Zeitbalken (ragen nicht in die Fläche der Kämpfer)
+        const balkenBox = await anzeigePage.locator('.timer-bar').boundingBox();
+        const gsBox = await anzeigePage.locator('#outGsIndicator').boundingBox();
+        const zeitBox = await anzeigePage.locator('#outTimer').boundingBox();
+        expect(gsBox.y).toBeGreaterThanOrEqual(balkenBox.y);
+        expect(zeitBox.y + zeitBox.height).toBeLessThanOrEqual(balkenBox.y + balkenBox.height + 1);
 
         await steuerungPage.clock.fastForward(2500); // erreicht das 2-Sekunden-Golden-Score-Limit ohne Wertung
         await expect(anzeigePage.locator('#ovHantei')).toBeVisible();
 
         await expect(steuerungPage.locator('#btnHanteiSiegB')).toBeVisible();
         await steuerungPage.locator('#btnHanteiSiegB').click();
-        await expect(anzeigePage.locator('#bannerB')).toHaveText('HANTEI-SIEG');
+        // Am Fernseher wird der Hantei-Sieg nicht eingeblendet (die Kampfrichter sagen ihn an): nur das Overlay verschwindet.
+        await expect(anzeigePage.locator('#bannerB')).not.toHaveClass(/active/);
         await expect(anzeigePage.locator('#ovHantei')).toBeHidden();
 
         // Auch wenn Golden Score selbst ohne Entscheidung ausgelaufen ist und in die
@@ -324,7 +333,8 @@ test.describe.serial('Steuerung + Anzeigetafel: Scoreboard-Kernfunktionen (steue
 
         await expect(steuerungPage.locator('#btnHanteiSiegW')).toBeVisible();
         await steuerungPage.locator('#btnHanteiSiegW').click();
-        await expect(anzeigePage.locator('#bannerW')).toHaveText('HANTEI-SIEG');
+        await expect(anzeigePage.locator('#ovHantei')).toBeHidden();
+        await expect(anzeigePage.locator('#bannerW')).not.toHaveClass(/active/);
 
         // Rückgängig-Toggle: erneuter Klick nimmt die Entscheidung zurück, Hantei-Overlay erscheint wieder.
         await steuerungPage.locator('#btnHanteiSiegW').click();
@@ -332,7 +342,7 @@ test.describe.serial('Steuerung + Anzeigetafel: Scoreboard-Kernfunktionen (steue
         await expect(anzeigePage.locator('#bannerW')).not.toHaveClass(/active/);
 
         await steuerungPage.locator('#btnHanteiSiegW').click();
-        await expect(anzeigePage.locator('#bannerW')).toHaveText('HANTEI-SIEG');
+        await expect(anzeigePage.locator('#ovHantei')).toBeHidden();
 
         await steuerungPage.locator('#btnErgebnisSendenLive').click();
         await expect(steuerungPage.locator('#btnNaechsterKampfLive')).toBeVisible();
@@ -374,15 +384,17 @@ test.describe.serial('Steuerung + Anzeigetafel: Scoreboard-Kernfunktionen (steue
         const start = await dings();
 
         await steuerungPage.evaluate(() => window.changeScore('W', 'ippon', 1));
-        await expect(anzeigePage.locator('#bannerW')).toHaveClass(/active/);
+        await expect(anzeigePage.locator('#ovIppon')).toBeVisible();
         expect(await dings()).toBe(start);
         await steuerungPage.evaluate(() => window.changeScore('W', 'ippon', -1));
-        await expect(anzeigePage.locator('#bannerW')).not.toHaveClass(/active/);
+        await expect(anzeigePage.locator('#ovIppon')).toBeHidden();
 
         await steuerungPage.locator('#btnStartStopLive').click();
         await steuerungPage.evaluate(() => window.toggleOsae('W'));
         await steuerungPage.clock.runFor(21_000);
-        await expect(anzeigePage.locator('#bannerW')).toHaveText('IPPON');
+        await expect(anzeigePage.locator('#ovIppon')).toBeVisible();
+        await expect(anzeigePage.locator('#ovIppon')).toHaveText('IPPON');
+        await expect(anzeigePage.locator('#bannerW')).not.toHaveClass(/active/);
         expect(await dings()).toBe(start + 1);
         await steuerungPage.locator('#btnErgebnisSendenLive').click();
         await expect(steuerungPage.locator('#btnNaechsterKampfLive')).toBeVisible();
@@ -430,7 +442,7 @@ test.describe.serial('Steuerung + Anzeigetafel: Scoreboard-Kernfunktionen (steue
         await steuerungPage.locator('#btnNaechsterKampfLive').click();
 
         await steuerungPage.locator('#btnLiveNaW').click();
-        await expect(anzeigePage.locator('#bannerW')).toHaveText('NICHT ANGETRETEN');
+        await expect(anzeigePage.locator('#bannerW')).toHaveText('N. ANGETRETEN');
         // Die Gegenseite kann nicht mehr ebenfalls "Nicht angetreten" markieren, solange W aktiv ist.
         await expect(steuerungPage.locator('#btnLiveNaB')).toBeDisabled();
 

@@ -36,6 +36,12 @@ jobs:
         if: inputs.client-dateien
         uses: actions/download-artifact@v4
         with: { name: client-signiert, path: client-dateien }
+      # Standardadresse der Cloud für Updates und Einlösecode (Repository-Variable CLOUD_URL, z. B. https://hajime.example.de); leer = nur GitHub.
+      - name: Adresse der Cloud ins Paket legen
+        shell: bash
+        run: printf '%s
+' "$CLOUD_URL" > desktop/cloud-url.txt
+        env: { CLOUD_URL: '${{ vars.CLOUD_URL }}' }
       - run: npm run desktop:server:build
         env: { CSC_IDENTITY_AUTO_DISCOVERY: 'false' }
       # Der Rauchtest prüft dann zusätzlich, dass der Server die mitgelieferten Client-Dateien bereitstellt.
