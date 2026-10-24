@@ -40,6 +40,22 @@ test('ausgabeName schreibt eine eigene Datei und lässt version.json unberührt 
     assert.throws(() => readFileSync(path.join(dir, 'version.json')));
 });
 
+test('Hol-Skript wird mitsigniert (Plattform linux-dienst, Rolle skript) und ändert die Installer-Zuordnung nicht', () => {
+    const { publicKey, privateKey } = generateKeyPairSync('ed25519');
+    const dir = mkdtempSync(path.join(tmpdir(), 'signieren-'));
+    writeFileSync(path.join(dir, 'Hajime-Pro-Dienst-1.2.0.tar.gz'), 'T');
+    writeFileSync(path.join(dir, 'hajime-holen.sh'), '#!/bin/sh\n');
+    writeFileSync(path.join(dir, 'anderes-skript.sh'), 'x');
+    const vj = erzeugeVersionJson({ verzeichnis: dir, version: '1.2.0', privaterSchluessel: privateKey.export({ type: 'pkcs8', format: 'pem' }), ausgabeName: 'server-version.json' });
+    assert.equal(vj.dateien['linux-dienst'].installieren.datei, 'Hajime-Pro-Dienst-1.2.0.tar.gz');
+    const eintrag = vj.dateien['linux-dienst'].skript;
+    assert.equal(eintrag.datei, 'hajime-holen.sh');
+    const pub = publicKey.export({ type: 'spki', format: 'pem' });
+    assert.deepEqual(pruefeDatei({ puffer: Buffer.from('#!/bin/sh\n'), eintrag, version: '1.2.0', oeffentlicherSchluessel: pub }), { ok: true });
+    assert.equal(pruefeDatei({ puffer: Buffer.from('#!/bin/sh\nrm -rf /\n'), eintrag, version: '1.2.0', oeffentlicherSchluessel: pub }).ok, false);
+    assert.ok(!JSON.stringify(vj).includes('anderes-skript'));
+});
+
 test('doppelt belegte Plattform/Rolle bricht mit klarer Meldung ab', () => {
     const { privateKey } = generateKeyPairSync('ed25519');
     const dir = mkdtempSync(path.join(tmpdir(), 'signieren-'));

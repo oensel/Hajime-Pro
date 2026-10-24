@@ -248,14 +248,15 @@ jobs:
       # gegen diese Ed25519-Signatur, daher entsteht hier server-version.json (eigene Datei, nicht version.json).
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
+      # holen.sh liegt als eigenes Asset im Release (Einzeiler-Installation, siehe deploy/linux/holen.sh). Es muss VOR dem
+      # Signieren ins Verzeichnis, damit es in server-version.json (Prüfsumme + Signatur) und SHA256SUMS-Server.txt steht.
+      - name: Hol-Skript beilegen
+        run: cp deploy/linux/holen.sh release-server/hajime-holen.sh
       - name: Server-Installer signieren (server-version.json)
         run: node scripts/signiere-client.mjs release-server "${RELEASE_TAG#v}" server-version.json
         env: { CLIENT_SIGNATUR_SCHLUESSEL: '${{ secrets.CLIENT_SIGNATUR_SCHLUESSEL }}' }
       - name: Prüfsummen der Server-Installer
         run: (cd release-server && sha256sum * > SHA256SUMS-Server.txt)
-      # holen.sh liegt als eigenes Asset im Release (Einzeiler-Installation, siehe deploy/linux/holen.sh).
-      - name: Hol-Skript beilegen
-        run: cp deploy/linux/holen.sh release-server/hajime-holen.sh
       # Quelle der Cloud: Installer und Update-Pakete liegen als Release im PRIVATEN Repository, die Cloud spiegelt sie mit einem
       # Lesetoken (RELEASE_QUELLE_REPO/RELEASE_QUELLE_TOKEN, docs/specs/2026-10-24-downloads-ueber-cloud-design.md). Das Release
       # legt bei einem manuellen Start auch den Quell-Tag auf dem getesteten Commit an.

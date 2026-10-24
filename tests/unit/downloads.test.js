@@ -28,7 +28,7 @@ function baueRelease({ version, privat, dateiInhalt = {} }) {
     const quelle = tmp();
     const inhalt = (name) => Buffer.from(dateiInhalt[name] ?? `inhalt von ${name}`.repeat(50));
     const clientNamen = [`Hajime-Pro-Setup-${version}.exe`, `Hajime-Pro-${version}.apk`];
-    const serverNamen = [`Hajime-Pro-Server-${version}-win-x64.exe`, `Hajime-Pro-Dienst-${version}.tar.gz`];
+    const serverNamen = [`Hajime-Pro-Server-${version}-win-x64.exe`, `Hajime-Pro-Dienst-${version}.tar.gz`, 'hajime-holen.sh'];
     const clientDir = path.join(quelle, 'c');
     const serverDir = path.join(quelle, 's');
     mkdirSync(clientDir); mkdirSync(serverDir);
@@ -38,7 +38,6 @@ function baueRelease({ version, privat, dateiInhalt = {} }) {
     erzeugeVersionJson({ verzeichnis: serverDir, version, privaterSchluessel: privat, ausgabeName: 'server-version.json' });
     const dateien = new Map();
     for (const d of [clientDir, serverDir]) for (const n of readdirSync(d)) dateien.set(n, readFileSync(path.join(d, n)));
-    dateien.set('hajime-holen.sh', Buffer.from('#!/bin/sh\n'));
     const fetchFn = async (url) => {
         const u = String(url);
         if (u.endsWith('/releases/latest') || u.endsWith(`/releases/tags/v${version}`)) {
@@ -72,7 +71,8 @@ test('Spiegelung: prüft Signatur und Prüfsumme, ordnet Gruppen zu, räumt auf,
         assert.equal(nach('Hajime-Pro-Setup-1.2.3.exe').gruppe, 'client');
         assert.equal(nach('Hajime-Pro-1.2.3.apk').bezeichnung, 'Android');
         assert.equal(nach('Hajime-Pro-Dienst-1.2.3.tar.gz').plattform, 'linux-dienst');
-        assert.equal(nach('hajime-holen.sh').gruppe, 'hilfe');
+        assert.equal(nach('hajime-holen.sh').gruppe, 'server');
+        assert.equal(nach('hajime-holen.sh').plattform, 'linux-dienst');
         assert.equal(nach('version.json').gruppe, 'intern');
         assert.equal((await spiegleRelease({ repo: 'x/y', token: 't', dir, schluessel: oeffentlich, fetchFn: r1.fetchFn, apiBasis: 'https://gh.test', log })).status, 'aktuell');
 

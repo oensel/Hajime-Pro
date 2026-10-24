@@ -34,7 +34,7 @@ export function beschreibeDateien(dateinamen, clientVj, serverVj) {
     lies(clientVj, 'client');
     return dateinamen.map((name) => {
         if (zuordnung.has(name)) return { name, ...zuordnung.get(name) };
-        if (name === 'hajime-holen.sh') return { name, gruppe: 'hilfe', plattform: 'linux-dienst', bezeichnung: 'Hol-Skript für den Linux-Dienst' };
+        // Nur was in den signierten Verzeichnissen steht, wird angeboten; alles andere (auch ein unsigniertes Hol-Skript) bleibt intern.
         return { name, gruppe: 'intern', plattform: null, bezeichnung: name };
     });
 }
