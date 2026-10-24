@@ -8,7 +8,7 @@ const ZWISCHENSPEICHER_MS = 10 * 60_000;
 const ABFRAGE_TIMEOUT_MS = 5000;
 const LAUF_MAX_MS = 60 * 60_000;
 
-export function erzeugeUpdateDienst({ repo, token = '', statusDatei, updateBefehl, fuehreBefehlAus, fetchFn = fetch, jetzt = () => Date.now(), env = process.env }) {
+export function erzeugeUpdateDienst({ repo, token = '', apiBasis = 'https://api.github.com', statusDatei, updateBefehl, fuehreBefehlAus, fetchFn = fetch, jetzt = () => Date.now(), env = process.env }) {
     let zwischen = null; // { version, zeit }
     let laeuftGerade = false;
 
@@ -17,7 +17,7 @@ export function erzeugeUpdateDienst({ repo, token = '', statusDatei, updateBefeh
         if (zwischen && jetzt() - zwischen.zeit < ZWISCHENSPEICHER_MS) return zwischen.version;
         let version = null;
         try {
-            const antwort = await fetchFn(`https://api.github.com/repos/${repo}/releases/latest`, {
+            const antwort = await fetchFn(`${apiBasis || 'https://api.github.com'}/repos/${repo}/releases/latest`, {
                 signal: AbortSignal.timeout(ABFRAGE_TIMEOUT_MS),
                 headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'hajime-pro', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
             });

@@ -1,4 +1,4 @@
-// Video-Archiv (videobeweis.html): Liste der Kampf-Clips, Abspielen mit Marken (START/STOPP/Ergebnis), Einzelbild, Zeitlupe.
+// Video-Archiv (videobeweis.html): Liste der Kampf-Clips, Abspielen mit Marken (Start/Stopp/Wertung/Strafe/Haltegriff/Ergebnis), Einzelbild, Zeitlupe.
 const liste = document.getElementById('vbListe');
 const matteSelect = document.getElementById('vbMatte');
 const sucheEl = document.getElementById('vbSuche');
@@ -14,7 +14,10 @@ let clips = [];
 let liveIds = new Set(); // Clips, die gerade live aufgenommen werden
 let aktuelleUrl = null;
 
-const MARKEN_NAMEN = { geladen: 'Kampf geladen', start: 'START', stopp: 'STOPP', ergebnis: 'Ergebnis' };
+const MARKEN_NAMEN = { geladen: 'Kampf geladen', start: 'START', stopp: 'STOPP', ergebnis: 'Ergebnis', wertung: 'Wertung', strafe: 'Strafe', haltegriff: 'Haltegriff' };
+const spurEl = document.getElementById('vbSpur');
+const standEl = document.getElementById('vbStand');
+let aktuelleMarken = [];
 
 const farbeText = (c) => (c.farbe2 === 'rot' ? 'Rot' : 'Blau');
 const kaempferText = (c) => `${c.kaempfer1} (Weiß) gegen ${c.kaempfer2} (${farbeText(c)})`;
@@ -106,6 +109,36 @@ function schliesse() {
     aktuelleUrl = null;
 }
 
+function springeZu(m) {
+    video.currentTime = Math.max(0, m.ms / 1000 - VORLAUF_S);
+    video.playbackRate = Number(document.getElementById('vbTempo').value);
+    video.play().catch(() => {});
+}
+
+// Zeitleiste mit einer Marke je Ereignis (MediaRecorder-Dateien melden die Länge erst spät, bis dahin gilt die letzte Marke)
+function spurDauer() {
+    if (Number.isFinite(video.duration) && video.duration > 0) return video.duration;
+    return Math.max(1, ...aktuelleMarken.map(m => m.ms / 1000)) + 1;
+}
+function zeichneSpur() {
+    spurEl.querySelectorAll('i').forEach(i => i.remove());
+    const dauer = spurDauer();
+    aktuelleMarken.filter(m => m.typ !== 'geladen').forEach(m => {
+        const tick = document.createElement('i');
+        tick.className = `vb-tick video-marke-${m.typ}`;
+        tick.style.left = `${Math.min(100, (m.ms / 1000 / dauer) * 100)}%`;
+        tick.title = `${m.text || MARKEN_NAMEN[m.typ] || m.typ} ${zeit(m.ms)}`;
+        tick.addEventListener('click', (e) => { e.stopPropagation(); springeZu(m); });
+        spurEl.appendChild(tick);
+    });
+}
+video.addEventListener('durationchange', zeichneSpur);
+video.addEventListener('timeupdate', () => { standEl.style.width = `${Math.min(100, (video.currentTime / spurDauer()) * 100)}%`; });
+spurEl.addEventListener('click', (e) => {
+    const r = spurEl.getBoundingClientRect();
+    video.currentTime = ((e.clientX - r.left) / r.width) * spurDauer();
+});
+
 async function oeffne(c) {
     titelEl.textContent = `${c.matteName || ''} · ${c.pool} · ${kaempferText(c)}`;
     player.dataset.clipId = c.id;
@@ -133,18 +166,16 @@ async function oeffne(c) {
     video.src = aktuelleUrl;
     video.playbackRate = Number(document.getElementById('vbTempo').value);
 
+    aktuelleMarken = c.marken;
     c.marken.forEach(m => {
         const knopf = document.createElement('button');
         knopf.type = 'button';
         knopf.className = `video-knopf video-marke video-marke-${m.typ}`;
-        knopf.textContent = `${MARKEN_NAMEN[m.typ] || m.typ} ${zeit(m.ms)}`;
-        knopf.addEventListener('click', () => {
-            video.currentTime = Math.max(0, m.ms / 1000 - VORLAUF_S);
-            video.playbackRate = Number(document.getElementById('vbTempo').value);
-            video.play().catch(() => {});
-        });
+        knopf.textContent = `${m.text || MARKEN_NAMEN[m.typ] || m.typ} ${zeit(m.ms)}`;
+        knopf.addEventListener('click', () => springeZu(m));
         markenEl.appendChild(knopf);
     });
+    zeichneSpur();
     player.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 

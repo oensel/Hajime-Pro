@@ -16,6 +16,7 @@
         <span class="st-chip st-chip-pool" title="Pool"><b id="stChipPool">–</b></span>
         <span class="st-chip st-chip-zeit" title="Reguläre Kampfzeit"><b id="stChipZeit">–</b></span>
         <span class="st-top-platz"></span>
+        <button type="button" id="btnAnzeigeFenster" class="theme-toggle-btn" title="Anzeigetafel in eigenem Fenster öffnen (Vollbild auf dem angeschlossenen TV)">📺 Anzeige auf TV</button>
         <button type="button" id="steuerungThemeToggle" class="theme-toggle-btn" aria-label="Dunkelmodus umschalten">🌙 Dunkel</button>
     </header>
 
@@ -311,7 +312,7 @@
             <button type="button" id="videoReviewSchliessen" class="video-review-knopf">✕ Schließen</button>
         </div>
         <video id="videoReviewPlayer" class="video-review-player" controls playsinline></video>
-        <div id="videoReviewMarken" class="video-review-zeile"></div>
+        <div id="videoReviewSpur" class="video-review-spur" title="Klicken zum Springen"><span id="videoReviewStand" class="video-review-stand"></span></div>
         <div class="video-review-zeile">
             <button type="button" class="video-review-knopf" data-sprung="-10">⏪ 10 s</button>
             <button type="button" class="video-review-knopf" data-sprung="-5">◀ 5 s</button>
@@ -346,5 +347,6 @@
     <script type="module" src="js/durchsage.js"></script>
     <script type="module" src="js/video.js"></script>
     <script src="js/steuerungMenue.js"></script>
+    <script src="js/anzeigeFenster.js"></script>
 </body>
 </html>

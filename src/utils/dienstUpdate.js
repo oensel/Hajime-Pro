@@ -161,7 +161,7 @@ export function fuehreVorgemerktenAustauschAus(installDir, log = console) {
  * (der Aufrufer beendet den Prozess), sonst 'weiter'. Wirft nie.
  */
 export async function pruefeUndAktualisiereDienst({
-    installDir, aktuelleVersion, schluessel, repo = 'oensel/Hajime-Pro-Releases', token = '', fehlerAusgabe = null,
+    installDir, aktuelleVersion, schluessel, repo = 'oensel/Hajime-Pro-Releases', token = '', apiBasis = undefined, fehlerAusgabe = null,
     pruefeUndLadeFn = null, installiere = installiereDienstPaket, log = console,
     anzeige = erzeugeKonsolenAnzeige(), neustartSekunden = 3, warte = (ms) => new Promise((r) => setTimeout(r, ms))
 }) {
@@ -174,7 +174,7 @@ export async function pruefeUndAktualisiereDienst({
         anzeige.meldung(MELDUNG.suche);
         let geholt = false;
         const ergebnis = await lade({
-            repo, token, aktuelleVersion, schluessel, zielVerzeichnis, versuchsDatei,
+            repo, token, aktuelleVersion, schluessel, zielVerzeichnis, versuchsDatei, ...(apiBasis ? { apiBasis } : {}),
             plattformName: DIENST_PLATTFORM, unterstuetzt: [DIENST_PLATTFORM],
             log: { log() {}, warn() {} },   // die Anzeige übernimmt die Meldungen
             beiFortschritt: ({ version, geladen, gesamt }) => {

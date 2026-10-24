@@ -36,6 +36,9 @@
     };
 })();
 
+// Namen und Meldungen der Anzeigetafel am Fernseher (reine Funktionen, siehe src/shared/anzeigeName.js).
+import { kuerzeName, kurzeMeldung, angepasstSchrift } from '/js/shared/anzeigeName.js';
+
 function showGlobalLoginModal() {
     if (document.getElementById('globalLoginModal')) return;
 
@@ -196,25 +199,10 @@ let isRunning = false;
 let keyTimestamps = {};
 let keyHoldingStates = {};
 
-function playHorn() {
-    try {
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const oscillator = audioCtx.createOscillator();
-        const gainNode = audioCtx.createGain();
-        oscillator.type = 'sawtooth';
-        oscillator.frequency.setValueAtTime(180, audioCtx.currentTime);
-        gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 1.5);
-        oscillator.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
-        oscillator.start();
-        oscillator.stop(audioCtx.currentTime + 1.5);
-    } catch(e) { console.log("Audio Fehler:", e); }
-}
-
-// Signalton "dingding" (public/sounds/dingding.mp3) am Kampftisch: Ende der regulären Kampfzeit, Ende des Golden Score
-// und Ippon durch Haltegriff (Osaekomi). Ein direkt vergebener Ippon bleibt ohne Ton, alle anderen Entscheidungen behalten die Hupe (playHorn). Nur in der
-// Steuerung vorgeladen, die Anzeigetafel braucht den Ton nicht.
+// Signalton "dingding" (public/sounds/dingding.mp3) am Kampftisch: Ende der regulären Kampfzeit, Ende des Golden Score und Ippon durch
+// Haltegriff (Osaekomi) in der regulären Kampfzeit. Sonst gibt es keinen Ton: weder bei einem von Hand vergebenen Ippon noch bei
+// Hansoku-make, Aufgabe, Hantei oder im Golden Score (dort entscheiden die Landesverbände unterschiedlich, ab welcher Wertung der Sieg
+// feststeht, auch das Waza-Ari durch Osaekomi bleibt deshalb still). Nur in der Steuerung vorgeladen, die Anzeigetafel braucht den Ton nicht.
 const dingAudio = (typeof Audio !== 'undefined' && document.getElementById('matchDuration'))
     ? Object.assign(new Audio('/sounds/dingding.mp3'), { preload: 'auto' })
     : null;
@@ -256,6 +244,7 @@ const MAX_YUKO = 99;
 function changeScore(color, type, value) {
     let key = type + color;
     let current = state[key] + value;
+    const vorWertung = { ippon: state['ippon' + color], waza: state['waza' + color], yuko: state['yuko' + color] };
 
     // Golden Score (Sudden Death): die erste Wertung — egal ob Ippon, Waza-Ari oder Yuko —
     // entscheidet den Kampf sofort für den Kämpfer, der sie erzielt hat. Nur bei tatsächlicher
@@ -295,11 +284,20 @@ function changeScore(color, type, value) {
         if (gewinntDurchGoldenScore && state[key] > vorher) triggerGoldenScoreWin();
     }
     update();
+    // Marke im Video: was wurde vergeben (zwei Waza-ari werden zum Ippon)
+    if (value > 0) {
+        const art = state['ippon' + color] > vorWertung.ippon ? 'ippon'
+            : state['waza' + color] > vorWertung.waza ? 'waza'
+            : state['yuko' + color] > vorWertung.yuko ? 'yuko' : null;
+        if (art) meldeKampfEreignis('wertung', { art, seite: color });
+    }
 }
 
 function changeShido(color, value) {
     let current = state['shido' + color] + value;
+    const vorShido = state['shido' + color];
     state['shido' + color] = Math.max(0, current);
+    if (state['shido' + color] > vorShido) meldeKampfEreignis('strafe', { seite: color, anzahl: state['shido' + color] });
 
     if (state['shido' + color] >= 3) {
         triggerHansokumakeWin(color === 'W' ? 'B' : 'W');
@@ -335,7 +333,6 @@ function changeBehandlung(color, value) {
 function triggerKikenGachiWin(winnerColor) {
     stopAllTimers();
     state.overlayMode = "kiken";
-    playHorn();
     update();
 }
 
@@ -354,7 +351,6 @@ function triggerIpponWin(durchHaltegriff = false) {
 function triggerGoldenScoreWin() {
     stopAllTimers();
     state.overlayMode = "goldenscoresieg";
-    playHorn();
     update();
 }
 
@@ -382,7 +378,6 @@ function triggerDirectHansokumake(color) {
 function triggerHansokumakeWin(winnerColor) {
     stopAllTimers();
     state.overlayMode = "hansokumake";
-    playHorn();
     update();
 }
 
@@ -450,6 +445,7 @@ function toggleOsae(color) {
         }
         
         state['osaeRunning' + color] = true;
+        meldeKampfEreignis('haltegriff', { seite: color });
         let btn = document.getElementById('btnOsae' + color);
         if (btn) btn.innerText = "Osaekomi Stop";
         
@@ -496,7 +492,6 @@ function toggleOsae(color) {
 
 function triggerWazaWin() {
     stopAllTimers();
-    playHorn();
     update();
 }
 
@@ -1178,6 +1173,41 @@ if (!document.getElementById('matchDuration')) {
         injiziereBedienButtons();
     }
 
+    // Fernseher-Modus (Klasse setzt anzeige.html, außer in der eingebetteten Vorschau der Steuerung): zu lange Namen werden
+    // zuerst auf "Nachname, V." gekürzt, passt es dann immer noch nicht, wird die Schrift verkleinert (Vereine nur verkleinert).
+    // Die Vorschau der Steuerung behält ihr bisheriges Verhalten.
+    const anzeigeTv = document.body.classList.contains('anzeige-tv');
+
+    // Schreibt `voll` in das Element und passt es der verfügbaren Breite an. Gemessen wird nur, wenn sich Text oder
+    // Breite des Platzes geändert haben (die Meldung kommt bei jeder Änderung der Steuerung, auch ohne neue Namen).
+    function setzeAnzeigeText(el, voll, kuerzen) {
+        if (!el) return;
+        if (!anzeigeTv) { el.innerText = voll; return; }
+        const platz = String(el.parentElement ? el.parentElement.clientWidth : 0);
+        if (el.dataset.voll === voll && el.dataset.platz === platz) return;
+        el.dataset.voll = voll;
+        el.dataset.platz = platz;
+        el.style.fontSize = '';
+        el.textContent = voll;
+        const passt = () => el.scrollWidth <= el.clientWidth + 1;
+        if (passt()) return;
+        if (kuerzen) {
+            el.textContent = kuerzeName(voll);
+            if (passt()) return;
+        }
+        const px = angepasstSchrift(parseFloat(getComputedStyle(el).fontSize), el.scrollWidth, el.clientWidth);
+        if (px) el.style.fontSize = px + 'px';
+    }
+    if (anzeigeTv) {
+        // Bildschirmgröße geändert (z.B. Vollbild): alles neu messen.
+        window.addEventListener('resize', () => {
+            document.querySelectorAll('.name[data-voll], .club[data-voll], .vorschau-name[data-voll], .vorschau-club[data-voll]').forEach(el => {
+                el.dataset.platz = '';
+                setzeAnzeigeText(el, el.dataset.voll, el.classList.contains('name') || el.classList.contains('vorschau-name'));
+            });
+        });
+    }
+
     channel.onmessage = function(event) {
         const data = event.data;
         // Andere Seiten (z.B. das Dashboard mit { type: 'request_state' }) nutzen denselben Kanal: nur echte Zustände anzeigen,
@@ -1189,14 +1219,14 @@ if (!document.getElementById('matchDuration')) {
         const resetAllBtn = document.getElementById('iframeBtnResetAll');
         if (resetAllBtn) resetAllBtn.style.display = data.overlayMode === 'vorschau' ? 'none' : '';
 
-        document.getElementById('outNameW').innerText = data.nameW;
-        document.getElementById('outClubW').innerText = data.clubW;
+        setzeAnzeigeText(document.getElementById('outNameW'), data.nameW, true);
+        setzeAnzeigeText(document.getElementById('outClubW'), data.clubW, false);
         document.getElementById('outIpponW').innerText = data.outIpponW !== undefined ? data.outIpponW : data.ipponW;
         document.getElementById('outWazaW').innerText = data.wazaW;
         document.getElementById('outYukoW').innerText = data.yukoW;
 
-        document.getElementById('outNameB').innerText = data.nameB;
-        document.getElementById('outClubB').innerText = data.clubB;
+        setzeAnzeigeText(document.getElementById('outNameB'), data.nameB, true);
+        setzeAnzeigeText(document.getElementById('outClubB'), data.clubB, false);
         document.getElementById('outIpponB').innerText = data.ipponB;
         document.getElementById('outWazaB').innerText = data.wazaB;
         document.getElementById('outYukoB').innerText = data.yukoB;
@@ -1236,11 +1266,13 @@ if (!document.getElementById('matchDuration')) {
         // Vollbild-Overlay. Nicht angetreten/Hansoku-make/Kiken-gachi betreffen den
         // unterlegenen Kämpfer (der Grund liegt bei ihm), Ippon dagegen den Kämpfer, der ihn
         // erzielt hat.
+        // Am Fernseher (anzeigeTv) steht "Nicht angetreten" als "N. ANGETRETEN" (passt in die Breite), IPPON läuft über das
+        // Vollbild-Overlay #ovIppon und HANTEI-SIEG wird nicht eingeblendet (die Entscheidung sagen die Kampfrichter an).
         let bannerTextW = '';
         let bannerTextB = '';
         if (data.overlayMode === 'nichtangetreten') {
-            if (data.nichtAngetretenW) bannerTextW = 'NICHT ANGETRETEN';
-            if (data.nichtAngetretenB) bannerTextB = 'NICHT ANGETRETEN';
+            if (data.nichtAngetretenW) bannerTextW = anzeigeTv ? kurzeMeldung('NICHT ANGETRETEN') : 'NICHT ANGETRETEN';
+            if (data.nichtAngetretenB) bannerTextB = anzeigeTv ? kurzeMeldung('NICHT ANGETRETEN') : 'NICHT ANGETRETEN';
         } else if (data.overlayMode === 'hansokumake') {
             if (data.shidoW >= 3 || data.hansokuDirektW) bannerTextW = 'HANSOKU-MAKE';
             if (data.shidoB >= 3 || data.hansokuDirektB) bannerTextB = 'HANSOKU-MAKE';
@@ -1248,13 +1280,13 @@ if (!document.getElementById('matchDuration')) {
             if (data.behandlungW >= 3) bannerTextW = 'AUFGABE';
             if (data.behandlungB >= 3) bannerTextB = 'AUFGABE';
         } else if (data.overlayMode === 'ippon') {
-            if (data.ipponW > 0) bannerTextW = 'IPPON';
-            if (data.ipponB > 0) bannerTextB = 'IPPON';
+            if (!anzeigeTv && data.ipponW > 0) bannerTextW = 'IPPON';
+            if (!anzeigeTv && data.ipponB > 0) bannerTextB = 'IPPON';
         }
         // Bewusst KEIN Fall für overlayMode "goldenscoresieg": ein Sieg durch die erste Wertung
         // im Golden Score zeigt kein Banner (siehe triggerGoldenScoreWin()) — der Kampf ist
         // trotzdem beendet (overlayMode ≠ "none" reicht für "isFinished"/Ergebnis senden).
-        else if (data.overlayMode === 'hanteisieg') {
+        else if (data.overlayMode === 'hanteisieg' && !anzeigeTv) {
             if (data.hanteiSiegerW) bannerTextW = 'HANTEI-SIEG';
             if (data.hanteiSiegerB) bannerTextB = 'HANTEI-SIEG';
         }
@@ -1294,8 +1326,13 @@ if (!document.getElementById('matchDuration')) {
 
         const gsInd = document.getElementById('outGsIndicator');
         if (gsInd) gsInd.style.display = data.isGoldenScore ? 'block' : 'none';
+        const zeitBalken = document.querySelector('.timer-bar');
+        if (zeitBalken) zeitBalken.classList.toggle('gs-aktiv', !!data.isGoldenScore);
 
         if (document.getElementById('ovTime')) document.getElementById('ovTime').style.display = (data.overlayMode === "time") ? "flex" : "none";
+
+        const ovIppon = document.getElementById('ovIppon');
+        if (ovIppon) ovIppon.style.display = (anzeigeTv && data.overlayMode === 'ippon') ? 'flex' : 'none';
 
         let ovHantei = document.getElementById('ovHantei');
         if (ovHantei) ovHantei.style.display = (data.overlayMode === "hantei") ? "flex" : "none";
@@ -1326,7 +1363,10 @@ if (!document.getElementById('matchDuration')) {
 
             const setText = (id, val) => {
                 const el = document.getElementById(id);
-                if (el) el.textContent = val || '';
+                if (!el) return;
+                // Fernseher: Namen werden gekürzt und Vereine verkleinert, wenn sie nicht passen (setzeAnzeigeText)
+                if (anzeigeTv && /^vorschau(Name|Club)/.test(id)) setzeAnzeigeText(el, val || '', id.startsWith('vorschauName'));
+                else el.textContent = val || '';
             };
 
             [1, 2, 3].forEach(i => {

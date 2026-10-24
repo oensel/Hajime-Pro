@@ -9,6 +9,7 @@
 //
 // Rollenzustand und Verlauf liegen lokal in <SYNC_DATENVERZEICHNIS>/cluster-zustand.json (nicht
 // repliziert — die Epoche des Partners kommt über GET /api/cluster/status).
+import { ermittleReleaseQuelle } from '../utils/releaseQuelle.js';
 import { exec } from 'child_process';
 import { readFileSync, writeFileSync, renameSync, mkdirSync, unlinkSync } from 'fs';
 import path from 'path';
@@ -121,9 +122,12 @@ export function starteClusterDienst({ knex, clusterKonfig, syncKonfig, sync, ver
         });
     }
 
+    // Quelle der Releases: die Cloud, sobald dieser Server einen Geräteschlüssel hat, sonst GitHub (src/utils/releaseQuelle.js).
+    const releaseQuelle = ermittleReleaseQuelle({ env: updateEnv, datenDir: path.dirname(path.resolve(syncKonfig.datenverzeichnis)) });
     const update = erzeugeUpdateDienst({
-        repo: updateEnv.CLIENT_RELEASE_REPO || 'oensel/Hajime-Pro-Releases',
-        token: updateEnv.CLIENT_RELEASE_TOKEN || updateEnv.GITHUB_TOKEN || '',
+        repo: releaseQuelle.repo,
+        token: releaseQuelle.token,
+        apiBasis: releaseQuelle.apiBasis,
         statusDatei: clusterKonfig.updateStatusDatei,
         updateBefehl: clusterKonfig.updateBefehl,
         fuehreBefehlAus,

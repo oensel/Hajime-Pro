@@ -61,10 +61,14 @@ log "Anwendung nach $INSTALL_DIR kopieren"
 id "$APP_USER" >/dev/null 2>&1 || useradd --system --create-home --home-dir "$INSTALL_DIR" --shell /usr/sbin/nologin "$APP_USER"
 mkdir -p "$INSTALL_DIR"
 rsync -a --delete \
-    --exclude '.git' --exclude 'node_modules' --exclude 'data' --exclude '.env' --exclude '.update' \
+    --exclude '.git' --exclude 'node_modules' --exclude 'data' --exclude '.env' --exclude '.update' --exclude '.hajime-release-*' \
     --exclude 'dist-desktop' --exclude 'test-results' --exclude 'playwright-report' \
     "$QUELLE"/ "$INSTALL_DIR"/
 mkdir -p "$INSTALL_DIR/data/dokumente" "$INSTALL_DIR/data/client-downloads"
+# Cloud-Zugang aus holen.sh (Geräteschlüssel für Updates, Cloud-Adresse) übernehmen
+. "$QUELLE/deploy/linux/release-schluessel.sh"
+uebernehme_release_schluessel "$QUELLE" "$INSTALL_DIR" "$APP_USER"
+CLOUD_URL="${CLOUD_URL:-$(liese_release_url "$QUELLE")}"
 chown -R "$APP_USER":"$APP_USER" "$INSTALL_DIR"
 
 log "Node-Abhängigkeiten installieren (dauert einige Minuten)"
@@ -100,6 +104,7 @@ STEUERUNG_PASSWORD=$STEUERUNG_PASSWORT
 SUPER_ADMIN_INITIAL_PASSWORD=$ADMIN_PASSWORT
 MDNS_NAME=$MDNS_NAME
 ${CLIENT_RELEASE_TOKEN:+CLIENT_RELEASE_TOKEN=$CLIENT_RELEASE_TOKEN}
+${CLOUD_URL:+CLOUD_URL=$CLOUD_URL}
 EOF
     chown "$APP_USER":"$APP_USER" "$ENV_DATEI"
     chmod 600 "$ENV_DATEI"

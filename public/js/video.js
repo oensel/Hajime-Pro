@@ -462,7 +462,11 @@ function starte() {
         if (d.typ === 'geladen') { aufnahmeBegonnen = true; beginneClip(d); }
         else if (d.typ === 'start') marke('start');
         else if (d.typ === 'stopp') marke('stopp');
-        else if (d.typ === 'ergebnis') {
+        else if (d.typ === 'wertung' || d.typ === 'strafe' || d.typ === 'haltegriff') {
+            const seite = d.seite === 'W' ? 'Weiß' : (farbe2Name() === 'rot' ? 'Rot' : 'Blau');
+            const art = { ippon: 'Ippon', waza: 'Waza-ari', yuko: 'Yuko' }[d.art];
+            marke(d.typ, d.typ === 'wertung' ? `${art} ${seite}` : d.typ === 'strafe' ? `Shido ${seite} (${d.anzahl})` : `Haltegriff ${seite}`);
+        } else if (d.typ === 'ergebnis') {
             marke('ergebnis');
             const farbe2Text = (d.farbe2 || farbe2Name()) === 'rot' ? 'Rot' : 'Blau';
             beendeClip(d.sieger === 'W' ? 'Sieger Weiß' : d.sieger === 'B' ? `Sieger ${farbe2Text}` : 'Ergebnis gesendet');
@@ -478,7 +482,6 @@ function starte() {
     // --- Ansehen während des Kampfes ---------------------------------------------------------------------------------
     const panel = el('videoReview');
     const spieler = el('videoReviewPlayer');
-    const markenEl = el('videoReviewMarken');
     const hinweisEl = el('videoReviewHinweis');
     let reviewUrl = null;
 
@@ -515,18 +518,34 @@ function starte() {
         spieler.src = reviewUrl;
     }
 
-    function zeigeMarken() {
-        markenEl.replaceChildren();
-        const namen = { geladen: 'Kampf geladen', start: 'START', stopp: 'STOPP', ergebnis: 'Ergebnis' };
-        (clip ? clip.marken : []).forEach((m) => {
-            const knopf = document.createElement('button');
-            knopf.type = 'button';
-            knopf.className = 'video-review-knopf';
-            knopf.textContent = `${namen[m.typ] || m.typ} ${Math.floor(m.ms / 60000)}:${String(Math.floor(m.ms / 1000) % 60).padStart(2, '0')}`;
-            knopf.addEventListener('click', () => { spieler.currentTime = Math.max(0, m.ms / 1000 - 3); spieler.play().catch(() => {}); });
-            markenEl.appendChild(knopf);
+    const spurEl = el('videoReviewSpur');
+    const standEl = el('videoReviewStand');
+    const markenNamen = { geladen: 'Kampf geladen', start: 'START', stopp: 'STOPP', ergebnis: 'Ergebnis' };
+    const markeText = (m) => `${m.text && !markenNamen[m.typ] ? m.text : (markenNamen[m.typ] || m.typ)} ${Math.floor(m.ms / 60000)}:${String(Math.floor(m.ms / 1000) % 60).padStart(2, '0')}`;
+    const springeZu = (m) => { spieler.currentTime = Math.max(0, m.ms / 1000 - 3); spieler.play().catch(() => {}); };
+    // Zeitleiste: eine Marke je Ereignis (bis die Länge bekannt ist, gilt die letzte Marke)
+    const spurDauer = () => (Number.isFinite(spieler.duration) && spieler.duration > 0 ? spieler.duration : Math.max(1, ...(clip ? clip.marken : []).map(m => m.ms / 1000)) + 1);
+    function zeichneSpur() {
+        spurEl.querySelectorAll('i').forEach(i => i.remove());
+        const dauer = spurDauer();
+        (clip ? clip.marken : []).filter(m => m.typ !== 'geladen').forEach((m) => {
+            const tick = document.createElement('i');
+            tick.className = `video-review-tick video-marke-${m.typ}`;
+            tick.style.left = `${Math.min(100, (m.ms / 1000 / dauer) * 100)}%`;
+            tick.title = markeText(m);
+            tick.addEventListener('click', (e) => { e.stopPropagation(); springeZu(m); });
+            spurEl.appendChild(tick);
         });
     }
+    spieler.addEventListener('durationchange', zeichneSpur);
+    spieler.addEventListener('timeupdate', () => { standEl.style.width = `${Math.min(100, (spieler.currentTime / spurDauer()) * 100)}%`; });
+    spurEl.addEventListener('click', (e) => {
+        const r = spurEl.getBoundingClientRect();
+        spieler.currentTime = ((e.clientX - r.left) / r.width) * spurDauer();
+    });
+
+    // Die Marken stehen nur als Striche auf der Zeitleiste (Tooltip mit Text, Klick springt dorthin)
+    function zeigeMarken() { zeichneSpur(); }
 
     async function oeffneAnsicht(zielZeit = 'ende') {
         const blob = await momentaufnahme();

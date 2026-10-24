@@ -4,10 +4,11 @@ import { importiereTurnierDaten } from '../controllers/turnierController.js';
 import { FachFehler } from '../utils/fachFehler.js';
 import { ersetzeHelferplan } from '../services/helferTransfer.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
+import { liesGeraeteSchluessel, speichereGeraeteSchluessel } from '../utils/releaseQuelle.js';
 
 // Turniere des eigenen Vereins aus der Cloud auf den Hallen-Server holen (Turnierauswahl).
 // Nur im Einzelbenutzerbetrieb (Hallen-Server); in der Cloud selbst gibt es die Funktion nicht.
-export function getCloudRoutes(knex, { cloud, holeCluster = () => null }) {
+export function getCloudRoutes(knex, { cloud, holeCluster = () => null, datenDir = '' }) {
     const router = express.Router();
     router.use(erzeugeApiRatenbegrenzung());
 
@@ -27,6 +28,18 @@ export function getCloudRoutes(knex, { cloud, holeCluster = () => null }) {
         }
         console.error(`[Cloud-${kontext}-Fehler]:`, e.message);
         return res.status(500).json({ success: false, error: e.message });
+    }
+
+    // Nebenprodukt der Anmeldung: hat dieser Server noch keinen Geräteschlüssel, holt er sich einen, damit sich Programm und
+    // Client-Dateien danach ohne Zutun aus der Cloud aktualisieren. Scheitert das (ältere Cloud, Konto nicht berechtigt), geht alles
+    // andere weiter; die Anmeldung gehört der Person, der Schlüssel ist an ihr Konto gebunden und endet mit dessen Freigabe.
+    async function richteGeraeteSchluesselEin(token) {
+        if (!datenDir || liesGeraeteSchluessel({ datenDir })) return;
+        try {
+            speichereGeraeteSchluessel(datenDir, await cloud.holeGeraeteSchluessel(token));
+        } catch (e) {
+            console.warn(`[Cloud] Geräteschlüssel für Updates nicht eingerichtet: ${e.message}`);
+        }
     }
 
     // Ist die Cloud konfiguriert und erreichbar (und dieser Server darf schreiben)?
@@ -49,6 +62,7 @@ export function getCloudRoutes(knex, { cloud, holeCluster = () => null }) {
                 return res.status(400).json({ success: false, error: 'Benutzer und Passwort sind erforderlich.' });
             }
             const { token, user } = await cloud.meldeAn(String(email), String(password));
+            await richteGeraeteSchluesselEin(token);
             const turniere = await cloud.listeTurniere(token);
             return res.json({
                 success: true,
