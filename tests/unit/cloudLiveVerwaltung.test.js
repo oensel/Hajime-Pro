@@ -132,6 +132,19 @@ test('Cloud-Live-Verwaltung: Rechte, Starten, Mischen-Sperre, Export, Code erneu
         assert.equal(gesperrt.gesperrt, true);
         assert.equal((await post('u-admin', `/api/cloud-live/${tLive}/sperren`, { wert: false })).daten.gesperrt, false);
 
+        // --- Teilnehmer-App: nur mit ausdrücklicher Freigabe des Veranstalters ---
+        const ohne = (await get('u-admin', `/api/cloud-live/${tLive}`)).daten.teilnehmerApp;
+        assert.deepEqual(ohne, { freigegeben: false, url: null });
+        assert.equal((await post('u-benutzer', `/api/cloud-live/${tLive}/teilnehmer-app`, { wert: true })).status, 403);
+        const frei = (await post('u-admin', `/api/cloud-live/${tLive}/teilnehmer-app`, { wert: true })).daten.teilnehmerApp;
+        assert.equal(frei.freigegeben, true);
+        assert.match(frei.url, /^https:\/\/hajime\.example\.de\/live\/#z=[A-Za-z0-9_-]{22}$/);
+        assert.equal((await knex('turniere').where({ id: tLive }).first()).live_freigabe, true);
+        assert.equal((await get('u-admin', `/api/cloud-live/${tLive}`)).daten.teilnehmerApp.url, frei.url, 'derselbe Zugang bei jedem Abruf');
+        assert.equal((await post('u-admin', `/api/cloud-live/${tLive}/teilnehmer-app`, { wert: false })).daten.teilnehmerApp.freigegeben, false);
+        assert.equal((await knex('turniere').where({ id: tLive }).first()).live_freigabe, false);
+        assert.equal((await post('u-admin', `/api/cloud-live/${tEntwurf}/teilnehmer-app`, { wert: true })).status, 409, 'nur bei laufendem Live-Betrieb');
+
         // --- Beenden: Geräte mit ungesendeten Änderungen, Rechte, danach wieder exportierbar ---
         const instanz = verwalter.instanzFuerTurnier(tLive);
         await instanz.db.put({

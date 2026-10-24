@@ -40,7 +40,7 @@ export function erzeugeVerwalter({ knex, konfig, maxTurniere = MAX_LIVE_TURNIERE
         const instanz = {
             turnierId: zugang.turnierId, vereinId: await vereinIdVon(zugang.turnierId), schluessel: zugang.schluessel, instanzId: zugang.instanzId,
             dbName, db, zustand, abgleich, bruecke,
-            feed: teilnehmerAppFeed ? starteFeed({ knex, instanzId: zugang.instanzId, turnierId: zugang.turnierId, intervallMs: feedIntervallMs }) : null,
+            feed: teilnehmerAppFeed ? starteFeed({ knex, geheimnis: zugang.appGeheimnis, turnierId: zugang.turnierId, intervallMs: feedIntervallMs }) : null,
             offeneAnfragen: new Set() // laufende /db-Anfragen (geraeteRoutes.js), beim Beenden vorher abgebrochen
         };
         instanzen.set(zugang.turnierId, instanz);

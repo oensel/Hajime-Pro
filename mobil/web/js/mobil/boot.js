@@ -16,6 +16,21 @@
         }
     }
 
+    // Hallen-Server und Cloud-Turnier können beide gekoppelt sein (Cloud-Live): hajime_mobil_verbindungen = { hallenserver, cloud },
+    // hajime_mobil_verbindung ist die gerade aktive. Bei beiden wählt server-waehlen.html einmal je App-Start (Hallen-Server im WLAN
+    // bevorzugt, sonst Rückfrage nach der Cloud).
+    const VERBINDUNGEN = 'hajime_mobil_verbindungen';
+    const GEWAEHLT = 'hajime_mobil_gewaehlt';
+    const CLOUD_PFAD = /\/turnierlive\/[A-Za-z0-9_-]{22}$/;
+    function ladeVerbindungen() {
+        try {
+            const v = JSON.parse(localStorage.getItem(VERBINDUNGEN));
+            if (v && typeof v === 'object') return v;
+        } catch (e) { /* ältere App-Version: nur die aktive Verbindung */ }
+        const aktiv = ladeVerbindung();
+        return aktiv ? { [CLOUD_PFAD.test(aktiv.serverUrl) ? 'cloud' : 'hallenserver']: aktiv } : {};
+    }
+
     const seite = location.pathname.split('/').pop() || 'index.html';
 
     // Handy (kürzeste Bildschirmseite < HANDY_MAX_DP): nur die Waage (Teilnehmerliste). Tablet: Waage, Kampf und
@@ -45,6 +60,11 @@
         document.head.appendChild(skript);
     }
 
+    const gekoppelt = ladeVerbindungen();
+    if (gekoppelt.hallenserver && gekoppelt.cloud && !sessionStorage.getItem(GEWAEHLT) && seite !== 'verbinden.html') {
+        location.replace('/server-waehlen.html');
+        return;
+    }
     const verbindung = ladeVerbindung();
     const mobil = window.HajimeMobil = {
         schluessel: SCHLUESSEL,
@@ -55,6 +75,11 @@
         bereit: null,
         speichereVerbindung(neu) {
             localStorage.setItem(SCHLUESSEL, JSON.stringify(neu));
+            // Merken, ob es der Hallen-Server oder ein Cloud-Turnier ist; die frisch gekoppelte Verbindung gilt für diese Sitzung.
+            const alle = ladeVerbindungen();
+            alle[CLOUD_PFAD.test(neu.serverUrl) ? 'cloud' : 'hallenserver'] = neu;
+            localStorage.setItem(VERBINDUNGEN, JSON.stringify(alle));
+            sessionStorage.setItem(GEWAEHLT, '1');
         },
         vergissVerbindung() {
             localStorage.removeItem(SCHLUESSEL);

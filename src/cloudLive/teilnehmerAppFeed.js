@@ -1,16 +1,20 @@
 // Teilnehmer-App bei einem Turnier, das die Cloud live führt: statt eines Uplinks vom Hallen-Server baut die Cloud den Snapshot selbst
 // aus ihrer Datenbank (dieselbe Funktion wie der Live-Prozess, src/live/snapshot.js) und übernimmt ihn direkt in das Lesemodell der App
-// (src/liveCloud/ingest.js). Der Turnierschlüssel der App ist die Turnier-ID der Cloud. Beim Beenden wird das Turnier zurückgenommen.
+// (src/liveCloud/ingest.js). Der Turnierschlüssel der App ist die Turnier-ID der Cloud. Wie am Hallen-Server ist die Veröffentlichung
+// ein Opt-in des Veranstalters (turniere.live_freigabe): ohne Freigabe gelangen keine Namen in das Lesemodell, wird sie zurückgenommen,
+// verschwindet das Turnier beim nächsten Durchlauf wieder aus der App; beim Beenden des Live-Betriebs ebenfalls.
 import crypto from 'node:crypto';
 import { ladeSnapshots } from '../live/snapshot.js';
 import { uebernimmPaket } from '../liveCloud/ingest.js';
 
 const LEBENSZEICHEN_MS = 60_000;
 
-export function starteFeed({ knex, instanzId, turnierId, intervallMs = 5000, sofort = true, log = console, jetzt = Date.now }) {
-    // Stabil für die Dauer des Live-Betriebs (die Schlüssel der Teilnehmer in der App ändern sich dabei nicht), aber je Live-Betrieb neu.
-    const geheimnis = crypto.createHash('sha256').update(`teilnehmer-app:${instanzId}`).digest('hex');
+/**
+ * @param {string} geheimnis zufälliges Geheimnis für die Schlüssel der Teilnehmer (cloud_live.app_geheimnis), je Live-Betrieb neu
+ */
+export function starteFeed({ knex, geheimnis, turnierId, intervallMs = 5000, sofort = true, log = console, jetzt = Date.now }) {
     const turnierKey = String(turnierId);
+    let veroeffentlicht = false; // ist das Turnier gerade in der App sichtbar?
     let letzterHash = null;
     let letzterZeitpunkt = 0;
     let letzteSequenz = 0;
@@ -23,12 +27,23 @@ export function starteFeed({ knex, instanzId, turnierId, intervallMs = 5000, sof
         return letzteSequenz;
     };
 
+    const nimmZurueck = () => uebernimmPaket(knex, { version: 1, turnierKey, zurueckgezogen: true, sequenz: naechsteSequenz() });
+
     async function lauf() {
         const [snapshot] = await ladeSnapshots(knex, { geheimnis, turnierIds: [turnierId] });
-        if (!snapshot) return;
+        if (!snapshot) {
+            // Keine Freigabe (mehr): nichts veröffentlichen, Vorhandenes zurücknehmen.
+            if (veroeffentlicht) {
+                await nimmZurueck();
+                veroeffentlicht = false;
+                letzterHash = null;
+            }
+            return;
+        }
         const hash = crypto.createHash('sha256').update(JSON.stringify(snapshot)).digest('hex');
-        if (hash === letzterHash && jetzt() - letzterZeitpunkt < LEBENSZEICHEN_MS) return;
+        if (veroeffentlicht && hash === letzterHash && jetzt() - letzterZeitpunkt < LEBENSZEICHEN_MS) return;
         await uebernimmPaket(knex, { ...snapshot, stand: new Date(jetzt()).toISOString(), sequenz: naechsteSequenz() });
+        veroeffentlicht = true;
         letzterHash = hash;
         letzterZeitpunkt = jetzt();
     }
@@ -59,7 +74,7 @@ export function starteFeed({ knex, instanzId, turnierId, intervallMs = 5000, sof
             if (timer) clearTimeout(timer);
             await laufend;
             if (zuruecknehmen) {
-                await uebernimmPaket(knex, { version: 1, turnierKey, zurueckgezogen: true, sequenz: naechsteSequenz() }).catch((fehler) => {
+                await nimmZurueck().catch((fehler) => {
                     log.error(`[Cloud-Live] Rücknahme von Turnier ${turnierId} in der App fehlgeschlagen: ${fehler.message}`);
                 });
             }

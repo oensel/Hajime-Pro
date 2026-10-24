@@ -40,7 +40,10 @@ export function normalisiereServerAdresse(eingabe) {
     if (!text) return '';
     if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(text)) text = `http://${text}`;
     try {
-        return new URL(text).origin;
+        const url = new URL(text);
+        // Die Cloud führt ein Turnier unter /turnierlive/<schluessel>: dieser Pfad gehört zur Server-Adresse.
+        const cloud = CLOUD_PFAD.exec(url.pathname);
+        return cloud ? `${url.origin}/turnierlive/${cloud[1]}` : url.origin;
     } catch (e) {
         return '';
     }

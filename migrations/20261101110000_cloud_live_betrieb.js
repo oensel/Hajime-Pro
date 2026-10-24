@@ -13,6 +13,7 @@ export async function up(knex) {
         table.text('geheimnis').notNullable();
         table.text('code').notNullable();
         table.text('instanz_id').notNullable();
+        table.text('app_geheimnis').notNullable(); // Schlüssel der Teilnehmer in der Teilnehmer-App (HMAC), zufällig je Live-Betrieb, verlässt den Server nie
         table.timestamp('erzeugt_am', { useTz: true }).notNullable().defaultTo(knex.fn.now());
         table.timestamp('gesperrt_am', { useTz: true }).nullable();
         table.timestamp('beendet_am', { useTz: true }).nullable();

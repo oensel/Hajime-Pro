@@ -33,6 +33,7 @@ function alsDaten(zeile) {
         geheimnis: zeile.geheimnis,
         code: zeile.code,
         instanzId: zeile.instanz_id,
+        appGeheimnis: zeile.app_geheimnis,
         gesperrt: !!zeile.gesperrt_am,
         gueltigBis: zeile.gueltig_bis ? new Date(zeile.gueltig_bis) : null,
         beendetAm: zeile.beendet_am ? new Date(zeile.beendet_am) : null
@@ -60,7 +61,7 @@ export async function starteZugang(knex, turnierId) {
     const ende = endeDesTurniertags(datumsText(turnier && turnier.datum)) || new Date(Date.now() + 24 * 60 * 60 * 1000);
     const neu = {
         gueltig_bis: ende,
-        schluessel: erzeugeSchluessel(), geheimnis: erzeugeGeheimnis(), code: erzeugeCode(),
+        schluessel: erzeugeSchluessel(), geheimnis: erzeugeGeheimnis(), app_geheimnis: erzeugeGeheimnis(), code: erzeugeCode(),
         instanz_id: crypto.randomUUID(), erzeugt_am: knex.fn.now(), gesperrt_am: null, beendet_am: null, fehlversuche: 0
     };
     if (vorhanden) await knex('cloud_live').where({ turnier_id: turnierId }).update(neu);

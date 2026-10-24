@@ -34,9 +34,11 @@ after(async () => {
     try { fs.rmSync(verzeichnis, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); } catch { /* Windows */ }
 });
 
-test('ladeSnapshots: mit turnierIds auch ohne Freigabe und urspruengliche_id; ohne turnierIds unverändert', async () => {
+test('ladeSnapshots: mit turnierIds nur freigegebene Turniere, auch ohne urspruengliche_id; ohne turnierIds unverändert', async () => {
     const T = await baueTurnier('Cloud-Turnier');
-    assert.deepEqual(await ladeSnapshots(knex, { geheimnis: 'g' }), [], 'ohne Freigabe kein Snapshot');
+    assert.deepEqual(await ladeSnapshots(knex, { geheimnis: 'g' }), [], 'ohne urspruengliche_id kein Snapshot eines Hallen-Servers');
+    assert.deepEqual(await ladeSnapshots(knex, { geheimnis: 'g', turnierIds: [T.turnierId] }), [], 'ohne Freigabe des Veranstalters bleiben die Namen in der Cloud');
+    await knex('turniere').where({ id: T.turnierId }).update({ live_freigabe: true });
     const snapshots = await ladeSnapshots(knex, { geheimnis: 'g', turnierIds: [T.turnierId] });
     assert.equal(snapshots.length, 1);
     assert.equal(snapshots[0].turnierKey, String(T.turnierId), 'der Schlüssel ist die Turnier-ID der Cloud');
@@ -45,8 +47,8 @@ test('ladeSnapshots: mit turnierIds auch ohne Freigabe und urspruengliche_id; oh
 });
 
 test('Feed: übernimmt den Snapshot in das Lesemodell der App und nimmt ihn beim Beenden zurück', async () => {
-    const T = await baueTurnier('Feed-Turnier');
-    const feed = starteFeed({ knex, instanzId: 'instanz-1', turnierId: T.turnierId, intervallMs: 60_000, sofort: false });
+    const T = await baueTurnier('Feed-Turnier', { live_freigabe: true });
+    const feed = starteFeed({ knex, geheimnis: 'geheim-1', turnierId: T.turnierId, intervallMs: 60_000, sofort: false });
     await feed.tick();
     const zeile = await knex('live_turniere').where({ turnier_key: String(T.turnierId) }).first();
     assert.equal(zeile.name, 'Feed-Turnier');
@@ -61,6 +63,15 @@ test('Feed: übernimmt den Snapshot in das Lesemodell der App und nimmt ihn beim
     await feed.tick();
     assert.equal((await knex('live_teilnehmer').where({ turnier_key: String(T.turnierId) })).length, 2);
 
+    // Der Veranstalter nimmt die Freigabe zurück: das Turnier verschwindet aus der App, auch bei laufendem Live-Betrieb
+    await knex('turniere').where({ id: T.turnierId }).update({ live_freigabe: false });
+    await feed.tick();
+    assert.equal((await knex('live_turniere').where({ turnier_key: String(T.turnierId) }).first()).zurueckgezogen, true);
+    assert.equal((await knex('live_teilnehmer').where({ turnier_key: String(T.turnierId) })).length, 0);
+    await knex('turniere').where({ id: T.turnierId }).update({ live_freigabe: true });
+    await feed.tick();
+    assert.equal((await knex('live_turniere').where({ turnier_key: String(T.turnierId) }).first()).zurueckgezogen, false);
+
     await feed.stoppe({ zuruecknehmen: true });
     const nachher = await knex('live_turniere').where({ turnier_key: String(T.turnierId) }).first();
     assert.equal(nachher.zurueckgezogen, true);
@@ -68,7 +79,7 @@ test('Feed: übernimmt den Snapshot in das Lesemodell der App und nimmt ihn beim
 });
 
 test('Der Verwalter speist die App mit dem Start und nimmt sie mit dem Beenden zurück', async () => {
-    const T = await baueTurnier('Verwalter-Feed');
+    const T = await baueTurnier('Verwalter-Feed', { live_freigabe: true });
     const verwalter = erzeugeVerwalter({ knex, konfig: { datenverzeichnis: verzeichnis }, teilnehmerAppFeed: true, feedIntervallMs: 60_000 });
     try {
         await verwalter.starte(T.turnierId);

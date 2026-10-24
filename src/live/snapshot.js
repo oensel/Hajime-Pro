@@ -155,11 +155,11 @@ export function baueSnapshot({ turnier, kampfflaechen, pools, teilnehmer, kaempf
     };
 }
 
-// turnierIds: Snapshots genau dieser Turniere, unabhängig von Freigabe und urspruengliche_id (Cloud-Live); ohne Angabe alle
+// turnierIds: Snapshots genau dieser Turniere, sofern der Veranstalter sie freigegeben hat (live_freigabe), auch ohne urspruengliche_id
 // freigegebenen Turniere eines Hallen-Servers.
 export async function ladeSnapshots(knexLive, { geheimnis, turnierIds = null }) {
     const abfrage = Array.isArray(turnierIds)
-        ? knexLive('live.turniere').whereIn('id', turnierIds)
+        ? knexLive('live.turniere').whereIn('id', turnierIds).where({ live_freigabe: true })
         : knexLive('live.turniere').where({ live_freigabe: true }).whereNotNull('urspruengliche_id');
     const turniere = await abfrage.orderBy('id');
     const snapshots = [];

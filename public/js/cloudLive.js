@@ -63,6 +63,18 @@ document.addEventListener('DOMContentLoaded', () => {
             el('clQr').innerHTML = qr.createSvgTag(4, 4);
         }
         zeigeGeraete(neu.geraete || []);
+        const app = neu.teilnehmerApp || { freigegeben: false, url: null };
+        el('clAppBtn').textContent = app.freigegeben ? 'Freigabe der Teilnehmer-App zurücknehmen' : 'Teilnehmer-App freigeben';
+        el('clAppBereich').style.display = app.freigegeben && app.url ? '' : 'none';
+        if (app.freigegeben && app.url) {
+            el('clAppUrl').textContent = app.url;
+            if (window.qrcode) {
+                const qr = window.qrcode(0, 'M');
+                qr.addData(app.url);
+                qr.make();
+                el('clAppQr').innerHTML = qr.createSvgTag(4, 4);
+            }
+        }
     }
 
     async function lade() {
@@ -85,6 +97,13 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         zeigeFehler(r.daten.error || 'Live schalten ist fehlgeschlagen.');
+    });
+
+    el('clAppBtn').addEventListener('click', async () => {
+        const freigeben = !(status && status.teilnehmerApp && status.teilnehmerApp.freigegeben);
+        if (freigeben && !window.confirm('Die Namen der Teilnehmenden werden in der Teilnehmer-App im Internet angezeigt (nur mit dem Zugangscode aus dem Aushang). Wirklich freigeben?')) return;
+        const r = await ruf('/teilnehmer-app', 'POST', { wert: freigeben });
+        if (r.ok) zeige(r.daten); else zeigeFehler(r.daten.error);
     });
 
     el('clErneuernBtn').addEventListener('click', async () => {

@@ -8,10 +8,11 @@ import { ermittleBasisUrl, HINWEIS_FEHLENDE_BASIS_URL } from '../utils/basisUrl.
 import { baueCloudKopplungsUrl } from '../shared/kopplungsQr.js';
 import { FachFehler } from '../utils/fachFehler.js';
 import { ladeZugang, erneuereZugang, setzeGesperrt } from './zugang.js';
+import { holeOderErzeuge as holeAppZugang } from '../liveCloud/zugang.js';
 import { pruefeStartfenster } from './startRegeln.js';
 
 async function baueStatus(knex, verwalter, turnierId, req) {
-    const turnier = await knex('turniere').where({ id: turnierId }).first('auf_hallen_server_geholt_am');
+    const turnier = await knex('turniere').where({ id: turnierId }).first('auf_hallen_server_geholt_am', 'live_freigabe');
     const status = {
         success: true,
         live: false,
@@ -34,7 +35,11 @@ async function baueStatus(knex, verwalter, turnierId, req) {
         qr: baueCloudKopplungsUrl(basis, zugang.schluessel, zugang.code),
         gesperrt: zugang.gesperrt,
         gueltigBis: zugang.gueltigBis ? zugang.gueltigBis.toISOString() : null,
-        geraete: await verwalter.listeGeraete(turnierId)
+        geraete: await verwalter.listeGeraete(turnierId),
+        // Teilnehmer-App: ein Opt-in des Veranstalters (wie am Hallen-Server); der Zugang ist der Link/QR für den Aushang.
+        teilnehmerApp: turnier.live_freigabe
+            ? { freigegeben: true, url: `${basis}/live/#z=${(await holeAppZugang(knex, String(turnierId))).code}` }
+            : { freigegeben: false, url: null }
     };
 }
 
@@ -83,6 +88,17 @@ export function getCloudLiveVerwaltungRoutes(knex, { verwalter, jetzt = () => ne
             const turnierId = turnierIdVon(req);
             const { ausstehendeGeraete } = await verwalter.beende(turnierId, { erzwingen: !!(req.body && req.body.erzwingen) });
             res.json({ ...(await baueStatus(knex, verwalter, turnierId, req)), ausstehendeGeraete });
+        } catch (fehler) { antworte(res, fehler); }
+    });
+
+    router.post('/:turnierId/teilnehmer-app', ...berechtigt, async (req, res) => {
+        try {
+            const turnierId = turnierIdVon(req);
+            const instanz = verwalter.instanzFuerTurnier(turnierId);
+            if (!instanz) throw new FachFehler(409, 'Das Turnier läuft nicht live.');
+            await knex('turniere').where({ id: turnierId }).update({ live_freigabe: !!(req.body && req.body.wert) });
+            if (instanz.feed) await instanz.feed.tick(); // Freigabe bzw. Rücknahme wirkt sofort, nicht erst im nächsten Takt
+            res.json(await baueStatus(knex, verwalter, turnierId, req));
         } catch (fehler) { antworte(res, fehler); }
     });
 

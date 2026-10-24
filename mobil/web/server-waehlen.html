@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hajime Pro - Server wählen</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <style>
+        body { max-width: 520px; margin: 0 auto; padding: 16px; }
+        .zeile { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+    </style>
+</head>
+<body>
+<!-- Start der App, wenn sowohl ein Hallen-Server als auch ein Cloud-Turnier gekoppelt sind: erst im WLAN nach dem Hallen-Server
+     sehen, sonst nach Rückfrage die Cloud nehmen. Bewusst OHNE die Browser-Laufzeit (boot.js): die startet erst nach der Wahl. -->
+<div class="mdc-card" style="padding: 16px 20px;">
+    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+        <span class="material-icons" style="font-size: 24px; color: var(--primary);">wifi_find</span>
+        <h1 style="font-size: 20px; margin: 0; font-weight: 800; text-transform: uppercase;">Server wählen</h1>
+    </div>
+    <p id="text" role="status" style="margin-top: 0;">Suche den Turnier-Server im WLAN …</p>
+    <div id="frage" style="display: none;">
+        <div class="zeile">
+            <button type="button" class="btn btn-raised" id="jaBtn">Mit der Cloud verbinden</button>
+            <button type="button" class="btn btn-outlined" id="neinBtn">Nein, ohne Server weiterarbeiten</button>
+        </div>
+    </div>
+</div>
+<script type="module" src="/js/mobil/serverWaehlen.js"></script>
+</body>
+</html>

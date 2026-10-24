@@ -14,7 +14,7 @@ const meldung = (text, fehler = false) => {
 async function koppeln(serverAdresse, codeEingabe) {
     const serverUrl = normalisiereServerAdresse(serverAdresse);
     const code = String(codeEingabe || '').replace(/\D/g, '');
-    if (!serverUrl) return meldung('Bitte die Adresse des Hallen-Servers eintragen.', true);
+    if (!serverUrl) return meldung('Bitte die Adresse des Hallen-Servers oder den Link des Cloud-Turniers eintragen.', true);
     if (code.length !== 6) return meldung('Der Kopplungscode hat 6 Ziffern.', true);
     meldung('Verbinde …');
     let resp;
@@ -26,10 +26,13 @@ async function koppeln(serverAdresse, codeEingabe) {
             signal: AbortSignal.timeout(8000)
         });
     } catch (err) {
-        return meldung(`Server unter ${serverUrl} nicht erreichbar – ist das Gerät im Turnier-WLAN?`, true);
+        return meldung(`Server unter ${serverUrl} nicht erreichbar – ist das Gerät im Turnier-WLAN bzw. hat es Internet?`, true);
     }
     if (resp.status === 401) return meldung('Code falsch.', true);
     if (resp.status === 429) return meldung('Zu viele Fehlversuche – bitte kurz warten.', true);
+    if (resp.status === 403) return meldung('Der Zugang zu diesem Turnier ist gesperrt oder abgelaufen.', true);
+    if (resp.status === 410) return meldung('Der Live-Betrieb dieses Turniers wurde beendet.', true);
+    if (resp.status === 404) return meldung('Unter dieser Adresse läuft kein Turnier.', true);
     if (!resp.ok) return meldung(`Kopplung fehlgeschlagen (HTTP ${resp.status}).`, true);
     const { secret } = await resp.json();
     mobil.speichereVerbindung({ serverUrl, secret });
@@ -47,7 +50,7 @@ async function ladeTurnierdaten() {
     const laufzeit = await mobil.bereit;
     const instanz = await laufzeit.kern.warteAufInstanz();
     if (!instanz) {
-        el('ladeText').textContent = 'Das Gerät ist gekoppelt, aber auf dem Hallen-Server ist noch kein Turnier aktiv.';
+        el('ladeText').textContent = 'Das Gerät ist gekoppelt, aber auf dem Server ist noch kein Turnier aktiv.';
         el('nochmalBtn').style.display = '';
         return;
     }
@@ -95,7 +98,7 @@ async function starteScanner() {
                     koppeln(kopplung.serverUrl, kopplung.code);
                     return;
                 }
-                meldung('Das ist kein Kopplungs-QR-Code des Hallen-Servers.', true);
+                meldung('Das ist kein Kopplungs-QR-Code eines Hallen-Servers oder Cloud-Turniers.', true);
             }
         }
         frame = requestAnimationFrame(tick);

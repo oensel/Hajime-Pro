@@ -125,3 +125,15 @@ test('Der Ablauf wird beim Start festgehalten: ein später geändertes Turnierda
     const nachAblauf = () => new Date('2099-04-02T06:00:00.000Z');
     assert.deepEqual(await pruefeCode(knex, z.schluessel, z.code, { jetzt: nachAblauf }), { ok: false, grund: 'abgelaufen' });
 });
+
+test('Das Geheimnis der Teilnehmer-Schlüssel ist zufällig, je Live-Betrieb neu und von den übrigen Zugangsdaten unabhängig', async () => {
+    const a1 = await starteZugang(knex, turnierA);
+    const b1 = await starteZugang(knex, turnierB);
+    assert.match(a1.appGeheimnis, /^[0-9a-f]{64}$/);
+    assert.notEqual(a1.appGeheimnis, b1.appGeheimnis);
+    for (const wert of [a1.geheimnis, a1.instanzId, a1.schluessel, a1.code]) assert.notEqual(a1.appGeheimnis, wert);
+    assert.equal((await starteZugang(knex, turnierA)).appGeheimnis, a1.appGeheimnis, 'bei laufendem Betrieb unverändert (auch nach Code erneuern)');
+    assert.equal((await erneuereZugang(knex, turnierA)).appGeheimnis, a1.appGeheimnis);
+    await beendeZugang(knex, turnierA);
+    assert.notEqual((await starteZugang(knex, turnierA)).appGeheimnis, a1.appGeheimnis);
+});

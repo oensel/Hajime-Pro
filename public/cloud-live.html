@@ -51,6 +51,13 @@
             <button type="button" class="btn btn-outlined" id="clSperrenBtn">Zugang sperren</button>
             <button type="button" class="btn btn-outlined" id="clBeendenBtn">Live beenden</button>
         </div>
+        <h2 class="section-title" style="margin-top: 24px;"><span class="material-icons" style="font-size: 20px;">phone_iphone</span> Teilnehmer-App</h2>
+        <p style="font-size: 13px; margin-top: 0;">Zuschauer und Eltern verfolgen darin Kämpfe und Pools. Dafür werden die Namen der Teilnehmenden im Internet bereitgestellt, deshalb nur mit Zustimmung der Teilnehmenden bzw. ihrer Vereine freigeben. Der QR-Code für den Aushang erscheint nach der Freigabe.</p>
+        <button type="button" class="btn btn-outlined" id="clAppBtn">Teilnehmer-App freigeben</button>
+        <div id="clAppBereich" style="display: none; margin-top: 12px;">
+            <div id="clAppQr" style="width: 160px; max-width: 100%;"></div>
+            <p id="clAppUrl" style="color: var(--text-muted); font-size: 12px; margin: 6px 0 0; word-break: break-all;"></p>
+        </div>
         <h2 class="section-title" style="margin-top: 24px;"><span class="material-icons" style="font-size: 20px;">devices</span> Gekoppelte Geräte</h2>
         <p id="clKeineGeraete" style="color: var(--text-muted); font-size: 13px;">Noch kein Gerät hat sich gemeldet.</p>
         <table id="clGeraete" style="display: none; width: 100%; border-collapse: collapse; font-size: 13px;">

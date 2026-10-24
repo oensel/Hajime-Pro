@@ -58,6 +58,15 @@ test('Live schalten zeigt Code und QR, ein Gerät koppelt und wird gelistet, Bee
     await expect(page.locator('#clGeraete tbody tr')).toHaveCount(1);
     await expect(page.locator('#clGeraete tbody tr')).toContainText('E2E-Notebook');
 
+    // Teilnehmer-App: erst mit ausdrücklicher Freigabe gibt es den Aushang-QR, die Rücknahme blendet ihn wieder aus
+    await expect(page.locator('#clAppBereich')).toBeHidden();
+    page.once('dialog', (d) => d.accept());
+    await page.locator('#clAppBtn').click();
+    await expect(page.locator('#clAppBereich')).toBeVisible();
+    await expect(page.locator('#clAppUrl')).toHaveText(/\/live\/#z=[A-Za-z0-9_-]{22}$/);
+    await page.locator('#clAppBtn').click();
+    await expect(page.locator('#clAppBereich')).toBeHidden();
+
     // Code erneuern: neuer Code, altes Geheimnis ist danach ungültig
     page.once('dialog', (d) => d.accept());
     await page.locator('#clErneuernBtn').click();
