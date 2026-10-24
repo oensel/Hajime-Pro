@@ -1121,7 +1121,19 @@ export async function exportTurnier(knex, req, res) {
             return res.status(403).json({ success: false, error: 'Nur freigegebene Mitglieder des ausrichtenden Vereins dürfen das Turnier exportieren.' });
         }
 
+        // Cloud-Live: ein Turnier läuft entweder in der Cloud oder an einem Hallen-Server, nie an beiden. Solange es in der Cloud live
+        // geführt wird, gibt es keinen Export (und damit kein Holen auf einen Hallen-Server).
+        const liveInDerCloud = await knex('cloud_live').where({ turnier_id: turnierId }).whereNull('beendet_am').first('turnier_id');
+        if (liveInDerCloud) {
+            return res.status(409).json({ success: false, error: 'Das Turnier läuft live in der Cloud. Es kann erst exportiert werden, wenn der Live-Betrieb beendet ist.' });
+        }
+
         const exportData = await baueTurnierExport(knex, turnierId, turnier);
+
+        // Die Datei lässt sich auf einem Hallen-Server einspielen: Live-Schalten in der Cloud warnt danach (Cloud-Live, Mischen-Sperre).
+        if (betriebsmodus.liesBetriebsmodus().istCloud) {
+            await knex('turniere').where({ id: turnierId }).update({ auf_hallen_server_geholt_am: knex.fn.now() });
+        }
 
         // Teilnehmer-App: nur wer ausdrücklich ein Live-Token anfordert (der Hallen-Server beim Holen), bekommt eines. Frühere
         // Tokens dieses Turniers verfallen erst, wenn das neue am Ingest benutzt wird (sperreAelterTokens in liveRoutes.js).

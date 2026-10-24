@@ -9,6 +9,15 @@ export function baueKopplungsUrl(serverUrl, code) {
     return `${basis}/download#code=${String(code).replace(/\D/g, '')}`;
 }
 
+// Cloud-Live: die Cloud führt ein Turnier live; die Geräte bekommen als Server-Adresse den turnierbezogenen Pfad
+// <cloud>/turnierlive/<schluessel> (Status, Kopplung und /db hängen darunter), der Code steht im Fragment.
+const CLOUD_PFAD = /^\/turnierlive\/([A-Za-z0-9_-]{22})(\/download)?\/?$/;
+
+export function baueCloudKopplungsUrl(cloudUrl, schluessel, code) {
+    const basis = String(cloudUrl).replace(/\/+$/, '');
+    return `${basis}/turnierlive/${schluessel}#code=${String(code).replace(/\D/g, '')}`;
+}
+
 // Liefert { serverUrl, code } oder null, wenn der Text kein Kopplungs-QR ist.
 export function leseKopplungsUrl(text) {
     let url;
@@ -18,10 +27,11 @@ export function leseKopplungsUrl(text) {
         return null;
     }
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
-    if (url.pathname !== '/download') return null;
+    const cloud = CLOUD_PFAD.exec(url.pathname);
+    if (url.pathname !== '/download' && !cloud) return null;
     const code = new URLSearchParams(url.hash.replace(/^#/, '')).get('code');
     if (!code || !/^\d{6}$/.test(code)) return null;
-    return { serverUrl: url.origin, code };
+    return { serverUrl: cloud ? `${url.origin}/turnierlive/${cloud[1]}` : url.origin, code };
 }
 
 // Eingabe des Anwenders ("192.168.1.5", "turnier.local:3000", "http://…/") -> Basis-URL.

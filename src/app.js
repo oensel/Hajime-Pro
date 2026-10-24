@@ -66,6 +66,7 @@ import { getClientApiRoutes, clientStatischeSeiten } from './sync/clientApi.js';
 import { ladeKopplung } from './sync/kopplung.js';
 import { erzeugeVerwalter as erzeugeCloudLiveVerwalter } from './cloudLive/verwalter.js';
 import { getCloudLiveGeraeteRoutes } from './cloudLive/geraeteRoutes.js';
+import { getCloudLiveVerwaltungRoutes } from './cloudLive/verwaltungRoutes.js';
 import { getClientVerteilungRoutes } from './routes/clientVerteilungRoutes.js';
 import { starteAnkuendigung } from './sync/ankuendigung.js';
 import { starteWeiterleitung } from './sync/port80.js';
@@ -476,6 +477,8 @@ if (syncKonfig.istClient) {
     }
     app.use('/api/cloud', requireWriteAuth, getCloudRoutes(knex, { cloud: cloudZugriff, holeCluster: () => app.get('cluster'), datenDir: syncKonfig.datenverzeichnis ? path.dirname(path.resolve(syncKonfig.datenverzeichnis)) : '' }));
     if (liveApp) app.use('/api/live-app', requireWriteAuth, getLiveAppRoutes(liveApp));
+    // Cloud-Live: Admins schalten ein Turnier live und zeigen den Kopplungs-QR (Verwalter siehe oben)
+    if (app.get('cloudLive')) app.use('/api/cloud-live', requireWriteAuth, getCloudLiveVerwaltungRoutes(knex, { verwalter: app.get('cloudLive') }));
     app.use('/api/sync', getSyncRoutes(() => app.get('sync')));
 
     // Teilnehmer-App (Phase 2): Ingest des Live-Prozesses und öffentliche App-API. Nur in der Cloud — ein Hallen-Server

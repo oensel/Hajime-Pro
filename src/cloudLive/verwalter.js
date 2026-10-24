@@ -70,6 +70,16 @@ export function erzeugeVerwalter({ knex, konfig, maxTurniere = MAX_LIVE_TURNIERE
         },
 
         instanzFuerTurnier: (turnierId) => instanzen.get(Number(turnierId)) || null,
+
+        /** Die Geräte, die sich per Heartbeat (client:<id>) in der Dokument-DB des Turniers gemeldet haben. */
+        async listeGeraete(turnierId) {
+            const instanz = instanzen.get(Number(turnierId));
+            if (!instanz) return [];
+            const res = await instanz.db.allDocs({ startkey: 'client:', endkey: 'client:￰', include_docs: true });
+            return res.rows.map((r) => r.doc).map((d) => ({
+                clientId: d.client_id, geraet: d.geraet, matteId: d.matte_id, letzterKontakt: d.letzter_kontakt, ausstehend: d.ausstehend || 0
+            }));
+        },
         offeneAnzahl: () => instanzen.size,
 
         /** Stößt den (entprellten) Abgleich SQL -> Dokumente aller offenen Instanzen an. */
