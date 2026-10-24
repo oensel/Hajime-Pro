@@ -64,6 +64,8 @@ import { nurMaster } from './middleware/nurMaster.js';
 import { appCors } from './middleware/appCors.js';
 import { getClientApiRoutes, clientStatischeSeiten } from './sync/clientApi.js';
 import { ladeKopplung } from './sync/kopplung.js';
+import { erzeugeVerwalter as erzeugeCloudLiveVerwalter } from './cloudLive/verwalter.js';
+import { getCloudLiveGeraeteRoutes } from './cloudLive/geraeteRoutes.js';
 import { getClientVerteilungRoutes } from './routes/clientVerteilungRoutes.js';
 import { starteAnkuendigung } from './sync/ankuendigung.js';
 import { starteWeiterleitung } from './sync/port80.js';
@@ -266,6 +268,27 @@ if (syncKonfig.istClient) {
 
     // Turnier-Import/-Ergebnisupload schicken die Exportdatei base64-kodiert; darin stecken die
     // Ausschreibung und die Urkunden-Vorlagen (je bis 10 MB) bereits als Base64 — daher ein
+    // Cloud-Live (src/cloudLive/): die Cloud führt Turniere wie ein Hallen-Server live. Geräte sprechen /turnierlive/<schluessel>
+    // an (Status, Kopplung, /db); wie /db muss das vor express.json() hängen. CLOUD_LIVE_AKTIV=true schaltet es außerhalb der Cloud ein (Tests).
+    if (bm.istCloud || process.env.CLOUD_LIVE_AKTIV === 'true') {
+        const cloudLive = erzeugeCloudLiveVerwalter({
+            knex, konfig: { datenverzeichnis: process.env.CLOUD_LIVE_DATENVERZEICHNIS || './data/cloud-live' }
+        });
+        app.set('cloudLive', cloudLive);
+        app.use('/turnierlive', appCors);
+        app.use('/turnierlive/:schluessel', getCloudLiveGeraeteRoutes({ knex, verwalter: cloudLive }));
+        // Nach jedem erfolgreichen schreibenden API-Request den Abgleich der Live-Turniere anstoßen (wie am Hallen-Server).
+        app.use('/api', (req, res, next) => {
+            if (req.method !== 'GET') {
+                res.on('finish', () => {
+                    if (res.statusCode < 400) cloudLive.planeAbgleich();
+                });
+            }
+            next();
+        });
+        cloudLive.wiederaufnahme().catch((fehler) => console.error('[Cloud-Live] Wiederaufnahme fehlgeschlagen:', fehler));
+    }
+
     // eigenes, höheres Limit nur für diese beiden Routen.
     const jsonImport = express.json({ limit: '200mb' });
     const jsonStandard = express.json({ limit: '15mb' });

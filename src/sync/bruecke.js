@@ -139,7 +139,7 @@ async function wendePoolAn(knex, doc, basis) {
     if (absicht.status === 'abgeschlossen' && zeile.status !== 'abgeschlossen') await schliessePool(knex, id);
 }
 
-async function wendeTeilnehmerAn(knex, db, doc, basis, legeKonfliktAn) {
+async function wendeTeilnehmerAn(knex, db, doc, basis, legeKonfliktAn, turnierIdVorgabe = null) {
     let id = doc.sql_id;
     if (id == null) {
         // Nachmeldung — bereits angelegt (z.B. vor einem Neustart)? Dann nur zuordnen.
@@ -148,7 +148,7 @@ async function wendeTeilnehmerAn(knex, db, doc, basis, legeKonfliktAn) {
             id = vorhanden.id;
         } else {
             try {
-                id = await legeTeilnehmerAn(knex, { ...waageDaten(doc), turnier_id: doc.turnier_id, dokument_id: doc._id }, HALLEN_KONTEXT);
+                id = await legeTeilnehmerAn(knex, { ...waageDaten(doc), turnier_id: turnierIdVorgabe ?? doc.turnier_id, dokument_id: doc._id }, HALLEN_KONTEXT);
             } catch (err) {
                 if (err.code !== 'DUBLETTE') throw err;
                 // Dublette (z.B. an zwei Waagen offline doppelt nachgemeldet): Wiegedaten auf den
@@ -184,8 +184,14 @@ const FREMDES_TURNIER = 'FREMDES_TURNIER';
 // Cloud-Live (zustand.abschottung): mehrere Turniere teilen sich eine relationale DB, die Dokument-DB eines Turniers wird aber
 // von Geräten beschrieben. Ein Dokument darf nur Zeilen seines eigenen Turniers ändern. Eine Zeile, die es nicht (mehr) gibt,
 // ändert nichts und gilt als unbedenklich; Nachmeldungen ohne sql_id müssen auf das eigene Turnier zeigen.
+// Nur echte Ganzzahlen (oder reine Ziffernfolgen) gelten; Number() allein ließe z. B. [1] oder true als 1 durch, was die Datenbank anders liest.
+function strengeZahl(wert) {
+    if (Number.isInteger(wert)) return wert;
+    return typeof wert === 'string' && /^\d+$/.test(wert) ? Number(wert) : NaN;
+}
+
 async function gehoertZumTurnier(knex, typ, doc, turnierId) {
-    const gleich = (wert) => Number(wert) === Number(turnierId);
+    const gleich = (wert) => Number.isInteger(strengeZahl(wert)) && strengeZahl(wert) === Number(turnierId);
     if (typ === 'teilnehmer' && doc.sql_id == null) {
         if (!gleich(doc.turnier_id)) return false;
         // wendeTeilnehmerAn ordnet eine bereits angelegte Nachmeldung über dokument_id zu: auch die muss zu diesem Turnier gehören.
@@ -193,7 +199,8 @@ async function gehoertZumTurnier(knex, typ, doc, turnierId) {
         return !vorhanden || gleich(vorhanden.turnier_id);
     }
     if (typ === 'kampf' && doc.sql_id == null) {
-        const pool = doc.pool_id != null ? await knex('pools').where({ id: doc.pool_id }).first('turnier_id') : null;
+        const poolId = strengeZahl(doc.pool_id);
+        const pool = Number.isInteger(poolId) ? await knex('pools').where({ id: poolId }).first('turnier_id') : null;
         return !!pool && gleich(pool.turnier_id);
     }
     if (doc.sql_id == null) return false;
@@ -367,7 +374,7 @@ export function erzeugeBruecke({ knex, zustand, abgleich }) {
             else if (typ === 'kampf') await wendeKampfAn(knex, doc, basis);
             else if (typ === 'kampfflaeche') await wendeKampfflaecheAn(knex, doc, basis);
             else if (typ === 'pool') await wendePoolAn(knex, doc, basis);
-            else await wendeTeilnehmerAn(knex, db, doc, basis, (t, d, g) => legeKonfliktAnIn(db, t, d, g));
+            else await wendeTeilnehmerAn(knex, db, doc, basis, (t, d, g) => legeKonfliktAnIn(db, t, d, g), zustand.abschottung ? zustand.turnierId : null);
         } catch (fehler) {
             if (fehler instanceof PaarungWeichtAb) {
                 zurueckgestellt.add(doc._id);

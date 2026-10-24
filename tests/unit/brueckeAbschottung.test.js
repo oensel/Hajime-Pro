@@ -118,3 +118,18 @@ test('Nachmeldung, deren dokument_id zu einem Teilnehmer eines anderen Turniers 
     assert.equal(nachher.status, 'angemeldet');
     assert.equal(nachher.nachname, 'Fremd');
 });
+
+test('Nachmeldung: turnier_id wird streng als Ganzzahl geprüft (kein Number-Trick wie [1] oder true)', async () => {
+    const vorher = Number((await knex('turnier_teilnehmer').count({ n: '*' }).first()).n);
+    await db.put(geraeteDokument({
+        _id: 'teilnehmer:trick-array', dokumenttyp: 'teilnehmer', turnier_id: [A.turnierId],
+        vorname: 'Tri', nachname: 'Ck', judopass_id: 'T-1', verein: 'JC', geburtsjahr: 2010, geschlecht: 'm', gewicht: 40, gewogen: true
+    }));
+    await warteAufBruecke();
+    assert.equal(Number((await knex('turnier_teilnehmer').count({ n: '*' }).first()).n), vorher);
+    const konflikte = (await db.allDocs({ include_docs: true, startkey: 'konflikt:', endkey: 'konflikt:\ufff0' })).rows.map(r => r.doc);
+    const k = konflikte.find(x => x.bezug_id === 'teilnehmer:trick-array');
+    assert.ok(k, 'abgelehnte Nachmeldung wird als Konflikt festgehalten');
+    assert.equal(k.konflikt_typ, 'abgelehnt');
+    assert.match(k.grund, /nicht zu diesem Turnier/);
+});
