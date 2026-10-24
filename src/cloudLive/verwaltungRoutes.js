@@ -8,6 +8,7 @@ import { ermittleBasisUrl, HINWEIS_FEHLENDE_BASIS_URL } from '../utils/basisUrl.
 import { baueCloudKopplungsUrl } from '../shared/kopplungsQr.js';
 import { FachFehler } from '../utils/fachFehler.js';
 import { ladeZugang, erneuereZugang, setzeGesperrt } from './zugang.js';
+import { pruefeStartfenster } from './startRegeln.js';
 
 async function baueStatus(knex, verwalter, turnierId, req) {
     const turnier = await knex('turniere').where({ id: turnierId }).first('auf_hallen_server_geholt_am');
@@ -45,7 +46,7 @@ function antworte(res, fehler) {
     return res.status(500).json({ success: false, error: 'Interner Fehler im Cloud-Live-Betrieb.' });
 }
 
-export function getCloudLiveVerwaltungRoutes(knex, { verwalter }) {
+export function getCloudLiveVerwaltungRoutes(knex, { verwalter, jetzt = () => new Date() }) {
     const router = express.Router();
     router.use(erzeugeApiRatenbegrenzung(), requireAuth);
     const berechtigt = [requireTournamentEditAccess(knex), requireRolle(knex, 'admin')];
@@ -63,11 +64,25 @@ export function getCloudLiveVerwaltungRoutes(knex, { verwalter }) {
                 throw new FachFehler(409, 'Ein Entwurf oder abgesagtes Turnier kann nicht live geschaltet werden.');
             }
             const laeuftSchon = !!verwalter.instanzFuerTurnier(turnierId);
+            const fenster = laeuftSchon ? { ok: true } : pruefeStartfenster(turnier.datum, jetzt);
+            if (!fenster.ok) {
+                throw new FachFehler(409, fenster.grund === 'zu_frueh'
+                    ? 'Live schalten ist erst ab dem Vortag des Turniers möglich.'
+                    : 'Der Turniertag ist vorbei, das Turnier lässt sich nicht mehr live schalten.', { code: fenster.grund });
+            }
             if (!laeuftSchon && turnier.auf_hallen_server_geholt_am && !(req.body && req.body.bestaetigt === true)) {
                 throw new FachFehler(409, 'Dieses Turnier wurde bereits auf einen Hallen-Server geholt. Ein Turnier sollte nur an einem Ort live laufen.', { code: 'bereits_geholt' });
             }
             await verwalter.starte(turnierId);
             res.json(await baueStatus(knex, verwalter, turnierId, req));
+        } catch (fehler) { antworte(res, fehler); }
+    });
+
+    router.post('/:turnierId/beenden', ...berechtigt, async (req, res) => {
+        try {
+            const turnierId = turnierIdVon(req);
+            const { ausstehendeGeraete } = await verwalter.beende(turnierId, { erzwingen: !!(req.body && req.body.erzwingen) });
+            res.json({ ...(await baueStatus(knex, verwalter, turnierId, req)), ausstehendeGeraete });
         } catch (fehler) { antworte(res, fehler); }
     });
 

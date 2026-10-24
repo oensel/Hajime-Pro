@@ -103,3 +103,39 @@ test('planeAbgleich überträgt Änderungen der relationalen Daten in die Dokume
     await v.leerlauf();
     assert.equal((await v.instanz(z.schluessel).db.get(`kampfflaeche:${T.matteId}`)).bezeichnung, 'Umbenannt');
 });
+
+test('Höchstens maxJeVerein Live-Turniere je Verein, ein anderer Verein ist davon unberührt', async () => {
+    const v1 = id((await knex('vereine').insert({ name: 'JC Viel' }).returning('id'))[0]);
+    const v2 = id((await knex('vereine').insert({ name: 'JC Wenig' }).returning('id'))[0]);
+    const mitVerein = async (name, vereinId) => {
+        const t = await baueTurnier(name);
+        await knex('turniere').where({ id: t.turnierId }).update({ verein_id: vereinId });
+        return t;
+    };
+    const a1 = await mitVerein('V1-1', v1);
+    const a2 = await mitVerein('V1-2', v1);
+    const a3 = await mitVerein('V1-3', v1);
+    const b1 = await mitVerein('V2-1', v2);
+    const v = neuerVerwalter({ maxJeVerein: 2 });
+    await v.starte(a1.turnierId);
+    await v.starte(a2.turnierId);
+    await assert.rejects(v.starte(a3.turnierId), (e) => e.statusCode === 409 && /Verein/.test(e.message));
+    await v.starte(b1.turnierId);
+    assert.equal(v.offeneAnzahl(), 3);
+    assert.equal((await v.starte(a1.turnierId)).turnierId, a1.turnierId, 'schon laufendes Turnier bleibt startbar');
+});
+
+test('Aufräumen schließt Instanzen, deren Zugang abgelaufen ist, und lässt die übrigen laufen', async () => {
+    const T1 = await baueTurnier('Alt');
+    const T2 = await baueTurnier('Neu');
+    await knex('turniere').where({ id: T1.turnierId }).update({ datum: '2099-01-10' });
+    await knex('turniere').where({ id: T2.turnierId }).update({ datum: '2099-02-20' });
+    const v = neuerVerwalter();
+    const z1 = await v.starte(T1.turnierId);
+    const z2 = await v.starte(T2.turnierId);
+    const geschlossen = await v.raeumeAbgelaufeneAuf({ jetzt: () => new Date('2099-01-12T12:00:00Z') });
+    assert.deepEqual(geschlossen, [T1.turnierId]);
+    assert.equal(v.instanz(z1.schluessel), null);
+    assert.ok(v.instanz(z2.schluessel));
+    assert.ok((await knex('cloud_live').where({ turnier_id: T1.turnierId }).first()).beendet_am);
+});

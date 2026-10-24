@@ -17,7 +17,7 @@ const erzeugeGeheimnis = () => crypto.randomBytes(32).toString('hex');
 const erzeugeCode = () => String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
 
 // turniere.datum kommt je nach pg-Typparser als 'JJJJ-MM-TT' oder als Date.
-function datumsText(datum) {
+export function datumsText(datum) {
     if (datum instanceof Date) {
         const p = (n) => String(n).padStart(2, '0');
         return `${datum.getFullYear()}-${p(datum.getMonth() + 1)}-${p(datum.getDate())}`;

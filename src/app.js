@@ -288,6 +288,9 @@ if (syncKonfig.istClient) {
             next();
         });
         cloudLive.wiederaufnahme().catch((fehler) => console.error('[Cloud-Live] Wiederaufnahme fehlgeschlagen:', fehler));
+        // Abgelaufene Live-Turniere (Ende des Turniertags) schließen und ihre Plätze freigeben.
+        const raeumeAuf = () => cloudLive.raeumeAbgelaufeneAuf().catch((fehler) => console.error('[Cloud-Live] Aufräumen fehlgeschlagen:', fehler));
+        setInterval(raeumeAuf, 10 * 60 * 1000).unref();
     }
 
     // eigenes, höheres Limit nur für diese beiden Routen.

@@ -20,6 +20,8 @@ const { erzeugeVerwalter } = await import('../../src/cloudLive/verwalter.js');
 
 const id = (r) => (typeof r === 'object' ? r.id : r);
 
+let jetztWert = new Date('2099-05-03T10:00:00Z'); // einen Tag vor dem Turnier (Startfenster)
+
 test('Cloud-Live-Verwaltung: Rechte, Starten, Mischen-Sperre, Export, Code erneuern, Sperren', async () => {
     const db = await starteTestPostgres();
     const { knex } = db;
@@ -27,7 +29,7 @@ test('Cloud-Live-Verwaltung: Rechte, Starten, Mischen-Sperre, Export, Code erneu
     const verwalter = erzeugeVerwalter({ knex, konfig: { datenverzeichnis: verzeichnis }, maxTurniere: 10 });
     const app = express();
     app.use(express.json());
-    app.use('/api/cloud-live', getCloudLiveVerwaltungRoutes(knex, { verwalter }));
+    app.use('/api/cloud-live', getCloudLiveVerwaltungRoutes(knex, { verwalter, jetzt: () => jetztWert }));
     app.use('/api/turniere', getTurnierRoutes(knex));
     const server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
     const basis = `http://127.0.0.1:${server.address().port}`;
@@ -85,6 +87,15 @@ test('Cloud-Live-Verwaltung: Rechte, Starten, Mischen-Sperre, Export, Code erneu
         const entwurf = await post('u-admin', `/api/cloud-live/${tEntwurf}/starten`);
         assert.equal(entwurf.status, 409);
 
+        // --- Startfenster: nur ab dem Vortag, nicht Wochen vorher und nicht nach dem Turniertag ---
+        jetztWert = new Date('2099-04-01T10:00:00Z');
+        const zuFrueh = await post('u-admin', `/api/cloud-live/${tLive}/starten`);
+        assert.equal(zuFrueh.status, 409);
+        assert.equal(zuFrueh.daten.code, 'zu_frueh');
+        jetztWert = new Date('2099-05-06T10:00:00Z');
+        assert.equal((await post('u-admin', `/api/cloud-live/${tLive}/starten`)).daten.code, 'vorbei');
+        jetztWert = new Date('2099-05-03T10:00:00Z');
+
         // --- Starten ---
         const gestartet = await post('u-admin', `/api/cloud-live/${tLive}/starten`);
         assert.equal(gestartet.status, 200, JSON.stringify(gestartet.daten));
@@ -120,6 +131,23 @@ test('Cloud-Live-Verwaltung: Rechte, Starten, Mischen-Sperre, Export, Code erneu
         const gesperrt = (await post('u-admin', `/api/cloud-live/${tLive}/sperren`, { wert: true })).daten;
         assert.equal(gesperrt.gesperrt, true);
         assert.equal((await post('u-admin', `/api/cloud-live/${tLive}/sperren`, { wert: false })).daten.gesperrt, false);
+
+        // --- Beenden: Geräte mit ungesendeten Änderungen, Rechte, danach wieder exportierbar ---
+        const instanz = verwalter.instanzFuerTurnier(tLive);
+        await instanz.db.put({
+            _id: 'client:g1', dokumenttyp: 'client', client_id: 'g1', geraet: 'Notebook', matte_id: 1,
+            letzter_kontakt: new Date().toISOString(), ausstehend: 4, bearbeitet_von: 'client-heartbeat'
+        });
+        assert.equal((await post('u-benutzer', `/api/cloud-live/${tLive}/beenden`)).status, 403);
+        assert.deepEqual((await get('u-admin', `/api/cloud-live/${tLive}`)).daten.geraete.map((g) => [g.clientId, g.ausstehend]), [['g1', 4]]);
+        const offen = await post('u-admin', `/api/cloud-live/${tLive}/beenden`);
+        assert.equal(offen.status, 409);
+        assert.equal(offen.daten.ausstehendeGeraete, 4);
+        const beendet = await post('u-admin', `/api/cloud-live/${tLive}/beenden`, { erzwingen: true });
+        assert.equal(beendet.status, 200);
+        assert.equal(beendet.daten.live, false);
+        assert.equal(beendet.daten.ausstehendeGeraete, 4);
+        assert.equal((await get('u-admin', `/api/turniere/${tLive}/export`)).status, 200);
     } finally {
         await new Promise((resolve) => server.close(resolve));
         await verwalter.schliesseAlle();
