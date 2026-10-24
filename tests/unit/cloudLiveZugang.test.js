@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { starteTestPostgres } from '../helpers/testPostgres.js';
 import {
     starteZugang, ladeZugang, ladeZugangPerSchluessel, pruefeCode, pruefeGeheimnis,
-    erneuereZugang, setzeGesperrt, beendeZugang
+    erneuereZugang, setzeGesperrt, beendeZugang, MAX_FEHLVERSUCHE
 } from '../../src/cloudLive/zugang.js';
 
 let pg, knex, turnierA, turnierB;
@@ -85,4 +85,32 @@ test('Sperre, Ablauf, Erneuern, Beenden', async () => {
     assert.notEqual(wieder.instanzId, a.instanzId);
     assert.equal(wieder.beendetAm, null);
     assert.equal((await pruefeCode(knex, wieder.schluessel, wieder.code)).ok, true);
+});
+
+test('Fehlversuche: nach 10 falschen Codes ist der Zugang gesperrt, auch der richtige Code hilft dann nicht', async () => {
+    const z = await starteZugang(knex, turnierB);
+    const falsch = z.code === '000000' ? '000001' : '000000';
+    for (let i = 0; i < MAX_FEHLVERSUCHE - 1; i++) {
+        assert.deepEqual(await pruefeCode(knex, z.schluessel, falsch), { ok: false, grund: 'ungueltig' });
+    }
+    // Ein richtiger Code setzt den Zähler zurück
+    assert.equal((await pruefeCode(knex, z.schluessel, z.code)).ok, true);
+    for (let i = 0; i < MAX_FEHLVERSUCHE; i++) await pruefeCode(knex, z.schluessel, falsch);
+    assert.equal((await ladeZugang(knex, turnierB)).gesperrt, true);
+    assert.deepEqual(await pruefeCode(knex, z.schluessel, z.code), { ok: false, grund: 'gesperrt' });
+    // Heben der Sperre durch den Admin setzt den Zähler zurück
+    await setzeGesperrt(knex, turnierB, false);
+    assert.equal((await pruefeCode(knex, z.schluessel, z.code)).ok, true);
+});
+
+test('Gesperrt oder abgelaufen antwortet unabhängig vom Code gleich (kein Raten über diese Antwort)', async () => {
+    const z = await starteZugang(knex, turnierB);
+    const falsch = z.code === '000000' ? '000001' : '000000';
+    await setzeGesperrt(knex, turnierB, true);
+    assert.deepEqual(await pruefeCode(knex, z.schluessel, falsch), { ok: false, grund: 'gesperrt' });
+    assert.deepEqual(await pruefeCode(knex, z.schluessel, z.code), { ok: false, grund: 'gesperrt' });
+    await setzeGesperrt(knex, turnierB, false);
+    const nachAblauf = () => new Date('2099-03-02T06:00:00.000Z');
+    assert.deepEqual(await pruefeCode(knex, z.schluessel, falsch, { jetzt: nachAblauf }), { ok: false, grund: 'abgelaufen' });
+    assert.deepEqual(await pruefeCode(knex, z.schluessel, z.code, { jetzt: nachAblauf }), { ok: false, grund: 'abgelaufen' });
 });

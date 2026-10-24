@@ -16,6 +16,7 @@ export async function up(knex) {
         table.timestamp('erzeugt_am', { useTz: true }).notNullable().defaultTo(knex.fn.now());
         table.timestamp('gesperrt_am', { useTz: true }).nullable();
         table.timestamp('beendet_am', { useTz: true }).nullable();
+        table.integer('fehlversuche').notNullable().defaultTo(0); // falsche Kopplungscodes seit dem letzten richtigen
     });
     await knex.schema.alterTable('turniere', (table) => {
         table.timestamp('auf_hallen_server_geholt_am', { useTz: true }).nullable();

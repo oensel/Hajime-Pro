@@ -6,6 +6,9 @@
 import crypto from 'node:crypto';
 import { endeDesTurniertags } from '../liveCloud/zugang.js';
 
+/** Falsche Codes, nach denen der Zugang gesperrt wird (der Admin hebt die Sperre auf oder erneuert den Zugang). */
+export const MAX_FEHLVERSUCHE = 10;
+
 const sha = (text) => crypto.createHash('sha256').update(String(text)).digest();
 const gleich = (a, b) => crypto.timingSafeEqual(sha(a), sha(b));
 
@@ -57,7 +60,7 @@ export async function starteZugang(knex, turnierId) {
     if (vorhanden && !vorhanden.beendetAm) return vorhanden;
     const neu = {
         schluessel: erzeugeSchluessel(), geheimnis: erzeugeGeheimnis(), code: erzeugeCode(),
-        instanz_id: crypto.randomUUID(), erzeugt_am: knex.fn.now(), gesperrt_am: null, beendet_am: null
+        instanz_id: crypto.randomUUID(), erzeugt_am: knex.fn.now(), gesperrt_am: null, beendet_am: null, fehlversuche: 0
     };
     if (vorhanden) await knex('cloud_live').where({ turnier_id: turnierId }).update(neu);
     else await knex('cloud_live').insert({ turnier_id: turnierId, ...neu });
@@ -76,15 +79,21 @@ function pruefeSperreUndAblauf(daten, jetzt) {
     return { ok: true };
 }
 
-/** Tauscht den 6-stelligen Code gegen das Geheimnis. */
+/** Tauscht den 6-stelligen Code gegen das Geheimnis. Sperre und Ablauf werden VOR dem Vergleich geprüft, sonst ließe sich über die Antwort raten. */
 export async function pruefeCode(knex, schluessel, code, { jetzt = () => new Date() } = {}) {
     const daten = await ladeZugangPerSchluessel(knex, schluessel);
     const zustand = pruefeZustand(daten);
     if (!zustand.ok) return zustand;
-    const eingabe = String(code ?? '').replace(/\D/g, '');
-    if (eingabe.length !== 6 || !gleich(eingabe, daten.code)) return { ok: false, grund: 'ungueltig' };
     const frist = pruefeSperreUndAblauf(daten, jetzt);
     if (!frist.ok) return frist;
+    const eingabe = String(code ?? '').replace(/\D/g, '');
+    if (eingabe.length !== 6 || !gleich(eingabe, daten.code)) {
+        const [{ fehlversuche }] = await knex('cloud_live').where({ turnier_id: daten.turnierId })
+            .update({ fehlversuche: knex.raw('fehlversuche + 1') }).returning('fehlversuche');
+        if (fehlversuche >= MAX_FEHLVERSUCHE) await knex('cloud_live').where({ turnier_id: daten.turnierId }).update({ gesperrt_am: knex.fn.now() });
+        return { ok: false, grund: 'ungueltig' };
+    }
+    await knex('cloud_live').where({ turnier_id: daten.turnierId }).update({ fehlversuche: 0 });
     return { ok: true, geheimnis: daten.geheimnis };
 }
 
@@ -104,13 +113,13 @@ export async function erneuereZugang(knex, turnierId) {
     const vorhanden = await ladeZugang(knex, turnierId);
     if (!vorhanden || vorhanden.beendetAm) return null;
     await knex('cloud_live').where({ turnier_id: turnierId }).update({
-        geheimnis: erzeugeGeheimnis(), code: erzeugeCode(), erzeugt_am: knex.fn.now(), gesperrt_am: null
+        geheimnis: erzeugeGeheimnis(), code: erzeugeCode(), erzeugt_am: knex.fn.now(), gesperrt_am: null, fehlversuche: 0
     });
     return ladeZugang(knex, turnierId);
 }
 
 export async function setzeGesperrt(knex, turnierId, gesperrt) {
-    await knex('cloud_live').where({ turnier_id: turnierId }).update({ gesperrt_am: gesperrt ? knex.fn.now() : null });
+    await knex('cloud_live').where({ turnier_id: turnierId }).update({ gesperrt_am: gesperrt ? knex.fn.now() : null, ...(gesperrt ? {} : { fehlversuche: 0 }) });
     return ladeZugang(knex, turnierId);
 }
 
