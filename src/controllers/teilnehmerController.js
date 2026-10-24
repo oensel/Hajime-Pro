@@ -6,6 +6,7 @@ import { ladeVerwaltendenVereinsnamen, hatVereinsZugriffAufTurnier, ladeBenutzer
 import { darfTurnierSehen } from '../services/turnierSichtbarkeit.js';
 import { turnierHatEchteKaempfe, mannschaftsPoolsHabenEchteKaempfe, ermittleAltersklassenPoolZustand, regeneriereKampfplanFuerPool, aktualisiereMatteNachPoolAenderung } from './poolController.js';
 import { FachFehler } from '../utils/fachFehler.js';
+import { startgeldErfuellt } from '../shared/zahlweg.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 const { istEinzelbenutzerBetrieb } = betriebsmodus;
 
@@ -111,12 +112,12 @@ function lizenzStichtag(turnier) {
 // Zentrale Kampfbereitschafts-Prüfung, wiederverwendet von createTeilnehmer, updateTeilnehmer und
 // aendereStatusFelder — ein Judoka ist kampfbereit, sobald Lizenz gültig, Gewicht gültig, gewogen
 // bestätigt und Startgeld bezahlt ist (bei kostenlosen Turnieren gilt Startgeld immer als erfüllt).
-function pruefeKampfbereitschaft(teilnehmer, turnier) {
+export function pruefeKampfbereitschaft(teilnehmer, turnier) {
     const lizenzGueltig = !!teilnehmer.lizenz_ablauf && teilnehmer.lizenz_ablauf >= lizenzStichtag(turnier);
     const gewichtGueltig = !!teilnehmer.gewicht && parseFloat(teilnehmer.gewicht) > 0;
     const istGewogen = !!teilnehmer.gewogen;
-    const turnierKostenlos = (parseFloat(turnier.startgeld) || 0) === 0;
-    const startgeldBezahlt = turnierKostenlos || !!teilnehmer.startgeld_bezahlt;
+    // Startgeld erfüllt: kostenlos, von Hand bezahlt oder durch den Zahlweg des Vereins gesichert.
+    const startgeldBezahlt = startgeldErfuellt(turnier, teilnehmer);
     return {
         erfuellt: lizenzGueltig && gewichtGueltig && istGewogen && startgeldBezahlt,
         lizenzGueltig, gewichtGueltig, istGewogen, startgeldBezahlt
@@ -126,7 +127,7 @@ function pruefeKampfbereitschaft(teilnehmer, turnier) {
 // Leitet aus dem aktuellen Status + den (ggf. geänderten) Kampfbereitschafts-Kriterien den neuen
 // Lebenszyklus-Status ab (automatischer Wechsel angemeldet/nicht_erschienen <-> kampfbereit).
 // Rührt jeden anderen Status (z.B. teilgenommen, disqualifiziert) nicht an.
-function leiteStatusAusKampfbereitschaftAb(aktuellerStatus, kampfbereitErfuellt) {
+export function leiteStatusAusKampfbereitschaftAb(aktuellerStatus, kampfbereitErfuellt) {
     if (kampfbereitErfuellt && ['angemeldet', 'nicht_erschienen'].includes(aktuellerStatus)) return 'kampfbereit';
     if (!kampfbereitErfuellt && aktuellerStatus === 'kampfbereit') return 'angemeldet';
     return aktuellerStatus;
@@ -726,6 +727,19 @@ const MANUELL_SETZBARE_STATI = [
     'angemeldet', 'nicht_erschienen', 'kampfbereit',
     'teilgenommen', 'nicht_angetreten', 'disqualifiziert', 'zurueckgezogen'
 ];
+
+// Einzelmarkierung "Startgeld bezahlt" ohne Rechteprüfung (Aufrufer prüft): setzt das Flag und leitet den
+// Status neu ab. Der Sync-Abgleich läuft nach schreibenden Requests bzw. über die Brücke.
+export async function setzeStartgeldBezahlt(knex, teilnehmerId, wert) {
+    const athlet = await knex('turnier_teilnehmer').where({ id: teilnehmerId }).first();
+    if (!athlet) throw new FachFehler(404, 'Teilnehmer nicht gefunden.');
+    const turnier = await knex('turniere').where({ id: athlet.turnier_id }).first();
+    const updates = { startgeld_bezahlt: wert ? 1 : 0 };
+    const { erfuellt } = pruefeKampfbereitschaft({ ...athlet, ...updates }, turnier);
+    updates.status = leiteStatusAusKampfbereitschaftAb(athlet.status, erfuellt);
+    await knex('turnier_teilnehmer').where({ id: teilnehmerId }).update({ ...updates, updated_at: knex.fn.now() });
+    return updates.status;
+}
 
 export async function aendereStatusFelder(knex, req, res) {
     try {
