@@ -1,3 +1,6 @@
+// Startgeld erfüllt (kostenlos, bezahlt oder Zahlweg gesichert): dieselbe Ableitung wie am Server.
+import { startgeldErfuellt } from '/js/shared/zahlweg.js';
+
 document.addEventListener('DOMContentLoaded', async () => {
     const urlParams = new URLSearchParams(window.location.search);
     const turnierId = urlParams.get('turnierId') || urlParams.get('id');
@@ -190,7 +193,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const heuteTag = lokalerTag(new Date());
         const stichtag = turnierDatumText && turnierDatumText > heuteTag ? turnierDatumText : heuteTag;
         const lizenzGueltig = !!athlet.lizenz_ablauf && lokalerTag(athlet.lizenz_ablauf) >= stichtag;
-        const startgeldBezahlt = turnierKostenlos || !!athlet.startgeld_bezahlt;
+        const startgeldBezahlt = startgeldErfuellt({ startgeld: turnierStartgeldWert }, athlet);
         const gewichtEingetragen = athlet.gewicht && parseFloat(athlet.gewicht) > 0;
         const gewogen = !!athlet.gewogen;
         const judopassVorhanden = !!(athlet.judopass_id && String(athlet.judopass_id).trim() !== '');
@@ -211,7 +214,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const lizenzDatumRoh = athlet.lizenz_ablauf ? String(athlet.lizenz_ablauf).split('T')[0] : null;
         const lizenzBestaetigt = !!lizenzDatumRoh && lizenzDatumRoh !== '1970-01-01';
         // Verlangt das Turnier kein Startgeld, verhindert das Feld "bezahlt" den Status "bereit" nicht.
-        return !!athlet.gewogen && lizenzBestaetigt && (turnierKostenlos || !!athlet.startgeld_bezahlt);
+        return !!athlet.gewogen && lizenzBestaetigt && startgeldErfuellt({ startgeld: turnierStartgeldWert }, athlet);
     }
 
     // --- GRADUIERUNGEN (Gürtelfarben) ---
@@ -1405,7 +1408,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Bewusst der rohe Wert (nicht die turnierKostenlos-Maskierung aus berechneStatus): die
         // Kachel soll den tatsächlichen Bezahlt-Status abbilden, den auch das Icon je Teilnehmer
         // zeigt/umschaltet — sonst stünde hier "100%", obwohl einzelne Icons "unbezahlt" zeigen.
-        const bezahltAnzahl = basis.filter(a => !!a.startgeld_bezahlt).length;
+        const bezahltAnzahl = basis.filter(a => !!a.startgeld_bezahlt || (!turnierKostenlos && !!a.startgeld_zahlweg_gesichert)).length;
         const unbezahltAnzahl = basisAnzahl - bezahltAnzahl;
         const bezahltProzent = basisAnzahl > 0 ? Math.round((bezahltAnzahl / basisAnzahl) * 100) : 0;
 

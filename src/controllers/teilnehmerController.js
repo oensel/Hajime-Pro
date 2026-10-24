@@ -6,7 +6,8 @@ import { ladeVerwaltendenVereinsnamen, hatVereinsZugriffAufTurnier, ladeBenutzer
 import { darfTurnierSehen } from '../services/turnierSichtbarkeit.js';
 import { turnierHatEchteKaempfe, mannschaftsPoolsHabenEchteKaempfe, ermittleAltersklassenPoolZustand, regeneriereKampfplanFuerPool, aktualisiereMatteNachPoolAenderung } from './poolController.js';
 import { FachFehler } from '../utils/fachFehler.js';
-import { startgeldErfuellt } from '../shared/zahlweg.js';
+import { startgeldErfuellt, istZahlwegGesichert } from '../shared/zahlweg.js';
+import { ladeZahlwegFuerVerein } from '../services/zahlwege.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 const { istEinzelbenutzerBetrieb } = betriebsmodus;
 
@@ -265,6 +266,16 @@ export async function legeTeilnehmerAn(knex, daten, kontext) {
     // Offline an der Waage angelegte Nachmeldung: Zuordnung zum Dokument teilnehmer:u-<uuid>
     // der Sync-Dokument-DB (siehe src/sync/bruecke.js).
     if (dokument_id) neuerTeilnehmer.dokument_id = dokument_id;
+
+    // Zahlweg-Flag vor der Kampfbereitschaft bestimmen: Verein = Ausrichter oder gesicherter Zahlweg des Vereins.
+    const ausrichterVerein = turnier.verein_id == null ? null
+        : await knex('vereine').where({ id: turnier.verein_id }).first('name');
+    if (ausrichterVerein && ausrichterVerein.name === verein) {
+        neuerTeilnehmer.startgeld_zahlweg_gesichert = true;
+    } else if (verein) {
+        neuerTeilnehmer.startgeld_zahlweg_gesichert =
+            istZahlwegGesichert(await ladeZahlwegFuerVerein(knex, turnier.id, verein));
+    }
 
     // Direkt bei der Neuanlage kampfbereit setzen, wenn schon alle Kriterien erfüllt sind
     // (z.B. QR-Scan am Wiegetisch: Judopass bekannt, Lizenz gültig, Gewicht + gewogen +
@@ -541,10 +552,8 @@ export async function bestaetigeKampfbereitschaft(knex, id, kontext) {
     if (!athlet.lizenz_ablauf || athlet.lizenz_ablauf < lizenzStichtag(turnier)) {
         throw new FachFehler(400, 'Die Lizenz ist abgelaufen, nicht hinterlegt oder am Wettkampftag nicht mehr gültig.');
     }
-    // Bei kostenlosen Turnieren (Startgeld 0€) gilt jeder als bezahlt, analog zur
-    // Frontend-Logik in teilnehmer.js (berechneStatus).
-    const turnierKostenlos = (parseFloat(turnier.startgeld) || 0) === 0;
-    if (!turnierKostenlos && !athlet.startgeld_bezahlt) {
+    // Kostenlos, von Hand bezahlt oder durch den Zahlweg gesichert (wie berechneStatus in teilnehmer.js).
+    if (!startgeldErfuellt(turnier, athlet)) {
         throw new FachFehler(400, 'Das Startgeld ist noch nicht bezahlt.');
     }
     if (!athlet.gewicht || parseFloat(athlet.gewicht) <= 0) {

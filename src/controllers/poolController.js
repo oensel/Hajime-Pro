@@ -14,6 +14,7 @@ import { MannschaftDoppelKo8Manager } from '../services/MannschaftDoppelKo8Manag
 import { MannschaftDoppelKo16Manager } from '../services/MannschaftDoppelKo16Manager.js';
 import { ermittlePausensekunden } from '../shared/pausenRegel.js';
 import { verteilePoolsAufMatten } from '../services/mattenVerteilung.js';
+import { startgeldErfuellt } from '../shared/zahlweg.js';
 import { FachFehler } from '../utils/fachFehler.js';
 import { berechneVorschlag, listeOffenePools } from '../services/nachzuegler.js';
 import { bewerteEinfuegen, ordneNachzueglerKaempfe } from '../shared/nachzueglerEinfuegen.js';
@@ -814,12 +815,11 @@ function istAltersklasseAusgetragenServer(athlet, turnierAltersklassenKeys) {
 // Pool-Generierung" immer übereinstimmen. Die Judopass-Nummer selbst ist keine eigene
 // Voraussetzung mehr — die Lizenzprüfung (lizenzGueltig) deckt das ab, da sie an den Judopass
 // gebunden ist (siehe aendereStatusFelder in teilnehmerController.js).
-function istTeilnehmerStartberechtigt(athlet, turnier, turnierAltersklassenKeys) {
+export function istTeilnehmerStartberechtigt(athlet, turnier, turnierAltersklassenKeys) {
     const heuteStr = new Date().toISOString().split('T')[0];
-    const turnierKostenlos = (parseFloat(turnier.startgeld) || 0) === 0;
 
     const lizenzGueltig = !!athlet.lizenz_ablauf && athlet.lizenz_ablauf >= heuteStr;
-    const startgeldBezahlt = turnierKostenlos || !!athlet.startgeld_bezahlt;
+    const startgeldBezahlt = startgeldErfuellt(turnier, athlet);
     const gewichtEingetragen = !!athlet.gewicht && parseFloat(athlet.gewicht) > 0;
     const gewogen = !!athlet.gewogen;
     const altersklasseGueltig = istAltersklasseAusgetragenServer(athlet, turnierAltersklassenKeys);
