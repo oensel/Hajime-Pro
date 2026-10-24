@@ -15,7 +15,9 @@ const ZUORDNUNG = [
     { endung: '.AppImage', plattform: 'linux-x64', rollen: ['installieren', 'aktualisieren'] },
     { endung: '.apk', plattform: 'android', rollen: ['installieren'] },
     // Linux-Dienst ohne Desktop (systemd, deploy/linux/install.sh): Quellpaket, nur im Server-Verzeichnis (server-version.json)
-    { endung: '.tar.gz', plattform: 'linux-dienst', rollen: ['installieren'] }
+    { endung: '.tar.gz', plattform: 'linux-dienst', rollen: ['installieren'] },
+    // Hol-Skript (deploy/linux/holen.sh): wird per Einzeiler als root ausgeführt, daher wie die Installer signiert (Rolle "skript")
+    { name: 'hajime-holen.sh', plattform: 'linux-dienst', rollen: ['skript'] }
 ];
 
 // ausgabeName: die Server-Installer bekommen eine eigene Datei (server-version.json), damit sie die version.json der
@@ -23,7 +25,7 @@ const ZUORDNUNG = [
 export function erzeugeVersionJson({ verzeichnis, version, privaterSchluessel, ausgabeName = 'version.json' }) {
     const dateien = {};
     for (const datei of readdirSync(verzeichnis).sort()) {
-        const regel = ZUORDNUNG.find(z => datei.endsWith(z.endung));
+        const regel = ZUORDNUNG.find(z => (z.name ? datei === z.name : datei.endsWith(z.endung)));
         if (!regel) continue;
         const sha256 = sha256Hex(readFileSync(path.join(verzeichnis, datei)));
         const signatur = sign(null, Buffer.from(signaturNachricht({ datei, version, sha256 })), privaterSchluessel).toString('base64');
