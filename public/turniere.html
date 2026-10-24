@@ -905,6 +905,8 @@
                             ${isEditable && istFreigegeben ? `<button type="button" class="btn btn-outlined" onclick="window.location.href='/turnier.html?id=${t.id}'">Bearbeiten</button>` : ''}
                             ${(!istOffline && isEditable && istFreigegeben && ['veroeffentlicht', 'anmeldung_geschlossen', 'in_durchfuehrung', 'abgeschlossen'].includes(t.status_effektiv))
                                 ? `<button type="button" class="btn btn-outlined" data-aktion="teilen" data-id="${t.id}" aria-label="Vereine einladen" data-tooltip="Vereine zum Turnier einladen"><span class="material-icons" style="font-size:18px; vertical-align:middle;">group_add</span> Einladen</button>` : ''}
+                            ${(!istOffline && isEditable && istFreigegeben && ['veroeffentlicht', 'anmeldung_geschlossen', 'in_durchfuehrung'].includes(t.status_effektiv))
+                                ? `<button type="button" class="btn btn-outlined" onclick="window.location.href='/cloud-live.html?turnierId=${encodeURIComponent(t.id)}'" aria-label="Turnier live in der Cloud führen" data-tooltip="Turnier live in der Cloud führen"><span class="material-icons" style="font-size:18px; vertical-align:middle;">cell_tower</span> Live</button>` : ''}
                             ${istOffline ? hallenAktionen(t) : ''}
                         </div>
                     </div>

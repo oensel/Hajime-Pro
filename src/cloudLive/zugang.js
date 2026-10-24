@@ -34,31 +34,32 @@ function alsDaten(zeile) {
         code: zeile.code,
         instanzId: zeile.instanz_id,
         gesperrt: !!zeile.gesperrt_am,
-        gueltigBis: zeile.turnier_datum !== undefined ? endeDesTurniertags(datumsText(zeile.turnier_datum)) : null,
+        gueltigBis: zeile.gueltig_bis ? new Date(zeile.gueltig_bis) : null,
         beendetAm: zeile.beendet_am ? new Date(zeile.beendet_am) : null
     };
 }
 
 function liesZeile(knex, bedingung) {
-    return knex('cloud_live')
-        .join('turniere', 'turniere.id', 'cloud_live.turnier_id')
-        .where(bedingung)
-        .first('cloud_live.*', 'turniere.datum as turnier_datum');
+    return knex('cloud_live').where(bedingung).first();
 }
 
 export async function ladeZugang(knex, turnierId) {
-    return alsDaten(await liesZeile(knex, { 'cloud_live.turnier_id': turnierId }));
+    return alsDaten(await liesZeile(knex, { turnier_id: turnierId }));
 }
 
 export async function ladeZugangPerSchluessel(knex, schluessel) {
-    return alsDaten(await liesZeile(knex, { 'cloud_live.schluessel': String(schluessel) }));
+    return alsDaten(await liesZeile(knex, { schluessel: String(schluessel) }));
 }
 
 /** Startet den Live-Betrieb: legt den Zugang an; ein bereits laufender wird unverändert geliefert, ein beendeter beginnt neu. */
 export async function starteZugang(knex, turnierId) {
     const vorhanden = await ladeZugang(knex, turnierId);
     if (vorhanden && !vorhanden.beendetAm) return vorhanden;
+    // Das Ende steht ab jetzt fest: ein später geändertes Turnierdatum verlängert den Zugang nicht (Plätze der Cloud sind begrenzt).
+    const turnier = await knex('turniere').where({ id: turnierId }).first('datum');
+    const ende = endeDesTurniertags(datumsText(turnier && turnier.datum)) || new Date(Date.now() + 24 * 60 * 60 * 1000);
     const neu = {
+        gueltig_bis: ende,
         schluessel: erzeugeSchluessel(), geheimnis: erzeugeGeheimnis(), code: erzeugeCode(),
         instanz_id: crypto.randomUUID(), erzeugt_am: knex.fn.now(), gesperrt_am: null, beendet_am: null, fehlversuche: 0
     };

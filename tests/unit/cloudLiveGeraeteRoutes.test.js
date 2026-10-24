@@ -146,3 +146,25 @@ test('Replikation eines Geräts landet nur in der Dokument-DB seines Turniers', 
     assert.equal(await lokal.get(`kampfflaeche:${B.matteId}`).catch(() => null), null);
     await lokal.destroy();
 });
+
+test('Wird der Live-Betrieb während der Prüfung beendet, erreicht die Anfrage die Dokument-DB nicht mehr', async () => {
+    const D = await baueTurnier('Rennen');
+    const zugangD = await verwalter.starte(D.turnierId);
+    const instanz = verwalter.instanz(zugangD.schluessel);
+    // Simulation: die Instanz ist beim ersten Nachschlagen noch da, nach der Geheimnisprüfung (await) schon beendet.
+    let nachschlagen = 0;
+    let weitergereicht = false;
+    const stub = Object.create(verwalter);
+    stub.instanz = () => (nachschlagen++ === 0 ? instanz : null);
+    stub.dokumentMiddleware = (req, res) => { weitergereicht = true; res.status(200).end(); };
+    const app = express();
+    app.use('/turnierlive/:schluessel', getCloudLiveGeraeteRoutes({ knex, verwalter: stub }));
+    const srv = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
+    try {
+        const antwort = await fetch(`http://127.0.0.1:${srv.address().port}/turnierlive/${zugangD.schluessel}/db/turnier_${zugangD.instanzId}/_changes`, { headers: { 'x-hajime-sync-secret': zugangD.geheimnis } });
+        assert.ok([404, 410].includes(antwort.status), `Status ${antwort.status}`);
+        assert.equal(weitergereicht, false);
+    } finally {
+        await new Promise((resolve) => srv.close(resolve));
+    }
+});

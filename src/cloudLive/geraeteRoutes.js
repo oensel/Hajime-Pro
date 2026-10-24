@@ -89,6 +89,11 @@ export function getCloudLiveGeraeteRoutes({ knex, verwalter, schluesselVersuche 
             if (teile.length > 1 && teile[1].startsWith('_') && !ERLAUBTE_DB_PFADE.has(teile[1])) {
                 return res.status(403).json({ error: 'forbidden' });
             }
+            // Die Prüfungen oben warten auf die Datenbank: wurde der Live-Betrieb inzwischen beendet, darf die Anfrage die (zerstörte)
+            // Dokument-DB nicht mehr erreichen. Ab hier bis zum Weiterreichen gibt es keinen Wartepunkt mehr.
+            if (verwalter.instanz(req.params.schluessel) !== instanz) {
+                return res.status(410).json({ error: 'beendet', reason: 'Der Live-Betrieb dieses Turniers wurde beendet.' });
+            }
             // Laufende Anfragen merken: beim Beenden des Live-Betriebs werden sie abgebrochen, bevor die DB zerstört wird (sonst
             // stürzt express-pouchdb bei einer „changes“-Abfrage auf eine zerstörte DB ab, vgl. syncDienst.js).
             instanz.offeneAnfragen.add(res);

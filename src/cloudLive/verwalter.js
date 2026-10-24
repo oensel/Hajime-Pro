@@ -7,7 +7,9 @@ import { erzeugeDokumentDb, turnierDbName } from '../sync/dokumentDb.js';
 import { erzeugeAbgleich } from '../sync/abgleich.js';
 import { erzeugeBruecke } from '../sync/bruecke.js';
 import { FachFehler } from '../utils/fachFehler.js';
+import { istLiveApiAktiv } from '../liveCloud/liveApiAktiv.js';
 import { starteZugang, ladeZugang, beendeZugang } from './zugang.js';
+import { starteFeed } from './teilnehmerAppFeed.js';
 
 // Ein Heartbeat (client:<id>) gilt als aktuell, wenn er höchstens so alt ist (clientKern schreibt alle 30 s).
 const HEARTBEAT_AKTIV_MS = 2 * 60 * 1000;
@@ -16,7 +18,7 @@ export const MAX_LIVE_TURNIERE = 10;
 // Je Verein höchstens so viele gleichzeitig: ein einzelner Verein soll die Plätze der Cloud nicht allein belegen können.
 export const MAX_LIVE_JE_VEREIN = 3;
 
-export function erzeugeVerwalter({ knex, konfig, maxTurniere = MAX_LIVE_TURNIERE, maxJeVerein = MAX_LIVE_JE_VEREIN, dokumentDb = erzeugeDokumentDb(konfig) }) {
+export function erzeugeVerwalter({ knex, konfig, maxTurniere = MAX_LIVE_TURNIERE, maxJeVerein = MAX_LIVE_JE_VEREIN, dokumentDb = erzeugeDokumentDb(konfig), teilnehmerAppFeed = istLiveApiAktiv(), feedIntervallMs = 5000 }) {
     const instanzen = new Map(); // turnierId -> Instanz
     let kette = Promise.resolve();
 
@@ -38,6 +40,7 @@ export function erzeugeVerwalter({ knex, konfig, maxTurniere = MAX_LIVE_TURNIERE
         const instanz = {
             turnierId: zugang.turnierId, vereinId: await vereinIdVon(zugang.turnierId), schluessel: zugang.schluessel, instanzId: zugang.instanzId,
             dbName, db, zustand, abgleich, bruecke,
+            feed: teilnehmerAppFeed ? starteFeed({ knex, instanzId: zugang.instanzId, turnierId: zugang.turnierId, intervallMs: feedIntervallMs }) : null,
             offeneAnfragen: new Set() // laufende /db-Anfragen (geraeteRoutes.js), beim Beenden vorher abgebrochen
         };
         instanzen.set(zugang.turnierId, instanz);
@@ -47,6 +50,7 @@ export function erzeugeVerwalter({ knex, konfig, maxTurniere = MAX_LIVE_TURNIERE
     }
 
     async function schliesseInstanz(instanz) {
+        if (instanz.feed) await instanz.feed.stoppe();
         await instanz.bruecke.stoppe();
         await instanz.abgleich.leerlauf();
         instanzen.delete(instanz.turnierId);
@@ -100,7 +104,10 @@ export function erzeugeVerwalter({ knex, konfig, maxTurniere = MAX_LIVE_TURNIERE
         },
 
         async leerlauf() {
-            for (const instanz of instanzen.values()) await instanz.bruecke.leerlauf();
+            for (const instanz of instanzen.values()) {
+                await instanz.bruecke.leerlauf();
+                if (instanz.feed) await instanz.feed.leerlauf();
+            }
         },
 
         /** Beim Serverstart: alle nicht beendeten Live-Turniere wieder öffnen. */
@@ -152,6 +159,7 @@ export function erzeugeVerwalter({ knex, konfig, maxTurniere = MAX_LIVE_TURNIERE
                 await new Promise((fertig) => setTimeout(fertig, 100)); // laufende Abfragen gegen die offene DB auslaufen lassen
                 await instanz.bruecke.stoppe();
                 await instanz.abgleich.leerlauf();
+                if (instanz.feed) await instanz.feed.stoppe({ zuruecknehmen: true });
                 await instanz.db.destroy();
                 return { ausstehendeGeraete };
             });

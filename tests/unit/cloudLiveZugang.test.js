@@ -114,3 +114,14 @@ test('Gesperrt oder abgelaufen antwortet unabhängig vom Code gleich (kein Raten
     assert.deepEqual(await pruefeCode(knex, z.schluessel, falsch, { jetzt: nachAblauf }), { ok: false, grund: 'abgelaufen' });
     assert.deepEqual(await pruefeCode(knex, z.schluessel, z.code, { jetzt: nachAblauf }), { ok: false, grund: 'abgelaufen' });
 });
+
+test('Der Ablauf wird beim Start festgehalten: ein später geändertes Turnierdatum verlängert den Zugang nicht', async () => {
+    const id = (r) => (typeof r === 'object' ? r.id : r);
+    const turnierC = id((await knex('turniere').insert({ bezeichnung: 'Turnier C', ort: 'Ort', datum: '2099-04-01', ausrichter: 'X', status: 'veroeffentlicht' }).returning('id'))[0]);
+    const z = await starteZugang(knex, turnierC);
+    assert.equal(z.gueltigBis.toISOString(), '2099-04-02T04:00:00.000Z', 'Ende des Turniertags: 06:00 Uhr Berliner Zeit am Folgetag');
+    await knex('turniere').where({ id: turnierC }).update({ datum: '2100-01-01' });
+    assert.equal((await ladeZugang(knex, turnierC)).gueltigBis.toISOString(), '2099-04-02T04:00:00.000Z');
+    const nachAblauf = () => new Date('2099-04-02T06:00:00.000Z');
+    assert.deepEqual(await pruefeCode(knex, z.schluessel, z.code, { jetzt: nachAblauf }), { ok: false, grund: 'abgelaufen' });
+});

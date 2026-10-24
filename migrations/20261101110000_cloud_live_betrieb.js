@@ -16,6 +16,7 @@ export async function up(knex) {
         table.timestamp('erzeugt_am', { useTz: true }).notNullable().defaultTo(knex.fn.now());
         table.timestamp('gesperrt_am', { useTz: true }).nullable();
         table.timestamp('beendet_am', { useTz: true }).nullable();
+        table.timestamp('gueltig_bis', { useTz: true }).notNullable(); // Ende des Zugangs, beim Start festgehalten (ein späteres Ändern des Turnierdatums verlängert ihn nicht)
         table.integer('fehlversuche').notNullable().defaultTo(0); // falsche Kopplungscodes seit dem letzten richtigen
     });
     await knex.schema.alterTable('turniere', (table) => {
