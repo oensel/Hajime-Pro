@@ -102,3 +102,19 @@ test('Nachmeldung mit turnier_id eines anderen Turniers legt keinen Teilnehmer a
     const konflikte = (await db.allDocs({ include_docs: true, startkey: 'konflikt:', endkey: 'konflikt:￰' })).rows.map(r => r.doc);
     assert.ok(konflikte.some(k => k.bezug_id === 'teilnehmer:neu-fremd' && k.konflikt_typ === 'abgelehnt'));
 });
+
+test('Nachmeldung, deren dokument_id zu einem Teilnehmer eines anderen Turniers gehört, ändert diesen nicht', async () => {
+    const fremdId = id((await knex('turnier_teilnehmer').insert({
+        turnier_id: B.turnierId, pool_id: B.poolId, judopass_id: 'B-1', vorname: 'Bea', nachname: 'Fremd', geschlecht: 'w', verein: 'JC',
+        gewicht: 40, altersklasse: 'U15', gewichtsklasse: '-44', lizenz_ablauf: '2099-01-01', geburtsjahr: 2012,
+        status: 'angemeldet', gewogen: true, dokument_id: 'teilnehmer:uebernahme-versuch'
+    }).returning('id'))[0]);
+    await db.put(geraeteDokument({
+        _id: 'teilnehmer:uebernahme-versuch', dokumenttyp: 'teilnehmer', turnier_id: A.turnierId, status: 'kampfbereit',
+        vorname: 'Hacker', nachname: 'Neu', judopass_id: 'A-1', verein: 'JC', geburtsjahr: 2012, geschlecht: 'w', gewicht: 40, gewogen: true
+    }));
+    await warteAufBruecke();
+    const nachher = await knex('turnier_teilnehmer').where({ id: fremdId }).first();
+    assert.equal(nachher.status, 'angemeldet');
+    assert.equal(nachher.nachname, 'Fremd');
+});

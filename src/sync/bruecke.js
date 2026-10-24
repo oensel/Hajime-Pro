@@ -186,7 +186,12 @@ const FREMDES_TURNIER = 'FREMDES_TURNIER';
 // ändert nichts und gilt als unbedenklich; Nachmeldungen ohne sql_id müssen auf das eigene Turnier zeigen.
 async function gehoertZumTurnier(knex, typ, doc, turnierId) {
     const gleich = (wert) => Number(wert) === Number(turnierId);
-    if (typ === 'teilnehmer' && doc.sql_id == null) return gleich(doc.turnier_id);
+    if (typ === 'teilnehmer' && doc.sql_id == null) {
+        if (!gleich(doc.turnier_id)) return false;
+        // wendeTeilnehmerAn ordnet eine bereits angelegte Nachmeldung über dokument_id zu: auch die muss zu diesem Turnier gehören.
+        const vorhanden = await knex('turnier_teilnehmer').where({ dokument_id: doc._id }).first('turnier_id');
+        return !vorhanden || gleich(vorhanden.turnier_id);
+    }
     if (typ === 'kampf' && doc.sql_id == null) {
         const pool = doc.pool_id != null ? await knex('pools').where({ id: doc.pool_id }).first('turnier_id') : null;
         return !!pool && gleich(pool.turnier_id);
