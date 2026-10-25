@@ -42,4 +42,4 @@ export function formatiereIban(iban) {
 }
 
 // Findet IBANs mit und ohne Vierer-Leerzeichen in Freitext (global: vor Wiederverwendung nicht mit test() mischen).
-export const IBAN_MUSTER = /\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,3})?\b/g;
+export const IBAN_MUSTER = /(?<![A-Za-z0-9])[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,3})?(?![A-Za-z0-9])/gi;
