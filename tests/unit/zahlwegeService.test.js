@@ -119,6 +119,27 @@ test('Zahlwege-Service', async () => {
         assert.equal(await zw.kassiereBar(knex, t.id, 'JC B'), 0);
         assert.equal((await zw.ladeKasse(knex, t.id)).find((k) => k.vereinName === 'JC B').anzahlOffen, 0);
 
+        // Zurückgezogene Kämpfer zählen weder in der Kasse noch beim Bar-Kassieren
+        const t3 = await neuesTurnier();
+        const w1 = await teilnehmer(knex, t3.id, 'JC W');
+        const w2 = await teilnehmer(knex, t3.id, 'JC W');
+        await knex('turnier_teilnehmer').where({ id: w2 }).update({ status: 'zurueckgezogen' });
+        const kW = (await zw.ladeKasse(knex, t3.id)).find((k) => k.vereinName === 'JC W');
+        assert.equal(kW.anzahlKaempfer, 1);
+        assert.equal(kW.anzahlOffen, 1);
+        assert.equal(await zw.kassiereBar(knex, t3.id, 'JC W'), 1);
+        assert.equal((await knex('turnier_teilnehmer').where({ id: w2 }).first()).startgeld_bezahlt, false);
+        assert.equal((await knex('turnier_teilnehmer').where({ id: w1 }).first()).startgeld_bezahlt, true);
+        assert.equal((await zw.ladeKasse(knex, t3.id)).find((k) => k.vereinName === 'JC W').anzahlKaempfer, 1);
+
+        // synchronisiereGesichert ohne Statusableitung ändert nur das Flag
+        const t4 = await neuesTurnier();
+        const s1 = await teilnehmer(knex, t4.id, 'JC Ausrichter', { status: 'nicht_erschienen', gewogen: true, startgeld_bezahlt: true });
+        assert.equal(await zw.synchronisiereGesichert(knex, t4.id, { statusAbleiten: false }), 1);
+        const s = await knex('turnier_teilnehmer').where({ id: s1 }).first();
+        assert.equal(s.startgeld_zahlweg_gesichert, true);
+        assert.equal(s.status, 'nicht_erschienen');
+
         // Parallel: zwei Speicherungen desselben Vereins werfen nicht
         const t2 = await neuesTurnier();
         await Promise.all([speichere('JC P', EINGABE, t2), speichere('JC P', { ...EINGABE, zahlweg: 'bar' }, t2)]);

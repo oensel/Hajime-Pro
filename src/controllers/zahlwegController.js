@@ -7,6 +7,7 @@ import { ermittleEffektivenStatus } from './turnierController.js';
 import { turnierHatEchteKaempfe } from './poolController.js';
 import { ladeZahlwegFuerVerein, ladeVorbelegung, speichereZahlweg, ladeKasse, kassiereBar } from '../services/zahlwege.js';
 import { parseAngeboteneZahlwege, startgeldVerlangt } from '../shared/zahlweg.js';
+import { darfTurnierSehen } from '../services/turnierSichtbarkeit.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 
 const STUFE1_ZAHLWEGE = ['ueberweisung', 'bar'];
@@ -41,6 +42,13 @@ export function erzeugeZahlwegController(knex) {
             throw new FachFehler(403, 'Nur freigegebene Mitglieder eines Vereins (Rolle Benutzer oder Admin) wählen den Zahlweg.');
         }
         const istAusrichter = turnier.verein_id != null && benutzer.verein_id === turnier.verein_id;
+        // Entwürfe, abgesagte und für den Verein unsichtbare Turniere gibt es für Nicht-Ausrichter nicht.
+        if (!istAusrichter) {
+            const effektiv = ermittleEffektivenStatus(turnier, { hatEchteKaempfe: await turnierHatEchteKaempfe(knex, turnier.id) });
+            if (['entwurf', 'abgesagt'].includes(effektiv) || !(await darfTurnierSehen(knex, benutzer, turnier))) {
+                throw new FachFehler(404, 'Turnier nicht gefunden.');
+            }
+        }
         return { turnier, benutzer, vereinName, istAusrichter };
     }
 

@@ -136,6 +136,17 @@ test('Zahlweg-API', async () => {
         assert.equal((await aufruf('u-a1', 'PUT', `/api/zahlweg/${tZu}`, EINGABE)).status, 403);
         assert.equal((await aufruf('u-a1', 'GET', '/api/zahlweg/999999')).status, 404);
 
+        // Sichtbarkeit: Entwurf, abgesagt und eingeschränkte Turniere gibt es für andere Vereine nicht
+        const tEntwurf = await neuesTurnier({ status: 'entwurf' });
+        const tAbgesagt = await neuesTurnier({ status: 'abgesagt' });
+        const tEingeladen = await neuesTurnier({ sichtbarkeit: 'eingeladen' });
+        for (const tid of [tEntwurf, tAbgesagt, tEingeladen]) {
+            assert.equal((await aufruf('u-a1', 'GET', `/api/zahlweg/${tid}`)).status, 404, String(tid));
+            assert.equal((await aufruf('u-a1', 'PUT', `/api/zahlweg/${tid}`, EINGABE)).status, 404, String(tid));
+        }
+        assert.equal((await aufruf('u-aus', 'GET', `/api/zahlweg/${tEntwurf}`)).status, 200);
+        assert.equal((await aufruf('u-aus', 'GET', `/api/zahlweg/${tEingeladen}`)).status, 200);
+
         // Kasse
         const tk = await neuesTurnier();
         await aufruf('u-b1', 'PUT', `/api/zahlweg/${tk}`, { ...EINGABE, zahlweg: 'bar' });

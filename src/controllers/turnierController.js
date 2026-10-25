@@ -1130,15 +1130,14 @@ export async function importTurnierErgebnisse(knex, req, res) {
             await trx('kampfflaechen').where({ turnier_id: turnierId }).del();
 
             await importWettkampfdaten(trx, turnierId, { kampfflaechen, pools, teilnehmer, kaempfe, mannschaften, mannschaftMitglieder });
-            // Zahlwege nur ersetzen, wenn die Datei welche mitbringt (ältere Dateien lassen die bestehenden unberührt)
-            if (Array.isArray(daten.zahlwege)) await ersetzeZahlwege(trx, turnierId, daten.zahlwege);
+            // Zahlungsdaten bleiben unberührt (Spec Abschnitt 4): bestehende turnier_zahlwege werden nicht ersetzt.
 
             // Automatischer Übergang in den Archiv-Zustand (Zustand 5: "wird automatisch durch
             // den Upload der Ergebnisdaten ... ausgelöst").
             await trx('turniere').where({ id: turnierId }).update({ status: 'abgeschlossen', updated_at: trx.fn.now() });
         });
-        // Flag der neu eingelesenen Teilnehmer aus den (bestehenden oder importierten) Zahlwegen ableiten
-        await synchronisiereGesichert(knex, turnierId);
+        // Flag der neu eingelesenen Teilnehmer aus den bestehenden Zahlwegen ableiten; der archivierte Status bleibt wie importiert.
+        await synchronisiereGesichert(knex, turnierId, { statusAbleiten: false });
 
         return res.json({
             success: true,
@@ -1430,6 +1429,8 @@ export async function dupliziereTurnier(knex, req, res) {
             }
             return neu;
         });
+        // Die Kopie hat keine Zahlwege: das Flag gilt nur für die Kämpfer des Ausrichters.
+        if (teilnehmerUebernehmen) await synchronisiereGesichert(knex, neueId);
         res.status(201).json({ success: true, turnierId: neueId });
     } catch (error) {
         if (error instanceof FachFehler) return res.status(error.statusCode).json({ success: false, error: error.message });

@@ -68,7 +68,7 @@ export async function speichereZahlweg(knex, { turnier, vereinName, vereinId, be
 
 // Setzt startgeld_zahlweg_gesichert für alle Teilnehmer des Turniers neu (gesicherter Zahlweg des Vereins
 // oder Ausrichter-Verein) und leitet bei geänderten Zeilen den Status neu ab. Gibt die Zahl geänderter Zeilen zurück.
-export async function synchronisiereGesichert(knex, turnierId) {
+export async function synchronisiereGesichert(knex, turnierId, { statusAbleiten = true } = {}) {
     return knex.transaction(async (trx) => {
         // Serialisiert gleichzeitige Neuberechnungen desselben Turniers.
         await trx.raw('SELECT pg_advisory_xact_lock(?)', [turnierId]);
@@ -86,8 +86,10 @@ export async function synchronisiereGesichert(knex, turnierId) {
             const soll = gesetzt.has(t.verein);
             if (Boolean(t.startgeld_zahlweg_gesichert) === soll) continue;
             const updates = { startgeld_zahlweg_gesichert: soll };
-            const { erfuellt } = pruefeKampfbereitschaft({ ...t, ...updates }, turnier);
-            updates.status = leiteStatusAusKampfbereitschaftAb(t.status, erfuellt);
+            if (statusAbleiten) {
+                const { erfuellt } = pruefeKampfbereitschaft({ ...t, ...updates }, turnier);
+                updates.status = leiteStatusAusKampfbereitschaftAb(t.status, erfuellt);
+            }
             await trx('turnier_teilnehmer').where({ id: t.id }).update({ ...updates, updated_at: trx.fn.now() });
             geaendert += 1;
         }
@@ -101,7 +103,9 @@ export async function ladeKasse(knex, turnierId) {
     if (!turnier) return [];
     const ausrichter = await ladeAusrichterName(knex, turnier);
     const zahlwege = new Map((await knex('turnier_zahlwege').where({ turnier_id: turnierId })).map((z) => [z.verein_name, z]));
-    const teilnehmer = await knex('turnier_teilnehmer').where({ turnier_id: turnierId });
+    // Zurückgezogene Kämpfer zahlen nichts mehr und zählen nicht. Disqualifizierte und nicht erschienene
+    // bleiben drin: das Startgeld ist mit der Anmeldung fällig geworden.
+    const teilnehmer = await knex('turnier_teilnehmer').where({ turnier_id: turnierId }).whereNot('status', 'zurueckgezogen');
 
     const nachVerein = new Map();
     for (const t of teilnehmer) {
@@ -128,6 +132,7 @@ export async function ladeKasse(knex, turnierId) {
 export async function kassiereBar(knex, turnierId, vereinName) {
     const offene = await knex('turnier_teilnehmer')
         .where({ turnier_id: turnierId, verein: vereinName })
+        .whereNot('status', 'zurueckgezogen')
         .andWhere((q) => q.where('startgeld_bezahlt', false).orWhereNull('startgeld_bezahlt'))
         .select('id');
     for (const { id } of offene) await setzeStartgeldBezahlt(knex, id, true);

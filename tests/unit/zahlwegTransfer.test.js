@@ -8,7 +8,7 @@ process.env.BETRIEBSMODUS = 'cloud';
 delete process.env.IS_OFFLINE;
 delete process.env.SYNC_ROLLE;
 
-const { baueTurnierExport, importiereTurnierDaten, importWettkampfdaten } = await import('../../src/controllers/turnierController.js');
+const { baueTurnierExport, importiereTurnierDaten, importWettkampfdaten, importTurnierErgebnisse } = await import('../../src/controllers/turnierController.js');
 const { synchronisiereGesichert } = await import('../../src/services/zahlwege.js');
 const { ersetzeZahlwege } = await import('../../src/services/zahlwegTransfer.js');
 
@@ -116,6 +116,44 @@ test('Import verwirft ungültige Zahlweg-Zeilen und speist keine Vorbelegung', a
         await knex('turnier_zahlwege').insert({ turnier_id: t.id, verein_name: 'JC Eigen', zahlweg: 'bar', geaendert_von: 'u7', ...MAIL });
         const v = await ladeVorbelegung(knex, 'JC Eigen');
         assert.equal(v.rechnung_email, 'a@b.de');
+    } finally {
+        await stoppe();
+    }
+});
+
+test('Ergebnis-Re-Import lässt bestehende Zahlwege und den Teilnehmerstatus unberührt', async () => {
+    const { knex, stoppe } = await starteTestPostgres();
+    try {
+        const ausrichter = id((await knex('vereine').insert({ name: 'JC Chef' }).returning('id'))[0]);
+        await knex('benutzer').insert({ id: 'u-chef', email: 'chef@test.de', vorname: 'c', nachname: 'T', email_bestaetigt_am: knex.fn.now(), aktiver_verein_id: ausrichter });
+        await knex('benutzer_vereine').insert({ benutzer_id: 'u-chef', verein_id: ausrichter, freigegeben: 1, rolle: 'admin' });
+        const t = (await knex('turniere').insert({
+            bezeichnung: 'Cup3', ort: 'O', datum: '2099-03-04', ausrichter: 'JC Chef', verein_id: ausrichter,
+            status: 'veroeffentlicht', startgeld: 10, anmeldeschluss: '2020-03-01'
+        }).returning('*'))[0];
+        await knex('turnier_zahlwege').insert({ turnier_id: t.id, verein_name: 'JC Alt', zahlweg: 'ueberweisung', geaendert_von: 'u1', ...MAIL });
+
+        const datei = {
+            turnier: { id: t.id }, kampfflaechen: [], pools: [], kaempfe: [],
+            zahlwege: [{ verein_name: 'JC Neu', zahlweg: 'bar', ...MAIL }],
+            teilnehmer: [
+                { id: 1, judopass_id: 'R-1', vorname: 'A', nachname: 'B', geschlecht: 'm', verein: 'JC Alt', gewicht: 40, altersklasse: 'U15', gewichtsklasse: '-44', lizenz_ablauf: '2099-01-01', geburtsjahr: 2012, status: 'angemeldet' },
+                { id: 2, judopass_id: 'R-2', vorname: 'C', nachname: 'D', geschlecht: 'm', verein: 'JC Chef', gewicht: 40, altersklasse: 'U15', gewichtsklasse: '-44', lizenz_ablauf: '2099-01-01', geburtsjahr: 2012, status: 'nicht_erschienen' }
+            ]
+        };
+        let antwort;
+        const res = { status(c) { this.code = c; return this; }, json(b) { antwort = { code: this.code, ...b }; return this; } };
+        await importTurnierErgebnisse(knex, {
+            params: { id: String(t.id) }, user: { id: 'u-chef' },
+            body: { contentBase64: Buffer.from(JSON.stringify(datei)).toString('base64') }
+        }, res);
+        assert.equal(antwort.success, true, JSON.stringify(antwort));
+        assert.deepEqual((await knex('turnier_zahlwege').where({ turnier_id: t.id })).map((z) => z.verein_name), ['JC Alt']);
+        const tn = Object.fromEntries((await knex('turnier_teilnehmer').where({ turnier_id: t.id })).map((x) => [x.verein, x]));
+        assert.equal(tn['JC Alt'].startgeld_zahlweg_gesichert, true);
+        assert.equal(tn['JC Chef'].startgeld_zahlweg_gesichert, true);
+        // Archivierte Ergebnisse werden nicht auf kampfbereit umgestellt
+        assert.equal(tn['JC Chef'].status, 'nicht_erschienen');
     } finally {
         await stoppe();
     }
