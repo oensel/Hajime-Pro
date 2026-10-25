@@ -533,7 +533,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const startgeldUeberZahlweg = !startgeldBezahltRoh && !turnierKostenlos && !!athlet.startgeld_zahlweg_gesichert;
             const startgeldIconAktiv = startgeldBezahltRoh || startgeldUeberZahlweg;
             const startgeldIconTitel = startgeldBezahltRoh ? 'Als unbezahlt markieren'
-                : startgeldUeberZahlweg ? 'Startgeld über Zahlweg gesichert (Klick markiert zusätzlich von Hand als bezahlt)'
+                : startgeldUeberZahlweg ? 'Zahlweg gesichert – Startgeld noch nicht eingegangen (Klick markiert von Hand als bezahlt)'
                 : 'Als bezahlt markieren';
 
             // Zurückgezogene Anmeldungen bleiben zur Nachvollziehbarkeit sichtbar, aber
@@ -1746,6 +1746,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 document.getElementById('startgeldVerwendungszweckFeld').value = verwendungszweckErsetzt;
                 document.getElementById('startgeldBetragAnzeige').textContent =
                     `Offener Betrag: ${betrag.toFixed(2).replace('.', ',')} € (${unbezahlt.length} Teilnehmer)`;
+                const gesichertAnzahl = unbezahlt.filter(a => !!a.startgeld_zahlweg_gesichert).length;
+                const gesichertHinweis = document.getElementById('startgeldGesichertHinweis');
+                if (gesichertHinweis) {
+                    gesichertHinweis.textContent = gesichertAnzahl > 0
+                        ? `Enthalten sind ${gesichertAnzahl} Teilnehmer mit gesichertem Zahlweg, weil das Startgeld noch nicht eingegangen ist.`
+                        : '';
+                    gesichertHinweis.style.display = gesichertAnzahl > 0 ? 'block' : 'none';
+                }
 
                 const payload = baueGiroCodePayload({
                     name: turnierKontoinhaber,

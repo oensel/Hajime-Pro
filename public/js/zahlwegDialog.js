@@ -45,6 +45,7 @@
             const vorhanden = status.zahlweg || {};
             const vor = status.vorbelegung || {};
             const angeboten = (status.angebotene || []).filter((z) => NAMEN[z]);
+            const keineWege = angeboten.length === 0;
             const gewaehlt = angeboten.includes(vorhanden.zahlweg) ? vorhanden.zahlweg : (angeboten[0] || '');
 
             const wegeZeilen = angeboten.map((weg) => {
@@ -68,14 +69,19 @@
 
             const fehlerAnzeige = element('p', { id: 'zahlwegFehler', role: 'alert' });
             fehlerAnzeige.style.cssText = 'margin:0 0 12px;font-size:13px;font-weight:700;color:#c62828;display:none;';
+            if (keineWege) {
+                fehlerAnzeige.textContent = 'Für dieses Turnier ist kein Zahlweg verfügbar. Bitte den Ausrichter kontaktieren.';
+                fehlerAnzeige.style.display = 'block';
+            }
 
             const btnSpeichern = element('button', { type: 'button', id: 'zahlwegSpeichernBtn', className: 'btn btn-raised', textContent: 'Speichern' });
             const btnAbbrechen = element('button', { type: 'button', id: 'zahlwegAbbrechenBtn', className: 'btn btn-outlined', textContent: 'Abbrechen' });
-            const knoepfe = element('div', {}, pflicht ? [btnSpeichern] : [btnAbbrechen, btnSpeichern]);
+            const knoepfe = element('div', {}, pflicht && !keineWege ? [btnSpeichern] : [btnAbbrechen, btnSpeichern]);
             knoepfe.style.cssText = 'display:flex;justify-content:flex-end;gap:12px;';
             for (const b of [btnAbbrechen, btnSpeichern]) b.style.padding = '2px 16px';
 
-            const titel = element('h2', { textContent: 'Wie zahlt Ihr Verein das Startgeld?' });
+            if (keineWege) btnSpeichern.disabled = true;
+            const titel = element('h2', { id: 'zahlwegTitel', textContent: 'Wie zahlt Ihr Verein das Startgeld?' });
             titel.style.cssText = 'margin:0 0 8px;font-size:18px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-main);';
 
             if (wegeZeilen.length) wegeZeilen[wegeZeilen.length - 1].style.marginBottom = '16px';
@@ -84,11 +90,36 @@
                 feld('Rechnungs-E-Mail', email), feld('Ansprechperson', person), feld('Rechnungsanschrift', anschrift),
                 fehlerAnzeige, knoepfe
             ]);
+            karte.setAttribute('aria-modal', 'true');
+            karte.setAttribute('aria-labelledby', 'zahlwegTitel');
             karte.style.cssText = 'background:var(--bg-card);color:var(--text-main);border:2px solid var(--border);border-radius:4px;padding:24px;max-width:520px;width:90%;max-height:90vh;overflow:auto;box-shadow:var(--shadow);';
             const overlay = element('div', { id: 'zahlwegDialog' }, [karte]);
             overlay.style.cssText = 'position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.4);backdrop-filter:blur(2px);';
 
-            const beiTaste = (e) => { if (e.key === 'Escape' && !pflicht) beenden('abgebrochen'); };
+            const beiTaste = (e) => {
+                if (e.key === 'Escape') {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    if (!pflicht || keineWege) beenden('abgebrochen');
+                    return;
+                }
+                if (e.key === 'Tab') {
+                    const fokussierbar = [...overlay.querySelectorAll('input, textarea, button')].filter((el) => !el.disabled && el.offsetParent !== null);
+                    if (!fokussierbar.length) { e.preventDefault(); return; }
+                    const erstes = fokussierbar[0];
+                    const letztes = fokussierbar[fokussierbar.length - 1];
+                    if (!overlay.contains(document.activeElement)) {
+                        e.preventDefault();
+                        erstes.focus();
+                    } else if (e.shiftKey && document.activeElement === erstes) {
+                        e.preventDefault();
+                        letztes.focus();
+                    } else if (!e.shiftKey && document.activeElement === letztes) {
+                        e.preventDefault();
+                        erstes.focus();
+                    }
+                }
+            };
             const beenden = (ergebnis) => {
                 document.removeEventListener('keydown', beiTaste, true);
                 overlay.remove();
@@ -120,11 +151,12 @@
                     fehlerAnzeige.textContent = error.message;
                     fehlerAnzeige.style.display = 'block';
                     btnSpeichern.disabled = false;
+                    btnSpeichern.focus();
                 }
             });
 
             document.body.append(overlay);
-            btnSpeichern.focus();
+            (keineWege ? btnAbbrechen : btnSpeichern).focus();
         });
     }
 
@@ -133,7 +165,8 @@
         if (!turnierId) return 'nichtNoetig';
         const status = await ladeStatus(turnierId);
         if (!status || !status.erforderlich || status.zahlweg || !status.aenderbar) return 'nichtNoetig';
-        await zeigeDialog({ ...status, turnierId }, true);
+        const ergebnis = await zeigeDialog({ ...status, turnierId }, true);
+        if (ergebnis !== 'gespeichert') return 'abgebrochen';
         document.dispatchEvent(new CustomEvent('zahlweg:geaendert'));
         return 'gespeichert';
     }
