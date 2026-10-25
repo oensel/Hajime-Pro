@@ -20,7 +20,8 @@ test.describe.serial('Turnierformular: Zahlweg-Felder', () => {
         await page.locator('#abrechnungsbasis').selectOption('teilnahme_waage');
         await page.locator('#submitBtn').click();
         await expect(page.locator('#snackbarText')).toHaveText('Turnier erfolgreich angelegt!');
-        await expect(page).toHaveURL(/\/turnier\.html\?id=\d+/);
+        // turnier.js leitet nach 1 s per setTimeout weiter; das Laden der Folgeseite kann unter Last länger dauern
+        await expect(page).toHaveURL(/\/turnier\.html\?id=\d+/, { timeout: 15_000 });
         turnierId = Number(new URL(page.url()).searchParams.get('id'));
 
         await page.reload();
