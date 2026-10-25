@@ -1,12 +1,13 @@
 import express from 'express';
 import { erzeugeApiRatenbegrenzung } from '../middleware/apiRatenbegrenzung.js';
-import { importiereTurnierDaten } from '../controllers/turnierController.js';
+import { importiereTurnierDaten, baueTurnierExport } from '../controllers/turnierController.js';
 import { FachFehler } from '../utils/fachFehler.js';
 import { ersetzeHelferplan } from '../services/helferTransfer.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 import { liesGeraeteSchluessel, speichereGeraeteSchluessel } from '../utils/releaseQuelle.js';
 
-// Turniere des eigenen Vereins aus der Cloud auf den Hallen-Server holen (Turnierauswahl).
+// Turniere des eigenen Vereins aus der Cloud auf den Hallen-Server holen (Turnierauswahl) und nach dem Wettkampftag
+// zurückspielen (Startgeld-Abrechnung, Spec docs/superpowers/specs/2026-10-24-startgeld-abrechnung-design.md).
 // Nur im Einzelbenutzerbetrieb (Hallen-Server); in der Cloud selbst gibt es die Funktion nicht.
 export function getCloudRoutes(knex, { cloud, holeCluster = () => null, datenDir = '' }) {
     const router = express.Router();
@@ -24,6 +25,8 @@ export function getCloudRoutes(knex, { cloud, holeCluster = () => null, datenDir
             // Ein 401 der Cloud (falsche Zugangsdaten) betrifft nicht die Sitzung an diesem Server:
             // menu.js leitet bei 401 auf die Anmeldeseite um, daher als 422 weiterreichen.
             const status = e.statusCode === 401 ? 422 : e.statusCode;
+            // Zwei-Faktor-Bedarf (Super-Admin): die Oberfläche fragt dann den Code ab und wiederholt
+            if (e.code === 'zwei_faktor') return res.status(status).json({ success: false, zweiFaktor: true, code: e.code, error: e.message });
             return res.status(status).json({ success: false, error: e.message });
         }
         console.error(`[Cloud-${kontext}-Fehler]:`, e.message);
@@ -57,11 +60,11 @@ export function getCloudRoutes(knex, { cloud, holeCluster = () => null, datenDir
     // Anmeldung an der Cloud und Liste der Turniere des Vereins des Benutzers.
     router.post('/turniere', async (req, res) => {
         try {
-            const { email, password } = req.body || {};
+            const { email, password, code } = req.body || {};
             if (!email || !password) {
                 return res.status(400).json({ success: false, error: 'Benutzer und Passwort sind erforderlich.' });
             }
-            const { token, user } = await cloud.meldeAn(String(email), String(password));
+            const { token, user } = await cloud.meldeAn(String(email), String(password), { code: code ? String(code) : null });
             await richteGeraeteSchluesselEin(token);
             const turniere = await cloud.listeTurniere(token);
             return res.json({
@@ -128,6 +131,33 @@ export function getCloudRoutes(knex, { cloud, holeCluster = () => null, datenDir
             return res.json({ success: true, turnierId: lokal.id, ...anzahl });
         } catch (e) {
             return fehler(res, e, 'Helferplan');
+        }
+    });
+
+    // Turnier in die Cloud zurückspielen: Export des lokalen Turniers, das aus dem Cloud-Turnier :cloudId stammt
+    // (urspruengliche_id, das jüngste), wie die Datei „Ergebnisse hochladen“ an die Cloud. Die Cloud prüft Rolle
+    // (Admin des Ausrichters), Turnier, Vollständigkeit und schützt Zahlungsdaten und Rechnungen.
+    router.post('/turniere/:cloudId/zurueckspielen', async (req, res) => {
+        try {
+            const cluster = holeCluster();
+            if (cluster && !cluster.darfSchreiben()) {
+                return res.status(409).json({ success: false, error: 'Zurückspielen geht nur am Master-Server.' });
+            }
+            const { token, code } = req.body || {};
+            if (!token) return res.status(400).json({ success: false, error: 'Cloud-Anmeldung fehlt.' });
+            const cloudId = parseInt(req.params.cloudId, 10);
+            if (!Number.isInteger(cloudId) || cloudId <= 0 || String(cloudId) !== String(req.params.cloudId)) {
+                return res.status(400).json({ success: false, error: 'Ungültige Turnier-ID.' });
+            }
+            const lokal = await knex('turniere').where({ urspruengliche_id: cloudId }).orderBy('id', 'desc').first();
+            if (!lokal) {
+                return res.status(404).json({ success: false, error: 'Zu diesem Cloud-Turnier gibt es hier kein Turnier.' });
+            }
+            const daten = await baueTurnierExport(knex, lokal.id, lokal);
+            const antwort = await cloud.spieleZurueck(String(token), cloudId, daten, { code: code ? String(code) : null });
+            return res.json({ ...antwort, success: true });
+        } catch (e) {
+            return fehler(res, e, 'Zurückspielen');
         }
     });
 

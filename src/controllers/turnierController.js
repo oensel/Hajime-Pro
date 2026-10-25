@@ -525,7 +525,8 @@ export async function getTurniere(knex, req, res) {
         // Explizite Spaltenliste ohne die (potenziell mehrere MB große) PDF-Binärspalte — dieser
         // Endpunkt liefert oft viele Turniere auf einmal (siehe turniere.html) und soll die
         // Ausschreibungen dafür nicht unnötig aus der DB laden.
-        let query = knex('turniere').select([...TURNIER_SPALTEN_OHNE_PDF, 'aktiv', knex.raw('(ausschreibung_pdf is not null) as hat_ausschreibung')]);
+        // urspruengliche_id: Herkunft aus der Cloud (Hallen-Server: Knopf „In die Cloud zurückspielen“)
+        let query = knex('turniere').select([...TURNIER_SPALTEN_OHNE_PDF, 'aktiv', 'urspruengliche_id', knex.raw('(ausschreibung_pdf is not null) as hat_ausschreibung')]);
         // Archivierte Turniere (Super-Admin, admin-turniere.html) erscheinen in keiner Turnierliste
         query = query.where({ archiviert: false });
 

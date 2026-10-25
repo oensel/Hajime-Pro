@@ -31,6 +31,9 @@ export const FAKE_CLOUD_PORT = 3190;
 export const FAKE_CLOUD_URL = `http://127.0.0.1:${FAKE_CLOUD_PORT}`;
 export const FAKE_CLOUD_EMAIL = 'cloud@test.de';
 export const FAKE_CLOUD_PASSWORT = 'cloud-geheim';
+// Konto der Attrappe mit Zwei-Faktor-Anmeldung (gleiches Passwort) und der angenommene Code
+export const FAKE_CLOUD_EMAIL_2FA = 'super@test.de';
+export const FAKE_CLOUD_2FA_CODE = '123456';
 
 export const DURCHSAGE_TESTDATEI = './data/test-durchsage/pcm.raw';
 export const VIDEO_TESTVERZEICHNIS = './data/test-video';
