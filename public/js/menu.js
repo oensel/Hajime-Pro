@@ -66,6 +66,7 @@ const MENUE_AKTIVE_SEITEN = [
     ['nav-video-live', ['video-live.html']],
     ['nav-videobeweis', ['videobeweis.html']],
     ['nav-sync-konflikte', ['sync-konflikte.html']],
+    ['nav-nachrichten', ['nachrichten.html']],
     ['nav-nutzer', ['admin-nutzer.html']],
     ['nav-mitglieder', ['admin-nutzer.html']],
     ['nav-einladungen', ['admin-einladungen.html']],
@@ -403,6 +404,11 @@ function baueMenueGeruest() {
                     <span class="material-icons">handshake</span>
                     <span class="menu-text">Helfer-App</span>
                 </a>
+                <a href="/nachrichten.html" class="menu-item" id="nav-nachrichten" data-ohne-turnier style="display: none;">
+                    <span class="material-icons">mail</span>
+                    <span class="menu-text">Nachrichten<span class="menu-badge" id="nav-nachrichten-zaehler" style="display: none;"></span></span>
+                </a>
+                <div class="menu-trenner" id="nav-super-trenner" role="separator" style="display: none;"></div>
                 <a href="/admin-nutzer.html" class="menu-item" id="nav-nutzer" data-ohne-turnier style="display: none;">
                     <span class="material-icons">admin_panel_settings</span>
                     <span class="menu-text">Benutzer</span>
@@ -484,9 +490,16 @@ function baueMenueGeruest() {
             <span class="theme-toggle nur-anzeige" id="cloudAnzeige" title="Cloud-Server" role="img" aria-label="Cloud-Server" style="display: none;">
                 <span class="material-icons">cloud</span>
             </span>
-            <button type="button" class="theme-toggle" id="profileBtn" title="Mein Profil">
-                <span class="material-icons">account_circle</span>
-            </button>
+            <div class="profil-menue-huelle">
+                <button type="button" class="theme-toggle" id="profileBtn" title="Mein Profil" aria-haspopup="menu" aria-expanded="false">
+                    <span class="material-icons">account_circle</span>
+                    <span class="profil-badge" id="profilBadge" style="display: none;"></span>
+                </button>
+                <div class="verein-switcher-menu profil-menue" id="profilMenue" role="menu" style="display: none;">
+                    <a href="/profil.html" class="verein-switcher-item" role="menuitem">Mein Profil</a>
+                    <a href="/nachrichten.html" class="verein-switcher-item" role="menuitem" id="profilMenueNachrichten">Nachrichten<span class="menu-badge" id="profilMenueZaehler" style="display: none;"></span></a>
+                </div>
+            </div>
             <button type="button" class="theme-toggle" id="themeToggle" title="Ansicht umschalten">
                 <span class="material-icons" id="themeIcon">dark_mode</span>
             </button>
@@ -968,6 +981,30 @@ async function initialisiereMenue() {
     };
     await window.hajimeAktualisiereGenehmigungsHinweis();
 
+    // --- NACHRICHTEN: roter Kreis mit der Zahl ungelesener Unterhaltungen am Profil-Icon (Super-Admins zusätzlich am Menüpunkt) ---
+    // Die Route gibt es nur in der Cloud; ohne sie (404) bleibt alles ausgeblendet und das Profil-Icon führt direkt zum Profil.
+    window.hajimeAktualisiereNachrichten = async () => {
+        try {
+            const resp = await fetch('/api/nachrichten/ungelesen');
+            if (!resp.ok) return;
+            const { anzahl } = await resp.json();
+            window.hajimeNachrichtenAktiv = true;
+            for (const id of ['profilBadge', 'nav-nachrichten-zaehler', 'profilMenueZaehler']) {
+                const el = document.getElementById(id);
+                if (!el) continue;
+                el.textContent = String(anzahl);
+                el.title = `${anzahl} ungelesene Nachricht${anzahl === 1 ? '' : 'en'}`;
+                el.style.display = anzahl > 0 ? '' : 'none';
+            }
+        } catch (error) {
+            console.error('Fehler beim Laden der Nachrichten-Anzahl:', error);
+        }
+    };
+    if (!einzelbenutzer) {
+        await window.hajimeAktualisiereNachrichten();
+        setInterval(() => { if (!document.hidden) window.hajimeAktualisiereNachrichten(); }, 60000);
+    }
+
     // Nach einem Rollenwechsel (anderer Verein oder Super-Admin-Modus) zeigt die App den Zustand, den die Rolle nach
     // dem Login sähe: Startseite der Rolle (Turniere bzw. Helfer-App), keine Reste des vorigen Turniers. verein =
     // gewählter Verein aus currentUser.vereine, null für den Super-Admin-Modus.
@@ -1278,7 +1315,7 @@ async function initialisiereMenue() {
     if (wartetAufFreigabe) {
         versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-orga', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
 
-        const istErlaubteSeite = currentPath.includes('turniere.html') || currentPath.includes('profil.html') || currentPath.includes('teilnehmer.html') || currentPath.includes('turnier-ansicht.html') ||
+        const istErlaubteSeite = currentPath.includes('turniere.html') || currentPath.includes('profil.html') || currentPath.includes('teilnehmer.html') || currentPath.includes('turnier-ansicht.html') || currentPath.includes('nachrichten.html') ||
             (rechte.nutzer && (currentPath.includes('admin-nutzer.html') || currentPath.includes('admin-einladungen.html') || currentPath.includes('admin-erstregistrierungen.html') || currentPath.includes('admin-vereine.html') || currentPath.includes('admin-turniere.html') || currentPath.includes('server-update.html') || currentPath.includes('sicherung.html') || currentPath.includes('protokoll.html') || currentPath.includes('konsole.html')));
         if (!istErlaubteSeite) {
             window.location.href = '/turniere.html';
@@ -1428,9 +1465,15 @@ async function initialisiereMenue() {
     // Die Sicherung gibt es nur in der Cloud (/api/sicherung)
     if (sicherungLink && rechte.nutzer && !einzelbenutzer) sicherungLink.style.display = '';
     // Super-Admins: Benutzer, Vereine und Server-Update stehen im oberen Bereich der Seitenleiste (nicht unten)
+    // Nachrichten (nur Cloud): Super-Admins mit eigenem Menüpunkt, alle anderen über das Profil-Icon
+    const nachrichtenLink = document.getElementById('nav-nachrichten');
+    if (nachrichtenLink && !einzelbenutzer && rechte.nutzer) nachrichtenLink.style.display = '';
     if (rechte.nutzer) {
         const oben = document.getElementById('sidebarNavPrimary');
-        if (oben) for (const link of [nutzerLink, einladungenLink, erstregistrierungenLink, vereineLink, serverUpdateLink, sicherungLink, protokollLink, konsoleLink]) if (link) oben.appendChild(link);
+        // Ein Trenner grenzt die Super-Admin-Punkte von den Turnier-Punkten ab
+        const trenner = document.getElementById('nav-super-trenner');
+        if (oben && trenner) { trenner.style.display = ''; oben.appendChild(trenner); }
+        if (oben) for (const link of [nachrichtenLink, nutzerLink,einladungenLink, erstregistrierungenLink, vereineLink, serverUpdateLink, sicherungLink, protokollLink, konsoleLink]) if (link) oben.appendChild(link);
     }
 
     // --- AKTIVEN REITER HERVORHEBEN ---
@@ -1560,8 +1603,18 @@ async function initialisiereMenue() {
     // --- PROFIL HANDLER ---
     const profileBtn = document.getElementById('profileBtn');
     if (profileBtn) {
-        profileBtn.addEventListener('click', () => {
-            window.location.href = '/profil.html';
+        const profilMenue = document.getElementById('profilMenue');
+        // Mit Nachrichten (Cloud) öffnet das Profil-Icon ein kleines Menü, sonst geht es direkt zum Profil.
+        profileBtn.addEventListener('click', (e) => {
+            if (!profilMenue || !window.hajimeNachrichtenAktiv) { window.location.href = '/profil.html'; return; }
+            e.stopPropagation();
+            const offen = profilMenue.style.display !== 'none';
+            profilMenue.style.display = offen ? 'none' : 'block';
+            profileBtn.setAttribute('aria-expanded', String(!offen));
+        });
+        document.addEventListener('click', () => {
+            if (profilMenue) profilMenue.style.display = 'none';
+            profileBtn.setAttribute('aria-expanded', 'false');
         });
     }
 

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hajime Pro - Nachrichten</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <script src="/js/menu.js"></script>
+    <style>
+        .nachrichten-raster { display: grid; grid-template-columns: minmax(240px, 340px) 1fr; gap: 16px; align-items: start; }
+        @media (max-width: 800px) { .nachrichten-raster { grid-template-columns: 1fr; } }
+        .nachrichten-liste { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+        .nachrichten-liste li { padding: 10px 12px; border-bottom: 1px solid var(--border); cursor: pointer; }
+        .nachrichten-liste li:last-child { border-bottom: none; }
+        .nachrichten-liste li:hover, .nachrichten-liste li.aktiv { background: rgba(59, 130, 246, 0.12); }
+        .nachrichten-liste .betreff { font-weight: 600; display: flex; gap: 6px; align-items: center; }
+        .nachrichten-liste li.ungelesen .betreff { font-weight: 800; }
+        .nachrichten-liste li.ungelesen .betreff::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #ef4444; flex: none; }
+        .nachrichten-liste .vorschau { font-size: 12px; color: var(--text-muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .nachrichten-liste .wer { font-size: 11px; color: var(--text-muted); }
+        .nachrichten-leer { color: var(--text-muted); padding: 14px 4px; }
+        .verlauf { display: flex; flex-direction: column; gap: 10px; margin: 12px 0; }
+        .blase { max-width: 85%; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border); white-space: pre-wrap; overflow-wrap: anywhere; }
+        .blase.eigene { align-self: flex-end; background: rgba(59, 130, 246, 0.14); }
+        .blase .kopf { font-size: 11px; color: var(--text-muted); margin-bottom: 3px; }
+        .nachrichten-formular { display: flex; flex-direction: column; gap: 10px; }
+        .nachrichten-formular label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-muted); }
+        .nachrichten-formular input, .nachrichten-formular select, .nachrichten-formular textarea { padding: 8px 10px; box-sizing: border-box; font: inherit; width: 100%; }
+        .nachrichten-formular textarea { min-height: 110px; resize: vertical; }
+        .empfaenger-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+        .empfaenger-chips span { border: 1px solid var(--border); border-radius: 12px; padding: 2px 8px; font-size: 12px; cursor: pointer; }
+        .nachrichten-meldung { color: #ef4444; font-weight: 700; min-height: 18px; }
+        .nachrichten-hinweis { background: rgba(59, 130, 246, 0.1); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-size: 13px; margin-top: 8px; }
+        [hidden] { display: none !important; }
+    </style>
+</head>
+<body>
+
+<div class="kanji-left">柔</div>
+<div class="kanji-right">道</div>
+
+<div class="mdc-card" style="padding: 20px 24px; max-width: 1180px;">
+    <div class="form-title-area">
+        <span class="material-icons">mail</span>
+        <h1>Nachrichten</h1>
+        <span class="material-icons">mail</span>
+    </div>
+    <p style="margin: 0 0 12px;"><button type="button" class="btn btn-raised" id="neuKnopf">Neue Nachricht</button></p>
+    <div class="nachrichten-raster">
+        <div>
+            <ul class="nachrichten-liste" id="liste"></ul>
+            <div class="nachrichten-leer" id="listeLeer" hidden>Noch keine Nachrichten.</div>
+        </div>
+        <div id="rechts">
+            <div class="nachrichten-leer" id="rechtsLeer">Wähle links eine Nachricht aus oder schreibe eine neue.</div>
+
+            <div id="ansicht" hidden>
+                <h2 id="ansichtBetreff" style="margin: 0 0 4px; font-size: 18px;"></h2>
+                <div id="ansichtInfo" style="font-size: 12px; color: var(--text-muted);"></div>
+                <div id="ansichtAnfrage" class="nachrichten-hinweis" hidden></div>
+                <div class="verlauf" id="verlauf"></div>
+                <form class="nachrichten-formular" id="antwortForm">
+                    <label>Antwort <textarea id="antwortText" maxlength="5000" required></textarea></label>
+                    <div><button type="submit" class="btn btn-raised">Antworten</button></div>
+                </form>
+            </div>
+
+            <form class="nachrichten-formular" id="neuForm" hidden>
+                <label>An
+                    <select id="neuZiel"></select>
+                </label>
+                <label id="neuVereinBox" hidden>Verein <select id="neuVerein"></select></label>
+                <div id="neuPersonenBox" hidden class="nachrichten-formular">
+                    <label id="neuEigeneBox">Aus meinem Verein <select id="neuEigene"></select></label>
+                    <label>Admin eines anderen Vereins <select id="neuFremderVerein"></select></label>
+                    <label id="neuFremdBox" hidden>Person <select id="neuFremd"></select></label>
+                    <div class="empfaenger-chips" id="neuChips" title="Zum Entfernen anklicken"></div>
+                </div>
+                <label>Betreff <input type="text" id="neuBetreff" maxlength="150" required></label>
+                <label>Nachricht <textarea id="neuText" maxlength="5000" required></textarea></label>
+                <div><button type="submit" class="btn btn-raised">Senden</button></div>
+            </form>
+            <div class="nachrichten-meldung" id="meldung" role="alert"></div>
+        </div>
+    </div>
+</div>
+
+<script src="/js/nachrichten.js"></script>
+</body>
+</html>

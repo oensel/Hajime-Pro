@@ -94,7 +94,12 @@
             letter-spacing: 0.5px;
         }
         .form-group input {
-            padding: 12px 14px;
+            box-sizing: border-box;
+            width: 100%;
+            height: 44px;
+            padding: 0 14px;
+            font-family: inherit;
+            line-height: 1.2;
             border: 1px solid #4b5563;
             border-radius: 4px;
             background: #111827;
@@ -298,6 +303,7 @@
                 <ul id="registerVereinListe" class="verein-vorschlaege" role="listbox" hidden></ul>
             </div>
             <span id="registerVereinHinweis" class="form-hinweis" role="status">Nur Vereine aus der Liste. Ein Admin des Vereins schaltet dich nach der E-Mail-Bestätigung frei.</span>
+            <button type="button" id="vereinMeldenKnopf" class="btn-link" style="display: none; align-self: flex-start; margin-top: 0;">Mein Verein ist nicht aufgeführt</button>
         </div>
         <button type="submit" class="btn-login">Konto erstellen</button>
         <span class="form-hinweis">Mit der Registrierung bestätigst du, die <a href="/datenschutz.html" target="_blank" rel="noopener">Datenschutzerklärung</a> zur Kenntnis genommen zu haben.</span>
@@ -314,6 +320,31 @@
         <p id="popupInfo" class="popup-info" role="status"></p>
         <button type="button" id="popupErneut" class="btn-login">Mail erneut senden</button>
         <button type="button" id="popupSchliessen" class="btn-link">Zur Anmeldung</button>
+    </div>
+</div>
+
+<div id="vereinMeldenPopup" class="popup-hintergrund" role="dialog" aria-modal="true" aria-labelledby="vereinMeldenTitel">
+    <div class="popup-karte" style="text-align: left; max-width: 400px;">
+        <p id="vereinMeldenTitel">Verein melden</p>
+        <p class="popup-info" style="color: #9ca3af;">Gib den Vereinsnamen vollständig ein (z. B. „Judo-Club Musterstadt e.V.“). Die Super-Admins prüfen die Anfrage und legen den Verein an. Du bekommst eine Antwort per E-Mail.</p>
+        <form id="vereinMeldenForm">
+            <div class="form-group">
+                <label for="meldenVerein">Vereinsname (vollständig)</label>
+                <input type="text" id="meldenVerein" required minlength="5" maxlength="150" autocomplete="organization">
+            </div>
+            <div class="form-group">
+                <label for="meldenName">Dein Name</label>
+                <input type="text" id="meldenName" required maxlength="100" autocomplete="name">
+            </div>
+            <div class="form-group">
+                <label for="meldenEmail">E-Mail-Adresse</label>
+                <input type="email" id="meldenEmail" required maxlength="254" autocomplete="email">
+            </div>
+            <div id="meldenFehler" class="error-message" role="alert"></div>
+            <div id="meldenErfolg" class="info-message" role="status"></div>
+            <button type="submit" class="btn-login" id="meldenSenden">Zur Prüfung senden</button>
+            <button type="button" class="btn-link" id="meldenAbbrechen" style="display: block; margin: 8px auto 0;">Abbrechen</button>
+        </form>
     </div>
 </div>
 
@@ -573,6 +604,58 @@
     vereinEingabe.addEventListener('blur', () => setTimeout(() => {
         if (document.activeElement !== vereinEingabe) schliesseVereinListe();
     }, 200));
+
+    // --- Verein nicht aufgeführt: Anfrage an die Super-Admins (nur wo es das Kontaktformular gibt: Cloud) ---
+    const meldenKnopf = document.getElementById('vereinMeldenKnopf');
+    const meldenPopup = document.getElementById('vereinMeldenPopup');
+    const meldenForm = document.getElementById('vereinMeldenForm');
+    const meldenFehler = document.getElementById('meldenFehler');
+    const meldenErfolg = document.getElementById('meldenErfolg');
+    fetch('/api/kontakt/aktiv').then((r) => r.ok && r.json()).then((d) => {
+        if (d && d.aktiv) meldenKnopf.style.display = 'inline-block';
+    }).catch(() => { /* kein Kontaktformular: Knopf bleibt weg */ });
+
+    meldenKnopf.addEventListener('click', () => {
+        document.getElementById('meldenVerein').value = vereinEingabe.value.trim();
+        document.getElementById('meldenName').value = `${document.getElementById('registerVorname').value} ${document.getElementById('registerNachname').value}`.trim();
+        document.getElementById('meldenEmail').value = document.getElementById('registerEmail').value.trim();
+        meldenFehler.style.display = 'none';
+        meldenErfolg.style.display = 'none';
+        document.getElementById('meldenSenden').style.display = '';
+        meldenPopup.classList.add('offen');
+        document.getElementById('meldenVerein').focus();
+    });
+    document.getElementById('meldenAbbrechen').addEventListener('click', () => meldenPopup.classList.remove('offen'));
+    meldenForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        meldenFehler.style.display = 'none';
+        const senden = document.getElementById('meldenSenden');
+        senden.disabled = true;
+        try {
+            const vereinsname = document.getElementById('meldenVerein').value;
+            const response = await fetch('/api/kontakt', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    art: 'vereinsanfrage',
+                    vereinsname,
+                    name: document.getElementById('meldenName').value,
+                    email: document.getElementById('meldenEmail').value,
+                    text: `Bitte den Verein „${vereinsname.trim()}“ anlegen.`
+                })
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.error || 'Die Anfrage konnte nicht gesendet werden.');
+            meldenErfolg.textContent = 'Danke! Die Super-Admins prüfen deine Anfrage und melden sich per E-Mail.';
+            meldenErfolg.style.display = 'block';
+            senden.style.display = 'none';
+        } catch (err) {
+            meldenFehler.textContent = err.message;
+            meldenFehler.style.display = 'block';
+        } finally {
+            senden.disabled = false;
+        }
+    });
 
     loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();

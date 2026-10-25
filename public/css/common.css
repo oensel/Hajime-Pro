@@ -1004,3 +1004,31 @@ body.sidebar-collapsed .top-header-bar {
     color: #ef4444;
     line-height: 1;
 }
+
+/* Trenner zwischen Turnier-Menüpunkten und den Super-Admin-Punkten */
+.menu-trenner {
+    height: 0;
+    margin: 10px 14px;
+    border-top: 2px solid var(--border);
+}
+
+/* Profil-Icon: roter Kreis mit Anzahl ungelesener Nachrichten, kleines Auswahlmenü */
+.profil-menue-huelle { position: relative; }
+.profil-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 8px;
+    background: #ef4444;
+    color: #ffffff;
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 16px;
+    text-align: center;
+    box-sizing: border-box;
+}
+.profil-menue { min-width: 180px; }
+.profil-menue .verein-switcher-item { text-decoration: none; color: var(--text-main); flex-direction: row; align-items: center; }

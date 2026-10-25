@@ -350,6 +350,20 @@ function aktualisiereAufgabenZaehler() {
         .catch(() => { /* Zähler ist optional */ });
 }
 
+/** Link „Nachrichten“ mit Zähler ungelesener Unterhaltungen; erscheint nur, wo es das Postfach gibt (Cloud). */
+function aktualisiereNachrichtenZaehler() {
+    apiFetch('/api/nachrichten/ungelesen')
+        .then(({ ok, daten }) => {
+            if (!ok || !daten || typeof daten.anzahl !== 'number') return;
+            document.getElementById('hfNachrichtenLink').hidden = false;
+            const zaehler = document.getElementById('hfNachrichtenZaehler');
+            zaehler.textContent = String(daten.anzahl);
+            zaehler.hidden = daten.anzahl === 0;
+        })
+        .catch(() => { /* Postfach ist optional */ });
+}
+aktualisiereNachrichtenZaehler();
+
 const AUFGABEN_GRUPPEN = [
     { schluessel: 'ueberfaellig', titel: 'Überfällig', klasse: 'hf-gruppe-ueberfaellig' },
     { schluessel: 'dieseWoche', titel: 'Diese Woche', klasse: '' },

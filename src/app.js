@@ -46,6 +46,8 @@ import { getOrgaHelferRoutes } from './routes/orgaHelferRoutes.js';
 import { getEinladungRoutes } from './routes/einladungRoutes.js';
 import { getHelferRoutes } from './routes/helferRoutes.js';
 import { getHelferPlanRoutes } from './routes/helferPlanRoutes.js';
+import { getNachrichtenRoutes, getKontaktRoutes } from './routes/nachrichtenRoutes.js';
+import { istNachrichtenAktiv } from './services/nachrichten.js';
 import { starteAufbewahrung } from './liveCloud/aufbewahrung.js';
 import { liesPushKonfig } from './liveCloud/pushKonfig.js';
 import { erzeugeSender } from './liveCloud/pushSender.js';
@@ -446,6 +448,11 @@ if (syncKonfig.istClient) {
         app.use('/api/helfer/orga', getOrgaHelferRoutes(knex));
         app.use('/api/helfer', getHelferRoutes(knex));
         app.use('/api/einladung', getEinladungRoutes(knex));
+    }
+    // Nachrichten (Postfach, Kontakt, Vereinsanfrage): nur Cloud; NACHRICHTEN_AKTIV=true schaltet sie für Tests ein.
+    if (istNachrichtenAktiv()) {
+        app.use('/api/nachrichten', getNachrichtenRoutes(knex));
+        app.use('/api/kontakt', getKontaktRoutes(knex));
     }
     // Orga-Planer: stündliche Erinnerungsmails; nur mit SMTP, nie in Testläufen (Mail-Rauschen).
     if ((bm.istCloud || process.env.HELFER_APP_AKTIV === 'true') && process.env.SMTP_HOST && process.env.NODE_ENV !== 'test') {
