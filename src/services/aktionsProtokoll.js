@@ -60,12 +60,16 @@ const AKTIONEN = {
     'POST /api/downloads/einloesecode': ['downloads.code', 'Einlösecode erzeugt'],
     'DELETE /api/downloads/schluessel/:id': ['downloads.widerruf', 'Geräteschlüssel widerrufen'],
     'POST /api/downloads/spiegel/pruefen': ['downloads.spiegel', 'Spiegelung der Releases angestoßen'],
+    'POST /api/abrechnung/:id/zuordnen': ['abrechnung.zuordnen', 'Kämpfer einem meldenden Verein zugeordnet'],
+    'POST /api/abrechnung/:id/rechnungsdaten': ['abrechnung.rechnungsdaten', 'Rechnungsdaten eines Vereins erfasst'],
+    'POST /api/abrechnung/:id/rueckspielen-freigeben': ['abrechnung.rueckspielfreigabe', 'Erneutes Zurückspielen freigegeben'],
+    'PUT /api/abrechnung/stammdaten/:id': ['abrechnung.stammdaten', 'Abrechnungsdaten des Vereins geändert'],
     'DELETE /api/konsole': ['konsole.leeren', 'Fehlerprotokoll (Konsole) geleert']
 };
 const RESSOURCEN = {
     turniere: 'Turnier', teilnehmer: 'Teilnehmer', pools: 'Pool', kampfflaechen: 'Matte', kaempfe: 'Kampf', mannschaften: 'Mannschaft',
     mannschaftskaempfe: 'Mannschaftskampf', orga: 'Orga-Aufgabe', 'helfer-plan': 'Helferplan', helfer: 'Helfer-App', urkunden: 'Urkunden',
-    vereine: 'Verein', nutzer: 'Benutzer', freigabe: 'Freischaltung', auth: 'Konto', sicherung: 'Sicherung', downloads: 'Download', einladung: 'Einladung'
+    vereine: 'Verein', nutzer: 'Benutzer', freigabe: 'Freischaltung', auth: 'Konto', sicherung: 'Sicherung', downloads: 'Download', einladung: 'Einladung', abrechnung: 'Abrechnung'
 };
 const VERBEN = { POST: 'angelegt bzw. ausgeführt', PUT: 'geändert', PATCH: 'geändert', DELETE: 'gelöscht' };
 

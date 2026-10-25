@@ -4,6 +4,8 @@ import { FachFehler } from '../utils/fachFehler.js';
 import { darfVereinVerwalten } from '../services/vereinsRollen.js';
 import { fehlendeStammdaten } from '../shared/abrechnung.js';
 import { ladeStammdaten, speichereStammdaten, pruefeStammdatenFuerTurnier } from '../services/abrechnungStammdaten.js';
+import { ladeAbrechnung, ordneVereinZu } from '../services/abrechnung.js';
+import { erfasseVorOrt } from '../services/zahlwege.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 
 function antworteFehler(res, err) {
@@ -35,6 +37,54 @@ export function erzeugeAbrechnungController(knex, { sende } = {}) {
     }
 
     return {
+        // Übersicht je Verein (Admin des Ausrichters, Gate: requireTurnierAdmin).
+        async lade(req, res) {
+            try {
+                nurCloud();
+                res.json(await ladeAbrechnung(knex, req.tournament));
+            } catch (err) {
+                antworteFehler(res, err);
+            }
+        },
+
+        async ordneZu(req, res) {
+            try {
+                nurCloud();
+                const anzahl = await ordneVereinZu(knex, req.tournament.id, {
+                    vonVereinName: req.body?.vonVereinName, zuVereinName: req.body?.zuVereinName
+                });
+                res.json({ success: true, anzahl });
+            } catch (err) {
+                antworteFehler(res, err);
+            }
+        },
+
+        // Rechnungsdaten für einen Verein ohne gewählten Zahlweg: Zahlweg immer Bar.
+        async erfasseRechnungsdaten(req, res) {
+            try {
+                nurCloud();
+                const vereinName = req.body?.vereinName;
+                if (typeof vereinName !== 'string' || !vereinName) throw new FachFehler(400, 'Vereinsname fehlt.');
+                const zeile = await erfasseVorOrt(knex, { turnier: req.tournament, vereinName, eingabe: req.body });
+                res.json({ success: true, zahlweg: { verein_name: zeile.verein_name, zahlweg: zeile.zahlweg } });
+            } catch (err) {
+                antworteFehler(res, err);
+            }
+        },
+
+        // Erlaubt ein weiteres Zurückspielen nach versandten Rechnungen (wird vom nächsten Rückspielen verbraucht).
+        async gibRueckspielenFrei(req, res) {
+            try {
+                nurCloud();
+                const versandt = await knex('rechnungen').where({ turnier_id: req.tournament.id }).whereNotNull('versandt_am').first('id');
+                if (!versandt) throw new FachFehler(400, 'Es wurde noch keine Rechnung versandt, ein erneutes Zurückspielen braucht keine Freigabe.');
+                await knex('turniere').where({ id: req.tournament.id }).update({ rueckspielen_freigegeben: true });
+                res.json({ success: true });
+            } catch (err) {
+                antworteFehler(res, err);
+            }
+        },
+
         async leseStammdaten(req, res) {
             try {
                 const vereinId = await pruefeVereinsRecht(req);
