@@ -13,6 +13,7 @@ import { FachFehler } from '../utils/fachFehler.js';
 import { ABRECHNUNGSBASEN, parseAngeboteneZahlwege } from '../shared/zahlweg.js';
 import { exportiereZahlwege, ersetzeZahlwege } from '../services/zahlwegTransfer.js';
 import { synchronisiereGesichert } from '../services/zahlwege.js';
+import { ladeStammdaten } from '../services/abrechnungStammdaten.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 import { legeAusVorlageAn, berechneFaelligkeitenNeu, ladeOrga } from '../services/orgaPlan.js';
 import { datumAlsText } from '../services/helferPlan.js';
@@ -62,7 +63,7 @@ export const TURNIER_SPALTEN_OHNE_PDF = [
     'id', 'bezeichnung', 'ort', 'plz', 'bundesland', 'datum', 'ausrichter',
     'nutze_gewichtsklassen', 'anzahl_kampfflaechen', 'verein_id', 'altersklassen',
     'mannschafts_altersklassen', 'status', 'anmeldeschluss', 'startgeld', 'iban',
-    'abrechnungsbasis', 'angebotene_zahlwege',
+    'abrechnungsbasis', 'angebotene_zahlwege', 'zahlungsziel_tage', 'rechnung_hinweis',
     'kontoinhaber', 'verwendungszweck', 'ausschreibung_dateiname', 'farbe_kaempfer2',
     'beginn_min', 'ende_min', 'waagen_anzahl', 'planungs_tools', 'sichtbarkeit', 'created_at', 'updated_at'
 ];
@@ -96,14 +97,21 @@ function baueAusschreibungFragment(ausschreibungPdfBase64, ausschreibungDateinam
 
 // Wird ein Startgeld verlangt, müssen die Zahlungsdaten vollständig sein, sonst kann später
 // niemand zuverlässig bezahlen (fehlende IBAN/Kontoinhaber/Verwendungszweck).
-function validiereZahlungsdaten(startgeld, iban, kontoinhaber, verwendungszweck) {
+// In der Cloud genügt ein Konto in den Abrechnungsdaten des Vereins (IBAN + Kontoinhaber), der Verwendungszweck entfällt.
+async function validiereZahlungsdaten(knex, { startgeld, iban, kontoinhaber, verwendungszweck, vereinId }) {
     const startgeldWert = startgeld !== undefined && startgeld !== '' ? parseInt(startgeld, 10) : 0;
-    if (startgeldWert > 0) {
-        if (!iban || !iban.trim() || !kontoinhaber || !kontoinhaber.trim() || !verwendungszweck || !verwendungszweck.trim()) {
+    if (!(startgeldWert > 0)) return null;
+    const gefuellt = (w) => !!w && String(w).trim() !== '';
+    if (istEinzelbenutzerBetrieb()) {
+        if (!gefuellt(iban) || !gefuellt(kontoinhaber) || !gefuellt(verwendungszweck)) {
             return 'Wenn ein Startgeld verlangt wird, müssen IBAN, Kontoinhaber und Verwendungszweck ausgefüllt sein.';
         }
+        return null;
     }
-    return null;
+    if (gefuellt(iban) && gefuellt(kontoinhaber)) return null;
+    const stammdaten = vereinId ? await ladeStammdaten(knex, vereinId) : null;
+    if (stammdaten?.iban_vorhanden && gefuellt(stammdaten.kontoinhaber)) return null;
+    return 'Wenn ein Startgeld verlangt wird, braucht es IBAN und Kontoinhaber im Turnier oder in den Abrechnungsdaten des Vereins.';
 }
 
 // Startgeld-Zahlweg (Stufe 1): Abrechnungsbasis und angebotene Zahlwege des Ausrichters. Angeboten werden nur
@@ -128,9 +136,25 @@ function leseZahlwegFelder(body, startgeld) {
             return { fehler: 'Bei einem Startgeld muss mindestens ein Zahlweg (Überweisung oder Bar) angeboten werden.' };
         }
     }
+    let zahlungszielTage;
+    if (body.zahlungsziel_tage !== undefined && body.zahlungsziel_tage !== null && body.zahlungsziel_tage !== '') {
+        const n = Number(body.zahlungsziel_tage);
+        if (!Number.isInteger(n) || n < 1 || n > 90) {
+            return { fehler: 'Das Zahlungsziel muss zwischen 1 und 90 Tagen liegen.' };
+        }
+        zahlungszielTage = n;
+    }
+    let rechnungHinweis;
+    if (body.rechnung_hinweis !== undefined) {
+        const text = body.rechnung_hinweis == null ? '' : String(body.rechnung_hinweis).trim();
+        if (text.length > 1000) return { fehler: 'Der Hinweistext für Rechnungen darf höchstens 1000 Zeichen lang sein.' };
+        rechnungHinweis = text || null;
+    }
     return {
         fehler: null,
         fragment: {
+            ...(zahlungszielTage !== undefined ? { zahlungsziel_tage: zahlungszielTage } : {}),
+            ...(rechnungHinweis !== undefined ? { rechnung_hinweis: rechnungHinweis } : {}),
             ...(abrechnungsbasis !== undefined ? { abrechnungsbasis } : {}),
             ...(angebotene !== undefined ? { angebotene_zahlwege: angebotene.length ? angebotene.join(',') : 'ueberweisung,bar' } : {})
         }
@@ -203,11 +227,6 @@ export async function createTurnier(knex, req, res) {
         const { bezeichnung, ort, datum, ausrichter, anzahl_kampfflaechen, nutze_gewichtsklassen, bundesland, plz, altersklassen, mannschafts_altersklassen, anmeldeschluss, startgeld, iban, kontoinhaber, verwendungszweck, ausschreibung_pdf_base64, ausschreibung_dateiname, farbe_kaempfer2 } = req.body;
         const userId = req.user.id; // Logged in user ID from middleware
 
-        const zahlungsFehler = validiereZahlungsdaten(startgeld, iban, kontoinhaber, verwendungszweck);
-        if (zahlungsFehler) {
-            return res.status(400).json({ success: false, error: zahlungsFehler });
-        }
-
         const zahlwegFelder = leseZahlwegFelder(req.body, startgeld);
         if (zahlwegFelder.fehler) {
             return res.status(400).json({ success: false, error: zahlwegFelder.fehler });
@@ -234,6 +253,10 @@ export async function createTurnier(knex, req, res) {
         }
         if (!vereinId) {
             return res.status(400).json({ success: false, error: 'Bitte zuerst einen aktiven Verein wählen.' });
+        }
+        const zahlungsFehler = await validiereZahlungsdaten(knex, { startgeld, iban, kontoinhaber, verwendungszweck, vereinId });
+        if (zahlungsFehler) {
+            return res.status(400).json({ success: false, error: zahlungsFehler });
         }
 
         // Sicherer Check: Akzeptiert die Zahl 1, den String "1" oder das Boolean true
@@ -296,11 +319,6 @@ export async function updateTurnier(knex, req, res) {
         const { id } = req.params;
         const { bezeichnung, ort, datum, ausrichter, anzahl_kampfflaechen, nutze_gewichtsklassen, bundesland, plz, altersklassen, mannschafts_altersklassen, anmeldeschluss, startgeld, iban, kontoinhaber, verwendungszweck, ausschreibung_pdf_base64, ausschreibung_dateiname, farbe_kaempfer2 } = req.body;
 
-        const zahlungsFehler = validiereZahlungsdaten(startgeld, iban, kontoinhaber, verwendungszweck);
-        if (zahlungsFehler) {
-            return res.status(400).json({ success: false, error: zahlungsFehler });
-        }
-
         const zahlwegFelder = leseZahlwegFelder(req.body, startgeld);
         if (zahlwegFelder.fehler) {
             return res.status(400).json({ success: false, error: zahlwegFelder.fehler });
@@ -318,6 +336,10 @@ export async function updateTurnier(knex, req, res) {
         // 'abgeschlossen' wird nie abgeleitet, sondern immer direkt gespeichert -> Statusvergleich reicht.
         if (bestehendesTurnier.status === 'abgeschlossen') {
             return res.status(403).json({ success: false, error: 'Ein abgeschlossenes Turnier befindet sich im schreibgeschützten Archiv-Zustand.' });
+        }
+        const zahlungsFehler = await validiereZahlungsdaten(knex, { startgeld, iban, kontoinhaber, verwendungszweck, vereinId: bestehendesTurnier.verein_id });
+        if (zahlungsFehler) {
+            return res.status(400).json({ success: false, error: zahlungsFehler });
         }
         const turnierzeit = leseTurnierzeit(req.body, bestehendesTurnier);
 
@@ -1007,6 +1029,8 @@ export async function importiereTurnierDaten(knex, sync, daten) {
                 verwendungszweck: t.verwendungszweck || null,
                 abrechnungsbasis: ABRECHNUNGSBASEN.includes(t.abrechnungsbasis) ? t.abrechnungsbasis : 'gemeldet',
                 angebotene_zahlwege: t.angebotene_zahlwege ? String(t.angebotene_zahlwege) : 'ueberweisung,bar',
+                zahlungsziel_tage: Number.isInteger(Number(t.zahlungsziel_tage)) && t.zahlungsziel_tage >= 1 && t.zahlungsziel_tage <= 90 ? Number(t.zahlungsziel_tage) : 14,
+                rechnung_hinweis: typeof t.rechnung_hinweis === 'string' && t.rechnung_hinweis.trim() && t.rechnung_hinweis.length <= 1000 ? t.rechnung_hinweis.trim() : null,
                 farbe_kaempfer2: gueltigeFarbe(t.farbe_kaempfer2) || 'blau',
                 // Turnierzeit und Waagenanzahl (Helferplan); ältere Dateien ohne diese Felder: leer bzw. 1
                 ...importTurnierzeit(t),
@@ -1426,6 +1450,8 @@ export async function dupliziereTurnier(knex, req, res) {
                 verwendungszweck: quelle.verwendungszweck,
                 abrechnungsbasis: quelle.abrechnungsbasis,
                 angebotene_zahlwege: quelle.angebotene_zahlwege,
+                zahlungsziel_tage: quelle.zahlungsziel_tage,
+                rechnung_hinweis: quelle.rechnung_hinweis,
                 farbe_kaempfer2: quelle.farbe_kaempfer2,
                 ausschreibung_pdf: quelle.ausschreibung_pdf,
                 ausschreibung_dateiname: quelle.ausschreibung_dateiname

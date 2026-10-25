@@ -365,6 +365,30 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!c.isOffline) document.getElementById('sichtbarkeitGroup').style.display = '';
     }).catch(() => {});
 
+    // --- RECHNUNGEN (nur Cloud): Zahlungsziel, Hinweistext und Kasten mit fehlenden Abrechnungsdaten ---
+    let rechnungenAktiv = false;
+    async function initialisiereRechnungsBlock() {
+        if (!(await istCloud())) return;
+        rechnungenAktiv = true;
+        document.getElementById('rechnungGruppe').hidden = false;
+        if (!turnierId) return;
+        try {
+            const resp = await fetch(`/api/abrechnung/stammdaten-pruefung/${encodeURIComponent(turnierId)}`);
+            if (!resp.ok) return;
+            const pruefung = await resp.json();
+            if (pruefung.vollstaendig) return;
+            document.getElementById('rechnungStammdatenFehlt').textContent = (pruefung.fehlt || []).join(', ');
+            const link = document.getElementById('rechnungStammdatenLink');
+            if (pruefung.darfPflegen && pruefung.vereinId) {
+                link.href = `/verein-abrechnung.html?vereinId=${encodeURIComponent(pruefung.vereinId)}`;
+                link.hidden = false;
+            } else {
+                document.getElementById('rechnungStammdatenBitte').hidden = false;
+            }
+            document.getElementById('rechnungStammdatenKasten').hidden = false;
+        } catch { /* Hinweis ist optional */ }
+    }
+
     // --- NEUANLAGE: Verein des Users als austragenden Verein vorbelegen ---
     async function istCloud() {
         try {
@@ -391,6 +415,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (ausrichterFeld) ausrichterFeld.value = vereinWahl.value ? gewaehlt.textContent : '';
         });
     }
+
+    const rechnungsBlockBereit = initialisiereRechnungsBlock();
 
     const setzeAusrichterVorbelegung = async () => {
         if (turnierId) return; // nur bei Neuanlage, nicht im Edit-Modus
@@ -457,6 +483,8 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('iban').value = turnier.iban || '';
             document.getElementById('kontoinhaber').value = turnier.kontoinhaber || '';
             document.getElementById('verwendungszweck').value = turnier.verwendungszweck || '';
+            document.getElementById('zahlungsziel_tage').value = turnier.zahlungsziel_tage || 14;
+            document.getElementById('rechnung_hinweis').value = turnier.rechnung_hinweis || '';
             document.getElementById('abrechnungsbasis').value = turnier.abrechnungsbasis === 'teilnahme_waage' ? 'teilnahme_waage' : 'gemeldet';
             {
                 const angeboten = (turnier.angebotene_zahlwege || 'ueberweisung,bar').split(',').map(w => w.trim());
@@ -757,6 +785,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 kontoinhaber: document.getElementById('kontoinhaber').value.trim(),
                 verwendungszweck: document.getElementById('verwendungszweck').value.trim(),
                 abrechnungsbasis: document.getElementById('abrechnungsbasis').value,
+                ...(rechnungenAktiv ? {
+                    zahlungsziel_tage: document.getElementById('zahlungsziel_tage').value,
+                    rechnung_hinweis: document.getElementById('rechnung_hinweis').value.trim()
+                } : {}),
                 angebotene_zahlwege: [
                     document.getElementById('zahlwegUeberweisung').checked ? 'ueberweisung' : null,
                     document.getElementById('zahlwegBar').checked ? 'bar' : null
@@ -774,7 +806,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const startgeldWert = parseInt(payload.startgeld, 10) || 0;
-            if (startgeldWert > 0 && (!payload.iban || !payload.kontoinhaber || !payload.verwendungszweck)) {
+            // In der Cloud darf das Konto auch aus den Abrechnungsdaten des Vereins kommen: dort prüft der Server.
+            if (!rechnungenAktiv && startgeldWert > 0 && (!payload.iban || !payload.kontoinhaber || !payload.verwendungszweck)) {
                 if (window.zeigeNotification) {
                     window.zeigeNotification('Wenn ein Startgeld verlangt wird, müssen IBAN, Kontoinhaber und Verwendungszweck ausgefüllt sein.', 'error');
                 }

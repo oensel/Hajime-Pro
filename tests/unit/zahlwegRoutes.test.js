@@ -11,8 +11,10 @@ process.env.BETRIEBSMODUS = 'cloud';
 delete process.env.IS_OFFLINE;
 delete process.env.SYNC_ROLLE;
 process.env.JWT_SECRET = 'zahlweg-routen-test-geheimnis';
+process.env.ZAHLUNGSDATEN_SCHLUESSEL = 'zahlweg-test-schluessel-mit-mindestens-32-zeichen';
 
 const jwt = (await import('jsonwebtoken')).default;
+const { speichereStammdaten } = await import('../../src/services/abrechnungStammdaten.js');
 const { getZahlwegRoutes } = await import('../../src/routes/zahlwegRoutes.js');
 
 const id = (r) => (typeof r === 'object' ? r.id : r);
@@ -86,10 +88,16 @@ test('Zahlweg-API', async () => {
         r = await aufruf('u-a1', 'GET', `/api/zahlweg/${t}`);
         assert.equal(r.daten.zahlweg.verein_name, 'JC A');
         assert.equal(r.daten.aenderbar, true);
+        // Konto für den Girocode: nur bei Überweisung, aus den Abrechnungsdaten des Ausrichters
+        assert.equal(r.daten.empfaenger, null);
+        await speichereStammdaten(knex, vAus, { iban: 'DE89 3704 0044 0532 0130 00', kontoinhaber: 'JC Ausrichter e.V.' }, 'u-aus');
+        r = await aufruf('u-a1', 'GET', `/api/zahlweg/${t}`);
+        assert.deepEqual(r.daten.empfaenger, { kontoinhaber: 'JC Ausrichter e.V.', iban: 'DE89370400440532013000', verwendungszweck: null });
 
         // zweiter Benutzer desselben Vereins überschreibt, eine Zeile
         r = await aufruf('u-a2', 'PUT', `/api/zahlweg/${t}`, { ...EINGABE, zahlweg: 'bar' });
         assert.equal(r.status, 200);
+        assert.equal((await aufruf('u-a1', 'GET', `/api/zahlweg/${t}`)).daten.empfaenger, null);
         assert.equal((await knex('turnier_zahlwege').where({ turnier_id: t }).count('* as n').first()).n, '1');
         assert.equal((await knex('turnier_zahlwege').where({ turnier_id: t }).first()).zahlweg, 'bar');
         // Vorbelegung aus früherer Wahl bei anderem Turnier

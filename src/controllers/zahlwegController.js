@@ -8,6 +8,7 @@ import { turnierHatEchteKaempfe } from './poolController.js';
 import { ladeZahlwegFuerVerein, ladeVorbelegung, speichereZahlweg, ladeKasse, kassiereBar } from '../services/zahlwege.js';
 import { parseAngeboteneZahlwege, startgeldVerlangt } from '../shared/zahlweg.js';
 import { darfTurnierSehen } from '../services/turnierSichtbarkeit.js';
+import { ermittleZahlungsempfaenger } from '../services/abrechnungStammdaten.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 
 const STUFE1_ZAHLWEGE = ['ueberweisung', 'bar'];
@@ -70,8 +71,15 @@ export function erzeugeZahlwegController(knex) {
                 const { turnier, vereinName, istAusrichter } = await ladeKontext(req);
                 const erforderlich = startgeldVerlangt(turnier) && !istAusrichter;
                 const zahlweg = erforderlich ? await ladeZahlwegFuerVerein(knex, turnier.id, vereinName) : null;
+                // Konto für den Girocode: nur wer per Überweisung zahlt, bekommt es (Turnierfelder vor Vereinskonto).
+                let empfaenger = null;
+                if (zahlweg?.zahlweg === 'ueberweisung') {
+                    const e = await ermittleZahlungsempfaenger(knex, turnier);
+                    if (e) empfaenger = { kontoinhaber: e.kontoinhaber, iban: e.iban, verwendungszweck: turnier.verwendungszweck || null };
+                }
                 res.json({
                     erforderlich,
+                    empfaenger,
                     angebotene: angebotenInStufe1(turnier),
                     startgeld: parseFloat(turnier.startgeld) || 0,
                     abrechnungsbasis: turnier.abrechnungsbasis,

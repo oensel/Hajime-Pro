@@ -1720,12 +1720,27 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
 
                 const betrag = turnierStartgeldWert * unbezahlt.length;
-                const verwendungszweckErsetzt = (turnierVerwendungszweck || '')
+                // Leere Turnierfelder (Cloud): das Konto aus den Abrechnungsdaten des Ausrichters, wenn der eigene Zahlweg Überweisung ist.
+                let zielIban = turnierIban;
+                let zielKontoinhaber = turnierKontoinhaber;
+                let zielVerwendungszweck = turnierVerwendungszweck;
+                if (!zielIban || !zielKontoinhaber) {
+                    try {
+                        const zResp = await fetch(`/api/zahlweg/${encodeURIComponent(turnierId)}`);
+                        const z = zResp.ok ? await zResp.json() : null;
+                        if (z && z.empfaenger) {
+                            zielIban = z.empfaenger.iban;
+                            zielKontoinhaber = z.empfaenger.kontoinhaber;
+                            if (!zielVerwendungszweck) zielVerwendungszweck = z.empfaenger.verwendungszweck || 'Startgeld <Turniername> <Verein>';
+                        }
+                    } catch { /* ohne Konto bleibt der Code leer */ }
+                }
+                const verwendungszweckErsetzt = (zielVerwendungszweck || '')
                     .replace(/<Turniername>/g, turnierBezeichnung)
                     .replace(/<Verein>/g, eigenerVerein);
 
-                document.getElementById('startgeldIbanFeld').value = turnierIban;
-                document.getElementById('startgeldKontoinhaberFeld').value = turnierKontoinhaber;
+                document.getElementById('startgeldIbanFeld').value = zielIban;
+                document.getElementById('startgeldKontoinhaberFeld').value = zielKontoinhaber;
                 document.getElementById('startgeldVerwendungszweckFeld').value = verwendungszweckErsetzt;
                 document.getElementById('startgeldBetragAnzeige').textContent =
                     `Offener Betrag: ${betrag.toFixed(2).replace('.', ',')} € (${unbezahlt.length} Teilnehmer)`;
@@ -1739,8 +1754,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
 
                 const payload = baueGiroCodePayload({
-                    name: turnierKontoinhaber,
-                    iban: turnierIban,
+                    name: zielKontoinhaber,
+                    iban: zielIban,
                     betrag,
                     verwendungszweck: verwendungszweckErsetzt
                 });
