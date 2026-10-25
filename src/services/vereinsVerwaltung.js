@@ -69,7 +69,7 @@ async function fremdschluesselAufVereine(trx) {
     return ergebnis.rows;
 }
 
-const BESONDERS_BEHANDELT = new Set(['benutzer_vereine.verein_id', 'urkunden_vorlagen.verein_id']);
+const BESONDERS_BEHANDELT = new Set(['benutzer_vereine.verein_id', 'urkunden_vorlagen.verein_id', 'vereins_abrechnung.verein_id']);
 
 function freierName(name, belegt) {
     if (!belegt.has(name)) return name;
@@ -123,6 +123,13 @@ export async function fuehreVereineZusammen(knex, quelleId, zielId) {
                 const name = freierName(v.name, belegt);
                 belegt.add(name);
                 await trx('urkunden_vorlagen').where({ id: v.id }).update({ verein_id: zielId, name });
+            }
+
+            // Abrechnungs-Stammdaten: je Verein höchstens eine Zeile; hat das Ziel welche, gewinnen sie
+            if (await trx('vereins_abrechnung').where({ verein_id: zielId }).first()) {
+                await trx('vereins_abrechnung').where({ verein_id: quelleId }).del();
+            } else {
+                await trx('vereins_abrechnung').where({ verein_id: quelleId }).update({ verein_id: zielId });
             }
 
             // Turniere und alles Übrige, was auf den Verein zeigt
