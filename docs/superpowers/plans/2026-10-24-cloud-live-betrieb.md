@@ -239,3 +239,14 @@
 
 - Abdeckung: Ziele 1–6 → Tasks 3/4 (Live-Führung, Kopplung), 9/10 (Geräteauswahl, Rückfrage, Handys), 5/7 (Live-Schalten durch Admin); Nicht-Ziele → keine Tasks (bewusst); Abschottung → Task 2/4; Mischen-Sperre → Task 5; Live beenden → Task 6; Neustart → Task 3; Teilnehmer-App → Task 8; Video lokal → bleibt unverändert, da die Clips ohnehin lokal aufgenommen werden; die Übertragung zum Server entfällt, weil die Cloud keinen `/api/video`-WebSocket bietet (kein Task, der Client zeigt den Upload als „nicht verfügbar“ — **im Task 9 mit prüfen**).
 - Offen für den Implementierer laut Spec: genaue Verwalter-Gestalt, Ressourcenbudget, mDNS-Plugin für Android.
+
+---
+
+## Umsetzungsstand (2026-10-25)
+
+Tasks 1–12 sind umgesetzt, mit diesen Abweichungen vom Plan:
+
+- **Task 11:** statt eines neuen Shards der Sync-Suite ein Spec in der Haupt-E2E-Suite (`tests/e2e/cloud-live-geraet.spec.js`), der einen echten Client-Knoten per `child_process` startet (die Sync-Suite fährt einen Hallen-Server mit genau einem Turnier).
+- **Task 13 (neu):** Sync-Konflikte der Turnierleitung im Cloud-Betrieb (`/api/cloud-live/:turnierId/konflikte`, `konflikte.js ?cloudTurnier=`), dazu Abschottung von `entscheideKlaerung`.
+- **Nachgeschärft nach Sicherheitsprüfungen:** Zugang mit Fehlversuch-Sperre und festem Ablauf (`gueltig_bis`), Startfenster ab Vortag (`startRegeln.js`), höchstens 3 Live-Turniere je Verein, Aufräumlauf, Teilnehmer-App nur mit Freigabe und Zufallsgeheimnis, strenge `turnier_id`-Prüfung der Brücke, Schutz gegen das Beenden während einer Anfrage.
+- **Nicht im Gerät geprüft:** Desktop-Client (Electron-Fenster, `desktop/main.js`) und Android-Serverwahl (`mobil/web/server-waehlen.html`): nur Syntax-/Build-Prüfung und Unit-Tests der reinen Logik.
