@@ -25,6 +25,10 @@
                 <span class="material-icons">qr_code_2</span>
                 <span>Startgeld</span>
             </button>
+            <button type="button" class="toolbar-btn" id="kasseBtn" style="display: none;" aria-label="Kasse" data-tooltip="Kasse: Startgeld der Bar-Zahler">
+                <span class="material-icons">point_of_sale</span>
+                <span>Kasse</span>
+            </button>
             <button type="button" class="toolbar-btn" id="bulkMarkWeighedBtn" aria-label="Gewogen" data-tooltip="Ausgewählte als gewogen markieren" disabled style="display: none;">
                 <span class="material-icons">scale</span>
                 <span>Gewogen</span>
@@ -64,6 +68,10 @@
 
     <input type="file" id="importFileInput" accept=".csv,.xlsx,.xls" style="display: none;">
     <span id="importStatus" style="display: block; margin: 0 0 8px 8px; font-size: 12px; color: var(--text-muted); font-weight: bold;"></span>
+    <div id="zahlwegZeile" style="display: none; margin: 0 0 8px 8px; font-size: 13px; font-weight: 700;">
+        Zahlweg: <span id="zahlwegText"></span>
+        <a href="#" id="zahlwegAendernLink" style="color: var(--primary); text-decoration: underline; margin-left: 4px;">ändern</a>
+    </div>
     <div id="importSkippedList" style="display: none; margin: 0 0 8px 8px; font-size: 12px; color: #b83232;"></div>
 
     <!-- Nur in der Handy-Ansicht der Android-App (handy.css): Teilnehmer als Karten statt Tabelle -->
@@ -143,6 +151,29 @@
     </div>
 </div>
 
+<!-- Kasse: Vereine, die ihr Startgeld bar an der Kasse zahlen -->
+<div id="kasseModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(2px); z-index: 9999; align-items: center; justify-content: center;">
+    <div class="mdc-card" role="dialog" aria-modal="true" aria-labelledby="kasseTitel" style="max-width: 760px; width: 95%; max-height: 88vh; overflow-y: auto; padding: 24px; border-radius: 4px; border: 2px solid var(--border); box-shadow: var(--shadow); background-color: var(--bg-card);">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+            <h2 id="kasseTitel" style="margin: 0; font-size: 18px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Kasse</h2>
+            <span class="material-icons" id="kasseModalClose" role="button" aria-label="Schließen" style="cursor: pointer; color: var(--text-muted);">close</span>
+        </div>
+        <p id="kasseLeer" style="display: none; color: var(--text-muted);">Kein Verein zahlt bar an der Kasse.</p>
+        <table id="kasseTabelle" style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr>
+                    <th style="text-align: left;">Verein</th>
+                    <th style="text-align: left;">Zahlweg</th>
+                    <th style="text-align: right;">Kämpfer</th>
+                    <th style="text-align: right;">offen</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody id="kasseTabelleBody"></tbody>
+        </table>
+    </div>
+</div>
+
 <!-- Startgeld-Zahlungs-Modal -->
 <div id="startgeldModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(2px); z-index: 9999; align-items: center; justify-content: center;">
     <div class="mdc-card" style="max-width: 640px; width: 90%; padding: 24px; border-radius: 4px; border: 2px solid var(--border); box-shadow: var(--shadow); background-color: var(--bg-card);">
@@ -157,6 +188,7 @@
             <div style="flex: 0 0 200px; display: flex; flex-direction: column; align-items: center; gap: 8px;">
                 <div id="startgeldQrContainer"></div>
                 <span id="startgeldBetragAnzeige" style="font-size: 13px; font-weight: 700; color: var(--text-main);"></span>
+                <span id="startgeldGesichertHinweis" style="display: none; font-size: 12px; color: var(--text-muted);"></span>
             </div>
             <div style="flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 14px;">
                 <div class="form-group" style="margin: 0;">
@@ -342,6 +374,7 @@
                 <div style="display: flex; align-items: center; gap: 8px; padding: 6px 0;">
                     <input type="checkbox" id="startgeld_bezahlt" style="width: 16px; height: 16px; cursor: pointer; accent-color: var(--primary); margin: 0;">
                     <label for="startgeld_bezahlt" style="margin: 0; cursor: pointer; font-weight: bold; user-select: none; display: inline-block; text-transform: none; font-size: 12px; letter-spacing: normal;">Startgeld bezahlt</label>
+                    <span id="startgeldZahlwegHinweis" style="display: none; font-size: 11px; color: var(--text-muted);">(über Zahlweg gesichert)</span>
                 </div>
                 <div></div>
             </div>
@@ -361,8 +394,9 @@
 <script src="/js/pouchdb/pouchdb.min.js"></script>
 <script src="/js/datenzugriff.js"></script>
 <script src="/js/syncStatus.js"></script>
-<script src="/js/teilnehmer.js"></script>
+<script type="module" src="/js/teilnehmer.js"></script>
 <script src="/js/nachzueglerDialog.js"></script>
+<script src="/js/zahlwegDialog.js"></script>
 <script type="module" src="/js/waage-modal.js"></script>
 </body>
 </html>

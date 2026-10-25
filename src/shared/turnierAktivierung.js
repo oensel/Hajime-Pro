@@ -56,6 +56,8 @@ export function kopiereTeilnehmerFuerNeuesTurnier(teilnehmer, neueTurnierId) {
         pool_id: null,
         status: 'angemeldet',
         gewogen: false,
-        startgeld_bezahlt: false
+        startgeld_bezahlt: false,
+        // Wird nach dem Kopieren aus den Zahlwegen der Kopie neu abgeleitet (synchronisiereGesichert).
+        startgeld_zahlweg_gesichert: false
     };
 }

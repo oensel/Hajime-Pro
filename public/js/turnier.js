@@ -457,6 +457,12 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('iban').value = turnier.iban || '';
             document.getElementById('kontoinhaber').value = turnier.kontoinhaber || '';
             document.getElementById('verwendungszweck').value = turnier.verwendungszweck || '';
+            document.getElementById('abrechnungsbasis').value = turnier.abrechnungsbasis === 'teilnahme_waage' ? 'teilnahme_waage' : 'gemeldet';
+            {
+                const angeboten = (turnier.angebotene_zahlwege || 'ueberweisung,bar').split(',').map(w => w.trim());
+                document.getElementById('zahlwegUeberweisung').checked = angeboten.includes('ueberweisung');
+                document.getElementById('zahlwegBar').checked = angeboten.includes('bar');
+            }
 
             bestehendeAusschreibungVorhanden = !!turnier.hat_ausschreibung;
             aktualisiereAusschreibungAnzeige();
@@ -749,7 +755,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 startgeld: document.getElementById('startgeld').value,
                 iban: document.getElementById('iban').value.trim(),
                 kontoinhaber: document.getElementById('kontoinhaber').value.trim(),
-                verwendungszweck: document.getElementById('verwendungszweck').value.trim()
+                verwendungszweck: document.getElementById('verwendungszweck').value.trim(),
+                abrechnungsbasis: document.getElementById('abrechnungsbasis').value,
+                angebotene_zahlwege: [
+                    document.getElementById('zahlwegUeberweisung').checked ? 'ueberweisung' : null,
+                    document.getElementById('zahlwegBar').checked ? 'bar' : null
+                ].filter(Boolean).join(',')
             };
 
             // Ausschreibung nur mitschicken, wenn sich tatsächlich etwas geändert hat (neue Datei
@@ -766,6 +777,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (startgeldWert > 0 && (!payload.iban || !payload.kontoinhaber || !payload.verwendungszweck)) {
                 if (window.zeigeNotification) {
                     window.zeigeNotification('Wenn ein Startgeld verlangt wird, müssen IBAN, Kontoinhaber und Verwendungszweck ausgefüllt sein.', 'error');
+                }
+                return;
+            }
+
+            if (startgeldWert > 0 && !payload.angebotene_zahlwege) {
+                if (window.zeigeNotification) {
+                    window.zeigeNotification('Bei einem Startgeld muss mindestens ein Zahlweg (Überweisung oder Bar) angeboten werden.', 'error');
                 }
                 return;
             }
