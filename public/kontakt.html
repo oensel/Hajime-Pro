@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hajime Pro - Kontakt</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <style>
+        body { display: flex !important; align-items: center !important; justify-content: center !important; min-height: 100vh !important; margin: 0 !important; padding: 16px !important; background: #111827 !important; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important; box-sizing: border-box; }
+        .kontakt-karte { background: #1f2937; border: 2px solid #374151; border-radius: 8px; padding: 32px; width: 100%; max-width: 460px; color: #f3f4f6; box-sizing: border-box; box-shadow: 0 10px 25px rgba(0,0,0,.5); }
+        .kontakt-karte h1 { margin: 0 0 6px; font-size: 22px; color: #3b82f6; text-align: center; }
+        .kontakt-karte p { margin: 0 0 18px; font-size: 13px; color: #9ca3af; text-align: center; }
+        .form-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+        .form-group label { font-size: 12px; font-weight: bold; color: #9ca3af; text-transform: uppercase; letter-spacing: .5px; }
+        .form-group input, .form-group textarea { box-sizing: border-box; width: 100%; padding: 0 14px; border: 1px solid #4b5563; border-radius: 4px; background: #111827; color: #fff; font: inherit; font-size: 14px; outline: none; }
+        .form-group input { height: 44px; }
+        .form-group textarea { min-height: 130px; padding: 12px 14px; resize: vertical; }
+        .form-group input:focus, .form-group textarea:focus { border-color: #3b82f6; }
+        .knopf { width: 100%; background: #3b82f6; color: #fff; border: none; padding: 14px; font-size: 14px; font-weight: 700; border-radius: 4px; cursor: pointer; text-transform: uppercase; letter-spacing: .5px; }
+        .knopf:hover { background: #2563eb; }
+        .meldung { margin-top: 14px; font-size: 13px; font-weight: 700; text-align: center; min-height: 18px; }
+        .meldung.fehler { color: #ef4444; }
+        .zurueck { display: block; margin-top: 14px; text-align: center; font-size: 13px; color: #93c5fd; }
+    </style>
+</head>
+<body>
+<div class="kontakt-karte">
+    <h1>Kontakt</h1>
+    <p>Fragen, Wünsche oder Probleme? Deine Nachricht geht an die Super-Admins. Die Antwort kommt per E-Mail.</p>
+    <form id="kontaktForm">
+        <div class="form-group"><label for="kName">Dein Name</label><input type="text" id="kName" required maxlength="100" autocomplete="name"></div>
+        <div class="form-group"><label for="kEmail">E-Mail-Adresse</label><input type="email" id="kEmail" required maxlength="254" autocomplete="email"></div>
+        <div class="form-group"><label for="kBetreff">Betreff</label><input type="text" id="kBetreff" required maxlength="150"></div>
+        <div class="form-group"><label for="kText">Nachricht</label><textarea id="kText" required maxlength="5000"></textarea></div>
+        <button type="submit" class="knopf" id="kSenden">Senden</button>
+        <div id="kMeldung" class="meldung" role="status"></div>
+    </form>
+    <a class="zurueck" href="/login.html">Zur Anmeldung</a>
+</div>
+<script src="/js/kontakt.js"></script>
+<script src="/js/rechtsfuss.js"></script>
+</body>
+</html>

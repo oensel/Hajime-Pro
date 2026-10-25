@@ -37,7 +37,7 @@ export function vorbelegteFreigabeRolle(angefragtUeber) {
 }
 
 // Seiten, die auch Konten ohne Verwaltungsrecht öffnen dürfen (keine Weiterleitung zur Helfer-App).
-const HELFER_FREIE_SEITEN = ['login.html', 'verein_auswahl.html', 'profil.html', 'bestaetigen.html', 'freigabe.html', 'helfer.html', 'turnier-ansicht.html'];
+const HELFER_FREIE_SEITEN = ['login.html', 'verein_auswahl.html', 'profil.html', 'bestaetigen.html', 'freigabe.html', 'helfer.html', 'turnier-ansicht.html', 'nachrichten.html', 'kontakt.html'];
 
 /** Darf ein Konto ohne Verwaltungsrecht diese Seite sehen? */
 export function istHelferFreieSeite(pfad) {

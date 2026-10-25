@@ -1,4 +1,4 @@
-// Kleine Fußzeile „Impressum · Datenschutz“ auf jeder Seite der Cloud (Impressum und Datenschutzerklärung müssen von jeder Seite aus leicht erreichbar sein).
+// Kleine Fußzeile „Impressum · Datenschutz · Kontakt“ auf jeder Seite der Cloud (Impressum und Datenschutzerklärung müssen von jeder Seite aus leicht erreichbar sein).
 // Eingebunden von menu.js und von den Seiten ohne Menü (Anmeldung, Einladung, Passwort, …). Gibt es die Seiten nicht (Hallen-Server), erscheint nichts:
 // der Server meldet das über /api/rechtliches/aktiv, das Ergebnis wird je Sitzung gemerkt.
 (function () {
@@ -13,7 +13,7 @@
         const fuss = document.createElement('footer');
         fuss.id = 'rechtsfuss';
         const link = (text, href) => { const a = document.createElement('a'); a.href = href; a.textContent = text; a.rel = 'noopener'; return a; };
-        fuss.append(link('Impressum', '/impressum.html'), ' · ', link('Datenschutz', '/datenschutz.html'));
+        fuss.append(link('Impressum', '/impressum.html'), ' · ', link('Datenschutz', '/datenschutz.html'), ' · ', link('Kontakt', '/kontakt.html'));
         document.head.appendChild(stil);
         document.body.appendChild(fuss);
     }
