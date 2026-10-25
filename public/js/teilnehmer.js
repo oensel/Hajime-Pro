@@ -1,5 +1,6 @@
 // Startgeld erfüllt (kostenlos, bezahlt oder Zahlweg gesichert): dieselbe Ableitung wie am Server.
 import { startgeldErfuellt } from '/js/shared/zahlweg.js';
+import { baueGiroCodePayload } from '/js/shared/girocode.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -1694,25 +1695,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     aktualisiereZahlwegZeile();
 
-    // --- STARTGELD BEZAHLEN: GiroCode/EPC-QR mit vorausgefülltem Betrag für den eigenen Verein ---
-    // Format nach EPC069-12 ("Girocode"), von SEPA-fähigen Banking-Apps direkt scanbar.
-    function baueGiroCodePayload({ name, iban, betrag, verwendungszweck }) {
-        const zeilen = [
-            'BCD',
-            '002',
-            '1',
-            'SCT',
-            '', // BIC — seit 2016 für IBANs aus dem EWR nicht mehr erforderlich
-            (name || '').slice(0, 70),
-            (iban || '').replace(/\s+/g, ''),
-            `EUR${betrag.toFixed(2)}`,
-            '', // Purpose
-            '', // Strukturierte Zahlungsreferenz
-            (verwendungszweck || '').slice(0, 140)
-        ];
-        return zeilen.join('\n');
-    }
-
+    // --- STARTGELD BEZAHLEN: GiroCode/EPC-QR mit vorausgefülltem Betrag für den eigenen Verein (baueGiroCodePayload aus /js/shared/girocode.js) ---
     const startgeldBezahlenBtn = document.getElementById('startgeldBezahlenBtn');
     const startgeldModal = document.getElementById('startgeldModal');
     if (startgeldBezahlenBtn && startgeldModal) {

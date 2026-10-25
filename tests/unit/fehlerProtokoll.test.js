@@ -39,6 +39,12 @@ test('Fehlerprotokoll: Zugangsdaten schwärzen und Meldungen formatieren', () =>
     assert.equal(fp.formatiereMeldung(['']).meldung, '(leere Meldung)');
 });
 
+test('Fehlerprotokoll: IBANs werden geschwärzt', () => {
+    assert.equal(fp.schwaerze('IBAN DE89 3704 0044 0532 0130 00 ok'), 'IBAN ***IBAN*** ok');
+    assert.equal(fp.schwaerze('IBAN DE89370400440532013000 ok'), 'IBAN ***IBAN*** ok');
+    assert.equal(fp.schwaerze('Rechnung JCK-00001'), 'Rechnung JCK-00001');
+});
+
 test('Fehlerprotokoll: Infos (auch vor der Installation) und Zähler', async () => {
     const db = await starteTestPostgres();
     const { knex } = db;
