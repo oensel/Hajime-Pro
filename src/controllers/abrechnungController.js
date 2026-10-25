@@ -1,11 +1,12 @@
 // Startgeld-Abrechnung (Stufe 2): Stammdaten des Ausrichters und deren Prüfung für ein Turnier.
-// Nur Cloud. `sende` (Mailversand) nimmt der Controller für die späteren Rechnungsrouten entgegen.
+// Nur Cloud. `sende` (Mailversand) wird an den Rechnungslauf durchgereicht (Tests ersetzen ihn).
 import { FachFehler } from '../utils/fachFehler.js';
 import { darfVereinVerwalten } from '../services/vereinsRollen.js';
 import { fehlendeStammdaten } from '../shared/abrechnung.js';
 import { ladeStammdaten, speichereStammdaten, pruefeStammdatenFuerTurnier } from '../services/abrechnungStammdaten.js';
 import { ladeAbrechnung, ordneVereinZu } from '../services/abrechnung.js';
 import { erfasseVorOrt } from '../services/zahlwege.js';
+import { erstelleRechnungen, sendeRechnungErneut, setzeBezahlt, ladeRechnungPdf } from '../services/rechnungslauf.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 
 function antworteFehler(res, err) {
@@ -17,7 +18,7 @@ function antworteFehler(res, err) {
 }
 
 export function erzeugeAbrechnungController(knex, { sende } = {}) {
-    void sende;
+    const versand = sende ? { sende } : {};
 
     function nurCloud() {
         if (betriebsmodus.istEinzelbenutzerBetrieb()) {
@@ -36,7 +37,60 @@ export function erzeugeAbrechnungController(knex, { sende } = {}) {
         return vereinId;
     }
 
+    // Die Rechnung muss zum vom Gate geprüften Turnier gehören, sonst 404 (auch bei ungültiger ID).
+    async function pruefeRechnung(req) {
+        nurCloud();
+        const roh = String(req.params.rechnungId ?? '');
+        const rechnungId = /^\d+$/.test(roh) && Number(roh) <= 2147483647 ? Number(roh) : null;
+        const zeile = rechnungId == null ? null
+            : await knex('rechnungen').where({ id: rechnungId, turnier_id: req.tournament.id }).first('id');
+        if (!zeile) throw new FachFehler(404, 'Rechnung nicht gefunden.');
+        return rechnungId;
+    }
+
     return {
+        // Rechnungslauf: je Verein Rechnung/Quittung erstellen und versenden.
+        async erstelleRechnungen(req, res) {
+            try {
+                nurCloud();
+                res.json(await erstelleRechnungen(knex, { turnier: req.tournament, benutzerId: req.user.id, ...versand }));
+            } catch (err) {
+                antworteFehler(res, err);
+            }
+        },
+
+        async sendeErneut(req, res) {
+            try {
+                const rechnungId = await pruefeRechnung(req);
+                res.json(await sendeRechnungErneut(knex, rechnungId, versand));
+            } catch (err) {
+                antworteFehler(res, err);
+            }
+        },
+
+        async setzeBezahlt(req, res) {
+            try {
+                const rechnungId = await pruefeRechnung(req);
+                const rechnung = await setzeBezahlt(knex, rechnungId, { bezahlt: req.body?.bezahlt, benutzerId: req.user.id });
+                res.json({ success: true, rechnung });
+            } catch (err) {
+                antworteFehler(res, err);
+            }
+        },
+
+        async ladePdf(req, res) {
+            try {
+                const rechnungId = await pruefeRechnung(req);
+                const { nummer, pdf } = await ladeRechnungPdf(knex, rechnungId);
+                res.setHeader('Content-Type', 'application/pdf');
+                res.setHeader('Content-Disposition', `attachment; filename="${String(nummer).replace(/[^A-Za-z0-9._-]/g, '_')}.pdf"`);
+                res.setHeader('Cache-Control', 'no-store');
+                res.end(Buffer.from(pdf));
+            } catch (err) {
+                antworteFehler(res, err);
+            }
+        },
+
         // Übersicht je Verein (Admin des Ausrichters, Gate: requireTurnierAdmin).
         async lade(req, res) {
             try {

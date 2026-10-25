@@ -64,6 +64,9 @@ const AKTIONEN = {
     'POST /api/abrechnung/:id/rechnungsdaten': ['abrechnung.rechnungsdaten', 'Rechnungsdaten eines Vereins erfasst'],
     'POST /api/abrechnung/:id/rueckspielen-freigeben': ['abrechnung.rueckspielfreigabe', 'Erneutes Zurückspielen freigegeben'],
     'PUT /api/abrechnung/stammdaten/:id': ['abrechnung.stammdaten', 'Abrechnungsdaten des Vereins geändert'],
+    'POST /api/abrechnung/:id/rechnungen': ['abrechnung.rechnungslauf', 'Rechnungen erstellt und versendet'],
+    'POST /api/abrechnung/:id/rechnungen/:id/senden': ['abrechnung.senden', 'Rechnung erneut versendet'],
+    'POST /api/abrechnung/:id/rechnungen/:id/bezahlt': ['abrechnung.bezahlt', 'Zahlstatus einer Rechnung geändert'],
     'DELETE /api/konsole': ['konsole.leeren', 'Fehlerprotokoll (Konsole) geleert']
 };
 const RESSOURCEN = {

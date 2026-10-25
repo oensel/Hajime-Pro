@@ -57,14 +57,15 @@ export async function ladeAbrechnung(knex, turnier) {
     const rechnungen = new Map();
     const zeilen = await knex('rechnungen')
         .where({ turnier_id: turnier.id }).whereNot('status', 'zurueckgebucht')
-        .select('id', 'verein_name', 'nummer', 'art', 'status', 'versandt_am', 'bezahlt_am', 'versand_fehler',
+        .select('id', 'verein_name', 'nummer', 'art', 'status', 'versandt_am', 'bezahlt_am', 'versand_fehler', 'anzahl', 'betrag_cent',
             knex.raw("to_char(zahlungsziel_datum, 'YYYY-MM-DD') as zahlungsziel_datum"))
         .orderBy('id');
     for (const z of zeilen) {
         rechnungen.set(normName(z.verein_name), {
             id: z.id, nummer: z.nummer, art: z.art, status: z.status,
             anzeigeStatus: rechnungsAnzeigeStatus(z, heute),
-            versandt_am: z.versandt_am, bezahlt_am: z.bezahlt_am, versand_fehler: z.versand_fehler
+            versandt_am: z.versandt_am, bezahlt_am: z.bezahlt_am, versand_fehler: z.versand_fehler,
+            anzahl: z.anzahl, betrag_cent: z.betrag_cent
         });
     }
 
@@ -72,6 +73,7 @@ export async function ladeAbrechnung(knex, turnier) {
         if (ausrichterName && schluessel === normName(ausrichterName)) continue;
         const gezaehlt = zaehlung.get(schluessel);
         const anzahl = gezaehlt?.anzahl ?? 0;
+        const rechnung = rechnungen.get(schluessel) ?? null;
         antwort.vereine.push({
             vereinName: z.verein_name,
             zahlweg: z.zahlweg,
@@ -79,7 +81,9 @@ export async function ladeAbrechnung(knex, turnier) {
             bezahltAnzahl: gezaehlt?.bezahltAnzahl ?? 0,
             betragCent: anzahl * startgeldCent,
             rechnungEmail: z.rechnung_email || null,
-            rechnung: rechnungen.get(schluessel) ?? null
+            rechnung,
+            // Rechnungen sind Momentaufnahmen und werden nie angepasst; spätere Änderungen (z. B. ordneVereinZu) nur melden.
+            rechnungWeichtAb: !!rechnung && (rechnung.anzahl !== anzahl || rechnung.betrag_cent !== anzahl * startgeldCent)
         });
     }
     antwort.vereine.sort((a, b) => a.vereinName.localeCompare(b.vereinName, 'de'));
