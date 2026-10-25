@@ -4,7 +4,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
 
-const STANDARD = { serverUrl: null, secret: null, updateVersuche: {} };
+// cloud: { serverUrl, secret } eines gekoppelten Cloud-Turniers (Cloud-Live), unabhängig vom Hallen-Server (serverUrl/secret).
+const STANDARD = { serverUrl: null, secret: null, cloud: null, updateVersuche: {} };
 
 export function erzeugeEinstellungen(datei) {
     function lade() {

@@ -7,6 +7,8 @@ import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { erzeugeEinstellungen } from './einstellungen.js';
 import { sucheServer } from './serverSuche.js';
+import { koppleCloud } from './cloudKopplung.js';
+import { waehleServer } from '../src/shared/serverAuswahl.js';
 import { pruefeUndAktualisiere } from './updater.js';
 import { richteLinuxIntegrationEin } from './linuxIntegration.js';
 import { normalisiereServerAdresse } from './updateLogik.js';
@@ -89,9 +91,42 @@ async function pruefeManuelleAdresse(eingabe) {
     return { ok: true, url };
 }
 
-// mDNS-Suche, die eine im Start-Fenster eingegebene Adresse vorzeitig beendet.
+// Cloud-Turnier koppeln (Start-Fenster, Link aus „Live in der Cloud“, Cloud-Live): speichert die Verbindung getrennt vom
+// Hallen-Server und weckt eine laufende Suche (sucheOderManuell) bzw. die Neukopplung der Überwachung.
+let cloudWarten = null;
+let cloudMelden = null;
+function naechsteCloudKopplung() {
+    if (!cloudWarten) cloudWarten = new Promise(r => { cloudMelden = r; });
+    return cloudWarten;
+}
+
+async function koppleCloudTurnier(eingabe) {
+    const ergebnis = await koppleCloud(eingabe, { clientId: einstellungen.lade().clientId });
+    if (!ergebnis.ok) return ergebnis;
+    einstellungen.speichere({ cloud: { serverUrl: ergebnis.serverUrl, secret: ergebnis.secret } });
+    status('Cloud-Turnier gekoppelt');
+    if (cloudMelden) {
+        const melden = cloudMelden;
+        cloudWarten = cloudMelden = null;
+        melden({ url: ergebnis.serverUrl, secret: ergebnis.secret, rolle: 'cloud' });
+    }
+    return { ok: true };
+}
+
+// Kein Hallen-Server im WLAN, aber ein Cloud-Turnier gekoppelt: nie ohne Rückfrage zur Cloud wechseln (ein Turnier läuft
+// entweder am Hallen-Server oder in der Cloud).
+async function frageCloudDialog() {
+    const { response } = await dialog.showMessageBox(startFenster && !startFenster.isDestroyed() ? startFenster : undefined, {
+        type: 'question', buttons: ['Mit der Cloud verbinden', 'Nein, weiter suchen'], defaultId: 0, cancelId: 1, title: 'Hajime Pro',
+        message: 'Kein Turnier-Server im WLAN gefunden.',
+        detail: 'Mit der Cloud verbinden? Nur wählen, wenn das Turnier ohne Hallen-Server in der Cloud läuft.'
+    });
+    return response === 0;
+}
+
+// mDNS-Suche, die eine im Start-Fenster eingegebene Adresse oder ein gekoppeltes Cloud-Turnier vorzeitig beendet.
 function sucheOderManuell(timeoutMs) {
-    return Promise.race([sucheServer({ timeoutMs }), naechsteManuelleAdresse()]);
+    return Promise.race([sucheServer({ timeoutMs }), naechsteManuelleAdresse(), naechsteCloudKopplung()]);
 }
 
 // Kopplung: zeigt das Formular im Start-Fenster und löst mit dem Geheimnis auf, sobald der Server
@@ -143,7 +178,7 @@ async function starteClientKnoten({ serverUrl, secret }) {
 
 // Im Betrieb: fehlt der Server > 10 s oder meldet er sich als Secondary (nach einer Übergabe im
 // Cluster), neu suchen (Master-Wechsel); lehnt er das Geheimnis ab, einmalig neu koppeln.
-function ueberwache(clientDienst) {
+function ueberwache(clientDienst, art = 'hallenserver') {
     let wegSeit = null;
     let laeuft = false; // vorheriger Durchlauf (Suche/Kopplung) noch nicht fertig -> Tick auslassen
     let kopplungPauseBis = 0;
@@ -160,13 +195,28 @@ function ueberwache(clientDienst) {
         await dienst.setzeVerbindung({ secret, serverUrl: einstellungen.lade().serverUrl });
     }
 
+    // Cloud-Turnier: Code in der Cloud erneuert oder Turnier gesperrt/beendet → neuen Link einfügen lassen.
+    async function neuKoppelnCloud(dienst) {
+        await zeigeStartFenster();
+        startFenster.webContents.send('cloud-noetig', 'Die Cloud hat den Zugang nicht angenommen (Code erneuert, gesperrt oder Live-Betrieb beendet). Bitte den aktuellen Link einfügen:');
+        const neu = await Promise.race([naechsteCloudKopplung(), new Promise(r => startFenster.once('closed', () => r(null)))]);
+        if (!neu) { // Nutzer hat das Start-Fenster geschlossen
+            kopplungPauseBis = Date.now() + KOPPLUNG_PAUSE_MS;
+            return;
+        }
+        if (startFenster && !startFenster.isDestroyed()) startFenster.close();
+        await dienst.setzeVerbindung({ serverUrl: neu.url, secret: neu.secret });
+    }
+
     async function durchlauf() {
         const dienst = clientDienst();
         if (!dienst) return;
         if (dienst.replikation.status().abgelehnt) {
-            if (Date.now() >= kopplungPauseBis) await neuKoppeln(dienst);
+            if (Date.now() >= kopplungPauseBis) await (art === 'cloud' ? neuKoppelnCloud(dienst) : neuKoppeln(dienst));
             return;
         }
+        // In der Cloud gibt es keine mDNS-Suche und keinen stillen Wechsel zu einem Hallen-Server.
+        if (art === 'cloud') return;
         if (dienst.zustand.serverErreichbar && dienst.zustand.serverModus !== 'secondary') { wegSeit = null; return; }
         wegSeit = wegSeit || Date.now();
         if (Date.now() - wegSeit < VERBINDUNG_WEG_MS) return;
@@ -263,12 +313,22 @@ async function start() {
         richteLinuxIntegrationEin({ appImage: process.env.APPIMAGE, iconQuelle: path.join(hier, 'build/icon.png') });
     }
     ipcMain.handle('server-adresse', (_e, eingabe) => pruefeManuelleAdresse(eingabe));
+    ipcMain.handle('cloud-koppeln', (_e, eingabe) => koppleCloudTurnier(eingabe));
     await zeigeStartFenster();
 
     status('Suche Turnier-Server …');
     let gefunden = await sucheOderManuell(5000);
     let werte = einstellungen.lade();
-    if (gefunden) werte = einstellungen.speichere({ serverUrl: gefunden.url });
+    let cloudWahl = null; // { serverUrl, secret }, sobald die Cloud statt eines Hallen-Servers gewählt ist
+    const istCloud = (g) => !!g && g.rolle === 'cloud';
+    if (istCloud(gefunden)) {
+        cloudWahl = { serverUrl: gefunden.url, secret: gefunden.secret };
+        gefunden = null;
+    } else if (gefunden) {
+        werte = einstellungen.speichere({ serverUrl: gefunden.url });
+    } else if (werte.cloud) {
+        if (await waehleServer({ hallenServerErreichbar: false, cloud: werte.cloud, frageCloud: frageCloudDialog }) === 'cloud') cloudWahl = werte.cloud;
+    }
 
     // Update-Prüfung einmal, sobald ein Server bekannt ist ('neustart': der Updater beendet die App).
     let updateGeprueft = false;
@@ -279,10 +339,15 @@ async function start() {
     }
     if (gefunden && await neustartNachUpdate(gefunden.url)) return;
 
-    while (!werte.secret) {
+    while (!cloudWahl && !werte.secret) {
         if (!gefunden) {
             status('Kein Turnier-Server gefunden – WLAN prüfen. Suche weiter …');
             gefunden = await sucheOderManuell(5000);
+            if (istCloud(gefunden)) {
+                cloudWahl = { serverUrl: gefunden.url, secret: gefunden.secret };
+                gefunden = null;
+                break;
+            }
             if (gefunden) {
                 werte = einstellungen.speichere({ serverUrl: gefunden.url });
                 if (await neustartNachUpdate(gefunden.url)) return;
@@ -295,7 +360,7 @@ async function start() {
     }
 
     status('Starte …');
-    const { basis, clientDienst } = await starteClientKnoten({ serverUrl: werte.serverUrl, secret: werte.secret });
+    const { basis, clientDienst } = await starteClientKnoten(cloudWahl || { serverUrl: werte.serverUrl, secret: werte.secret });
     lokaleOrigin = basis;
     hauptFenster = new BrowserWindow({ width: 1280, height: 860, title: 'Hajime Pro', show: false });
     hauptFenster.setMenuBarVisibility(false);
@@ -303,7 +368,7 @@ async function start() {
     hauptFenster.maximize();
     hauptFenster.show();
     startFenster.close();
-    ueberwache(clientDienst);
+    ueberwache(clientDienst, cloudWahl ? 'cloud' : 'hallenserver');
 }
 
 // Zweite Instanz desselben Profils: beendet sich oben per app.quit() und startet hier nichts.

@@ -12,6 +12,9 @@
         #fehler, #adresseFehler { color: #c62828; min-height: 1.2em; }
         #manuell { display: none; margin-top: 16px; text-align: center; }
         #adresse { font-size: 16px; width: 14em; }
+        #cloud { display: none; margin-top: 16px; text-align: center; }
+        #cloudLink { font-size: 14px; width: 22em; }
+        #cloudFehler { color: #c62828; min-height: 1.2em; }
     </style>
 </head>
 <body>
@@ -29,6 +32,12 @@
         <input id="adresse" autocomplete="off" spellcheck="false">
         <button type="submit">Verbinden</button>
         <p id="adresseFehler"></p>
+    </form>
+    <form id="cloud">
+        <p id="cloudGrund">Turnier läuft in der Cloud? Link aus „Live in der Cloud“ einfügen:</p>
+        <input id="cloudLink" autocomplete="off" spellcheck="false" placeholder="https://…/turnierlive/…#code=…">
+        <button type="submit">Mit Cloud koppeln</button>
+        <p id="cloudFehler"></p>
     </form>
     <script src="start.js"></script>
 </body>
