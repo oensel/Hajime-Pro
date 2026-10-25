@@ -4,5 +4,7 @@ contextBridge.exposeInMainWorld('hajime', {
     onStatus: (cb) => ipcRenderer.on('status', (_e, text, anteil) => cb(text, anteil)),
     onKopplungNoetig: (cb) => ipcRenderer.on('kopplung-noetig', (_e, grund) => cb(grund)),
     koppeln: (code) => ipcRenderer.invoke('koppeln', code),
-    serverAdresse: (eingabe) => ipcRenderer.invoke('server-adresse', eingabe)
+    serverAdresse: (eingabe) => ipcRenderer.invoke('server-adresse', eingabe),
+    onCloudNoetig: (cb) => ipcRenderer.on('cloud-noetig', (_e, grund) => cb(grund)),
+    cloudKoppeln: (eingabe) => ipcRenderer.invoke('cloud-koppeln', eingabe)
 });

@@ -139,7 +139,7 @@ async function wendePoolAn(knex, doc, basis) {
     if (absicht.status === 'abgeschlossen' && zeile.status !== 'abgeschlossen') await schliessePool(knex, id);
 }
 
-async function wendeTeilnehmerAn(knex, db, doc, basis, legeKonfliktAn) {
+async function wendeTeilnehmerAn(knex, db, doc, basis, legeKonfliktAn, turnierIdVorgabe = null) {
     let id = doc.sql_id;
     if (id == null) {
         // Nachmeldung — bereits angelegt (z.B. vor einem Neustart)? Dann nur zuordnen.
@@ -148,7 +148,7 @@ async function wendeTeilnehmerAn(knex, db, doc, basis, legeKonfliktAn) {
             id = vorhanden.id;
         } else {
             try {
-                id = await legeTeilnehmerAn(knex, { ...waageDaten(doc), turnier_id: doc.turnier_id, dokument_id: doc._id }, HALLEN_KONTEXT);
+                id = await legeTeilnehmerAn(knex, { ...waageDaten(doc), turnier_id: turnierIdVorgabe ?? doc.turnier_id, dokument_id: doc._id }, HALLEN_KONTEXT);
             } catch (err) {
                 if (err.code !== 'DUBLETTE') throw err;
                 // Dublette (z.B. an zwei Waagen offline doppelt nachgemeldet): Wiegedaten auf den
@@ -177,6 +177,40 @@ async function wendeTeilnehmerAn(knex, db, doc, basis, legeKonfliktAn) {
     if (wollteKampfbereit && ['angemeldet', 'nicht_erschienen'].includes(nachher.status)) {
         await bestaetigeKampfbereitschaft(knex, id, HALLEN_KONTEXT);
     }
+}
+
+const FREMDES_TURNIER = 'FREMDES_TURNIER';
+
+// Cloud-Live (zustand.abschottung): mehrere Turniere teilen sich eine relationale DB, die Dokument-DB eines Turniers wird aber
+// von Geräten beschrieben. Ein Dokument darf nur Zeilen seines eigenen Turniers ändern. Eine Zeile, die es nicht (mehr) gibt,
+// ändert nichts und gilt als unbedenklich; Nachmeldungen ohne sql_id müssen auf das eigene Turnier zeigen.
+// Nur echte Ganzzahlen (oder reine Ziffernfolgen) gelten; Number() allein ließe z. B. [1] oder true als 1 durch, was die Datenbank anders liest.
+function strengeZahl(wert) {
+    if (Number.isInteger(wert)) return wert;
+    return typeof wert === 'string' && /^\d+$/.test(wert) ? Number(wert) : NaN;
+}
+
+async function gehoertZumTurnier(knex, typ, doc, turnierId) {
+    const gleich = (wert) => Number.isInteger(strengeZahl(wert)) && strengeZahl(wert) === Number(turnierId);
+    if (typ === 'teilnehmer' && doc.sql_id == null) {
+        if (!gleich(doc.turnier_id)) return false;
+        // wendeTeilnehmerAn ordnet eine bereits angelegte Nachmeldung über dokument_id zu: auch die muss zu diesem Turnier gehören.
+        const vorhanden = await knex('turnier_teilnehmer').where({ dokument_id: doc._id }).first('turnier_id');
+        return !vorhanden || gleich(vorhanden.turnier_id);
+    }
+    if (typ === 'kampf' && doc.sql_id == null) {
+        const poolId = strengeZahl(doc.pool_id);
+        const pool = Number.isInteger(poolId) ? await knex('pools').where({ id: poolId }).first('turnier_id') : null;
+        return !!pool && gleich(pool.turnier_id);
+    }
+    if (doc.sql_id == null) return false;
+    let zeile = null;
+    if (typ === 'kampf') {
+        zeile = await knex('kaempfe').join('pools', 'pools.id', 'kaempfe.pool_id').where('kaempfe.id', doc.sql_id).first('pools.turnier_id as turnier_id');
+    } else {
+        zeile = await knex(TABELLE_ZU_TYP[typ]).where({ id: doc.sql_id }).first('turnier_id');
+    }
+    return !zeile || gleich(zeile.turnier_id);
 }
 
 export function erzeugeBruecke({ knex, zustand, abgleich }) {
@@ -249,7 +283,8 @@ export function erzeugeBruecke({ knex, zustand, abgleich }) {
     async function lehneAb(db, doc, tabelle, fehler) {
         const fachlich = !!fehler.statusCode;
         if (!fachlich) console.error('[Brücke] Technischer Fehler bei', doc._id, fehler);
-        const zeile = doc.sql_id != null ? await knex(tabelle).where({ id: doc.sql_id }).first() : null;
+        // Bei einem fremden Turnier darf nichts aus der SQL-Zeile in die Dokument-DB dieses Turniers gelangen.
+        const zeile = doc.sql_id != null && fehler.code !== FREMDES_TURNIER ? await knex(tabelle).where({ id: doc.sql_id }).first() : null;
         const ablehnung = { rev: doc._rev, art: fachlich ? 'fachlich' : 'technisch', grund: fehler.message, zeit: new Date().toISOString() };
         // Server-Stand zurück (bzw. bei nie angelegter Nachmeldung nur die Ablehnung vermerken).
         const zurueck = zeile ? mitServerStand(doc, tabelle, zeile) : { ...doc, bearbeitet_von: 'server' };
@@ -331,12 +366,15 @@ export function erzeugeBruecke({ knex, zustand, abgleich }) {
         }
 
         try {
+            if (zustand.abschottung && !(await gehoertZumTurnier(knex, typ, doc, zustand.turnierId))) {
+                throw new FachFehler(403, 'Das Dokument gehört nicht zu diesem Turnier.', { code: FREMDES_TURNIER });
+            }
             const basis = await ladeServerBasis(db, doc);
             if (typ === 'kampf' && doc.zusatzkampf && doc.sql_id == null) await wendeZusatzkampfAn(knex, db, doc);
             else if (typ === 'kampf') await wendeKampfAn(knex, doc, basis);
             else if (typ === 'kampfflaeche') await wendeKampfflaecheAn(knex, doc, basis);
             else if (typ === 'pool') await wendePoolAn(knex, doc, basis);
-            else await wendeTeilnehmerAn(knex, db, doc, basis, (t, d, g) => legeKonfliktAnIn(db, t, d, g));
+            else await wendeTeilnehmerAn(knex, db, doc, basis, (t, d, g) => legeKonfliktAnIn(db, t, d, g), zustand.abschottung ? zustand.turnierId : null);
         } catch (fehler) {
             if (fehler instanceof PaarungWeichtAb) {
                 zurueckgestellt.add(doc._id);
@@ -440,6 +478,12 @@ export function erzeugeBruecke({ knex, zustand, abgleich }) {
         const kampfId = lokal.sql_id;
         const zeile = kampfId != null ? await knex('kaempfe').where({ id: kampfId }).first() : null;
         if (!zeile) throw new FachFehler(404, 'Der Kampf existiert nicht mehr.');
+        // Das konflikt:-Dokument liegt in einer von Geräten beschreibbaren DB: bei mehreren Turnieren (Cloud-Live) darf ein gefälschtes
+        // Dokument nicht auf einen Kampf eines anderen Turniers zeigen.
+        if (zustand.abschottung) {
+            const pool = await knex('pools').where({ id: zeile.pool_id }).first('turnier_id');
+            if (!pool || Number(pool.turnier_id) !== Number(zustand.turnierId)) throw new FachFehler(404, 'Der Kampf gehört nicht zu diesem Turnier.');
+        }
         if (zeile.status !== 'klaerung') {
             throw new FachFehler(409, `Der Kampf steht nicht mehr auf "Klärung" (Status: ${zeile.status}). Bitte den Konflikt nur als erledigt markieren.`);
         }

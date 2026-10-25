@@ -123,7 +123,8 @@ export function baueSnapshot({ turnier, kampfflaechen, pools, teilnehmer, kaempf
         }));
 
     // Mannschaften (Teams) mit Kader und Begegnungen; Mitglieder ohne Einzelstart stehen nur hier.
-    const turnierKey = String(turnier.urspruengliche_id);
+    // Turniere, die die Cloud selbst live führt (src/cloudLive/), haben keine urspruengliche_id: dort gilt ihre eigene ID.
+    const turnierKey = String(turnier.urspruengliche_id ?? turnier.id);
     const matteName = (id) => (matteById.get(id) || {}).bezeichnung || '';
     const team = berechneMannschaften(
         { pools, mannschaften, mitglieder, begegnungen, kaempfe, teilnehmer },
@@ -154,11 +155,13 @@ export function baueSnapshot({ turnier, kampfflaechen, pools, teilnehmer, kaempf
     };
 }
 
-export async function ladeSnapshots(knexLive, { geheimnis }) {
-    const turniere = await knexLive('live.turniere')
-        .where({ live_freigabe: true })
-        .whereNotNull('urspruengliche_id')
-        .orderBy('id');
+// turnierIds: Snapshots genau dieser Turniere, sofern der Veranstalter sie freigegeben hat (live_freigabe), auch ohne urspruengliche_id
+// freigegebenen Turniere eines Hallen-Servers.
+export async function ladeSnapshots(knexLive, { geheimnis, turnierIds = null }) {
+    const abfrage = Array.isArray(turnierIds)
+        ? knexLive('live.turniere').whereIn('id', turnierIds).where({ live_freigabe: true })
+        : knexLive('live.turniere').where({ live_freigabe: true }).whereNotNull('urspruengliche_id');
+    const turniere = await abfrage.orderBy('id');
     const snapshots = [];
     for (const turnier of turniere) {
         const [kampfflaechen, pools, teilnehmer, mannschaften] = await Promise.all([

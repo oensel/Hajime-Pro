@@ -65,9 +65,11 @@ export function baueAndroidWww({ ziel = path.join(wurzel, 'mobil/www'), version 
             : path.join(wurzel, `public/${seite}.html`);
         writeFileSync(path.join(ziel, `${seite}.html`), bereiteSeiteVor(readFileSync(quelle, 'utf8'), seite));
     }
+    // Serverwahl beim Start (Hallen-Server oder Cloud): bewusst ohne Browser-Laufzeit, die startet erst nach der Wahl.
+    cpSync(path.join(wurzel, 'mobil/web/server-waehlen.html'), path.join(ziel, 'server-waehlen.html'));
     writeFileSync(path.join(ziel, 'index.html'),
         '<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><title>Hajime Pro</title></head><body><script>location.replace("/client.html");</script></body></html>\n');
-    return { ziel, version: appVersion, seiten: [...APP_SEITEN, 'index'] };
+    return { ziel, version: appVersion, seiten: [...APP_SEITEN, 'server-waehlen', 'index'] };
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

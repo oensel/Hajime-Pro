@@ -51,6 +51,9 @@ export const testServerEnv = {
     LIVE_API_AKTIV: 'true',
     // Helfer-App (/api/helfer): sonst nur im Modus cloud eingehängt (tests/e2e/helfer-seiten.spec.js).
     HELFER_APP_AKTIV: 'true',
+    // Cloud-Live (/api/cloud-live, /turnierlive): sonst nur im Modus cloud eingehängt (tests/e2e/cloud-live-ui.spec.js).
+    CLOUD_LIVE_AKTIV: 'true',
+    CLOUD_LIVE_DATENVERZEICHNIS: './data/test-cloud-live',
     DB_HOST: '127.0.0.1',
     DB_PORT: String(TEST_PG_PORT),
     DB_USER: 'postgres',
