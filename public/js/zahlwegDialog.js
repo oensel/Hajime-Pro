@@ -258,21 +258,38 @@
     // (Startgeld > 0), wird gefragt, ob die Rechnungsdaten gleich erfasst werden sollen.
     async function frageNachVorOrt(turnierId, vereinName) {
         if (!turnierId || !vereinName) return 'nichtNoetig';
+        let logik;
         try {
+            logik = await import('/js/shared/zahlweg.js');
+            const schluessel = logik.vorOrtSchluessel(turnierId, vereinName);
+            let spaeterGemerkt = false;
+            try { spaeterGemerkt = sessionStorage.getItem(schluessel) === '1'; } catch { /* ohne sessionStorage */ }
             // 409 = Hallen-Server (Einzelbenutzerbetrieb); in der Cloud wählt der Verein selbst den Zahlweg.
             const cloud = await fetch(`/api/zahlweg/${encodeURIComponent(turnierId)}`);
             if (cloud.status !== 409) return 'nichtNoetig';
             const turnierResp = await fetch(`/api/turniere/${encodeURIComponent(turnierId)}`);
-            if (!turnierResp.ok || !(parseFloat((await turnierResp.json()).startgeld) > 0)) return 'nichtNoetig';
+            if (!turnierResp.ok) return 'nichtNoetig';
+            const turnier = await turnierResp.json();
             const kasseResp = await fetch(`/api/zahlweg/${encodeURIComponent(turnierId)}/kasse`);
             if (!kasseResp.ok) return 'nichtNoetig';
             const eintraege = (await kasseResp.json()).eintraege || [];
-            if (!eintraege.some((e) => e.vereinName === vereinName && e.zahlweg === 'ohneZahlweg')) return 'nichtNoetig';
+            const vereinHatZahlweg = !eintraege.some((e) => e.vereinName === vereinName && e.zahlweg === 'ohneZahlweg');
+            if (!logik.sollVorOrtFragen({
+                cloudHerkunft: turnier.urspruengliche_id != null,
+                startgeld: turnier.startgeld,
+                vereinHatZahlweg,
+                spaeterGemerkt
+            })) return 'nichtNoetig';
         } catch {
             return 'nichtNoetig';
         }
         const ergebnis = await erfasseVorOrt(turnierId, vereinName);
-        if (ergebnis === 'gespeichert') document.dispatchEvent(new CustomEvent('zahlweg:geaendert'));
+        if (ergebnis === 'gespeichert') {
+            document.dispatchEvent(new CustomEvent('zahlweg:geaendert'));
+        } else {
+            // „Später an der Kasse“: je Turnier und Verein nur einmal je Sitzung fragen.
+            try { sessionStorage.setItem(logik.vorOrtSchluessel(turnierId, vereinName), '1'); } catch { /* egal */ }
+        }
         return ergebnis;
     }
 

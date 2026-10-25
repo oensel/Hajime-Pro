@@ -5,6 +5,7 @@ import { zaehleKaempferJeVerein, rechnungsAnzeigeStatus, heuteBerlin } from '../
 import { startgeldVerlangt } from '../shared/zahlweg.js';
 import { pruefeStammdatenFuerTurnier } from './abrechnungStammdaten.js';
 import { synchronisiereGesichert } from './zahlwege.js';
+import { ladeAusrichterNamen } from './zahlwegTransfer.js';
 
 // Gleiche Normalisierung wie die Zählung (zaehleKaempferJeVerein): klein, getrimmt.
 const normName = (s) => String(s ?? '').trim().toLowerCase();
@@ -13,10 +14,9 @@ const normName = (s) => String(s ?? '').trim().toLowerCase();
 // hier sollen sie aber als "Nicht zugeordnet" sichtbar werden.
 const OHNE_VEREIN = '\u0000ohne-verein';
 
-async function ladeAusrichterName(knex, turnier) {
-    if (turnier.verein_id == null) return null;
-    const verein = await knex('vereine').where({ id: turnier.verein_id }).first('name');
-    return verein?.name ?? null;
+// Alle Schreibweisen des Ausrichters (Vereinsname und Freitextfeld des Turniers), normalisiert.
+async function ladeAusrichterSchluessel(knex, turnier) {
+    return new Set([...(await ladeAusrichterNamen(knex, turnier.id))].map(normName));
 }
 
 // E5: bereit, sobald das Turnier zurückgespielt wurde, oder wenn es in der Cloud live lief (beendet) und nie auf einen
@@ -41,11 +41,11 @@ export async function ladeAbrechnung(knex, turnier) {
     const antwort = { bereit, grund, basis, startgeldCent, stammdaten, vereine: [], nichtZugeordnet: [], summeCent: 0 };
     if (!bereit) return antwort;
 
-    const ausrichterName = await ladeAusrichterName(knex, turnier);
+    const ausrichter = await ladeAusrichterSchluessel(knex, turnier);
     const teilnehmer = await knex('turnier_teilnehmer').where({ turnier_id: turnier.id });
     const zaehlung = zaehleKaempferJeVerein(
         teilnehmer.map((t) => (String(t.verein ?? '').trim() ? t : { ...t, verein: OHNE_VEREIN })),
-        { basis, ausrichterName }
+        { basis, ausrichterNamen: [...ausrichter] }
     );
     const zahlwege = new Map();
     for (const z of (await knex('turnier_zahlwege').where({ turnier_id: turnier.id }).orderBy('id'))) {
@@ -70,7 +70,7 @@ export async function ladeAbrechnung(knex, turnier) {
     }
 
     for (const [schluessel, z] of zahlwege) {
-        if (ausrichterName && schluessel === normName(ausrichterName)) continue;
+        if (ausrichter.has(schluessel)) continue;
         const gezaehlt = zaehlung.get(schluessel);
         const anzahl = gezaehlt?.anzahl ?? 0;
         const rechnung = rechnungen.get(schluessel) ?? null;
@@ -110,8 +110,8 @@ export async function ordneVereinZu(knex, turnierId, { vonVereinName, zuVereinNa
         throw new FachFehler(400, 'Der Quellverein hat bereits einen Zahlweg und kann nicht verschoben werden.');
     }
     const turnier = await knex('turniere').where({ id: turnierId }).first();
-    const ausrichter = turnier ? await ladeAusrichterName(knex, turnier) : null;
-    if (vonKey && ausrichter && normName(ausrichter) === vonKey) {
+    const ausrichter = turnier ? await ladeAusrichterSchluessel(knex, turnier) : new Set();
+    if (vonKey && ausrichter.has(vonKey)) {
         throw new FachFehler(400, 'Kämpfer des ausrichtenden Vereins können nicht verschoben werden.');
     }
     const kandidaten = await knex('turnier_teilnehmer').where({ turnier_id: turnierId }).select('id', 'verein');

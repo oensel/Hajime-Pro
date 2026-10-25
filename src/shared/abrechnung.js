@@ -40,15 +40,16 @@ export function kaempferSchluessel(t) {
 
 const normName = (s) => String(s ?? '').trim().toLowerCase();
 
-export function zaehleKaempferJeVerein(teilnehmer, { basis, ausrichterName }) {
-    const ausrichter = ausrichterName ? normName(ausrichterName) : null;
+// ausrichterName: ein Name, ausrichterNamen: weitere Schreibweisen des Ausrichters (z. B. das Freitextfeld turniere.ausrichter).
+export function zaehleKaempferJeVerein(teilnehmer, { basis, ausrichterName, ausrichterNamen = [] }) {
+    const ausrichter = new Set([ausrichterName, ...ausrichterNamen].filter(Boolean).map(normName));
     const jeVerein = new Map();
     for (const t of teilnehmer || []) {
         if (t.status === 'zurueckgezogen') continue;
         const vereinName = String(t.verein ?? '').trim();
         if (!vereinName) continue;
         const vKey = normName(vereinName);
-        if (ausrichter && vKey === ausrichter) continue;
+        if (ausrichter.has(vKey)) continue;
         if (basis === 'teilnahme_waage' && !t.gewogen) continue;
         let eintrag = jeVerein.get(vKey);
         if (!eintrag) {

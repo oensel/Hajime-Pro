@@ -52,18 +52,31 @@ function pruefeVollstaendig(daten) {
  */
 export async function uebernehmeNeueZahlwege(trx, turnierId, zahlwege) {
     if (!Array.isArray(zahlwege)) return 0;
+    // Namen wie in der Abrechnung vergleichen: getrimmt, Groß-/Kleinschreibung egal ('jc x' ist 'JC X').
+    const norm = (n) => String(n ?? '').trim().toLowerCase();
     const bestehend = new Set((await trx('turnier_zahlwege').where({ turnier_id: turnierId }).select('verein_name'))
-        .map((z) => String(z.verein_name).trim()));
-    const ausrichter = await ladeAusrichterNamen(trx, turnierId);
+        .map((z) => norm(z.verein_name)));
+    const ausrichter = new Set([...(await ladeAusrichterNamen(trx, turnierId))].map(norm));
     const zeilen = [];
     for (const z of zahlwege) {
         const geprueft = pruefeTransferZeile(z);
-        if (!geprueft || bestehend.has(geprueft.verein_name) || ausrichter.has(geprueft.verein_name)) continue;
-        bestehend.add(geprueft.verein_name);
+        if (!geprueft || bestehend.has(norm(geprueft.verein_name)) || ausrichter.has(norm(geprueft.verein_name))) continue;
+        bestehend.add(norm(geprueft.verein_name));
         zeilen.push({ turnier_id: turnierId, ...geprueft, zahlweg: 'bar', verein_id: null, geaendert_von: null });
     }
     if (zeilen.length) await trx('turnier_zahlwege').insert(zeilen);
     return zeilen.length;
+}
+
+// Nach dem Commit sind die Daten schon ersetzt: ein Fehler beim Ableiten des Flags darf keine 500 mehr auslösen.
+export async function synchronisiereNachRueckspielen(knex, turnierId) {
+    try {
+        await synchronisiereGesichert(knex, turnierId, { statusAbleiten: false });
+        return true;
+    } catch (fehler) {
+        console.error(`Zurückspielen: Zahlweg-Flags von Turnier ${turnierId} konnten nicht abgeleitet werden: ${fehler?.code ?? ''} ${fehler?.message ?? fehler}`);
+        return false;
+    }
 }
 
 /**
@@ -138,7 +151,7 @@ export async function spieleTurnierZurueck(knex, { turnierId, daten, benutzer })
         return { neueVereine, barzahlungen };
     });
     // Flag der neu eingelesenen Teilnehmer aus den Zahlwegen ableiten; der archivierte Status bleibt wie importiert.
-    await synchronisiereGesichert(knex, turnierId, { statusAbleiten: false });
+    await synchronisiereNachRueckspielen(knex, turnierId);
 
     return {
         turnierId,

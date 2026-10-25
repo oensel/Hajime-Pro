@@ -60,3 +60,15 @@ export function pruefeZahlwegEingabe(eingabe, angeboten) {
     }
     return fehler ? { fehler, werte: null } : { fehler: null, werte };
 }
+
+// Hallen-Server: Schlüssel für „Später an der Kasse“ je Turnier und Verein (Name normalisiert wie in der Abrechnung).
+export function vorOrtSchluessel(turnierId, vereinName) {
+    return `vorOrtSpaeter:${turnierId}:${String(vereinName ?? '').trim().toLowerCase()}`;
+}
+
+// Fragt der Hallen-Server nach dem Anlegen eines Kämpfers nach den Rechnungsdaten des Vereins?
+// Nur bei einem Turnier aus der Cloud mit Startgeld, wenn der Verein noch keinen Zahlweg hat und
+// die Frage nicht schon mit „Später an der Kasse“ zurückgestellt wurde.
+export function sollVorOrtFragen({ cloudHerkunft, startgeld, vereinHatZahlweg, spaeterGemerkt }) {
+    return Boolean(cloudHerkunft) && parseFloat(startgeld) > 0 && !vereinHatZahlweg && !spaeterGemerkt;
+}

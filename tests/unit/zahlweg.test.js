@@ -72,3 +72,15 @@ test('pruefeZahlwegEingabe: Fehlerfälle', () => {
     }
     assert.ok(pruefeZahlwegEingabe(null, angeboten).fehler);
 });
+
+test('sollVorOrtFragen: nur Cloud-Herkunft, Startgeld, Verein ohne Zahlweg und nicht zurückgestellt', async () => {
+    const { sollVorOrtFragen, vorOrtSchluessel } = await import('../../src/shared/zahlweg.js');
+    const ok = { cloudHerkunft: true, startgeld: 8, vereinHatZahlweg: false, spaeterGemerkt: false };
+    assert.equal(sollVorOrtFragen(ok), true);
+    assert.equal(sollVorOrtFragen({ ...ok, cloudHerkunft: false }), false);
+    assert.equal(sollVorOrtFragen({ ...ok, startgeld: 0 }), false);
+    assert.equal(sollVorOrtFragen({ ...ok, vereinHatZahlweg: true }), false);
+    assert.equal(sollVorOrtFragen({ ...ok, spaeterGemerkt: true }), false);
+    assert.equal(vorOrtSchluessel(5, '  JC X '), vorOrtSchluessel(5, 'jc x'));
+    assert.notEqual(vorOrtSchluessel(5, 'jc x'), vorOrtSchluessel(6, 'jc x'));
+});

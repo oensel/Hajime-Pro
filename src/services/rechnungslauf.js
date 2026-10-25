@@ -18,6 +18,7 @@ import { ladeAbrechnung } from './abrechnung.js';
 import { ladeStammdaten, ermittleZahlungsempfaenger } from './abrechnungStammdaten.js';
 import { erzeugeRechnungPdf, euro, datum, berechneOffenCent } from './rechnungPdf.js';
 import { maskiereIban } from '../shared/iban.js';
+import { ladeAusrichterNamen } from './zahlwegTransfer.js';
 
 const normName = (s) => String(s ?? '').trim().toLowerCase();
 
@@ -259,8 +260,9 @@ export async function erstelleRechnungen(knex, { turnier, benutzerId, sende = se
     // Kämpferliste je Verein mit derselben Zählung wie die Übersicht.
     // TODO: Zählung und Zahlweg-Zuordnung doppeln ladeAbrechnung; besser liefert ladeAbrechnung die Kämpferliste mit.
     const ausrichter = turnier.verein_id ? await knex('vereine').where({ id: turnier.verein_id }).first('name') : null;
+    const ausrichterNamen = [...(await ladeAusrichterNamen(knex, turnier.id))];
     const teilnehmer = await knex('turnier_teilnehmer').where({ turnier_id: turnier.id });
-    const zaehlung = zaehleKaempferJeVerein(teilnehmer, { basis: abrechnung.basis, ausrichterName: ausrichter?.name ?? null });
+    const zaehlung = zaehleKaempferJeVerein(teilnehmer, { basis: abrechnung.basis, ausrichterName: ausrichter?.name ?? null, ausrichterNamen });
     const zahlwege = new Map();
     for (const z of await knex('turnier_zahlwege').where({ turnier_id: turnier.id }).orderBy('id')) {
         if (!zahlwege.has(normName(z.verein_name))) zahlwege.set(normName(z.verein_name), z);

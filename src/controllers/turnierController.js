@@ -100,11 +100,13 @@ function baueAusschreibungFragment(ausschreibungPdfBase64, ausschreibungDateinam
 // Wird ein Startgeld verlangt, müssen die Zahlungsdaten vollständig sein, sonst kann später
 // niemand zuverlässig bezahlen (fehlende IBAN/Kontoinhaber/Verwendungszweck).
 // In der Cloud genügt ein Konto in den Abrechnungsdaten des Vereins (IBAN + Kontoinhaber), der Verwendungszweck entfällt.
-async function validiereZahlungsdaten(knex, { startgeld, iban, kontoinhaber, verwendungszweck, vereinId }) {
+async function validiereZahlungsdaten(knex, { startgeld, iban, kontoinhaber, verwendungszweck, vereinId, ausCloud = false }) {
     const startgeldWert = startgeld !== undefined && startgeld !== '' ? parseInt(startgeld, 10) : 0;
     if (!(startgeldWert > 0)) return null;
     const gefuellt = (w) => !!w && String(w).trim() !== '';
     if (istEinzelbenutzerBetrieb()) {
+        // Ein aus der Cloud geholtes Turnier trägt das Vereinskonto nicht mit (Export ohne Konto): lokal nicht erzwingen.
+        if (ausCloud) return null;
         if (!gefuellt(iban) || !gefuellt(kontoinhaber) || !gefuellt(verwendungszweck)) {
             return 'Wenn ein Startgeld verlangt wird, müssen IBAN, Kontoinhaber und Verwendungszweck ausgefüllt sein.';
         }
@@ -339,7 +341,7 @@ export async function updateTurnier(knex, req, res) {
         if (bestehendesTurnier.status === 'abgeschlossen') {
             return res.status(403).json({ success: false, error: 'Ein abgeschlossenes Turnier befindet sich im schreibgeschützten Archiv-Zustand.' });
         }
-        const zahlungsFehler = await validiereZahlungsdaten(knex, { startgeld, iban, kontoinhaber, verwendungszweck, vereinId: bestehendesTurnier.verein_id });
+        const zahlungsFehler = await validiereZahlungsdaten(knex, { startgeld, iban, kontoinhaber, verwendungszweck, vereinId: bestehendesTurnier.verein_id, ausCloud: bestehendesTurnier.urspruengliche_id != null });
         if (zahlungsFehler) {
             return res.status(400).json({ success: false, error: zahlungsFehler });
         }

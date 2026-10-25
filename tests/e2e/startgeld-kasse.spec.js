@@ -165,4 +165,28 @@ test.describe.serial('Kasse an der Waage', () => {
         await page.waitForTimeout(500);
         await expect(page.locator('#kasseBtn')).toBeHidden();
     });
+
+    test('Vor-Ort-Dialog: nur bei Cloud-Turnieren und nach „Später“ höchstens einmal je Verein und Sitzung', async ({ page }) => {
+        const neuVerein = `JC Neu ${ts}`;
+        await db('turnier_teilnehmer').insert({
+            turnier_id: turnierId, judopass_id: `K-${ts}-neu`, vorname: 'Vo', nachname: 'Neu', geschlecht: 'm', verein: neuVerein,
+            gewicht: 40, altersklasse: 'U15', gewichtsklasse: '-44', lizenz_ablauf: '2099-01-01', geburtsjahr: 2012
+        });
+        await page.goto(`/teilnehmer.html?turnierId=${turnierId}`);
+        const frage = () => page.evaluate(([id, name]) => window.ZahlwegDialog.frageNachVorOrt(id, name), [turnierId, neuVerein]);
+
+        // Lokal angelegtes Turnier (keine Herkunft aus der Cloud): keine Frage
+        expect(await frage()).toBe('nichtNoetig');
+        await expect(page.locator('#vorOrtDialog')).toHaveCount(0);
+
+        // Aus der Cloud geholt: die Frage erscheint, „Später“ merkt sich die Sitzung
+        await db('turniere').where({ id: turnierId }).update({ urspruengliche_id: 900000 + (ts % 90000) });
+        const erste = page.evaluate(([id, name]) => window.ZahlwegDialog.frageNachVorOrt(id, name), [turnierId, neuVerein]);
+        await expect(page.locator('#vorOrtDialog')).toBeVisible();
+        await page.locator('#vorOrtSpaeterBtn').click();
+        expect(await erste).toBe('abgebrochen');
+        expect(await frage()).toBe('nichtNoetig');
+        await expect(page.locator('#vorOrtDialog')).toHaveCount(0);
+        await db('turniere').where({ id: turnierId }).update({ urspruengliche_id: null });
+    });
 });
