@@ -10,12 +10,17 @@ test('erste Ladung erzeugt clientId und Standardwerte, speichere ergänzt und bl
     const e = erzeugeEinstellungen(datei);
     const erst = e.lade();
     assert.match(erst.clientId, /^[0-9a-f-]{36}$/);
-    assert.deepEqual({ ...erst, clientId: 'x' }, { serverUrl: null, secret: null, clientId: 'x', updateVersuche: {} });
+    assert.deepEqual({ ...erst, clientId: 'x' }, { serverUrl: null, secret: null, cloud: null, clientId: 'x', updateVersuche: {} });
     e.speichere({ serverUrl: 'http://1.2.3.4:3000', updateVersuche: { '1.3.0': 1 } });
     const zweit = erzeugeEinstellungen(datei).lade();
     assert.equal(zweit.clientId, erst.clientId);
     assert.equal(zweit.serverUrl, 'http://1.2.3.4:3000');
     assert.deepEqual(zweit.updateVersuche, { '1.3.0': 1 });
+    // Das gekoppelte Cloud-Turnier (Cloud-Live) liegt getrennt vom Hallen-Server und bleibt erhalten
+    e.speichere({ cloud: { serverUrl: 'https://cloud.example/turnierlive/x', secret: 's' } });
+    const dritt = erzeugeEinstellungen(datei).lade();
+    assert.deepEqual(dritt.cloud, { serverUrl: 'https://cloud.example/turnierlive/x', secret: 's' });
+    assert.equal(dritt.serverUrl, 'http://1.2.3.4:3000');
 });
 
 test('kaputte Datei führt zu Standardwerten statt Absturz', () => {
