@@ -12,7 +12,7 @@ import { FachFehler } from '../utils/fachFehler.js';
 import { sendeMail } from '../utils/mailer.js';
 import {
     zaehleKaempferJeVerein, formatiereRechnungsnummer, baueVerwendungszweck, addiereTage, heuteBerlin,
-    rechnungsArt, rechnungsAnzeigeStatus
+    rechnungsArt, rechnungsAnzeigeStatus, angerechneterBetragCent
 } from '../shared/abrechnung.js';
 import { ladeAbrechnung } from './abrechnung.js';
 import { ladeStammdaten, ermittleZahlungsempfaenger } from './abrechnungStammdaten.js';
@@ -67,7 +67,7 @@ async function ladeKonto(knex, turnier) {
 }
 
 // RechnungsDaten (rechnungPdf.js) aus der gespeicherten Momentaufnahme; die IBAN kommt nur zum Zeichnen hinzu.
-function pdfDaten(zeile, { iban = null, barDatum = null } = {}) {
+export function rechnungsDatenAusZeile(zeile, { iban = null, barDatum = null } = {}) {
     const a = zeile.aussteller || {};
     const e = zeile.empfaenger || {};
     const daten = {
@@ -99,7 +99,8 @@ function pdfDaten(zeile, { iban = null, barDatum = null } = {}) {
     return daten;
 }
 
-function baueMail(zeile) {
+/** Mail zu einer gespeicherten Rechnung (rein). Bezahlte Rechnungen und Quittungen verlangen keine Überweisung. */
+export function baueRechnungsMail(zeile) {
     const a = zeile.aussteller || {};
     const e = zeile.empfaenger || {};
     const istQuittung = zeile.art === 'quittung';
@@ -111,7 +112,7 @@ function baueMail(zeile) {
         `anbei erhalten Sie die ${wort} ${zeile.nummer} über das Startgeld für „${zeile.turnier_bezeichnung}“ `
             + `(${zeile.anzahl} Kämpfer, ${euro(zeile.betrag_cent)}).`
     ];
-    if (istQuittung || offen === 0) {
+    if (istQuittung || offen === 0 || zeile.status === 'bezahlt') {
         zeilen.push('Der Betrag wurde bereits bezahlt.');
     } else {
         const bis = zeile.zahlungsziel_datum ? ` bis zum ${datum(isoDatum(zeile.zahlungsziel_datum))}` : '';
@@ -139,7 +140,9 @@ async function versende(knex, rechnungId, sende) {
         ergebnis = { versendet: false, grund: 'keine_email' };
     } else {
         try {
-            ergebnis = (await sende(baueMail(zeile))) ?? { versendet: true, grund: null };
+            // Nur ein ausdrückliches versendet:false (oder ein Fehler) gilt als gescheitert; ältere Sender geben nichts zurück.
+            const antwort = await sende(baueRechnungsMail(zeile));
+            ergebnis = antwort && antwort.versendet === false ? antwort : { versendet: true, grund: null };
         } catch (err) {
             console.error('[Rechnungslauf] Mailversand fehlgeschlagen:', err?.message ?? 'Fehler');
             ergebnis = { versendet: false, grund: 'fehler' };
@@ -161,10 +164,11 @@ async function versende(knex, rechnungId, sende) {
 }
 
 // Legt die Rechnung eines Vereins an (eigene Transaktion). Gibt die neue ID zurück oder null, wenn es schon eine gibt.
-async function legeRechnungAn(knex, { turnier, vereinEintrag, zahlwegZeile, kopf, konto, barDatum, bezahltAm, benutzerId }) {
+async function legeRechnungAn(knex, { turnier, vereinEintrag, zahlwegZeile, kopf, konto, barDatum, bezahltAm, benutzerId, erzeugePdf }) {
     return knex.transaction(async (trx) => {
-        // Serialisiert Läufe desselben Turniers; der Zähler wird zusätzlich je Verein gesperrt (Läufe anderer Turniere).
-        await trx.raw('SELECT pg_advisory_xact_lock(?)', [turnier.id]);
+        // Serialisiert Läufe desselben Turniers (eigener Namensraum, unabhängig von den Sperren in zahlwege.js);
+        // der Zähler wird zusätzlich je Verein gesperrt (Läufe anderer Turniere desselben Ausrichters).
+        await trx.raw("SELECT pg_advisory_xact_lock(hashtext('rechnungslauf'), ?)", [turnier.id]);
         const vorhanden = await trx('rechnungen')
             .where({ turnier_id: turnier.id }).whereNot('status', 'zurueckgebucht')
             .whereRaw('lower(trim(verein_name)) = ?', [normName(zahlwegZeile.verein_name)])
@@ -178,8 +182,9 @@ async function legeRechnungAn(knex, { turnier, vereinEintrag, zahlwegZeile, kopf
         const { anzahl, bezahltAnzahl, kaempfer } = vereinEintrag;
         const art = rechnungsArt({ zahlweg: zahlwegZeile.zahlweg, anzahl, bezahltAnzahl });
         const betrag = anzahl * kopf.einzelpreisCent;
-        // Bar: bereits kassierte Kämpfer (startgeld_bezahlt) werden angerechnet, der Rest wird überwiesen (E9).
-        const barErhalten = zahlwegZeile.zahlweg === 'bar' ? Math.min(bezahltAnzahl, anzahl) * kopf.einzelpreisCent : 0;
+        // Bereits bezahlte Kämpfer (startgeld_bezahlt) werden bei jedem Zahlweg angerechnet (außer Lastschrift),
+        // der Rest wird überwiesen (E9, Entscheidung im Review: auch bei Überweisung).
+        const barErhalten = angerechneterBetragCent({ zahlweg: zahlwegZeile.zahlweg, anzahl, bezahltAnzahl }, kopf.einzelpreisCent);
         const zeile = {
             turnier_id: turnier.id,
             aussteller_verein_id: turnier.verein_id,
@@ -211,7 +216,7 @@ async function legeRechnungAn(knex, { turnier, vereinEintrag, zahlwegZeile, kopf
             bezahlt_am: art === 'quittung' ? bezahltAm : null,
             erstellt_von: benutzerId ?? null
         };
-        const pdf = await erzeugeRechnungPdf(pdfDaten(zeile, { iban: konto?.iban ?? null, barDatum }));
+        const pdf = await erzeugePdf(rechnungsDatenAusZeile(zeile, { iban: konto?.iban ?? null, barDatum }));
         const [neu] = await trx('rechnungen').insert({
             ...zeile,
             positionen: JSON.stringify(zeile.positionen),
@@ -231,7 +236,7 @@ async function legeRechnungAn(knex, { turnier, vereinEintrag, zahlwegZeile, kopf
  * @returns {Promise<{ erstellt: number, versendet: number, fehler: Array<{ vereinName: string, grund: string }>,
  *   hinweise: Array<{ vereinName: string, grund: string }> }>}
  */
-export async function erstelleRechnungen(knex, { turnier, benutzerId, sende = sendeMail }) {
+export async function erstelleRechnungen(knex, { turnier, benutzerId, sende = sendeMail, erzeugePdf = erzeugeRechnungPdf }) {
     const abrechnung = await ladeAbrechnung(knex, turnier);
     if (!abrechnung.bereit) throw new FachFehler(409, abrechnung.grund || 'Die Abrechnung ist noch nicht möglich.');
     if (!abrechnung.stammdaten.vollstaendig) {
@@ -252,6 +257,7 @@ export async function erstelleRechnungen(knex, { turnier, benutzerId, sende = se
     if (offeneVereine.size === 0) return ergebnis;
 
     // Kämpferliste je Verein mit derselben Zählung wie die Übersicht.
+    // TODO: Zählung und Zahlweg-Zuordnung doppeln ladeAbrechnung; besser liefert ladeAbrechnung die Kämpferliste mit.
     const ausrichter = turnier.verein_id ? await knex('vereine').where({ id: turnier.verein_id }).first('name') : null;
     const teilnehmer = await knex('turnier_teilnehmer').where({ turnier_id: turnier.id });
     const zaehlung = zaehleKaempferJeVerein(teilnehmer, { basis: abrechnung.basis, ausrichterName: ausrichter?.name ?? null });
@@ -299,6 +305,7 @@ export async function erstelleRechnungen(knex, { turnier, benutzerId, sende = se
     }
 
     const neueIds = [];
+    let abbruch = null;
     for (const k of kandidaten) {
         const kassiert = barJe.get(k.schluessel) ?? null;
         try {
@@ -306,11 +313,13 @@ export async function erstelleRechnungen(knex, { turnier, benutzerId, sende = se
                 turnier, vereinEintrag: k.vereinEintrag, zahlwegZeile: k.zahlwegZeile, kopf, konto,
                 barDatum: kassiert ? heuteBerlin(kassiert) : null,
                 bezahltAm: kassiert ?? new Date(),
-                benutzerId
+                benutzerId,
+                erzeugePdf
             });
             if (neu != null) { neueIds.push({ id: neu, vereinName: k.zahlwegZeile.verein_name }); ergebnis.erstellt += 1; }
         } catch (err) {
-            if (err instanceof FachFehler && err.statusCode === 409) throw err;
+            // 409 (z. B. Stammdaten mitten im Lauf geändert): abbrechen, aber bereits erstellte Rechnungen noch versenden.
+            if (err instanceof FachFehler && err.statusCode === 409) { abbruch = err; break; }
             console.error('[Rechnungslauf] Rechnung nicht erstellt:', err?.code ?? '', err?.message ?? 'Fehler');
             ergebnis.fehler.push({ vereinName: k.zahlwegZeile.verein_name, grund: 'Die Rechnung konnte nicht erstellt werden.' });
         }
@@ -320,6 +329,12 @@ export async function erstelleRechnungen(knex, { turnier, benutzerId, sende = se
         const v = await versende(knex, id, sende);
         if (v.versendet) ergebnis.versendet += 1;
         else ergebnis.fehler.push({ vereinName, grund: v.grund });
+    }
+    if (abbruch) {
+        const zusatz = ergebnis.erstellt > 0
+            ? ` Vorher wurden ${ergebnis.erstellt} Rechnung(en) erstellt, davon ${ergebnis.versendet} versendet.`
+            : '';
+        throw new FachFehler(409, `${abbruch.message}${zusatz}`, { code: 'rechnungslauf_abgebrochen', daten: ergebnis });
     }
     return ergebnis;
 }

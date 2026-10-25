@@ -38,6 +38,13 @@ export function braucheGirocode(d) {
     return d.art !== 'quittung' && d.zahlweg !== 'lastschrift' && berechneOffenCent(d) > 0 && !!d.zahlung?.iban;
 }
 
+/** EPC-QR-Inhalt über den offenen Betrag (Gesamtbetrag minus angerechnete Zahlungen). */
+export function giroCodePayloadFuer(d) {
+    return baueGiroCodePayload({
+        name: d.zahlung.kontoinhaber, iban: d.zahlung.iban, betrag: berechneOffenCent(d) / 100, verwendungszweck: d.zahlung.verwendungszweck
+    });
+}
+
 export function baueRechnungsZeilen(d) {
     const istQuittung = d.art === 'quittung';
     const a = d.aussteller || {};
@@ -59,12 +66,15 @@ export function baueRechnungsZeilen(d) {
         ...(d.kaempfer || []).map(k => ({ text: String(k), betrag: '', einzug: true }))
     ];
     const summen = [{ text: 'Gesamtbetrag', betrag: euro(d.betragCent) }];
-    if (d.zahlweg === 'bar' && (d.barErhaltenCent || 0) > 0 && offen > 0) {
-        summen.push({ text: 'bar erhalten', betrag: euro(d.barErhaltenCent) }, { text: 'offen', betrag: euro(offen) });
+    // Angerechnete Zahlungen (barErhaltenCent) sichtbar: bei Bar "bar erhalten", sonst "bereits bezahlt".
+    const istBar = d.zahlweg === 'bar';
+    if (d.zahlweg !== 'lastschrift' && (d.barErhaltenCent || 0) > 0 && offen > 0) {
+        summen.push({ text: istBar ? 'bar erhalten' : 'bereits bezahlt', betrag: euro(d.barErhaltenCent) }, { text: 'offen', betrag: euro(offen) });
     }
     const zahlung = [];
-    if (istQuittung || (d.zahlweg === 'bar' && offen === 0)) {
-        zahlung.push(`Betrag bar erhalten am ${datum(d.barDatum || d.rechnungsdatum)}.`);
+    if (istQuittung || (d.zahlweg !== 'lastschrift' && offen === 0 && (d.barErhaltenCent || 0) > 0)) {
+        const am = datum(d.barDatum || d.rechnungsdatum);
+        zahlung.push(istBar ? `Betrag bar erhalten am ${am}.` : `Betrag bereits bezahlt am ${am}.`);
     } else if (d.zahlweg === 'lastschrift') {
         zahlung.push('Der Betrag wird per Lastschrift eingezogen.');
     } else if (d.zahlung?.iban) {
@@ -165,9 +175,7 @@ export async function erzeugeRechnungPdf(daten) {
     if (braucheGirocode(daten)) {
         platz(GIRO_GROESSE + 24);
         y -= 6;
-        const payload = baueGiroCodePayload({
-            name: daten.zahlung.kontoinhaber, iban: daten.zahlung.iban, betrag: berechneOffenCent(daten) / 100, verwendungszweck: daten.zahlung.verwendungszweck
-        });
+        const payload = giroCodePayloadFuer(daten);
         text('Girocode zum Scannen mit der Banking-App', { size: 8 }); y -= 6;
         zeichneQr(seite, payload, RAND, y - GIRO_GROESSE, GIRO_GROESSE);
         y -= GIRO_GROESSE + 10;

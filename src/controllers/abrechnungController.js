@@ -11,7 +11,8 @@ import betriebsmodus from '../config/betriebsmodus.cjs';
 
 function antworteFehler(res, err) {
     if (err instanceof FachFehler) {
-        return res.status(err.statusCode).json({ success: false, error: err.message });
+        // Abgebrochener Rechnungslauf: das Teilergebnis (bereits erstellte/versendete Rechnungen) mitliefern.
+        return res.status(err.statusCode).json({ success: false, error: err.message, ...(err.code === 'rechnungslauf_abgebrochen' && err.daten ? { ergebnis: err.daten } : {}) });
     }
     console.error('[Abrechnung]', err?.code ?? '', err?.message ?? 'Fehler'); // nie das Fehlerobjekt: Knex-Fehler enthalten Bindings
     return res.status(500).json({ success: false, error: 'Interner Serverfehler.' });

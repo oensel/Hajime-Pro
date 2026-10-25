@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PDFDocument } from 'pdf-lib';
-import { baueRechnungsZeilen, erzeugeRechnungPdf, euro, datum, umbrechen, braucheGirocode } from '../../src/services/rechnungPdf.js';
+import { baueRechnungsZeilen, erzeugeRechnungPdf, euro, datum, umbrechen, braucheGirocode, giroCodePayloadFuer } from '../../src/services/rechnungPdf.js';
 
 const basis = (extra = {}) => ({
     art: 'rechnung', nummer: 'JCK-00001', rechnungsdatum: '2026-11-01', leistungsdatum: '2026-10-31',
@@ -28,6 +28,31 @@ test('Bar teilweise zeigt offen', () => {
     const t = alles(baueRechnungsZeilen(basis({ zahlweg: 'bar', barErhaltenCent: 800 })));
     assert.ok(t.includes('offen 16,00 €'));
     assert.ok(t.includes('bar erhalten 8,00 €'));
+});
+test('Überweisung teilweise bezahlt: "bereits bezahlt", offen, Girocode nur über den offenen Betrag', () => {
+    const d = basis({ barErhaltenCent: 800 });
+    const t = alles(baueRechnungsZeilen(d));
+    assert.ok(t.includes('bereits bezahlt 8,00 €'));
+    assert.ok(t.includes('offen 16,00 €'));
+    assert.ok(!t.includes('bar erhalten'));
+    assert.ok(t.includes('offenen Betrag von 16,00 €'));
+    assert.equal(braucheGirocode(d), true);
+    assert.ok(giroCodePayloadFuer(d).split(String.fromCharCode(10)).includes('EUR16.00'));
+    assert.ok(giroCodePayloadFuer(basis()).split(String.fromCharCode(10)).includes('EUR24.00'));
+});
+test('Quittung bei Überweisung: bereits bezahlt am, keine IBAN, kein Girocode', () => {
+    const d = basis({ art: 'quittung', barErhaltenCent: 2400, barDatum: '2026-10-31', zahlung: null, zahlungszielDatum: null });
+    const t = alles(baueRechnungsZeilen(d));
+    assert.ok(t.includes('Betrag bereits bezahlt am 31.10.2026.'));
+    assert.ok(!t.includes('bar erhalten'));
+    assert.ok(!t.includes('DE89'));
+    assert.equal(braucheGirocode(d), false);
+    assert.equal(baueRechnungsZeilen(d).kopf[baueRechnungsZeilen(d).titelIndex], 'Quittung Nr. JCK-00001');
+});
+test('Lastschrift unverändert: keine Anrechnungszeile', () => {
+    const t = alles(baueRechnungsZeilen(basis({ zahlweg: 'lastschrift', zahlung: null, barErhaltenCent: 0 })));
+    assert.ok(!t.includes('bereits bezahlt'));
+    assert.ok(t.includes('per Lastschrift eingezogen'));
 });
 test('PDF mit 120 Kämpfern hat mehrere Seiten und Titel', async () => {
     const bytes = await erzeugeRechnungPdf(basis({ kaempfer: Array.from({ length: 120 }, (_, i) => `Kämpfer ${i}`), anzahl: 120, betragCent: 96000 }));

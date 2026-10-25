@@ -124,6 +124,13 @@ export function rechnungsAnzeigeStatus(rechnung, heute) {
     return status;
 }
 
+// Bereits bezahlte Kämpfer (startgeld_bezahlt, z. B. an der Kasse kassiert) werden bei jedem Zahlweg angerechnet;
+// sind alle bezahlt, entsteht eine Quittung. Lastschrift bleibt außen vor (Stufe 3 regelt sie).
 export function rechnungsArt({ zahlweg, anzahl, bezahltAnzahl }) {
-    return zahlweg === 'bar' && anzahl > 0 && bezahltAnzahl >= anzahl ? 'quittung' : 'rechnung';
+    return zahlweg !== 'lastschrift' && anzahl > 0 && bezahltAnzahl >= anzahl ? 'quittung' : 'rechnung';
+}
+
+export function angerechneterBetragCent({ zahlweg, anzahl, bezahltAnzahl }, einzelpreisCent) {
+    if (zahlweg === 'lastschrift') return 0;
+    return Math.min(bezahltAnzahl || 0, anzahl || 0) * (einzelpreisCent || 0);
 }

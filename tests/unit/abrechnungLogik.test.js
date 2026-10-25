@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
     STAMMDATEN_FELDER, fehlendeStammdaten, pruefePraefix, formatiereRechnungsnummer,
     kaempferSchluessel, zaehleKaempferJeVerein, baueVerwendungszweck, addiereTage,
-    heuteBerlin, rechnungsAnzeigeStatus, rechnungsArt
+    heuteBerlin, rechnungsAnzeigeStatus, rechnungsArt, angerechneterBetragCent
 } from '../../src/shared/abrechnung.js';
 
 const t = (o) => ({ vorname: 'A', nachname: 'B', geburtsjahr: 2012, verein: 'JC A', status: 'angemeldet', gewogen: 0, startgeld_bezahlt: 0, judopass_id: null, ...o });
@@ -76,5 +76,16 @@ test('Datum und Status', () => {
 test('rechnungsArt', () => {
     assert.equal(rechnungsArt({ zahlweg: 'bar', anzahl: 3, bezahltAnzahl: 3 }), 'quittung');
     assert.equal(rechnungsArt({ zahlweg: 'bar', anzahl: 3, bezahltAnzahl: 2 }), 'rechnung');
-    assert.equal(rechnungsArt({ zahlweg: 'ueberweisung', anzahl: 3, bezahltAnzahl: 3 }), 'rechnung');
+    // Alles bezahlt ist bei jedem Zahlweg eine Quittung, außer Lastschrift (Stufe 3).
+    assert.equal(rechnungsArt({ zahlweg: 'ueberweisung', anzahl: 3, bezahltAnzahl: 3 }), 'quittung');
+    assert.equal(rechnungsArt({ zahlweg: 'ueberweisung', anzahl: 3, bezahltAnzahl: 2 }), 'rechnung');
+    assert.equal(rechnungsArt({ zahlweg: 'lastschrift', anzahl: 3, bezahltAnzahl: 3 }), 'rechnung');
+    assert.equal(rechnungsArt({ zahlweg: 'ueberweisung', anzahl: 0, bezahltAnzahl: 0 }), 'rechnung');
+});
+
+test('angerechneterBetragCent: bezahlte Kämpfer bei jedem Zahlweg außer Lastschrift', () => {
+    assert.equal(angerechneterBetragCent({ zahlweg: 'bar', anzahl: 3, bezahltAnzahl: 1 }, 800), 800);
+    assert.equal(angerechneterBetragCent({ zahlweg: 'ueberweisung', anzahl: 3, bezahltAnzahl: 2 }, 800), 1600);
+    assert.equal(angerechneterBetragCent({ zahlweg: 'ueberweisung', anzahl: 2, bezahltAnzahl: 5 }, 800), 1600);
+    assert.equal(angerechneterBetragCent({ zahlweg: 'lastschrift', anzahl: 3, bezahltAnzahl: 3 }, 800), 0);
 });
