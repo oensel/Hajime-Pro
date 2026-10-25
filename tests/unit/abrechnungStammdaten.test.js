@@ -54,6 +54,7 @@ test('Abrechnung: Stammdaten-API', async () => {
             await knex('benutzer_vereine').insert({ benutzer_id: `u-${n}`, verein_id: v, freigegeben: 1, rolle });
         }
         await knex('benutzer').insert({ id: 'u-super', email: 'super@test.de', vorname: 's', nachname: 'T', email_bestaetigt_am: knex.fn.now(), ist_super_admin: true, super_admin_modus: true, aktiver_verein_id: vFremd });
+        await knex('benutzer').insert({ id: 'u-superohne', email: 'superohne@test.de', vorname: 's', nachname: 'T', email_bestaetigt_am: knex.fn.now(), ist_super_admin: true, super_admin_modus: false, aktiver_verein_id: vFremd });
         const t = id((await knex('turniere').insert({
             bezeichnung: 'Cup', ort: 'Halle', datum: '2030-05-01', ausrichter: 'JC Ausrichter', verein_id: vAus, status: 'veroeffentlicht', startgeld: 8
         }).returning('id'))[0]);
@@ -69,6 +70,13 @@ test('Abrechnung: Stammdaten-API', async () => {
         assert.equal((await aufruf('u-benutzer', 'GET', `/api/abrechnung/stammdaten/${vAus}`)).status, 403);
         assert.equal((await aufruf('u-fremd', 'GET', `/api/abrechnung/stammdaten/${vAus}`)).status, 403);
         assert.equal((await aufruf('u-benutzer', 'PUT', `/api/abrechnung/stammdaten/${vAus}`, VOLL)).status, 403);
+
+        // Super-Admin: nur mit Modus
+        assert.equal((await aufruf('u-superohne', 'GET', `/api/abrechnung/stammdaten/${vAus}`)).status, 403);
+        assert.equal((await aufruf('u-superohne', 'PUT', `/api/abrechnung/stammdaten/${vAus}`, VOLL)).status, 403);
+        assert.equal((await aufruf('u-super', 'PUT', `/api/abrechnung/stammdaten/${vAus}`, { ...VOLL, iban: '' })).status, 200);
+        assert.ok(!('geaendert_von' in (await aufruf('u-admin', 'GET', `/api/abrechnung/stammdaten/${vAus}`)).daten.stammdaten));
+        assert.equal((await aufruf('u-admin', 'GET', `/api/abrechnung/stammdaten/12abc`)).status, 404);
 
         // Speichern mit IBAN
         r = await aufruf('u-admin', 'PUT', `/api/abrechnung/stammdaten/${vAus}`, VOLL);
@@ -134,9 +142,28 @@ test('Abrechnung: Stammdaten-API', async () => {
             assert.equal((await aufruf('u-admin', 'PUT', `/api/abrechnung/stammdaten/${vAus}`, ohne)).status, 200);
         } finally { process.env.ZAHLUNGSDATEN_SCHLUESSEL = schluessel; }
 
-        // Einzelbenutzerbetrieb: requireTurnierAdmin antwortet 409
+        // requireTurnierAdmin direkt mit Fake-req/res
+        const fuehreAus = async (userId) => {
+            const res = { code: null, body: null, status(c) { this.code = c; return this; }, json(b) { this.body = b; return this; } };
+            const req = { user: { id: userId }, params: { turnierId: String(t) }, query: {}, body: {}, baseUrl: '/api/abrechnung' };
+            let weiter = false;
+            await requireTurnierAdmin(knex)(req, res, () => { weiter = true; });
+            return { weiter, res, req };
+        };
+        let m = await fuehreAus('u-admin');
+        assert.equal(m.weiter, true);
+        assert.equal(m.req.tournament.id, t);
+        assert.equal((await fuehreAus('u-benutzer')).res.code, 403);
+        assert.equal((await fuehreAus('u-fremd')).res.code, 403);
+        assert.equal((await fuehreAus('u-super')).weiter, true);
+        m = await fuehreAus('u-superohne');
+        assert.equal(m.weiter, false);
+        assert.equal(m.res.code, 403);
+
+        // Einzelbenutzerbetrieb: 409
         process.env.BETRIEBSMODUS = 'server';
         try {
+            assert.equal((await aufruf('u-admin', 'GET', `/api/abrechnung/stammdaten-pruefung/${t}`)).status, 409);
             const res = { code: null, body: null, status(c) { this.code = c; return this; }, json(b) { this.body = b; return this; } };
             let weiter = false;
             await requireTurnierAdmin(knex)({ user: { id: 'u-admin' }, params: { turnierId: String(t) }, query: {}, body: {}, baseUrl: '/api/abrechnung' }, res, () => { weiter = true; });

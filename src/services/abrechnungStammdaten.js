@@ -17,7 +17,7 @@ const leer = (w) => w == null || String(w).trim() === '';
 
 function zuStammdaten(zeile) {
     if (!zeile) return null;
-    const { iban_verschluesselt: verschluesselt, ...rest } = zeile;
+    const { iban_verschluesselt: verschluesselt, geaendert_von: _geaendertVon, ...rest } = zeile;
     return { ...rest, iban_vorhanden: !!verschluesselt, iban_maske: verschluesselt ? (zeile.iban_maske ?? null) : null };
 }
 

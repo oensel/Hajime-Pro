@@ -249,6 +249,9 @@ export function requireTurnierAdmin(knex) {
             if (!turnierId) {
                 return res.status(400).json({ success: false, error: 'Turnier-ID konnte nicht ermittelt werden.' });
             }
+            if (!/^\d+$/.test(String(turnierId))) {
+                return res.status(404).json({ success: false, error: 'Turnier nicht gefunden.' });
+            }
             const turnier = await knex('turniere').where({ id: parseInt(turnierId) }).first();
             if (!turnier) {
                 return res.status(404).json({ success: false, error: 'Turnier nicht gefunden.' });

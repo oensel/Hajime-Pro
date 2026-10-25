@@ -10,7 +10,7 @@ function antworteFehler(res, err) {
     if (err instanceof FachFehler) {
         return res.status(err.statusCode).json({ success: false, error: err.message });
     }
-    console.error('[Abrechnung]', err);
+    console.error('[Abrechnung]', err?.code ?? '', err?.message ?? 'Fehler'); // nie das Fehlerobjekt: Knex-Fehler enthalten Bindings
     return res.status(500).json({ success: false, error: 'Interner Serverfehler.' });
 }
 
@@ -25,7 +25,7 @@ export function erzeugeAbrechnungController(knex, { sende } = {}) {
 
     async function pruefeVereinsRecht(req) {
         nurCloud();
-        const vereinId = parseInt(req.params.vereinId, 10);
+        const vereinId = /^\d+$/.test(String(req.params.vereinId)) ? parseInt(req.params.vereinId, 10) : NaN;
         if (!Number.isInteger(vereinId)) throw new FachFehler(404, 'Verein nicht gefunden.');
         if (!(await darfVereinVerwalten(knex, req.user.id, vereinId))) {
             throw new FachFehler(403, 'Nur Admins des Vereins dürfen die Abrechnungsdaten sehen und ändern.');

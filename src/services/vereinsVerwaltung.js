@@ -69,7 +69,7 @@ async function fremdschluesselAufVereine(trx) {
     return ergebnis.rows;
 }
 
-const BESONDERS_BEHANDELT = new Set(['benutzer_vereine.verein_id', 'urkunden_vorlagen.verein_id', 'vereins_abrechnung.verein_id']);
+const BESONDERS_BEHANDELT = new Set(['benutzer_vereine.verein_id', 'urkunden_vorlagen.verein_id', 'vereins_abrechnung.verein_id', 'rechnungen.aussteller_verein_id']);
 
 function freierName(name, belegt) {
     if (!belegt.has(name)) return name;
