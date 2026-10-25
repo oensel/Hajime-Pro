@@ -7,7 +7,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     const liste = document.getElementById('syncKonflikteListe');
     if (!liste) return;
 
-    const status = await fetch('/api/sync/status').then(r => r.json()).catch(() => ({}));
+    // Cloud-Live: ?cloudTurnier=<id> zeigt die Konflikte eines Turniers, das die Cloud live führt (src/cloudLive/verwaltungRoutes.js).
+    const cloudTurnier = new URLSearchParams(window.location.search).get('cloudTurnier');
+    const cloudLive = /^\d+$/.test(cloudTurnier || '');
+    const konfliktApi = cloudLive ? `/api/cloud-live/${cloudTurnier}/konflikte` : '/api/sync/konflikte';
+    const status = cloudLive
+        ? { rolle: 'server', turnier_id: Number(cloudTurnier) }
+        : await fetch('/api/sync/status').then(r => r.json()).catch(() => ({}));
     if (status.rolle !== 'server') {
         liste.innerHTML = '<p style="margin: 0;">Sync-Konflikte gibt es nur am Hallen-Server.</p>';
         return;
@@ -77,7 +83,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         : confirm(nachricht));
 
     async function aktion(id, was, body) {
-        const resp = await fetch(`/api/sync/konflikte/${encodeURIComponent(id)}/${was}`, {
+        const resp = await fetch(`${konfliktApi}/${encodeURIComponent(id)}/${was}`, {
             method: 'POST',
             ...(body ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {})
         });
@@ -96,7 +102,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function lade() {
         await ladeTeilnehmerNamen();
-        const konflikte = await fetch('/api/sync/konflikte').then(r => (r.ok ? r.json() : [])).catch(() => []);
+        const konflikte = await fetch(konfliktApi).then(r => (r.ok ? r.json() : [])).catch(() => []);
         if (!konflikte.length) {
             liste.innerHTML = '<p style="margin: 0;">Keine offenen Konflikte.</p>';
             return;

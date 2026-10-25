@@ -63,6 +63,9 @@ document.addEventListener('DOMContentLoaded', () => {
             el('clQr').innerHTML = qr.createSvgTag(4, 4);
         }
         zeigeGeraete(neu.geraete || []);
+        el('clKonflikte').style.display = neu.offeneKonflikte > 0 ? '' : 'none';
+        el('clKonflikteLink').textContent = `${neu.offeneKonflikte} offene Sync-Konflikte ansehen`;
+        el('clKonflikteLink').href = `/sync-konflikte.html?cloudTurnier=${encodeURIComponent(turnierId)}`;
         const app = neu.teilnehmerApp || { freigegeben: false, url: null };
         el('clAppBtn').textContent = app.freigegeben ? 'Freigabe der Teilnehmer-App zurücknehmen' : 'Teilnehmer-App freigeben';
         el('clAppBereich').style.display = app.freigegeben && app.url ? '' : 'none';

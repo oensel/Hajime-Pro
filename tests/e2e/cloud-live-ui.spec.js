@@ -58,6 +58,22 @@ test('Live schalten zeigt Code und QR, ein Gerät koppelt und wird gelistet, Bee
     await expect(page.locator('#clGeraete tbody tr')).toHaveCount(1);
     await expect(page.locator('#clGeraete tbody tr')).toContainText('E2E-Notebook');
 
+    // Sync-Konflikte: ein abgelehnter Eintrag der Brücke erscheint mit Link, die Konfliktseite zeigt ihn für dieses Turnier und blendet ihn aus
+    const konflikt = await request.put(`${pfad}/db/${dbName}/konflikt:e2e1`, {
+        headers: kopf,
+        data: { dokumenttyp: 'konflikt', konflikt_typ: 'abgelehnt', prioritaet: 'normal', bezug_id: 'teilnehmer:1', grund: 'E2E-Konflikt', version_lokal: { vorname: 'Anna' }, version_server: null, erstellt_am: new Date().toISOString(), erledigt: false, bearbeitet_von: 'server' }
+    });
+    expect(konflikt.status(), await konflikt.text()).toBe(201);
+    await page.reload();
+    await expect(page.locator('#clKonflikteLink')).toHaveText('1 offene Sync-Konflikte ansehen');
+    await page.locator('#clKonflikteLink').click();
+    await expect(page.locator('.sync-konflikt')).toHaveCount(1);
+    await expect(page.locator('.sync-konflikt')).toContainText('E2E-Konflikt');
+    await page.locator('.konflikt-erledigt').click();
+    await expect(page.locator('#syncKonflikteListe')).toContainText('Keine offenen Konflikte');
+    await page.goto(`/cloud-live.html?turnierId=${turnierId}`);
+    await expect(page.locator('#clKonflikte')).toBeHidden();
+
     // Teilnehmer-App: erst mit ausdrücklicher Freigabe gibt es den Aushang-QR, die Rücknahme blendet ihn wieder aus
     await expect(page.locator('#clAppBereich')).toBeHidden();
     page.once('dialog', (d) => d.accept());

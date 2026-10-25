@@ -132,6 +132,24 @@ test('Cloud-Live-Verwaltung: Rechte, Starten, Mischen-Sperre, Export, Code erneu
         assert.equal(gesperrt.gesperrt, true);
         assert.equal((await post('u-admin', `/api/cloud-live/${tLive}/sperren`, { wert: false })).daten.gesperrt, false);
 
+        // --- Sync-Konflikte der Turnierleitung (wie am Hallen-Server) ---
+        const liveDb = verwalter.instanzFuerTurnier(tLive).db;
+        await liveDb.put({
+            _id: 'konflikt:t1', dokumenttyp: 'konflikt', konflikt_typ: 'abgelehnt', prioritaet: 'normal', bezug_id: 'teilnehmer:1',
+            grund: 'Test', version_lokal: {}, version_server: null, erstellt_am: new Date().toISOString(), erledigt: false, bearbeitet_von: 'server'
+        });
+        assert.equal((await get('u-benutzer', `/api/cloud-live/${tLive}/konflikte`)).status, 403);
+        assert.equal((await get('u-admin', `/api/cloud-live/${tEntwurf}/konflikte`)).status, 409, 'nur bei laufendem Live-Betrieb');
+        const konflikte = (await get('u-admin', `/api/cloud-live/${tLive}/konflikte`)).daten;
+        assert.deepEqual(konflikte.map((k) => k._id), ['konflikt:t1']);
+        assert.equal((await get('u-admin', `/api/cloud-live/${tLive}`)).daten.offeneKonflikte, 1);
+        // nur konflikt:-Dokumente sind ansprechbar, nicht beliebige Dokumente der Dokument-DB
+        assert.equal((await post('u-admin', `/api/cloud-live/${tLive}/konflikte/${encodeURIComponent('kampfflaeche:1')}/erledigt`)).status, 400);
+        assert.equal((await post('u-admin', `/api/cloud-live/${tLive}/konflikte/konflikt:t1/entscheiden`, { entscheidung: 'server' })).status, 400, 'nur Klärungsfälle');
+        assert.equal((await post('u-admin', `/api/cloud-live/${tLive}/konflikte/konflikt:t1/erledigt`)).status, 200);
+        assert.deepEqual((await get('u-admin', `/api/cloud-live/${tLive}/konflikte`)).daten, []);
+        assert.equal((await get('u-admin', `/api/cloud-live/${tLive}`)).daten.offeneKonflikte, 0);
+
         // --- Teilnehmer-App: nur mit ausdrücklicher Freigabe des Veranstalters ---
         const ohne = (await get('u-admin', `/api/cloud-live/${tLive}`)).daten.teilnehmerApp;
         assert.deepEqual(ohne, { freigegeben: false, url: null });

@@ -478,6 +478,12 @@ export function erzeugeBruecke({ knex, zustand, abgleich }) {
         const kampfId = lokal.sql_id;
         const zeile = kampfId != null ? await knex('kaempfe').where({ id: kampfId }).first() : null;
         if (!zeile) throw new FachFehler(404, 'Der Kampf existiert nicht mehr.');
+        // Das konflikt:-Dokument liegt in einer von Geräten beschreibbaren DB: bei mehreren Turnieren (Cloud-Live) darf ein gefälschtes
+        // Dokument nicht auf einen Kampf eines anderen Turniers zeigen.
+        if (zustand.abschottung) {
+            const pool = await knex('pools').where({ id: zeile.pool_id }).first('turnier_id');
+            if (!pool || Number(pool.turnier_id) !== Number(zustand.turnierId)) throw new FachFehler(404, 'Der Kampf gehört nicht zu diesem Turnier.');
+        }
         if (zeile.status !== 'klaerung') {
             throw new FachFehler(409, `Der Kampf steht nicht mehr auf "Klärung" (Status: ${zeile.status}). Bitte den Konflikt nur als erledigt markieren.`);
         }

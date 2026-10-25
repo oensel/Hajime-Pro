@@ -133,3 +133,14 @@ test('Nachmeldung: turnier_id wird streng als Ganzzahl geprüft (kein Number-Tri
     assert.equal(k.konflikt_typ, 'abgelehnt');
     assert.match(k.grund, /nicht zu diesem Turnier/);
 });
+
+test('Ein gefälschtes Klärungs-Dokument eines Geräts kann einen Kampf eines anderen Turniers nicht verändern', async () => {
+    await knex('kaempfe').where({ id: B.kampfId }).update({ status: 'klaerung' });
+    await db.put({
+        _id: 'konflikt:gefaelscht', dokumenttyp: 'konflikt', konflikt_typ: 'klaerung', prioritaet: 'hoch', bezug_id: `kampf:${B.kampfId}`,
+        grund: 'gefälscht', version_lokal: { sql_id: B.kampfId, status: 'beendet' }, version_server: { status: 'bereit' },
+        erstellt_am: new Date().toISOString(), erledigt: false, bearbeitet_von: 'geraet-1'
+    });
+    await assert.rejects(bruecke.entscheideKlaerung('konflikt:gefaelscht', 'server'), (e) => e.statusCode === 404 || e.statusCode === 403);
+    assert.equal((await knex('kaempfe').where({ id: B.kampfId }).first()).status, 'klaerung');
+});

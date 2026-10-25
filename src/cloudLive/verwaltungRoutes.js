@@ -36,6 +36,7 @@ async function baueStatus(knex, verwalter, turnierId, req) {
         gesperrt: zugang.gesperrt,
         gueltigBis: zugang.gueltigBis ? zugang.gueltigBis.toISOString() : null,
         geraete: await verwalter.listeGeraete(turnierId),
+        offeneKonflikte: (await verwalter.instanzFuerTurnier(turnierId).bruecke.listeKonflikte()).length,
         // Teilnehmer-App: ein Opt-in des Veranstalters (wie am Hallen-Server); der Zugang ist der Link/QR für den Aushang.
         teilnehmerApp: turnier.live_freigabe
             ? { freigegeben: true, url: `${basis}/live/#z=${(await holeAppZugang(knex, String(turnierId))).code}` }
@@ -46,6 +47,9 @@ async function baueStatus(knex, verwalter, turnierId, req) {
 function antworte(res, fehler) {
     if (fehler instanceof FachFehler) {
         return res.status(fehler.statusCode).json({ success: false, error: fehler.message, ...(fehler.code ? { code: fehler.code } : {}), ...(fehler.daten || {}) });
+    }
+    if (Number.isInteger(fehler.status) && fehler.status >= 400 && fehler.status < 500) {
+        return res.status(fehler.status).json({ success: false, error: fehler.message });
     }
     console.error('[Cloud-Live] Fehler:', fehler);
     return res.status(500).json({ success: false, error: 'Interner Fehler im Cloud-Live-Betrieb.' });
@@ -88,6 +92,46 @@ export function getCloudLiveVerwaltungRoutes(knex, { verwalter, jetzt = () => ne
             const turnierId = turnierIdVon(req);
             const { ausstehendeGeraete } = await verwalter.beende(turnierId, { erzwingen: !!(req.body && req.body.erzwingen) });
             res.json({ ...(await baueStatus(knex, verwalter, turnierId, req)), ausstehendeGeraete });
+        } catch (fehler) { antworte(res, fehler); }
+    });
+
+    // Sync-Konflikte (Ablehnungen, Dubletten, Klärungsfälle) der Brücke dieses Turniers, wie sync-konflikte.html am Hallen-Server.
+    const mitBruecke = (req) => {
+        const instanz = verwalter.instanzFuerTurnier(turnierIdVon(req));
+        if (!instanz) throw new FachFehler(409, 'Das Turnier läuft nicht live.');
+        return instanz.bruecke;
+    };
+    // Nur konflikt:-Dokumente sind ansprechbar, nie beliebige Dokumente der Dokument-DB.
+    const konfliktId = (req) => {
+        if (!/^konflikt:[\w-]+$/.test(req.params.id)) throw new FachFehler(400, 'Ungültige Konflikt-ID.');
+        return req.params.id;
+    };
+
+    router.get('/:turnierId/konflikte', ...berechtigt, async (req, res) => {
+        try { res.json(await mitBruecke(req).listeKonflikte()); } catch (fehler) { antworte(res, fehler); }
+    });
+
+    router.post('/:turnierId/konflikte/:id/erledigt', ...berechtigt, async (req, res) => {
+        try {
+            const bruecke = mitBruecke(req);
+            await bruecke.erledigeKonflikt(konfliktId(req));
+            res.json({ success: true });
+        } catch (fehler) { antworte(res, fehler); }
+    });
+
+    router.post('/:turnierId/konflikte/:id/wiederholen', ...berechtigt, async (req, res) => {
+        try {
+            const bruecke = mitBruecke(req);
+            await bruecke.wiederholeKonflikt(konfliktId(req));
+            res.json({ success: true });
+        } catch (fehler) { antworte(res, fehler); }
+    });
+
+    router.post('/:turnierId/konflikte/:id/entscheiden', ...berechtigt, async (req, res) => {
+        try {
+            const bruecke = mitBruecke(req);
+            await bruecke.entscheideKlaerung(konfliktId(req), req.body && req.body.entscheidung);
+            res.json({ success: true });
         } catch (fehler) { antworte(res, fehler); }
     });
 
