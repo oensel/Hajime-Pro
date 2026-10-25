@@ -945,6 +945,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (exportTurnierBtn && ['anmeldung_geschlossen', 'in_durchfuehrung', 'abgeschlossen'].includes(statusEffektiv)) {
                 exportTurnierBtn.style.display = 'inline-flex';
             }
+            // Abrechnung: nur Cloud, mit Startgeld, für Admins des Ausrichters bzw. Super-Admins im Modus
+            const abrechnungBtn = document.getElementById('abrechnungBtn');
+            const istAusrichterAdmin = gehoertZuEigenemVerein && !!user.verein_freigegeben && user.verein_rolle === 'admin';
+            if (abrechnungBtn && !istOffline && (parseFloat(turnier.startgeld) || 0) > 0 && (istAusrichterAdmin || user.super_admin_aktiv)) {
+                abrechnungBtn.style.display = 'inline-flex';
+                abrechnungBtn.onclick = () => { window.location.href = `/abrechnung.html?turnierId=${encodeURIComponent(turnierId)}`; };
+            }
             if (importTurnierBtn && !istOffline && wettkampftagErreicht && ['anmeldung_geschlossen', 'in_durchfuehrung'].includes(statusEffektiv)) {
                 importTurnierBtn.style.display = 'inline-flex';
             }

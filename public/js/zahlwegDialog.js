@@ -181,8 +181,8 @@
     }
 
     // Rechnungsdaten eines Vereins erfassen, der erst vor Ort auftaucht (Hallen-Server/Kasse, Zahlweg immer Bar).
-    // "Später an der Kasse" bzw. Escape -> 'abgebrochen'.
-    function erfasseVorOrt(turnierId, vereinName) {
+    // "Später an der Kasse" bzw. Escape -> 'abgebrochen'. Optional { url }: anderes Ziel (Abrechnungsseite der Cloud).
+    function erfasseVorOrt(turnierId, vereinName, { url } = {}) {
         return new Promise((resolve) => {
             const eingabeStil = 'width:100%;padding:8px 10px;font-size:14px;box-sizing:border-box;';
             const email = element('input', { type: 'email', id: 'vorOrtEmail' });
@@ -228,7 +228,7 @@
                 btnSpeichern.disabled = true;
                 fehlerAnzeige.style.display = 'none';
                 try {
-                    const resp = await fetch(`/api/zahlweg/${encodeURIComponent(turnierId)}/vor-ort`, {
+                    const resp = await fetch(url || `/api/zahlweg/${encodeURIComponent(turnierId)}/vor-ort`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
