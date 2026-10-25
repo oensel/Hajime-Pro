@@ -11,7 +11,7 @@ import { entfernungZuPlzInKm } from '../utils/entfernungHelper.js';
 import { turnierHatEchteKaempfe } from './poolController.js';
 import { FachFehler } from '../utils/fachFehler.js';
 import { ABRECHNUNGSBASEN, parseAngeboteneZahlwege } from '../shared/zahlweg.js';
-import { exportiereZahlwege, ersetzeZahlwege } from '../services/zahlwegTransfer.js';
+import { exportiereZahlwege, ersetzeZahlwege, exportiereBarzahlungen, uebernehmeBarzahlungen } from '../services/zahlwegTransfer.js';
 import { synchronisiereGesichert } from '../services/zahlwege.js';
 import { ladeStammdaten } from '../services/abrechnungStammdaten.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
@@ -1057,6 +1057,7 @@ export async function importiereTurnierDaten(knex, sync, daten) {
             // Orga-Checkliste; alte Exportdateien ohne Abschnitt lassen sie leer (wird beim ersten Öffnen aus der Vorlage angelegt)
             await ersetzeOrga(trx, turnierId, daten.orga);
             await ersetzeZahlwege(trx, turnierId, daten.zahlwege);
+            await uebernehmeBarzahlungen(trx, turnierId, daten.barzahlungen);
 
             return turnierId;
         });
@@ -1305,7 +1306,18 @@ export async function baueTurnierExport(knex, turnierId, turnierZeile = null) {
             helferplan: await exportiereHelferplan(knex, turnierId, kampfflaechen),
             orga: await exportiereOrga(knex, turnierId),
             // Zahlwege je Verein (nur Namen und Rechnungsdaten, ohne Benutzerbezug)
-            zahlwege: await exportiereZahlwege(knex, turnierId)
+            zahlwege: await exportiereZahlwege(knex, turnierId),
+            // Kassenjournal der Barzahlungen (für die Abrechnung nach dem Rückspielen)
+            barzahlungen: await exportiereBarzahlungen(knex, turnierId)
+        };
+        // Längen der Listen: die Cloud erkennt damit abgeschnittene oder unvollständige Dateien
+        exportData.anzahl = {
+            kampfflaechen: kampfflaechen.length,
+            pools: pools.length,
+            teilnehmer: teilnehmer.length,
+            kaempfe: kaempfe.length,
+            mannschaften: mannschaften.length,
+            mannschaft_mitglieder: mannschaftMitglieder.length
         };
         return exportData;
 }

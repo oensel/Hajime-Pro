@@ -3,6 +3,7 @@
 // Die Verknüpfung zum Teilnehmer läuft über den Vereinsnamen (turnier_teilnehmer.verein = verein_name).
 // Der Sync-Abgleich (SQL -> Dokumente) wird nach schreibenden Requests bzw. durch die Brücke angestoßen,
 // diese Funktionen müssen ihn nicht selbst auslösen.
+import crypto from 'node:crypto';
 import { FachFehler } from '../utils/fachFehler.js';
 import { ermittleEffektivenStatus } from '../controllers/turnierController.js';
 import { turnierHatEchteKaempfe } from '../controllers/poolController.js';
@@ -136,5 +137,36 @@ export async function kassiereBar(knex, turnierId, vereinName) {
         .andWhere((q) => q.where('startgeld_bezahlt', false).orWhereNull('startgeld_bezahlt'))
         .select('id');
     for (const { id } of offene) await setzeStartgeldBezahlt(knex, id, true);
+    if (offene.length > 0) {
+        // Kassenjournal: die Cloud braucht die tatsächlich kassierten Beträge für die Abrechnung (Rückspielen).
+        const turnier = await knex('turniere').where({ id: turnierId }).first('startgeld');
+        const startgeld = parseFloat(turnier?.startgeld) || 0;
+        await knex('turnier_barzahlungen').insert({
+            uid: crypto.randomUUID(),
+            turnier_id: turnierId,
+            verein_name: vereinName,
+            anzahl: offene.length,
+            betrag_cent: Math.round(offene.length * startgeld * 100)
+        });
+    }
     return offene.length;
+}
+
+// Rechnungsdaten eines Vereins, der erst vor Ort auftaucht (kein Zahlweg gewählt): immer Bar, kein Benutzerbezug,
+// keine Anmeldeschluss-Prüfung (die Kasse ist ein Wettkampftag-Werkzeug).
+export async function erfasseVorOrt(knex, { turnier, vereinName, eingabe }) {
+    const kasse = await ladeKasse(knex, turnier.id);
+    if (await ladeZahlwegFuerVerein(knex, turnier.id, vereinName)) {
+        throw new FachFehler(400, 'Für diesen Verein gibt es schon einen Zahlweg.');
+    }
+    if (!kasse.some((e) => e.vereinName === vereinName && e.zahlweg === 'ohneZahlweg')) {
+        throw new FachFehler(400, 'Dieser Verein steht nicht auf der Kassenliste.');
+    }
+    const { fehler, werte } = pruefeZahlwegEingabe({ ...(eingabe || {}), zahlweg: 'bar' }, ['bar']);
+    if (fehler) throw new FachFehler(400, fehler);
+    const [zeile] = await knex('turnier_zahlwege')
+        .insert({ turnier_id: turnier.id, verein_id: null, verein_name: vereinName, ...werte, geaendert_von: null, updated_at: knex.fn.now() })
+        .returning('*');
+    await synchronisiereGesichert(knex, turnier.id);
+    return zeile;
 }

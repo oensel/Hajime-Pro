@@ -5,7 +5,7 @@ import { FachFehler } from '../utils/fachFehler.js';
 import { ladeBenutzerMitAktivemVerein, ladeVerwaltendenVereinsnamen } from '../utils/vereinHelper.js';
 import { ermittleEffektivenStatus } from './turnierController.js';
 import { turnierHatEchteKaempfe } from './poolController.js';
-import { ladeZahlwegFuerVerein, ladeVorbelegung, speichereZahlweg, ladeKasse, kassiereBar } from '../services/zahlwege.js';
+import { ladeZahlwegFuerVerein, ladeVorbelegung, speichereZahlweg, ladeKasse, kassiereBar, erfasseVorOrt } from '../services/zahlwege.js';
 import { parseAngeboteneZahlwege, startgeldVerlangt } from '../shared/zahlweg.js';
 import { darfTurnierSehen } from '../services/turnierSichtbarkeit.js';
 import { ermittleZahlungsempfaenger } from '../services/abrechnungStammdaten.js';
@@ -121,6 +121,21 @@ export function erzeugeZahlwegController(knex) {
             try {
                 const turnier = await ladeKasseTurnier(req);
                 res.json({ eintraege: await ladeKasse(knex, turnier.id) });
+            } catch (err) {
+                antworteFehler(res, err);
+            }
+        },
+
+        // Rechnungsdaten eines Vereins, der erst vor Ort auftaucht (Kasse am Wettkampftag, Zahlweg immer Bar).
+        async erfasseVorOrt(req, res) {
+            try {
+                const turnier = await ladeKasseTurnier(req);
+                const vereinName = req.body?.vereinName;
+                if (typeof vereinName !== 'string' || !vereinName) {
+                    throw new FachFehler(400, 'Vereinsname fehlt.');
+                }
+                const zahlweg = await erfasseVorOrt(knex, { turnier, vereinName, eingabe: req.body });
+                res.json({ success: true, zahlweg });
             } catch (err) {
                 antworteFehler(res, err);
             }

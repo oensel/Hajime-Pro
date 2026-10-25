@@ -1818,6 +1818,20 @@ document.addEventListener('DOMContentLoaded', async () => {
                 zelle(String(e.anzahlOffen), true);
                 const aktion = document.createElement('td');
                 aktion.style.textAlign = 'right';
+                if (e.zahlweg === 'ohneZahlweg' && window.ZahlwegDialog && window.ZahlwegDialog.erfasseVorOrt) {
+                    const datenKnopf = document.createElement('button');
+                    datenKnopf.type = 'button';
+                    datenKnopf.className = 'btn btn-outlined';
+                    datenKnopf.style.marginRight = '8px';
+                    datenKnopf.textContent = 'Rechnungsdaten erfassen';
+                    datenKnopf.addEventListener('click', async () => {
+                        const ergebnis = await window.ZahlwegDialog.erfasseVorOrt(turnierId, e.vereinName);
+                        if (ergebnis !== 'gespeichert') return;
+                        const neu = await ladeKasseEintraege();
+                        if (neu) zeichneKasse(neu);
+                    });
+                    aktion.appendChild(datenKnopf);
+                }
                 const knopf = document.createElement('button');
                 knopf.type = 'button';
                 knopf.className = 'btn btn-raised';

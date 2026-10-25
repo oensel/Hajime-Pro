@@ -132,6 +132,32 @@ test.describe.serial('Kasse an der Waage', () => {
         await expect(page.locator('#teilnehmerTableBody [data-toggle="bezahlt"].active')).toHaveCount(3);
     });
 
+    test('Rechnungsdaten vor Ort erfassen: Verein ohne Zahlweg zeigt danach Bar', async ({ page, request }) => {
+        await page.goto(`/teilnehmer.html?turnierId=${turnierId}`);
+        await page.locator('#kasseBtn').click();
+        const ohne = page.locator('#kasseTabelleBody tr').filter({ hasText: ohneVerein });
+        await expect(ohne).toContainText('ohne Zahlweg');
+        await ohne.getByRole('button', { name: 'Rechnungsdaten erfassen' }).click();
+        await page.locator('#vorOrtSpeichernBtn').click();
+        await expect(page.locator('#vorOrtFehler')).toContainText('Rechnungs-E-Mail');
+        await page.locator('#vorOrtEmail').fill('neu@verein.de');
+        await page.locator('#vorOrtAnsprechperson').fill('Nora Neu');
+        await page.locator('#vorOrtAnschrift').fill('Weg 5, 50667 Köln');
+        await page.locator('#vorOrtSpeichernBtn').click();
+        await expect(page.locator('#vorOrtDialog')).toHaveCount(0);
+        const danach = page.locator('#kasseTabelleBody tr').filter({ hasText: ohneVerein });
+        await expect(danach.locator('td').nth(1)).toHaveText('Bar');
+        await expect(danach.getByRole('button', { name: 'Rechnungsdaten erfassen' })).toHaveCount(0);
+        const zeile = await db('turnier_zahlwege').where({ turnier_id: turnierId, verein_name: ohneVerein }).first();
+        expect(zeile.zahlweg).toBe('bar');
+        expect(zeile.geaendert_von).toBeNull();
+        // Zweiter Versuch über die API: der Verein hat nun einen Zahlweg
+        const resp = await request.post(`/api/zahlweg/${turnierId}/vor-ort`, {
+            data: { vereinName: ohneVerein, rechnung_email: 'x@y.de', rechnung_ansprechperson: 'X', rechnung_anschrift: 'Y' }
+        });
+        expect(resp.status()).toBe(400);
+    });
+
     test('Ohne Startgeld gibt es keinen Kassen-Knopf', async ({ page }) => {
         await page.goto(`/teilnehmer.html?turnierId=${freiId}`);
         await expect(page.locator('#teilnehmerTableBody')).toBeAttached();

@@ -27,6 +27,20 @@ function textFeld(wert, max, pflicht) {
     return t.length > max ? undefined : t;
 }
 
+// Prüft eine Zahlweg-Zeile aus einer Datei und liefert die bereinigten Felder oder null (ungültig).
+export function pruefeTransferZeile(z) {
+    if (!z || typeof z !== 'object') return null;
+    const name = textFeld(z.verein_name, MAX.verein_name, true);
+    if (!name) return null;
+    if (!IMPORT_ZAHLWEGE.includes(z.zahlweg)) return null;
+    const email = textFeld(z.rechnung_email, MAX.rechnung_email, false);
+    const person = textFeld(z.rechnung_ansprechperson, MAX.rechnung_ansprechperson, false);
+    const anschrift = textFeld(z.rechnung_anschrift, MAX.rechnung_anschrift, false);
+    if (email === undefined || person === undefined || anschrift === undefined) return null;
+    if (email !== null && !istGueltigeEmail(email)) return null;
+    return { verein_name: name, zahlweg: z.zahlweg, rechnung_email: email, rechnung_ansprechperson: person, rechnung_anschrift: anschrift };
+}
+
 // Ersetzt die Zahlwege des Turniers durch die der Datei. Fehlt der Abschnitt (ältere Dateien), bleibt alles unberührt.
 // Zeilen aus der Datei sind unvertrauenswürdig: ungültige werden verworfen, importierte Zeilen tragen nie einen Benutzer
 // (geaendert_von/verein_id bleiben NULL) und speisen deshalb die Vorbelegung anderer Vereine nicht.
@@ -43,27 +57,45 @@ export async function ersetzeZahlwege(trx, turnierId, zahlwege) {
     const zeilen = [];
     const gesehen = new Set();
     for (const z of zahlwege) {
-        if (!z || typeof z !== 'object') continue;
-        const name = textFeld(z.verein_name, MAX.verein_name, true);
-        if (!name || gesehen.has(name) || ausrichter.has(name)) continue;
-        if (!IMPORT_ZAHLWEGE.includes(z.zahlweg)) continue;
-        const email = textFeld(z.rechnung_email, MAX.rechnung_email, false);
-        const person = textFeld(z.rechnung_ansprechperson, MAX.rechnung_ansprechperson, false);
-        const anschrift = textFeld(z.rechnung_anschrift, MAX.rechnung_anschrift, false);
-        if (email === undefined || person === undefined || anschrift === undefined) continue;
-        if (email !== null && !istGueltigeEmail(email)) continue;
-        gesehen.add(name);
-        zeilen.push({
-            turnier_id: turnierId,
-            verein_name: name,
-            zahlweg: z.zahlweg,
-            rechnung_email: email,
-            rechnung_ansprechperson: person,
-            rechnung_anschrift: anschrift,
-            verein_id: null,
-            geaendert_von: null
-        });
+        const geprueft = pruefeTransferZeile(z);
+        if (!geprueft || gesehen.has(geprueft.verein_name) || ausrichter.has(geprueft.verein_name)) continue;
+        gesehen.add(geprueft.verein_name);
+        zeilen.push({ turnier_id: turnierId, ...geprueft, verein_id: null, geaendert_von: null });
     }
     if (zeilen.length) await trx('turnier_zahlwege').insert(zeilen);
     return zeilen.length;
+}
+
+// Kassenjournal (am Hallen-Server kassierte Barzahlungen) für den Rückweg in die Cloud.
+export async function exportiereBarzahlungen(knex, turnierId) {
+    const zeilen = await knex('turnier_barzahlungen').where({ turnier_id: turnierId }).orderBy('id', 'asc');
+    return zeilen.map((b) => ({
+        uid: b.uid,
+        verein_name: b.verein_name,
+        anzahl: b.anzahl,
+        betrag_cent: b.betrag_cent,
+        kassiert_am: b.kassiert_am instanceof Date ? b.kassiert_am.toISOString() : (b.kassiert_am ?? null)
+    }));
+}
+
+const UID_MUSTER = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Übernimmt Barzahlungen aus einer Datei (unvertrauenswürdig): ungültige Zeilen werden verworfen, bekannte uid ignoriert.
+// Gibt die Zahl tatsächlich neu angelegter Zeilen zurück; fehlt der Abschnitt, bleibt alles unberührt.
+export async function uebernehmeBarzahlungen(trx, turnierId, liste) {
+    if (!Array.isArray(liste)) return 0;
+    let neu = 0;
+    for (const b of liste) {
+        if (!b || typeof b !== 'object') continue;
+        const name = textFeld(b.verein_name, MAX.verein_name, true);
+        if (!name || typeof b.uid !== 'string' || !UID_MUSTER.test(b.uid)) continue;
+        if (!Number.isInteger(b.anzahl) || b.anzahl < 1 || b.anzahl > 100000) continue;
+        if (!Number.isInteger(b.betrag_cent) || b.betrag_cent < 0 || b.betrag_cent > 100000000) continue;
+        const zeit = typeof b.kassiert_am === 'string' && !Number.isNaN(Date.parse(b.kassiert_am)) ? new Date(b.kassiert_am) : null;
+        const zeile = { uid: b.uid.toLowerCase(), turnier_id: turnierId, verein_name: name, anzahl: b.anzahl, betrag_cent: b.betrag_cent };
+        if (zeit) zeile.kassiert_am = zeit;
+        const eingefuegt = await trx('turnier_barzahlungen').insert(zeile).onConflict('uid').ignore().returning('id');
+        neu += eingefuegt.length;
+    }
+    return neu;
 }
