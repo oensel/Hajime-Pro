@@ -11,6 +11,8 @@ import { entfernungZuPlzInKm } from '../utils/entfernungHelper.js';
 import { turnierHatEchteKaempfe } from './poolController.js';
 import { FachFehler } from '../utils/fachFehler.js';
 import { ABRECHNUNGSBASEN, parseAngeboteneZahlwege } from '../shared/zahlweg.js';
+import { exportiereZahlwege, ersetzeZahlwege } from '../services/zahlwegTransfer.js';
+import { synchronisiereGesichert } from '../services/zahlwege.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 import { legeAusVorlageAn, berechneFaelligkeitenNeu, ladeOrga } from '../services/orgaPlan.js';
 import { datumAlsText } from '../services/helferPlan.js';
@@ -1030,9 +1032,12 @@ export async function importiereTurnierDaten(knex, sync, daten) {
             if (daten.helferplan) await ersetzeHelferplan(trx, turnierId, daten.helferplan);
             // Orga-Checkliste; alte Exportdateien ohne Abschnitt lassen sie leer (wird beim ersten Öffnen aus der Vorlage angelegt)
             await ersetzeOrga(trx, turnierId, daten.orga);
+            await ersetzeZahlwege(trx, turnierId, daten.zahlwege);
 
             return turnierId;
         });
+        // Das Flag startgeld_zahlweg_gesichert wird nicht aus der Datei übernommen, sondern neu abgeleitet.
+        await synchronisiereGesichert(knex, neuesTurnierId);
 
         // Das importierte Turnier wartet als neues Turnier auf seinen Wettkampftag; aktiviert wird per Knopf.
         return {
@@ -1125,11 +1130,15 @@ export async function importTurnierErgebnisse(knex, req, res) {
             await trx('kampfflaechen').where({ turnier_id: turnierId }).del();
 
             await importWettkampfdaten(trx, turnierId, { kampfflaechen, pools, teilnehmer, kaempfe, mannschaften, mannschaftMitglieder });
+            // Zahlwege nur ersetzen, wenn die Datei welche mitbringt (ältere Dateien lassen die bestehenden unberührt)
+            if (Array.isArray(daten.zahlwege)) await ersetzeZahlwege(trx, turnierId, daten.zahlwege);
 
             // Automatischer Übergang in den Archiv-Zustand (Zustand 5: "wird automatisch durch
             // den Upload der Ergebnisdaten ... ausgelöst").
             await trx('turniere').where({ id: turnierId }).update({ status: 'abgeschlossen', updated_at: trx.fn.now() });
         });
+        // Flag der neu eingelesenen Teilnehmer aus den (bestehenden oder importierten) Zahlwegen ableiten
+        await synchronisiereGesichert(knex, turnierId);
 
         return res.json({
             success: true,
@@ -1259,7 +1268,9 @@ export async function baueTurnierExport(knex, turnierId, turnierZeile = null) {
             vereine: (await knex('vereine').orderBy('name', 'asc').select('name')).map(v => v.name),
             urkunden_vorlagen: await exportiereVorlagen(knex, turnier.verein_id),
             helferplan: await exportiereHelferplan(knex, turnierId, kampfflaechen),
-            orga: await exportiereOrga(knex, turnierId)
+            orga: await exportiereOrga(knex, turnierId),
+            // Zahlwege je Verein (nur Namen und Rechnungsdaten, ohne Benutzerbezug)
+            zahlwege: await exportiereZahlwege(knex, turnierId)
         };
         return exportData;
 }

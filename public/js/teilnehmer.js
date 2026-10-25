@@ -1783,4 +1783,91 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (e.target === startgeldModal) schliesseStartgeldModal();
         });
     }
+
+    // --- KASSE (Ausrichter): Vereine mit Zahlweg Bar oder ohne Zahlweg, "Alles bar kassiert" ---
+    // Der Knopf erscheint nur bei Turnieren mit Startgeld und nur, wenn der Server die Kasse freigibt (sonst 403/409: still ausblenden).
+    const kasseBtn = document.getElementById('kasseBtn');
+    const kasseModal = document.getElementById('kasseModal');
+    if (kasseBtn && kasseModal) {
+        const ladeKasseEintraege = async () => {
+            const resp = await fetch(`/api/zahlweg/${encodeURIComponent(turnierId)}/kasse`);
+            if (!resp.ok) return null;
+            return (await resp.json()).eintraege || [];
+        };
+
+        const zeichneKasse = (eintraege) => {
+            const body = document.getElementById('kasseTabelleBody');
+            body.replaceChildren();
+            document.getElementById('kasseLeer').style.display = eintraege.length ? 'none' : 'block';
+            document.getElementById('kasseTabelle').style.display = eintraege.length ? '' : 'none';
+            for (const e of eintraege) {
+                const tr = document.createElement('tr');
+                const zelle = (text, rechts) => {
+                    const td = document.createElement('td');
+                    td.textContent = text;
+                    td.style.padding = '6px 8px';
+                    if (rechts) td.style.textAlign = 'right';
+                    tr.appendChild(td);
+                    return td;
+                };
+                zelle(e.vereinName);
+                zelle(e.zahlweg === 'ohneZahlweg' ? 'ohne Zahlweg' : 'Bar');
+                zelle(String(e.anzahlKaempfer), true);
+                zelle(String(e.anzahlOffen), true);
+                const aktion = document.createElement('td');
+                aktion.style.textAlign = 'right';
+                const knopf = document.createElement('button');
+                knopf.type = 'button';
+                knopf.className = 'btn btn-raised';
+                knopf.textContent = 'Alles bar kassiert';
+                knopf.disabled = e.anzahlOffen === 0;
+                knopf.addEventListener('click', async () => {
+                    knopf.disabled = true;
+                    try {
+                        const resp = await fetch(`/api/zahlweg/${encodeURIComponent(turnierId)}/kasse/bar-kassiert`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ vereinName: e.vereinName })
+                        });
+                        const antwort = await resp.json().catch(() => ({}));
+                        if (!resp.ok) throw new Error(antwort.error || 'Kassieren fehlgeschlagen.');
+                    } catch (err) {
+                        if (window.zeigeNotification) window.zeigeNotification('Fehler: ' + err.message, 'error');
+                    }
+                    const neu = await ladeKasseEintraege();
+                    if (neu) zeichneKasse(neu);
+                    ladeTeilnehmer();
+                });
+                aktion.appendChild(knopf);
+                tr.appendChild(aktion);
+                body.appendChild(tr);
+            }
+        };
+
+        const schliesseKasse = () => { kasseModal.style.display = 'none'; };
+        kasseBtn.addEventListener('click', async () => {
+            const eintraege = await ladeKasseEintraege();
+            if (!eintraege) return;
+            zeichneKasse(eintraege);
+            kasseModal.style.display = 'flex';
+        });
+        document.getElementById('kasseModalClose').addEventListener('click', schliesseKasse);
+        kasseModal.addEventListener('click', (e) => { if (e.target === kasseModal) schliesseKasse(); });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && kasseModal.style.display !== 'none') schliesseKasse();
+        });
+
+        (async () => {
+            try {
+                const turnierResp = await fetch(`/api/turniere/${encodeURIComponent(turnierId)}`);
+                if (!turnierResp.ok) return;
+                const turnier = await turnierResp.json();
+                if (!(parseFloat(turnier.startgeld) > 0)) return;
+                if ((await ladeKasseEintraege()) === null) return;
+                kasseBtn.style.display = 'inline-flex';
+            } catch (err) {
+                console.error('Kasse konnte nicht geprüft werden:', err);
+            }
+        })();
+    }
 });
