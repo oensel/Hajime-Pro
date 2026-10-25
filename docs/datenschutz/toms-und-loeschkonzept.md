@@ -18,6 +18,7 @@
 | **Pseudonymisierung** | Software | Teilnehmer-App: Personenschlüssel als gesalzener Hash, Judopass-Nummer und genaues Gewicht werden nicht veröffentlicht |
 | **Verschlüsselung bei der Übertragung** | Betrieb | HTTPS (TLS) auf dem gesamten Auftritt, Verbindung zur Datenbank per TLS; Zertifikat und Weiterleitung HTTP→HTTPS sind einzurichten |
 | **Verschlüsselung gespeicherter Daten** | Software / Betrieb | Sicherungsdateien AES-256-GCM (scrypt-Schlüssel, Salz je Datei); Zwei-Faktor-Geheimnisse AES-256-GCM; Datenbank im Ruhezustand verschlüsselt durch den Anbieter (nachfragen) |
+| **Feldverschlüsselung der Zahlungsdaten** | Software / Betrieb | Die IBAN des Ausrichters (Stammdaten) liegt nur als AES-256-GCM-Chiffretext in der Datenbank (Schlüssel `ZAHLUNGSDATEN_SCHLUESSEL`, mindestens 32 Zeichen, **getrennt von den Sicherungen verwahren**; Verlust = IBANs müssen neu eingegeben werden); in Protokollen und Oberfläche nur als Maske (Schwärzung). **Ausnahme:** Das PDF jeder Rechnung (`rechnungen.pdf`) enthält die IBAN des Empfängerkontos im Klartext (Zahlende müssen sie lesen können) und ist Teil der Datensicherung; deshalb Sicherungen immer mit `SICHERUNG_PASSWORT` verschlüsseln. Zahlende Vereine mit Zahlweg Überweisung sehen die Empfänger-IBAN zudem über `GET /api/zahlweg` (steht ohnehin auf Rechnung und Girocode) |
 | **Geheimhaltung der Konfiguration** | Betrieb | Zugangsdaten nur in `.env`/Secrets, Dateirechte 0600, nicht im Repository |
 | **Verpflichtung auf Vertraulichkeit** | Betrieb | Alle Personen mit Zugriff (auch Admins der Vereine) schriftlich belehren |
 
@@ -67,6 +68,7 @@
 | Logische statt physischer Mandantentrennung | Bei sorgfältiger Rechteprüfung im Programm üblich; ein Fehler in der Rechteprüfung würde mandantenübergreifend wirken (deshalb Tests auf Rechte) |
 | Sitzungen vor Einführung der 2FA gelten bis zum Ablauf (24 Stunden); „Alle Sitzungen beenden“ fehlt | offen |
 | Eine ratenbegrenzte Anfrage zählt je Instanz im Arbeitsspeicher | bei mehreren Instanzen gilt das Limit je Instanz |
+| Rechnungen werden nicht automatisch nach 8 Jahren gelöscht; das Rechnungs-PDF enthält die Empfänger-IBAN im Klartext | Löschung von Hand; Sicherungen verschlüsseln (siehe Vertraulichkeit) |
 | Teilnehmer-App zeigt Namen | Zugriff nur mit Zugangscode aus dem Aushang (bis Ende des Turniertags, erneuerbar/sperrbar); Option zum Kürzen der Namen weiterhin empfohlen |
 
 ## Teil 2: Löschkonzept
@@ -77,6 +79,9 @@
 | **Unbestätigte Konten** | 30 Tage | Alter | **automatisch** täglich (`UNBESTAETIGT_TAGE`) | System |
 | Turnierdaten (Teilnehmer, Mannschaften, Kämpfe, Ergebnisse, Helferplan, Orga) | bis zur Löschung durch den Veranstalter | Veranstalter-Entscheidung, Vertragsende | Seite „Anstehende Turniere“ → Turnier löschen; Super-Admin kann Turniere archivieren/löschen | Veranstalter |
 | Empfehlung: Teilnehmer- und Ergebnisdaten **spätestens `[2]` Jahre** nach dem Turnier löschen oder anonymisieren, Ergebnislisten nur ohne Gewicht/Judopass-Nr. aufbewahren | – | – | manuell, Erinnerung `[…]` | Veranstalter |
+| **Rechnungen und Quittungen** (Startgeld-Abrechnung, einschließlich PDF) | **8 Jahre** ab Ende des Kalenderjahres der Ausstellung | Alter (gesetzliche Aufbewahrung); Rechnungen sind unveränderliche Momentaufnahmen und bleiben beim Löschen von Turnier oder Verein erhalten (Fremdschlüssel `SET NULL`, das Zusammenführen von Vereinen verschiebt sie nicht) | **manuell** (keine automatische Löschung, bekannte Lücke); Löschung betrifft auch die Sicherungen verzögert | Veranstalter / Betreiber |
+| Barzahlungs-Journal (`turnier_barzahlungen`), Zahlwege und Rechnungsangaben der Vereine | mit dem Turnier | Turnier löschen | wie Turnierdaten (CASCADE) | Veranstalter |
+| Stammdaten der Abrechnung (Anschrift, Steuernummer, verschlüsselte IBAN) | bis zur Löschung des Vereins | Vereinsende | Verein löschen (CASCADE), Rechnungen bleiben | Super-Admin |
 | Live-Daten der Teilnehmer-App | 7 Tage nach dem Turnier | Alter | **automatisch** (`LIVE_AUFBEWAHRUNG_TAGE`) | System |
 | Push-Anmeldungen und gesendete Mitteilungen | 3 Tage nach dem Turnier | Alter | **automatisch** | System |
 | Aktionsprotokoll | 365 Tage | Alter | **automatisch** (`PROTOKOLL_AUFBEWAHRUNG_TAGE`); auf Verlangen früher anonymisieren (Abfrage im Prozessdokument) | System / Betreiber |
