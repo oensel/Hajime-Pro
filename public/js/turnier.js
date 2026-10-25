@@ -807,6 +807,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const startgeldWert = parseInt(payload.startgeld, 10) || 0;
             // In der Cloud darf das Konto auch aus den Abrechnungsdaten des Vereins kommen: dort prüft der Server.
+            // (Vor der Cloud-Erkennung gilt noch die strenge Prüfung: ein frühes Absenden ist nur strenger, nie laxer.)
             if (!rechnungenAktiv && startgeldWert > 0 && (!payload.iban || !payload.kontoinhaber || !payload.verwendungszweck)) {
                 if (window.zeigeNotification) {
                     window.zeigeNotification('Wenn ein Startgeld verlangt wird, müssen IBAN, Kontoinhaber und Verwendungszweck ausgefüllt sein.', 'error');

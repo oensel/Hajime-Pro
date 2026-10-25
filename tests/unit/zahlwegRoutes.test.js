@@ -93,6 +93,17 @@ test('Zahlweg-API', async () => {
         await speichereStammdaten(knex, vAus, { iban: 'DE89 3704 0044 0532 0130 00', kontoinhaber: 'JC Ausrichter e.V.' }, 'u-aus');
         r = await aufruf('u-a1', 'GET', `/api/zahlweg/${t}`);
         assert.deepEqual(r.daten.empfaenger, { kontoinhaber: 'JC Ausrichter e.V.', iban: 'DE89370400440532013000', verwendungszweck: null });
+        // falscher/fehlender Schlüssel: empfaenger null, der Rest der Antwort bleibt
+        const schluessel = process.env.ZAHLUNGSDATEN_SCHLUESSEL;
+        for (const wert of ['ein-ganz-anderer-schluessel-mit-32-zeichen-x', undefined]) {
+            if (wert === undefined) delete process.env.ZAHLUNGSDATEN_SCHLUESSEL; else process.env.ZAHLUNGSDATEN_SCHLUESSEL = wert;
+            const kaputt = await aufruf('u-a1', 'GET', `/api/zahlweg/${t}`);
+            assert.equal(kaputt.status, 200);
+            assert.equal(kaputt.daten.empfaenger, null);
+            assert.equal(kaputt.daten.erforderlich, true);
+            assert.equal(kaputt.daten.zahlweg.zahlweg, 'ueberweisung');
+        }
+        process.env.ZAHLUNGSDATEN_SCHLUESSEL = schluessel;
 
         // zweiter Benutzer desselben Vereins überschreibt, eine Zeile
         r = await aufruf('u-a2', 'PUT', `/api/zahlweg/${t}`, { ...EINGABE, zahlweg: 'bar' });

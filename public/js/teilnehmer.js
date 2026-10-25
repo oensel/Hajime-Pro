@@ -1735,6 +1735,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                         }
                     } catch { /* ohne Konto bleibt der Code leer */ }
                 }
+                if (!zielIban || !zielKontoinhaber) {
+                    if (window.zeigeNotification) window.zeigeNotification('Für dieses Turnier ist kein Empfängerkonto verfügbar, daher gibt es keinen Girocode. Bitte beim Ausrichter nachfragen.', 'error');
+                    return;
+                }
                 const verwendungszweckErsetzt = (zielVerwendungszweck || '')
                     .replace(/<Turniername>/g, turnierBezeichnung)
                     .replace(/<Verein>/g, eigenerVerein);

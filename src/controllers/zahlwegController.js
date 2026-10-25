@@ -72,10 +72,16 @@ export function erzeugeZahlwegController(knex) {
                 const erforderlich = startgeldVerlangt(turnier) && !istAusrichter;
                 const zahlweg = erforderlich ? await ladeZahlwegFuerVerein(knex, turnier.id, vereinName) : null;
                 // Konto für den Girocode: nur wer per Überweisung zahlt, bekommt es (Turnierfelder vor Vereinskonto).
+                // Bewusst freigegeben: dieses Empfängerkonto steht ohnehin auf Rechnungen und im Girocode des Zahlers.
+                // Scheitert die Entschlüsselung (Schlüssel fehlt/geändert), bleibt es null; der Rest der Antwort ist unberührt.
                 let empfaenger = null;
                 if (zahlweg?.zahlweg === 'ueberweisung') {
-                    const e = await ermittleZahlungsempfaenger(knex, turnier);
-                    if (e) empfaenger = { kontoinhaber: e.kontoinhaber, iban: e.iban, verwendungszweck: turnier.verwendungszweck || null };
+                    try {
+                        const e = await ermittleZahlungsempfaenger(knex, turnier);
+                        if (e) empfaenger = { kontoinhaber: e.kontoinhaber, iban: e.iban, verwendungszweck: turnier.verwendungszweck || null };
+                    } catch (fehler) {
+                        console.error('[Zahlweg] Empfängerkonto nicht lesbar:', fehler?.code ?? '', fehler?.message ?? 'Fehler');
+                    }
                 }
                 res.json({
                     erforderlich,
