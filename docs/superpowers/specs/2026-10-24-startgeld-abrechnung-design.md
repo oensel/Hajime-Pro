@@ -96,5 +96,18 @@ Diese Punkte hat der Autor selbst entschieden; der Projektinhaber soll sie beim 
 10. **Schlüssel:** Der IBAN-Schlüssel kommt wie beim 2FA-Geheimnis aus einer Umgebungsvariable und muss getrennt von den Sicherungen verwahrt werden (die Sicherung enthält nur Chiffretext; ohne Schlüssel ist die IBAN nach Wiederherstellung unbrauchbar).
 11. **IBAN des Ausrichters:** Das Turnierfeld überschreibt die Vereins-IBAN, sonst gilt die des Vereins.
 
+## Stand nach Stufe 1 / Abweichungen (Nachtrag 2026-10-25, Planung Stufe 2/3)
+Stufe 1 ist auf `main` (Plan `docs/superpowers/plans/2026-10-24-startgeld-zahlweg-stufe1.md`). Folgende Punkte weichen vom obigen Text ab; die Pläne für Stufe 2 (`2026-10-25-startgeld-rechnungen-stufe2.md`) und Stufe 3 (`2026-10-25-startgeld-lastschrift-stufe3.md`) bauen darauf auf:
+- **Meldender Verein über den Namen:** Zahlwege hängen an (Turnier, `verein_name`), nicht an einer neuen Spalte `meldender_verein_id` (Festlegung 4 und Abschnitt „Bestehender Stand“). Kämpfer mit abweichend geschriebenem Vereinsnamen sind „nicht zugeordnet“; Stufe 2 löst sie auf der Abrechnungsseite auf (zuordnen oder Rechnungsdaten erfassen).
+- **Ausrichter zahlt nichts:** Kämpfer des Ausrichter-Vereins gelten automatisch als gesichert.
+- **Kasse:** Die Kassenliste an der Waage gibt es schon (Bar-Vereine und Vereine ohne Zahlweg); sie setzt `startgeld_bezahlt`. Ein Journal der Barzahlungen (Verein, Betrag, Zeitpunkt) kommt erst mit Stufe 2.
+- **Transfer zum Hallen-Server:** Der Export trägt je Verein Zahlweg **und Rechnungsangaben** (E-Mail, Ansprechperson, Anschrift), nicht nur `bar`/`zahlungGesichert`; ohne Vereins- und Benutzer-IDs. Die Turnierfelder `iban`/`kontoinhaber` (Empfängerkonto des Ausrichters) reisen wie seit jeher mit; Vereins-Stammdaten, Mandate und Zahler-IBANs reisen nie.
+- **Rückspielen existiert teilweise:** `POST /api/turniere/:id/import-ergebnisse` (Datei-Upload, ersetzt die Wettkampfdaten, lässt Zahlwege unberührt, setzt `abgeschlossen`) gibt es schon, bisher für Rolle `benutzer` und nur einmal (danach `abgeschlossen` und gesperrt). Stufe 2 baut ihn zum gemeinsamen Kern von Datei-Upload und Direktweg um, verlangt Rolle `admin` und erlaubt erneutes Rückspielen bis zum ersten Rechnungsversand.
+- **„Abgemeldet“:** Die Selbstabmeldung setzt `status = 'zurueckgezogen'` (der Datensatz bleibt); gelöscht wird nur durch den Ausrichter. Zurückgezogene zählen wie Gelöschte nicht (Festlegung 8 entsprechend gelesen).
+- **Cloud-Live-Betrieb:** Turniere können inzwischen live in der Cloud laufen; dann gibt es nichts zurückzuspielen. Stufe 2 gibt die Abrechnung auch für beendete Cloud-Live-Turniere frei, die nie auf einen Hallen-Server geholt wurden (zu Festlegung 1 und Abschnitt 4).
+- **Vereinsprofil:** Eine Profilseite mit Reitern gibt es nicht; die Stammdaten bekommen eine eigene Seite `verein-abrechnung.html`, verlinkt aus „Mein Profil“ und dem Startgeld-Block.
+- **2FA beim Direktweg:** Der TOTP-Code eines Super-Admins wird schon bei der Cloud-Anmeldung verbraucht; das Rückspielen akzeptiert deshalb eine höchstens 10 Minuten alte 2FA-Anmeldung (Claim im Token) statt eines zweiten Codes. Der SEPA-Download verlangt immer einen frischen Code.
+- **Turnier-IBAN:** Die Turnierfelder bleiben ohne Prüfsummenprüfung (bestehende Daten/Tests); geprüft werden die Vereins-IBAN der Stammdaten und die Zahler-IBAN im Mandat.
+
 ## Dem Bauenden überlassen
 Tabellenaufbau und Migrationen, genaue Texte (außer dem rechtlich zu prüfenden Mandatstext), Layout von Popup und Abrechnungsseite, Format der Rückspiel-Datei, Umgang mit den vorhandenen Turnier-Feldern `iban`/`kontoinhaber`/`verwendungszweck`.
