@@ -41,12 +41,8 @@ export function pruefeTransferZeile(z) {
     return { verein_name: name, zahlweg: z.zahlweg, rechnung_email: email, rechnung_ansprechperson: person, rechnung_anschrift: anschrift };
 }
 
-// Ersetzt die Zahlwege des Turniers durch die der Datei. Fehlt der Abschnitt (ältere Dateien), bleibt alles unberührt.
-// Zeilen aus der Datei sind unvertrauenswürdig: ungültige werden verworfen, importierte Zeilen tragen nie einen Benutzer
-// (geaendert_von/verein_id bleiben NULL) und speisen deshalb die Vorbelegung anderer Vereine nicht.
-export async function ersetzeZahlwege(trx, turnierId, zahlwege) {
-    if (!Array.isArray(zahlwege)) return 0;
-    await trx('turnier_zahlwege').where({ turnier_id: turnierId }).del();
+// Namen des Ausrichters (Freitext `ausrichter` und Name des ausrichtenden Vereins): für ihn gibt es nie eine Zahlweg-Zeile.
+export async function ladeAusrichterNamen(trx, turnierId) {
     const turnier = await trx('turniere').where({ id: turnierId }).first('verein_id', 'ausrichter');
     const ausrichter = new Set();
     if (typeof turnier?.ausrichter === 'string' && turnier.ausrichter.trim()) ausrichter.add(turnier.ausrichter.trim());
@@ -54,6 +50,16 @@ export async function ersetzeZahlwege(trx, turnierId, zahlwege) {
         const v = await trx('vereine').where({ id: turnier.verein_id }).first('name');
         if (v?.name) ausrichter.add(String(v.name).trim());
     }
+    return ausrichter;
+}
+
+// Ersetzt die Zahlwege des Turniers durch die der Datei. Fehlt der Abschnitt (ältere Dateien), bleibt alles unberührt.
+// Zeilen aus der Datei sind unvertrauenswürdig: ungültige werden verworfen, importierte Zeilen tragen nie einen Benutzer
+// (geaendert_von/verein_id bleiben NULL) und speisen deshalb die Vorbelegung anderer Vereine nicht.
+export async function ersetzeZahlwege(trx, turnierId, zahlwege) {
+    if (!Array.isArray(zahlwege)) return 0;
+    await trx('turnier_zahlwege').where({ turnier_id: turnierId }).del();
+    const ausrichter = await ladeAusrichterNamen(trx, turnierId);
     const zeilen = [];
     const gesehen = new Set();
     for (const z of zahlwege) {

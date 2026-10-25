@@ -1081,11 +1081,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const bestaetigt = window.zeigeZentraleBestaetigung
                 ? await window.zeigeZentraleBestaetigung(
-                    'Der Upload ersetzt Kampfflächen, Pools, Teilnehmer und Kämpfe dieses Turniers durch den Inhalt der Datei. Die Turnier-Stammdaten selbst bleiben unverändert. Fortfahren?',
+                    'Der Upload ersetzt Teilnehmer, Pools, Matten und Kämpfe dieses Turniers durch den Inhalt der Datei; Zahlungsdaten und Rechnungen bleiben unverändert. Fortfahren?',
                     'Ergebnisse hochladen',
                     'warning'
                 )
-                : confirm('Der Upload ersetzt die Wettkampfdaten dieses Turniers durch den Inhalt der Datei. Fortfahren?');
+                : confirm('Der Upload ersetzt Teilnehmer, Pools, Matten und Kämpfe; Zahlungsdaten und Rechnungen bleiben unverändert. Fortfahren?');
             if (!bestaetigt) return;
 
             importTurnierStatus.style.display = 'block';
@@ -1093,12 +1093,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
             try {
                 const contentBase64 = await liesDateiAlsBase64(file);
-                const response = await fetch(`/api/turniere/${turnierId}/import-ergebnisse`, {
+                const sende = (code) => fetch(`/api/turniere/${turnierId}/import-ergebnisse`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', ...(code ? { 'X-2FA-Code': code } : {}) },
                     body: JSON.stringify({ contentBase64 })
                 });
-                const data = await response.json();
+                let response = await sende(null);
+                let data = await response.json();
+                // Super-Admins bestätigen das Zurückspielen mit dem aktuellen Code der Authenticator-App
+                if (response.status === 403 && data.code === 'zwei_faktor') {
+                    const code = window.prompt(`${data.error || 'Zwei-Faktor-Bestätigung erforderlich.'}\n\nCode der Authenticator-App oder Backup-Code:`);
+                    if (!code || !code.trim()) {
+                        importTurnierStatus.textContent = '';
+                        return;
+                    }
+                    response = await sende(code.trim());
+                    data = await response.json();
+                }
 
                 if (!response.ok) {
                     throw new Error(data.error || 'Upload fehlgeschlagen.');

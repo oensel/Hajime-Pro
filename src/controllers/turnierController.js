@@ -14,6 +14,8 @@ import { ABRECHNUNGSBASEN, parseAngeboteneZahlwege } from '../shared/zahlweg.js'
 import { exportiereZahlwege, ersetzeZahlwege, exportiereBarzahlungen, uebernehmeBarzahlungen } from '../services/zahlwegTransfer.js';
 import { synchronisiereGesichert } from '../services/zahlwege.js';
 import { ladeStammdaten } from '../services/abrechnungStammdaten.js';
+import { spieleTurnierZurueck } from '../services/rueckspielen.js';
+import { pruefeSensibleAktion } from '../utils/sensibleAktion.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 import { legeAusVorlageAn, berechneFaelligkeitenNeu, ladeOrga } from '../services/orgaPlan.js';
 import { datumAlsText } from '../services/helferPlan.js';
@@ -1076,35 +1078,21 @@ export async function importiereTurnierDaten(knex, sync, daten) {
         };
 }
 
-// Lädt die Ergebnisse eines Turniers hoch, das offline durchgeführt wurde, und ersetzt DAMIT
-// NUR die Wettkampfdaten (Kampfflächen/Pools/Teilnehmer/Kämpfe) DIESES EINEN, bereits online
-// bestehenden Turniers. Ausschließlich online und nur für Mitglieder des ausrichtenden Vereins
-// (Gegenteil von importTurnier: rührt turniere/benutzer/vereine nicht an, löscht nichts
-// anderes). Schützt per Turnier-ID-Abgleich davor, versehentlich die falsche Datei hochzuladen.
+// Zurückspielen eines am Hallen-Server durchgeführten Turniers (Datei-Upload bzw. Direktweg vom Hallen-Server): dünner
+// Handler um spieleTurnierZurueck (services/rueckspielen.js), dort stehen alle Prüfungen und was ersetzt wird. Super-Admins
+// bestätigen zusätzlich per 2FA (frische Anmeldung genügt, weil der Direktweg den Code schon beim Login verbraucht).
 export async function importTurnierErgebnisse(knex, req, res) {
     try {
         if (istEinzelbenutzerBetrieb()) {
             return res.status(403).json({ success: false, error: 'Der Ergebnis-Upload ist nur im Online-Modus verfügbar.' });
         }
 
-        const turnierId = parseInt(req.params.id, 10);
-        const turnier = await knex('turniere').where({ id: turnierId }).first();
-        if (!turnier) {
-            return res.status(404).json({ success: false, error: 'Turnier nicht gefunden.' });
+        const pruefung = await pruefeSensibleAktion(knex, req, { frischeAnmeldungGenuegt: true });
+        if (!pruefung.ok) {
+            return res.status(pruefung.status).json({ success: false, error: pruefung.error, code: pruefung.code });
         }
 
-        const hatEchteKaempfeVorUpload = await turnierHatEchteKaempfe(knex, turnierId);
-        const statusVorUpload = ermittleEffektivenStatus(turnier, { hatEchteKaempfe: hatEchteKaempfeVorUpload });
-        if (!['anmeldung_geschlossen', 'in_durchfuehrung'].includes(statusVorUpload)) {
-            return res.status(403).json({ success: false, error: 'Ergebnisse können erst hochgeladen werden, wenn die Anmeldefrist abgelaufen ist. Ein bereits abgeschlossenes Turnier ist schreibgeschützt.' });
-        }
-
-        const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
-        if (!user || !hatVereinsZugriffAufTurnier(user, turnier)) {
-            return res.status(403).json({ success: false, error: 'Nur freigegebene Mitglieder des ausrichtenden Vereins dürfen Ergebnisse hochladen.' });
-        }
-
-        const { contentBase64 } = req.body;
+        const { contentBase64 } = req.body || {};
         if (!contentBase64) {
             return res.status(400).json({ success: false, error: 'Dateiinhalt ist erforderlich.' });
         }
@@ -1117,64 +1105,14 @@ export async function importTurnierErgebnisse(knex, req, res) {
             return res.status(400).json({ success: false, error: 'Datei konnte nicht gelesen werden: ' + e.message });
         }
 
-        const t = daten && daten.turnier;
-        if (!t || t.id == null) {
-            return res.status(400).json({ success: false, error: 'Ungültiges Import-Format: Turnier-ID fehlt in der Datei.' });
-        }
-        // Stammt die Datei aus einem Offline-Import (siehe urspruengliche_id in importTurnier),
-        // steht dort die tatsächliche Online-Herkunfts-ID — die eigene (lokale) Offline-ID der
-        // Datei wäre für den Abgleich mit diesem Online-Turnier bedeutungslos.
-        const quellTurnierId = t.urspruengliche_id ?? t.id;
-        if (parseInt(quellTurnierId, 10) !== turnierId) {
-            return res.status(400).json({
-                success: false,
-                error: `Die Datei gehört zu Turnier-ID ${quellTurnierId}, nicht zum ausgewählten Turnier (ID ${turnierId}).`
-            });
-        }
-
-        const kampfflaechen = (daten && daten.kampfflaechen) || [];
-        const pools = (daten && daten.pools) || [];
-        const teilnehmer = (daten && daten.teilnehmer) || [];
-        const kaempfe = (daten && daten.kaempfe) || [];
-        const mannschaften = (daten && daten.mannschaften) || [];
-        const mannschaftMitglieder = (daten && daten.mannschaft_mitglieder) || [];
-
-        await knex.transaction(async (trx) => {
-            // Nur die Wettkampfdaten DIESES Turniers ersetzen — turniere/benutzer/vereine
-            // bleiben unangetastet, andere Turniere sind von dieser Löschung nicht betroffen.
-            // mannschaften bewusst NICHT gelöscht (siehe importWettkampfdaten): sie werden dort
-            // per (verein, bezeichnung) mit den online bereits bestehenden Zeilen abgeglichen statt
-            // neu angelegt, damit ihre IDs stabil bleiben (worauf mannschaftskaempfe verweisen).
-            const altePools = await trx('pools').where({ turnier_id: turnierId }).select('id');
-            const altePoolIds = altePools.map(p => p.id);
-            if (altePoolIds.length > 0) {
-                await trx('kaempfe').whereIn('pool_id', altePoolIds).del();
-            }
-            await trx('turnier_teilnehmer').where({ turnier_id: turnierId }).del();
-            await trx('pools').where({ turnier_id: turnierId }).del();
-            await trx('kampfflaechen').where({ turnier_id: turnierId }).del();
-
-            await importWettkampfdaten(trx, turnierId, { kampfflaechen, pools, teilnehmer, kaempfe, mannschaften, mannschaftMitglieder });
-            // Zahlungsdaten bleiben unberührt (Spec Abschnitt 4): bestehende turnier_zahlwege werden nicht ersetzt.
-
-            // Automatischer Übergang in den Archiv-Zustand (Zustand 5: "wird automatisch durch
-            // den Upload der Ergebnisdaten ... ausgelöst").
-            await trx('turniere').where({ id: turnierId }).update({ status: 'abgeschlossen', updated_at: trx.fn.now() });
-        });
-        // Flag der neu eingelesenen Teilnehmer aus den bestehenden Zahlwegen ableiten; der archivierte Status bleibt wie importiert.
-        await synchronisiereGesichert(knex, turnierId, { statusAbleiten: false });
-
-        return res.json({
-            success: true,
-            turnierId,
-            imported: {
-                kampfflaechen: kampfflaechen.length,
-                pools: pools.length,
-                teilnehmer: teilnehmer.length,
-                kaempfe: kaempfe.length
-            }
-        });
+        const benutzer = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
+        const turnierId = /^\d+$/.test(String(req.params.id)) ? parseInt(req.params.id, 10) : NaN;
+        const ergebnis = await spieleTurnierZurueck(knex, { turnierId, daten, benutzer });
+        return res.json({ success: true, ...ergebnis });
     } catch (error) {
+        if (error instanceof FachFehler) {
+            return res.status(error.statusCode).json({ success: false, error: error.message, code: error.code });
+        }
         console.error('[Turnier-Ergebnisse-Upload-Fehler]:', error);
         return res.status(500).json({ success: false, error: error.message });
     }

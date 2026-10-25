@@ -148,7 +148,9 @@ test('Ergebnis-Re-Import lässt bestehende Zahlwege und den Teilnehmerstatus unb
             body: { contentBase64: Buffer.from(JSON.stringify(datei)).toString('base64') }
         }, res);
         assert.equal(antwort.success, true, JSON.stringify(antwort));
-        assert.deepEqual((await knex('turnier_zahlwege').where({ turnier_id: t.id })).map((z) => z.verein_name), ['JC Alt']);
+        // Bestehende Zeile bleibt, vor Ort neu erfasste Vereine kommen dazu (Stufe 2, E12: immer als Bar)
+        assert.deepEqual((await knex('turnier_zahlwege').where({ turnier_id: t.id }).orderBy('verein_name')).map((z) => [z.verein_name, z.zahlweg, z.geaendert_von]),
+            [['JC Alt', 'ueberweisung', 'u1'], ['JC Neu', 'bar', null]]);
         const tn = Object.fromEntries((await knex('turnier_teilnehmer').where({ turnier_id: t.id })).map((x) => [x.verein, x]));
         assert.equal(tn['JC Alt'].startgeld_zahlweg_gesichert, true);
         assert.equal(tn['JC Chef'].startgeld_zahlweg_gesichert, true);

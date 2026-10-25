@@ -23,7 +23,7 @@ const AKTIONEN = {
     'DELETE /api/turniere/:id': ['turnier.loeschen', 'Turnier gelöscht'],
     'POST /api/turniere/:id/teilen': ['turnier.teilen', 'Turnier per Mail geteilt'],
     'POST /api/turniere/:id/duplizieren': ['turnier.duplizieren', 'Turnier dupliziert'],
-    'POST /api/turniere/:id/import-ergebnisse': ['turnier.ergebnisse', 'Turnierergebnisse importiert'],
+    'POST /api/turniere/:id/import-ergebnisse': ['turnier.zurueckspielen', 'Turnier in die Cloud zurückgespielt'],
     'PUT /api/auth/profile': ['profil.aendern', 'Profil geändert'],
     'POST /api/auth/steuerung-passwort': ['steuerung.passwort', 'Turnierleitungs-Passwort geändert'],
     'POST /api/auth/2fa/backup-codes': ['2fa.backupcodes', 'Neue Backup-Codes für die Zwei-Faktor-Anmeldung erzeugt'],
