@@ -33,13 +33,16 @@ export async function up(knex) {
 
     await knex.schema.createTable('turnier_barzahlungen', (table) => {
         table.increments('id').primary();
-        table.uuid('uid').notNullable().unique();
+        table.uuid('uid').notNullable();
         table.integer('turnier_id').unsigned().notNullable()
             .references('id').inTable('turniere').onDelete('CASCADE');
         table.string('verein_name').notNullable();
         table.integer('anzahl').notNullable();
         table.integer('betrag_cent').notNullable();
         table.timestamp('kassiert_am', { useTz: true }).notNullable().defaultTo(knex.fn.now());
+        // Idempotenz je Turnier: dieselbe Zeile aus einer Datei wird nicht doppelt übernommen, eine uid aus dem
+        // Quell-Turnier darf aber im Ziel-Turnier (anderer Server, neue turnier_id) wieder vorkommen.
+        table.unique(['turnier_id', 'uid']);
     });
 
     await knex.schema.createTable('rechnungen', (table) => {

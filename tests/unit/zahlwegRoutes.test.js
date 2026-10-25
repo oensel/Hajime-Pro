@@ -182,6 +182,8 @@ test('Zahlweg-API', async () => {
         assert.equal(r.status, 200);
         assert.deepEqual(r.daten.eintraege.map((e) => e.vereinName), ['JC B', 'JC Unbekannt']);
         assert.equal((await aufruf('u-super', 'GET', `/api/zahlweg/${tk}/kasse`)).status, 200);
+        // Rechnungsdaten vor Ort gibt es nur am Hallen-Server
+        assert.equal((await aufruf('u-aus', 'POST', `/api/zahlweg/${tk}/vor-ort`, { vereinName: 'JC Unbekannt', ...EINGABE })).status, 409);
 
         // bar-kassiert: nur Vereine der Kassenliste
         for (const v of ['JC A', 'JC Ausrichter', 'Gibt es nicht', undefined, 5]) {

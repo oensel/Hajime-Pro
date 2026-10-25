@@ -80,7 +80,10 @@ export async function exportiereBarzahlungen(knex, turnierId) {
 
 const UID_MUSTER = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// Übernimmt Barzahlungen aus einer Datei (unvertrauenswürdig): ungültige Zeilen werden verworfen, bekannte uid ignoriert.
+// Übernimmt Barzahlungen aus einer Datei (unvertrauenswürdig): ungültige Zeilen werden verworfen. Idempotent je
+// (Turnier, uid): dieselbe Zeile im selben Turnier wird nicht doppelt angelegt (wiederholtes Rückspielen); dieselbe uid in
+// einem anderen Turnier (z. B. Import auf einem Server, der das Quell-Turnier noch hält) wird als eigene Zeile übernommen.
+// Das Journal enthält nur "Alles bar kassiert" (siehe kassiereBar), nicht das einzelne Bezahlt-Häkchen.
 // Gibt die Zahl tatsächlich neu angelegter Zeilen zurück; fehlt der Abschnitt, bleibt alles unberührt.
 export async function uebernehmeBarzahlungen(trx, turnierId, liste) {
     if (!Array.isArray(liste)) return 0;
@@ -94,7 +97,7 @@ export async function uebernehmeBarzahlungen(trx, turnierId, liste) {
         const zeit = typeof b.kassiert_am === 'string' && !Number.isNaN(Date.parse(b.kassiert_am)) ? new Date(b.kassiert_am) : null;
         const zeile = { uid: b.uid.toLowerCase(), turnier_id: turnierId, verein_name: name, anzahl: b.anzahl, betrag_cent: b.betrag_cent };
         if (zeit) zeile.kassiert_am = zeit;
-        const eingefuegt = await trx('turnier_barzahlungen').insert(zeile).onConflict('uid').ignore().returning('id');
+        const eingefuegt = await trx('turnier_barzahlungen').insert(zeile).onConflict(['turnier_id', 'uid']).ignore().returning('id');
         neu += eingefuegt.length;
     }
     return neu;

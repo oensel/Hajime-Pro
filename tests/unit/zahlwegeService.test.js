@@ -185,6 +185,32 @@ test('Rechnungsdaten vor Ort und Kassenjournal', async () => {
         assert.match(journal[0].uid, /^[0-9a-f-]{36}$/);
         assert.equal(await zw.kassiereBar(knex, t.id, 'JC B'), 0);
         assert.equal((await knex('turnier_barzahlungen').where({ turnier_id: t.id })).length, 1);
+
+        // Gleichzeitiges Kassieren desselben Vereins: nichts wird doppelt gezählt
+        for (let i = 0; i < 4; i += 1) await teilnehmer(knex, t.id, 'JC Par');
+        const [a, b, c] = await Promise.all([zw.kassiereBar(knex, t.id, 'JC Par'), zw.kassiereBar(knex, t.id, 'JC Par'), zw.kassiereBar(knex, t.id, 'JC Par')]);
+        assert.equal(a + b + c, 4);
+        const par = await knex('turnier_barzahlungen').where({ turnier_id: t.id, verein_name: 'JC Par' });
+        assert.equal(par.length, 1);
+        assert.equal(par[0].anzahl, 4);
+        assert.equal(par[0].betrag_cent, 3200);
+
+        // Scheitert das Journal, bleibt nichts markiert
+        const roll = await teilnehmer(knex, t.id, 'JC Roll');
+        await knex.raw('ALTER TABLE turnier_barzahlungen ADD CONSTRAINT test_sperre CHECK (verein_name <> \'JC Roll\')');
+        await assert.rejects(zw.kassiereBar(knex, t.id, 'JC Roll'));
+        await knex.raw('ALTER TABLE turnier_barzahlungen DROP CONSTRAINT test_sperre');
+        assert.ok(!(await knex('turnier_teilnehmer').where({ id: roll }).first()).startgeld_bezahlt);
+
+        // Gleichzeitiges Erfassen vor Ort: genau einer gewinnt, der andere bekommt 400 (kein 500)
+        await teilnehmer(knex, t.id, 'JC Doppel');
+        const ergebnisse = await Promise.allSettled([
+            zw.erfasseVorOrt(knex, { turnier: t, vereinName: 'JC Doppel', eingabe }),
+            zw.erfasseVorOrt(knex, { turnier: t, vereinName: 'JC Doppel', eingabe })
+        ]);
+        assert.equal(ergebnisse.filter((x) => x.status === 'fulfilled').length, 1);
+        const abgelehnt = ergebnisse.find((x) => x.status === 'rejected');
+        assert.equal(abgelehnt.reason.statusCode, 400);
     } finally {
         await stoppe();
     }

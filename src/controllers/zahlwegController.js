@@ -129,6 +129,9 @@ export function erzeugeZahlwegController(knex) {
         // Rechnungsdaten eines Vereins, der erst vor Ort auftaucht (Kasse am Wettkampftag, Zahlweg immer Bar).
         async erfasseVorOrt(req, res) {
             try {
+                if (!betriebsmodus.istEinzelbenutzerBetrieb()) {
+                    throw new FachFehler(409, 'Rechnungsdaten vor Ort werden nur am Hallen-Server erfasst; in der Cloud wählt der Verein seinen Zahlweg selbst.');
+                }
                 const turnier = await ladeKasseTurnier(req);
                 const vereinName = req.body?.vereinName;
                 if (typeof vereinName !== 'string' || !vereinName) {

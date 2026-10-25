@@ -184,8 +184,11 @@ test('Exportdatei: barzahlungen und anzahl, Import übernimmt Barzahlungen einma
         const datei = JSON.parse(JSON.stringify(export1));
         datei.turnier.datum = '2028-05-06';
         const { turnierId } = await importiereTurnierDaten(knex, undefined, datei);
-        // Die uid gibt es schon (im Quell-Turnier): keine zweite Zeile
-        assert.equal((await knex('turnier_barzahlungen').where({ uid })).length, 1);
+        // Dieselbe uid im anderen (neuen) Turnier wird übernommen, im Quell-Turnier bleibt sie unberührt
+        assert.equal((await knex('turnier_barzahlungen').where({ uid })).length, 2);
+        assert.equal((await knex('turnier_barzahlungen').where({ uid, turnier_id: t.id })).length, 1);
+        assert.equal((await knex('turnier_barzahlungen').where({ uid, turnier_id: turnierId })).length, 1);
+        await knex('turnier_barzahlungen').where({ turnier_id: turnierId }).del();
 
         // Neue uid wird übernommen, doppelt nicht; ungültige Zeilen fliegen raus
         const n = await knex.transaction((trx) => uebernehmeBarzahlungen(trx, turnierId, [
@@ -199,6 +202,14 @@ test('Exportdatei: barzahlungen und anzahl, Import übernimmt Barzahlungen einma
         ]));
         assert.equal(n, 1);
         assert.equal((await knex('turnier_barzahlungen').where({ turnier_id: turnierId })).length, 1);
+        // Gleiche uid im selben Turnier wird verworfen, im anderen Turnier übernommen
+        assert.equal(await knex.transaction((trx) => uebernehmeBarzahlungen(trx, turnierId, [
+            { uid: '22222222-2222-4222-8222-222222222222', verein_name: 'JC Bar', anzahl: 2, betrag_cent: 1600 }
+        ])), 0);
+        assert.equal(await knex.transaction((trx) => uebernehmeBarzahlungen(trx, t.id, [
+            { uid: '22222222-2222-4222-8222-222222222222', verein_name: 'JC Bar', anzahl: 2, betrag_cent: 1600 }
+        ])), 1);
+        await knex('turnier_barzahlungen').where({ turnier_id: t.id }).whereNot({ uid }).del();
         assert.equal(await knex.transaction((trx) => uebernehmeBarzahlungen(trx, turnierId, undefined)), 0);
         assert.deepEqual((await exportiereBarzahlungen(knex, turnierId)).map((b) => b.uid), ['22222222-2222-4222-8222-222222222222']);
 

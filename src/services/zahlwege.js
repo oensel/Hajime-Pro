@@ -129,27 +129,32 @@ export async function ladeKasse(knex, turnierId) {
     return [...nachVerein.values()].sort((a, b) => a.vereinName.localeCompare(b.vereinName, 'de'));
 }
 
-// Markiert alle noch offenen Kämpfer des Vereins als bezahlt (Einzelmarkierung inkl. Statusableitung).
+// Markiert alle noch offenen Kämpfer des Vereins als bezahlt (Einzelmarkierung inkl. Statusableitung) und
+// schreibt das Kassenjournal. Alles in EINER Transaktion, je (Turnier, Verein) per Advisory-Lock serialisiert:
+// zwei gleichzeitige Aufrufe zählen nie dieselben Kämpfer doppelt; scheitert der Journal-INSERT, bleibt nichts markiert.
+// Grenze: Das Journal erfasst nur "Alles bar kassiert". Das einzelne Häkchen startgeld_bezahlt in der Teilnehmerliste
+// wird nicht journalisiert (Task 8 entscheidet, was bei der Abrechnung maßgeblich ist).
 export async function kassiereBar(knex, turnierId, vereinName) {
-    const offene = await knex('turnier_teilnehmer')
-        .where({ turnier_id: turnierId, verein: vereinName })
-        .whereNot('status', 'zurueckgezogen')
-        .andWhere((q) => q.where('startgeld_bezahlt', false).orWhereNull('startgeld_bezahlt'))
-        .select('id');
-    for (const { id } of offene) await setzeStartgeldBezahlt(knex, id, true);
-    if (offene.length > 0) {
-        // Kassenjournal: die Cloud braucht die tatsächlich kassierten Beträge für die Abrechnung (Rückspielen).
-        const turnier = await knex('turniere').where({ id: turnierId }).first('startgeld');
+    return knex.transaction(async (trx) => {
+        await trx.raw('SELECT pg_advisory_xact_lock(?, hashtext(?))', [turnierId, vereinName]);
+        const offene = await trx('turnier_teilnehmer')
+            .where({ turnier_id: turnierId, verein: vereinName })
+            .whereNot('status', 'zurueckgezogen')
+            .andWhere((q) => q.where('startgeld_bezahlt', false).orWhereNull('startgeld_bezahlt'))
+            .select('id');
+        if (offene.length === 0) return 0;
+        const turnier = await trx('turniere').where({ id: turnierId }).first('startgeld');
         const startgeld = parseFloat(turnier?.startgeld) || 0;
-        await knex('turnier_barzahlungen').insert({
+        await trx('turnier_barzahlungen').insert({
             uid: crypto.randomUUID(),
             turnier_id: turnierId,
             verein_name: vereinName,
             anzahl: offene.length,
             betrag_cent: Math.round(offene.length * startgeld * 100)
         });
-    }
-    return offene.length;
+        for (const { id } of offene) await setzeStartgeldBezahlt(trx, id, true);
+        return offene.length;
+    });
 }
 
 // Rechnungsdaten eines Vereins, der erst vor Ort auftaucht (kein Zahlweg gewählt): immer Bar, kein Benutzerbezug,
@@ -164,9 +169,16 @@ export async function erfasseVorOrt(knex, { turnier, vereinName, eingabe }) {
     }
     const { fehler, werte } = pruefeZahlwegEingabe({ ...(eingabe || {}), zahlweg: 'bar' }, ['bar']);
     if (fehler) throw new FachFehler(400, fehler);
-    const [zeile] = await knex('turnier_zahlwege')
-        .insert({ turnier_id: turnier.id, verein_id: null, verein_name: vereinName, ...werte, geaendert_von: null, updated_at: knex.fn.now() })
-        .returning('*');
+    let zeile;
+    try {
+        [zeile] = await knex('turnier_zahlwege')
+            .insert({ turnier_id: turnier.id, verein_id: null, verein_name: vereinName, ...werte, geaendert_von: null, updated_at: knex.fn.now() })
+            .returning('*');
+    } catch (fehler) {
+        // Gleichzeitiger zweiter Aufruf: die Unique-Bedingung (turnier_id, verein_name) hat gegriffen.
+        if (fehler?.code === '23505') throw new FachFehler(400, 'Für diesen Verein gibt es schon einen Zahlweg.');
+        throw fehler;
+    }
     await synchronisiereGesichert(knex, turnier.id);
     return zeile;
 }
