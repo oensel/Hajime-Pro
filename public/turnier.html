@@ -220,6 +220,22 @@
                             <label for="verwendungszweck">Verwendungszweck</label>
                             <input type="text" id="verwendungszweck" placeholder="z.B. Startgeld + Vereinsname">
                         </div>
+                        <div class="form-group" id="zahlwegGruppe">
+                            <label for="abrechnungsbasis">Abrechnung nach</label>
+                            <select id="abrechnungsbasis">
+                                <option value="gemeldet">Gemeldete Kämpfer</option>
+                                <option value="teilnahme_waage">Teilnahme an der Waage</option>
+                            </select>
+                            <div style="margin-top:12px;font-weight:700;font-size:13px;">Angebotene Zahlwege für andere Vereine</div>
+                            <label class="planungs-haken" for="zahlwegUeberweisung">
+                                Überweisung
+                                <input type="checkbox" id="zahlwegUeberweisung" checked>
+                            </label>
+                            <label class="planungs-haken" for="zahlwegBar">
+                                Bar an der Waage
+                                <input type="checkbox" id="zahlwegBar" checked>
+                            </label>
+                        </div>
                     </div>
                 </div>
             </div>

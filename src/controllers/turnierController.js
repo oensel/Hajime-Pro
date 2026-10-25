@@ -10,6 +10,7 @@ import { istLiveApiAktiv } from '../liveCloud/liveApiAktiv.js';
 import { entfernungZuPlzInKm } from '../utils/entfernungHelper.js';
 import { turnierHatEchteKaempfe } from './poolController.js';
 import { FachFehler } from '../utils/fachFehler.js';
+import { ABRECHNUNGSBASEN, parseAngeboteneZahlwege } from '../shared/zahlweg.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 import { legeAusVorlageAn, berechneFaelligkeitenNeu, ladeOrga } from '../services/orgaPlan.js';
 import { datumAlsText } from '../services/helferPlan.js';
@@ -59,6 +60,7 @@ export const TURNIER_SPALTEN_OHNE_PDF = [
     'id', 'bezeichnung', 'ort', 'plz', 'bundesland', 'datum', 'ausrichter',
     'nutze_gewichtsklassen', 'anzahl_kampfflaechen', 'verein_id', 'altersklassen',
     'mannschafts_altersklassen', 'status', 'anmeldeschluss', 'startgeld', 'iban',
+    'abrechnungsbasis', 'angebotene_zahlwege',
     'kontoinhaber', 'verwendungszweck', 'ausschreibung_dateiname', 'farbe_kaempfer2',
     'beginn_min', 'ende_min', 'waagen_anzahl', 'planungs_tools', 'sichtbarkeit', 'created_at', 'updated_at'
 ];
@@ -100,6 +102,37 @@ function validiereZahlungsdaten(startgeld, iban, kontoinhaber, verwendungszweck)
         }
     }
     return null;
+}
+
+// Startgeld-Zahlweg (Stufe 1): Abrechnungsbasis und angebotene Zahlwege des Ausrichters. Angeboten werden nur
+// Überweisung und Bar; bei Startgeld > 0 muss mindestens ein Zahlweg angeboten werden. Nicht mitgesendete Felder
+// (undefined) bleiben unverändert bzw. bekommen beim Anlegen den Spalten-Standard.
+function leseZahlwegFelder(body, startgeld) {
+    let abrechnungsbasis;
+    if (body.abrechnungsbasis !== undefined) {
+        if (!ABRECHNUNGSBASEN.includes(body.abrechnungsbasis)) {
+            return { fehler: 'Ungültige Abrechnungsbasis.' };
+        }
+        abrechnungsbasis = body.abrechnungsbasis;
+    }
+    let angebotene;
+    if (body.angebotene_zahlwege !== undefined) {
+        const roh = Array.isArray(body.angebotene_zahlwege) ? body.angebotene_zahlwege.join(',') : String(body.angebotene_zahlwege ?? '');
+        angebotene = roh.trim() === ''
+            ? []
+            : parseAngeboteneZahlwege(roh).filter((w) => w === 'ueberweisung' || w === 'bar');
+        const startgeldWert = startgeld !== undefined && startgeld !== '' ? parseInt(startgeld, 10) : 0;
+        if (startgeldWert > 0 && angebotene.length === 0) {
+            return { fehler: 'Bei einem Startgeld muss mindestens ein Zahlweg (Überweisung oder Bar) angeboten werden.' };
+        }
+    }
+    return {
+        fehler: null,
+        fragment: {
+            ...(abrechnungsbasis !== undefined ? { abrechnungsbasis } : {}),
+            ...(angebotene !== undefined ? { angebotene_zahlwege: angebotene.length ? angebotene.join(',') : 'ueberweisung,bar' } : {})
+        }
+    };
 }
 
 // Turnierzeit für den Helferplan (Spec Helferverwaltung 7): beginn_min/ende_min als ganze Minuten seit
@@ -173,6 +206,11 @@ export async function createTurnier(knex, req, res) {
             return res.status(400).json({ success: false, error: zahlungsFehler });
         }
 
+        const zahlwegFelder = leseZahlwegFelder(req.body, startgeld);
+        if (zahlwegFelder.fehler) {
+            return res.status(400).json({ success: false, error: zahlwegFelder.fehler });
+        }
+
         const { fragment: ausschreibungFragment, fehler: ausschreibungFehler } = baueAusschreibungFragment(ausschreibung_pdf_base64, ausschreibung_dateiname);
         if (ausschreibungFehler) {
             return res.status(400).json({ success: false, error: ausschreibungFehler });
@@ -225,6 +263,7 @@ export async function createTurnier(knex, req, res) {
             iban: iban || null,
             kontoinhaber: kontoinhaber || null,
             verwendungszweck: verwendungszweck || null,
+            ...zahlwegFelder.fragment,
             farbe_kaempfer2: gueltigeFarbe(farbe_kaempfer2) || 'blau',
             ...turnierzeit,
             planungs_tools: planungsToolsWert(req.body.planungs_tools, !istEinzelbenutzerBetrieb()),
@@ -258,6 +297,11 @@ export async function updateTurnier(knex, req, res) {
         const zahlungsFehler = validiereZahlungsdaten(startgeld, iban, kontoinhaber, verwendungszweck);
         if (zahlungsFehler) {
             return res.status(400).json({ success: false, error: zahlungsFehler });
+        }
+
+        const zahlwegFelder = leseZahlwegFelder(req.body, startgeld);
+        if (zahlwegFelder.fehler) {
+            return res.status(400).json({ success: false, error: zahlwegFelder.fehler });
         }
 
         const { fragment: ausschreibungFragment, fehler: ausschreibungFehler } = baueAusschreibungFragment(ausschreibung_pdf_base64, ausschreibung_dateiname);
@@ -303,6 +347,7 @@ export async function updateTurnier(knex, req, res) {
             iban: iban || null,
             kontoinhaber: kontoinhaber || null,
             verwendungszweck: verwendungszweck || null,
+            ...zahlwegFelder.fragment,
             // Nicht mitgesendet -> unverändert lassen
             ...(gueltigeFarbe(farbe_kaempfer2) ? { farbe_kaempfer2 } : {}),
             ...turnierzeit,
@@ -958,6 +1003,8 @@ export async function importiereTurnierDaten(knex, sync, daten) {
                 iban: t.iban || null,
                 kontoinhaber: t.kontoinhaber || null,
                 verwendungszweck: t.verwendungszweck || null,
+                abrechnungsbasis: ABRECHNUNGSBASEN.includes(t.abrechnungsbasis) ? t.abrechnungsbasis : 'gemeldet',
+                angebotene_zahlwege: t.angebotene_zahlwege ? String(t.angebotene_zahlwege) : 'ueberweisung,bar',
                 farbe_kaempfer2: gueltigeFarbe(t.farbe_kaempfer2) || 'blau',
                 // Turnierzeit und Waagenanzahl (Helferplan); ältere Dateien ohne diese Felder: leer bzw. 1
                 ...importTurnierzeit(t),
@@ -1355,6 +1402,8 @@ export async function dupliziereTurnier(knex, req, res) {
                 iban: quelle.iban,
                 kontoinhaber: quelle.kontoinhaber,
                 verwendungszweck: quelle.verwendungszweck,
+                abrechnungsbasis: quelle.abrechnungsbasis,
+                angebotene_zahlwege: quelle.angebotene_zahlwege,
                 farbe_kaempfer2: quelle.farbe_kaempfer2,
                 ausschreibung_pdf: quelle.ausschreibung_pdf,
                 ausschreibung_dateiname: quelle.ausschreibung_dateiname

@@ -528,6 +528,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Override für die Startberechtigt-Ampel) und würde das Icon sonst dauerhaft auf
             // "bezahlt" einfrieren, ohne dass ein Klick eine sichtbare Änderung bewirkt.
             const startgeldBezahltRoh = !!athlet.startgeld_bezahlt;
+            // Das Icon zeigt den abgeleiteten Stand (auch ein über den Zahlweg gesicherter Kämpfer gilt als bezahlt),
+            // der Klick schreibt weiterhin nur das Handflag startgeld_bezahlt (siehe Toggle unten).
+            const startgeldUeberZahlweg = !startgeldBezahltRoh && !turnierKostenlos && !!athlet.startgeld_zahlweg_gesichert;
+            const startgeldIconAktiv = startgeldBezahltRoh || startgeldUeberZahlweg;
+            const startgeldIconTitel = startgeldBezahltRoh ? 'Als unbezahlt markieren'
+                : startgeldUeberZahlweg ? 'Startgeld über Zahlweg gesichert (Klick markiert zusätzlich von Hand als bezahlt)'
+                : 'Als bezahlt markieren';
 
             // Zurückgezogene Anmeldungen bleiben zur Nachvollziehbarkeit sichtbar, aber
             // ausgegraut und nicht mehr editierbar.
@@ -575,7 +582,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         <span class="material-icons action-icon icon-toggle ${lizenzBestaetigt ? 'active' : ''}" data-id="${athlet.id}" data-toggle="lizenz" title="${lizenzBestaetigt ? 'Lizenz-Bestätigung zurücknehmen' : 'Lizenz bestätigen'}">badge</span>
                     </td>
                     <td style="text-align: center;${turnierKostenlos ? ' display: none;' : ''}">
-                        <span class="material-icons action-icon icon-toggle ${startgeldBezahltRoh ? 'active' : ''}" data-id="${athlet.id}" data-toggle="bezahlt" title="${startgeldBezahltRoh ? 'Als unbezahlt markieren' : 'Als bezahlt markieren'}">payments</span>
+                        <span class="material-icons action-icon icon-toggle ${startgeldIconAktiv ? 'active' : ''}" data-id="${athlet.id}" data-toggle="bezahlt" title="${startgeldIconTitel}">payments</span>
                     </td>
                     <td>
                         <div class="action-buttons">
@@ -1156,6 +1163,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                     meldung += ` ${data.mannschaftenBetroffen} Mannschaft(en) angelegt/aktualisiert.`;
                 }
                 importStatus.textContent = meldung;
+                // Cloud: ein fremder Verein wählt nach dem Import (wie nach der Einzelanmeldung) seinen Zahlweg.
+                if (data.imported > 0 && window.ZahlwegDialog) {
+                    await window.ZahlwegDialog.frageNach(turnierId);
+                }
 
                 if (window.zeigeNotification) {
                     window.zeigeNotification(meldung, data.skipped && data.skipped.length > 0 ? 'error' : 'success');
@@ -1654,6 +1665,35 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     pruefeUndZeigeStartgeldButton();
 
+    // --- ZAHLWEG-ZEILE ("Zahlweg: Überweisung – ändern"), nur wenn die API einen Zahlweg verlangt (Cloud, Fremdverein) ---
+    async function aktualisiereZahlwegZeile() {
+        const zeile = document.getElementById('zahlwegZeile');
+        if (!zeile || !window.ZahlwegDialog) return;
+        const status = await window.ZahlwegDialog.ladeStatus(turnierId);
+        if (!status || !status.erforderlich) {
+            zeile.style.display = 'none';
+            return;
+        }
+        const name = status.zahlweg ? (window.ZahlwegDialog.NAMEN[status.zahlweg.zahlweg] || status.zahlweg.zahlweg) : 'noch nicht gewählt';
+        document.getElementById('zahlwegText').textContent = name;
+        const link = document.getElementById('zahlwegAendernLink');
+        link.textContent = status.zahlweg ? 'ändern' : 'wählen';
+        link.style.display = status.aenderbar ? '' : 'none';
+        zeile.style.display = '';
+    }
+    const zahlwegAendernLink = document.getElementById('zahlwegAendernLink');
+    if (zahlwegAendernLink) {
+        zahlwegAendernLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (window.ZahlwegDialog) window.ZahlwegDialog.aendere(turnierId);
+        });
+    }
+    document.addEventListener('zahlweg:geaendert', () => {
+        aktualisiereZahlwegZeile();
+        if (typeof window.ladeTeilnehmerListe === 'function') window.ladeTeilnehmerListe();
+    });
+    aktualisiereZahlwegZeile();
+
     // --- STARTGELD BEZAHLEN: GiroCode/EPC-QR mit vorausgefülltem Betrag für den eigenen Verein ---
     // Format nach EPC069-12 ("Girocode"), von SEPA-fähigen Banking-Apps direkt scanbar.
     function baueGiroCodePayload({ name, iban, betrag, verwendungszweck }) {
@@ -1688,6 +1728,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                     return;
                 }
 
+                // Bewusst nur das Handflag: "über Zahlweg gesichert" heißt, dass der Verein später abrechnet bzw. bar zahlt,
+                // das Geld ist noch nicht da. Der Girocode bleibt damit der Weg, jetzt sofort zu überweisen.
                 const unbezahlt = athletenDaten.filter(a => a.verein === eigenerVerein && !a.startgeld_bezahlt);
                 if (unbezahlt.length === 0) {
                     if (window.zeigeNotification) window.zeigeNotification('Alle Teilnehmer Ihres Vereins sind bereits als bezahlt markiert.', 'success');
