@@ -82,3 +82,41 @@ test('Zahlwege im Turnier-Export und -Import', async () => {
         await stoppe();
     }
 });
+
+test('Import verwirft ungültige Zahlweg-Zeilen und speist keine Vorbelegung', async () => {
+    const { knex, stoppe } = await starteTestPostgres();
+    const { ladeVorbelegung } = await import('../../src/services/zahlwege.js');
+    try {
+        const ausrichter = id((await knex('vereine').insert({ name: 'JC Chef' }).returning('id'))[0]);
+        const t = (await knex('turniere').insert({
+            bezeichnung: 'Cup2', ort: 'O', datum: '2028-03-04', ausrichter: 'JC Chef', verein_id: ausrichter,
+            status: 'veroeffentlicht', startgeld: 10, anmeldeschluss: '2028-03-01'
+        }).returning('*'))[0];
+        const gut = { verein_name: '  JC Gut ', zahlweg: 'bar', ...MAIL };
+        const n = await knex.transaction((trx) => ersetzeZahlwege(trx, t.id, [
+            gut,
+            { verein_name: 'JC Lastschrift', zahlweg: 'lastschrift', ...MAIL },
+            { verein_name: 'JC X', zahlweg: 'x', ...MAIL },
+            { verein_name: 'JC Zahl', zahlweg: 'bar', ...MAIL, rechnung_email: 5 },
+            { verein_name: 'JC Obj', zahlweg: 'bar', ...MAIL, rechnung_anschrift: { a: 1 } },
+            { verein_name: 'JC Mail', zahlweg: 'bar', ...MAIL, rechnung_email: 'keine-mail' },
+            { verein_name: 'JC Chef', zahlweg: 'ueberweisung', ...MAIL },
+            { verein_name: 'JC Gut', zahlweg: 'ueberweisung', ...MAIL },
+            { verein_name: '   ', zahlweg: 'bar', ...MAIL },
+            { verein_name: 'JC Lang', zahlweg: 'bar', ...MAIL, rechnung_ansprechperson: 'x'.repeat(300) },
+            { verein_name: 'JC Ue', zahlweg: 'ueberweisung', ...MAIL, geaendert_von: 'boese', verein_id: ausrichter }
+        ]));
+        assert.equal(n, 2);
+        const zeilen = await knex('turnier_zahlwege').where({ turnier_id: t.id }).orderBy('verein_name');
+        assert.deepEqual(zeilen.map((z) => [z.verein_name, z.zahlweg, z.geaendert_von, z.verein_id]),
+            [['JC Gut', 'bar', null, null], ['JC Ue', 'ueberweisung', null, null]]);
+
+        // Importierte Zeilen speisen die Vorbelegung nie, selbst gespeicherte schon
+        assert.equal(await ladeVorbelegung(knex, 'JC Gut'), null);
+        await knex('turnier_zahlwege').insert({ turnier_id: t.id, verein_name: 'JC Eigen', zahlweg: 'bar', geaendert_von: 'u7', ...MAIL });
+        const v = await ladeVorbelegung(knex, 'JC Eigen');
+        assert.equal(v.rechnung_email, 'a@b.de');
+    } finally {
+        await stoppe();
+    }
+});

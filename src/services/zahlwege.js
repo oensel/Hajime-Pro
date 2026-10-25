@@ -24,6 +24,7 @@ export async function ladeZahlwegFuerVerein(knex, turnierId, vereinName) {
 export async function ladeVorbelegung(knex, vereinName) {
     const zeile = await knex('turnier_zahlwege')
         .where({ verein_name: vereinName })
+        .whereNotNull('geaendert_von') // importierte Zeilen (aus Dateien) speisen die Vorbelegung nie
         .orderBy([{ column: 'updated_at', order: 'desc' }, { column: 'id', order: 'desc' }])
         .first('rechnung_email', 'rechnung_ansprechperson', 'rechnung_anschrift');
     return zeile || null;

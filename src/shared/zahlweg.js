@@ -8,6 +8,10 @@ export const ABRECHNUNGSBASEN = ['gemeldet', 'teilnahme_waage'];
 const STANDARD_ANGEBOTEN = ['ueberweisung', 'bar'];
 const EMAIL_MUSTER = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+export function istGueltigeEmail(wert) {
+    return typeof wert === 'string' && EMAIL_MUSTER.test(wert);
+}
+
 // Kommaseparierter Text -> Liste bekannter Zahlwege; ohne Angabe der Standard.
 export function parseAngeboteneZahlwege(wert) {
     if (wert === null || wert === undefined || String(wert).trim() === '') {
