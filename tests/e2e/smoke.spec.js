@@ -25,7 +25,7 @@ test('turniere.html lädt offline ohne Login und ohne Konsolenfehler', async ({ 
     // (das wäre von der Ausführungsreihenfolge der Suite abhängig und brüchig), sondern nur, dass
     // die Liste tatsächlich fertig geladen hat (Leer-Hinweis ODER mindestens eine Turnierkarte).
     const container = page.locator('#tournamentsContainer');
-    await expect(container.getByText('Keine anstehenden Turniere vorhanden.').or(container.locator('.tournament-card').first())).toBeVisible();
+    await expect(container.getByText('Keine Turniere vorhanden.').or(container.locator('.tournament-card').first())).toBeVisible();
 
     expect(consoleErrors, `Unerwartete Konsolenfehler:\n${consoleErrors.join('\n')}`).toEqual([]);
 });

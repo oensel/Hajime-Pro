@@ -336,7 +336,7 @@ function baueMenueGeruest() {
             <nav class="sidebar-nav" id="sidebarNavPrimary" style="visibility: hidden;">
                 <a href="/turniere.html" class="menu-item" id="nav-turniere">
                     <span class="material-icons">calendar_month</span>
-                    <span class="menu-text">anstehende Turniere</span>
+                    <span class="menu-text">Turniere</span>
                 </a>
                 <a href="/turnier.html" class="menu-item" id="nav-turnier">
                     <span class="material-icons">emoji_events</span>
@@ -586,7 +586,7 @@ function baueMenueGeruest() {
     // existiert: Seiten-Skripte (z.B. pools.js beim ersten Laden) sperren Menüpunkte teils, während
     // diese Initialisierung noch auf Serverantworten wartet. Die Sperre sichert den Link als
     // Backup und stellt ihn beim Entsperren wieder her — ohne Turnier-ID landete man sonst z.B.
-    // auf matten.html ohne Parameter, wo das Menü nur noch "anstehende Turniere" zeigt.
+    // auf matten.html ohne Parameter, wo das Menü nur noch "Turniere" zeigt.
     if (turnierId) {
         document.querySelectorAll('.menu-item').forEach(link => {
             const href = link.getAttribute('href');

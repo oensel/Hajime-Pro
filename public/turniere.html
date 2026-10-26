@@ -398,7 +398,7 @@
 <div class="mdc-card">
     <div class="form-title-area titel-zentriert">
         <span class="material-icons">calendar_month</span>
-        <h1>anstehende Turniere</h1>
+        <h1>Turniere</h1>
         <div class="titel-icons">
             <button type="button" class="toolbar-btn" id="importTurnierBtn" aria-label="Turnier importieren" data-tooltip="Turnier importieren" style="display: none;">
                 <span class="material-icons">upload_file</span>
@@ -679,7 +679,7 @@
             const eingeladeneIds = new Set(einladungen.map(t => t.id));
             const turniere = alleTurniere.filter(t => !eingeladeneIds.has(t.id));
             if (turniere.length === 0 && einladungen.length === 0) {
-                container.innerHTML = `<div class="no-data-msg">Keine anstehenden Turniere vorhanden.</div>`;
+                container.innerHTML = `<div class="no-data-msg">Keine Turniere vorhanden.</div>`;
                 return;
             }
 
@@ -1060,15 +1060,12 @@
                         ${eigeneAktuell.map(t => renderCard(t, true)).join('')}
                     </div>` : ''}
                     ${eigeneArchiviert.length ? `<div class="abgeschlossen-liste">${eigeneArchiviert.map(t => `
-                        <div class="abgeschlossen-zeile" data-turnier-id="${t.id}">
+                        <div class="abgeschlossen-zeile" data-turnier-id="${t.id}" style="cursor:pointer;" onclick="window.location.href='/turnier.html?id=${encodeURIComponent(t.id)}'">
                             <span class="material-icons">inventory_2</span>
                             <span class="az-name">${escHtml(t.bezeichnung)}</span>
                             <span>${escHtml(datumKurzCloud(t.datum))}</span>
-                            <span>${escHtml(t.ort)}</span>
-                            <span>${escHtml(t.teilnehmer_anzahl || 0)} Teilnehmer</span>
                             <span class="status-badge status-abgeschlossen">Archiviert</span>
                             ${t.abrechnung_offen ? '<span class="abrechnung-warnung"><span class="material-icons">warning</span>Abrechnung offen</span>' : ''}
-                            <button type="button" class="btn btn-outlined" onclick="window.location.href='/turnier.html?id=${encodeURIComponent(t.id)}'">Öffnen</button>
                         </div>`).join('')}</div>` : ''}
                 `;
             }
