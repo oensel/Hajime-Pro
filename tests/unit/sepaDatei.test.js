@@ -152,18 +152,95 @@ test('Zahler-IBAN steht nur in DbtrAcct, Gläubiger-IBAN nur in CdtrAcct', () =>
     assert.ok(r.xml.includes(`<CdtrAcct><Id><IBAN>${GLAEUBIGER_IBAN}</IBAN>`));
 });
 
-test('Element-Reihenfolge nach pain.008.001.08', () => {
+// Baut aus dem Textknoten-Parser einen Baum: { name, kinder: [] , text }.
+function baue(xml) {
+    const text = xml.replace(/^<\?xml[^>]*\?>/, '');
+    const wurzel = { name: '#', kinder: [] };
+    const stapel = [wurzel];
+    for (const m of text.matchAll(/<(\/?)([A-Za-z][\w.-]*)[^>]*>/g)) {
+        if (m[1]) stapel.pop();
+        else { const k = { name: m[2], kinder: [] }; stapel.at(-1).kinder.push(k); stapel.push(k); }
+    }
+    return wurzel.kinder[0];
+}
+
+const MIG = {
+    Document: ['CstmrDrctDbtInitn'],
+    CstmrDrctDbtInitn: ['GrpHdr', 'PmtInf'],
+    GrpHdr: ['MsgId', 'CreDtTm', 'NbOfTxs', 'CtrlSum', 'InitgPty'],
+    PmtInf: ['PmtInfId', 'PmtMtd', 'BtchBookg', 'NbOfTxs', 'CtrlSum', 'PmtTpInf', 'ReqdColltnDt', 'Cdtr', 'CdtrAcct', 'CdtrAgt', 'ChrgBr', 'CdtrSchmeId', 'DrctDbtTxInf'],
+    PmtTpInf: ['SvcLvl', 'LclInstrm', 'SeqTp'],
+    DrctDbtTxInf: ['PmtId', 'InstdAmt', 'DrctDbtTx', 'DbtrAgt', 'Dbtr', 'DbtrAcct', 'RmtInf'],
+    MndtRltdInf: ['MndtId', 'DtOfSgntr'],
+};
+
+// Liefert Abweichungen: je Elternelement müssen die direkten Kinder eine Teilfolge der MIG-Liste in Reihenfolge sein
+// (DrctDbtTxInf darf mehrfach vorkommen); Pflichtkinder müssen vollständig sein.
+function pruefeReihenfolge(knoten, abweichungen = []) {
+    const soll = MIG[knoten.name];
+    if (soll) {
+        const ist = knoten.kinder.map((k) => k.name);
+        const gefaltet = ist.filter((n, i) => !(n === 'DrctDbtTxInf' && ist[i - 1] === 'DrctDbtTxInf'));
+        if (JSON.stringify(gefaltet) !== JSON.stringify(soll)) abweichungen.push(`${knoten.name}: ${ist.join(',')}`);
+    }
+    for (const k of knoten.kinder) pruefeReihenfolge(k, abweichungen);
+    return abweichungen;
+}
+
+test('Element-Reihenfolge: direkte Kinder je Elternelement entsprechen der MIG', () => {
     const r = erzeugePain008(eingabe());
-    const reihenfolge = (namen) => {
-        let letzte = -1;
-        for (const n of namen) {
-            const i = r.xml.indexOf(`<${n}>`, letzte + 1);
-            assert.ok(i > letzte, `${n} an falscher Stelle`);
-            letzte = i;
-        }
-    };
-    reihenfolge(['GrpHdr', 'PmtInf', 'PmtInfId', 'PmtMtd', 'BtchBookg', 'PmtTpInf', 'ReqdColltnDt', 'Cdtr', 'CdtrAcct', 'CdtrAgt', 'ChrgBr', 'CdtrSchmeId', 'DrctDbtTxInf']);
-    reihenfolge(['PmtId', 'DrctDbtTx', 'DbtrAgt', 'Dbtr', 'DbtrAcct', 'RmtInf']);
+    assert.deepEqual(pruefeReihenfolge(baue(r.xml)), []);
+    const drei = erzeugePain008(eingabe({ posten: posten([100, 200, 300]) }));
+    assert.deepEqual(pruefeReihenfolge(baue(drei.xml)), []);
+});
+
+test('Reihenfolge-Prüfung schlägt bei vertauschten Geschwistern an', () => {
+    const r = erzeugePain008(eingabe());
+    const pmtId = r.xml.match(/<PmtId>.*?<\/PmtId>/)[0];
+    const betrag = r.xml.match(/<InstdAmt[^>]*>.*?<\/InstdAmt>/)[0];
+    const vertauscht = r.xml.replace(pmtId + betrag, betrag + pmtId);
+    assert.notEqual(vertauscht, r.xml);
+    assert.ok(pruefeReihenfolge(baue(vertauscht)).some((a) => a.startsWith('DrctDbtTxInf')));
+    const mndt = r.xml.replace(/(<MndtId>.*?<\/MndtId>)(<DtOfSgntr>.*?<\/DtOfSgntr>)/, '$2$1');
+    assert.ok(pruefeReihenfolge(baue(mndt)).some((a) => a.startsWith('MndtRltdInf')));
+});
+
+test('Kennungen: kein führendes/abschließendes "/", kein "//"', () => {
+    const p = posten([100, 200, 300]);
+    p[0].endToEndId = 'RE/2026/';
+    p[0].mandatsreferenz = '//X//Y';
+    p[1].endToEndId = '//X//';
+    p[2].endToEndId = 'A'.repeat(34) + '/B';
+    const r = erzeugePain008(eingabe({ posten: p, msgId: '/MSG//1/' }));
+    const ids = [...r.xml.matchAll(/<(EndToEndId|MndtId|MsgId|PmtInfId)>([^<]*)</g)].map((m) => m[2]);
+    for (const id of ids) assert.ok(id.length >= 1 && id.length <= 35 && !id.startsWith('/') && !id.endsWith('/') && !id.includes('//'), id);
+    assert.match(r.xml, /<EndToEndId>RE\/2026<\/EndToEndId>/);
+    assert.match(r.xml, /<MndtId>X\/Y<\/MndtId>/);
+    assert.match(r.xml, /<EndToEndId>X<\/EndToEndId>/);
+    assert.match(r.xml, new RegExp(`<EndToEndId>${'A'.repeat(34)}</EndToEndId>`));
+    assert.throws(() => erzeugePain008(eingabe({ posten: posten([100], { endToEndId: '/' }) })), /EndToEndId/);
+    // Duplikat erst nach der Bereinigung
+    const q = posten([100, 200]);
+    q[0].endToEndId = '/X/';
+    q[1].endToEndId = 'X';
+    assert.throws(() => erzeugePain008(eingabe({ posten: q })), /mehrfach/);
+});
+
+test('PmtInfId unterscheidet sich von der MsgId, auch bei 35 Zeichen', () => {
+    for (const msgId of ['HAJIME-2026-0001', 'M'.repeat(60)]) {
+        const r = erzeugePain008(eingabe({ msgId }));
+        const msg = r.xml.match(/<MsgId>([^<]*)</)[1];
+        const pmt = r.xml.match(/<PmtInfId>([^<]*)</)[1];
+        assert.notEqual(msg, pmt);
+        assert.ok(pmt.length <= 35);
+    }
+});
+
+test('Betragsgrenze und Mandatsdatum nach Fälligkeit', () => {
+    assert.match(erzeugePain008(eingabe({ posten: posten([99999999999]) })).xml, /999999999\.99/);
+    assert.throws(() => erzeugePain008(eingabe({ posten: posten([100000000000]) })), /höchstens/);
+    assert.throws(() => erzeugePain008(eingabe({ posten: posten([100], { mandatDatum: '2026-11-03' }) })), /nach dem Fälligkeitsdatum/);
+    assert.ok(erzeugePain008(eingabe({ posten: posten([100], { mandatDatum: '2026-11-02' }) })));
 });
 
 test('Validierungen werfen mit deutscher Meldung', () => {

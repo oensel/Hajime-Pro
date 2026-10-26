@@ -14,6 +14,7 @@ const MAX_NAME = 70;
 const MAX_VERWENDUNG = 140;
 const MAX_KENNUNG = 35;
 
+const MAX_BETRAG_CENT = 99999999999; // 999999999.99 EUR
 const ISO_DATUM = /^\d{4}-\d{2}-\d{2}$/;
 
 function fehler(text) {
@@ -67,8 +68,14 @@ function pflichtText(wert, bezeichnung, max) {
     return s;
 }
 
+// EPC-Regel für Kennungen: nicht mit '/' beginnen oder enden, kein '//'.
+export function epcKennung(wert, max = MAX_KENNUNG) {
+    const bereinigt = (t) => t.replace(/\/{2,}/g, '/').replace(/^\/+|\/+$/g, '');
+    return bereinigt(bereinigt(sepaKennung(wert, Infinity)).slice(0, max));
+}
+
 function pflichtKennung(wert, bezeichnung) {
-    const s = sepaKennung(wert, MAX_KENNUNG);
+    const s = epcKennung(wert);
     if (!s) throw fehler(`${bezeichnung} fehlt oder enthält keine SEPA-fähigen Zeichen.`);
     return s;
 }
@@ -95,9 +102,11 @@ export function erzeugePain008({ msgId, erzeugtAm, glaeubiger, faelligkeit, post
     posten.forEach((p, i) => {
         const nr = i + 1;
         if (!Number.isSafeInteger(p?.betragCent) || p.betragCent <= 0) throw fehler(`Posten ${nr}: Der Betrag muss größer als 0 sein (ganze Cent).`);
+        if (p.betragCent > MAX_BETRAG_CENT) throw fehler(`Posten ${nr}: Der Betrag darf höchstens 999999999,99 EUR betragen.`);
         const zIban = pruefeIban(p.zahlerIban);
         if (!zIban.ok) throw fehler(`Posten ${nr}: IBAN des Zahlers: ${zIban.fehler}`);
         const mandatDatum = pruefeIsoDatum(p.mandatDatum, `Posten ${nr}: Das Mandatsdatum`);
+        if (mandatDatum > faelligkeit) throw fehler(`Posten ${nr}: Das Mandatsdatum liegt nach dem Fälligkeitsdatum.`);
         const e2e = pflichtKennung(p.endToEndId, `Posten ${nr}: Die EndToEndId`);
         if (gesehen.has(e2e)) throw fehler(`Die EndToEndId ${e2e} kommt in der Datei mehrfach vor.`);
         gesehen.add(e2e);
@@ -124,7 +133,7 @@ export function erzeugePain008({ msgId, erzeugtAm, glaeubiger, faelligkeit, post
     const anzahl = posten.length;
     const summe = centAlsBetrag(summeCent);
     const zeit = erzeugtAm.toISOString().replace(/\.\d{3}Z$/, 'Z');
-    const pmtInfId = sepaKennung(`${msg}-1`, MAX_KENNUNG);
+    const pmtInfId = `${epcKennung(msg, MAX_KENNUNG - 2)}-1`; // immer länger als die MsgId, also verschieden
 
     const xml = [
         '<?xml version="1.0" encoding="UTF-8"?>',
