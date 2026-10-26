@@ -16,15 +16,16 @@ async function mocke(page, user, anzahl) {
     await page.route('**/api/nachrichten/ungelesen', (route) => route.fulfill({ json: { success: true, anzahl } }));
 }
 
-test('Super-Admin: Menüpunkt Nachrichten mit Zähler, Trenner vor den Super-Admin-Punkten', async ({ page }) => {
+test('Super-Admin: Menüpunkt Nachrichten mit Zähler bei den allgemeinen Punkten, Trenner vor den Super-Admin-Punkten', async ({ page }) => {
     await mocke(page, konto({ ist_super_admin: true, super_admin_aktiv: true }), 3);
     await page.goto('/profil.html');
-    await expect(page.locator('#sidebarNavPrimary #nav-nachrichten')).toBeVisible();
+    await expect(page.locator('#sidebarNavUnten #nav-nachrichten')).toBeVisible();
     await expect(page.locator('#nav-nachrichten-zaehler')).toHaveText('3');
     await expect(page.locator('#profilBadge')).toHaveText('3');
-    const reihenfolge = await page.locator('#sidebarNavPrimary > *:visible').evaluateAll((els) => els.map((e) => e.id));
-    expect(reihenfolge.indexOf('nav-super-trenner')).toBeGreaterThan(reihenfolge.indexOf('nav-urkunden'));
-    expect(reihenfolge.indexOf('nav-nachrichten')).toBe(reihenfolge.indexOf('nav-super-trenner') + 1);
+    const reihenfolge = await page.locator('#sidebarNavUnten > *:visible').evaluateAll((els) => els.map((e) => e.id));
+    expect(reihenfolge.indexOf('nav-nachrichten')).toBeGreaterThanOrEqual(0);
+    expect(reihenfolge.indexOf('nav-nachrichten')).toBeLessThan(reihenfolge.indexOf('nav-super-trenner'));
+    expect(reihenfolge.indexOf('nav-nutzer')).toBe(reihenfolge.indexOf('nav-super-trenner') + 1);
 });
 
 test('Admin: roter Kreis am Profil-Icon, Nachrichten im Profil-Menü, kein eigener Menüpunkt', async ({ page }) => {

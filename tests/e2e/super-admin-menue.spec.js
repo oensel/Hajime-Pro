@@ -17,15 +17,16 @@ const turnier = (id, vereinId, bezeichnung, ausrichter, status) => ({
     hat_ausschreibung: false, entfernung_km: null, helfer_bedarf: 0, helfer_belegt: 0, orga_gesamt: 0, orga_erledigt: 0
 });
 
-test('Super-Admin: Benutzer, Vereine und Server-Update stehen oben in der Seitenleiste', async ({ page }) => {
+test('Super-Admin: Benutzer, Vereine und Server-Update stehen unten hinter dem Trenner', async ({ page }) => {
     await page.route('**/api/config', (route) => route.fulfill({ json: { isOffline: false, syncRolle: null, betriebsmodus: 'cloud' } }));
     await page.route('**/api/auth/me', (route) => route.fulfill({ json: { success: true, user: SUPER } }));
     await page.goto('/profil.html');
     for (const id of ['nav-nutzer', 'nav-vereine', 'nav-server-update']) {
-        await expect(page.locator(`#sidebarNavPrimary #${id}`)).toBeVisible();
-        await expect(page.locator(`#sidebarNavUnten #${id}`)).toHaveCount(0);
+        await expect(page.locator(`#sidebarNavUnten #${id}`)).toBeVisible();
+        await expect(page.locator(`#sidebarNavPrimary #${id}`)).toHaveCount(0);
     }
-    // unten bleibt nur der Rest (Helfer-App fehlt für Super-Admins)
+    await expect(page.locator('#nav-super-trenner')).toBeVisible();
+    // Trenner steht vor den Super-Admin-Punkten und nach den allgemeinen (Helfer-App fehlt für Super-Admins)
     await expect(page.locator('#sidebarNavUnten #nav-helfer-app')).toBeHidden();
 });
 
