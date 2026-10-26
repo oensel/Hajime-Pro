@@ -235,6 +235,8 @@
         }
         .abgeschlossen-zeile .material-icons { font-size: 16px; }
         .abgeschlossen-zeile .az-name { flex: 1; font-weight: 700; }
+        .abrechnung-warnung { display: inline-flex; align-items: center; gap: 3px; padding: 1px 8px; border: 2px solid #f59e0b; border-radius: 4px; font-size: 12px; font-weight: 700; color: #b45309; }
+        .abrechnung-warnung .material-icons { font-size: 15px; }
         .abgeschlossen-zeile .btn { padding: 2px 10px; font-size: 11px; margin: 0; }
         .abgeschlossen-zeile .btn.btn-icon-aktion { padding: 0; width: 30px; height: 30px; flex: 0 0 30px; }
         .abgeschlossen-zeile .btn.btn-icon-aktion .material-icons { font-size: 18px; }
@@ -1065,6 +1067,7 @@
                             <span>${escHtml(t.ort)}</span>
                             <span>${escHtml(t.teilnehmer_anzahl || 0)} Teilnehmer</span>
                             <span class="status-badge status-abgeschlossen">Archiviert</span>
+                            ${t.abrechnung_offen ? '<span class="abrechnung-warnung"><span class="material-icons">warning</span>Abrechnung offen</span>' : ''}
                             <button type="button" class="btn btn-outlined" onclick="window.location.href='/turnier.html?id=${encodeURIComponent(t.id)}'">Öffnen</button>
                         </div>`).join('')}</div>` : ''}
                 `;

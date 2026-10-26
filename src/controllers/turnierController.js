@@ -592,6 +592,17 @@ export async function getTurniere(knex, req, res) {
         const countMap = {};
         counts.forEach(c => { countMap[c.turnier_id] = parseInt(c.anzahl, 10); });
 
+        // Vergangene Turniere mit Startgeld, zu denen es noch keine Rechnung gibt: Warnung "Abrechnung offen" (nur Cloud)
+        const mitRechnung = new Set();
+        if (!istEinzelbenutzerBetrieb() && ids.length > 0) {
+            (await knex('rechnungen').whereIn('turnier_id', ids).distinct('turnier_id')).forEach(r => mitRechnung.add(r.turnier_id));
+        }
+        const abrechnungOffen = (t) => !istEinzelbenutzerBetrieb()
+            && parseFloat(t.startgeld) > 0
+            && !['entwurf', 'abgesagt'].includes(t.status)
+            && !!t.datum && datumAlsIso(t.datum) < heute
+            && !mitRechnung.has(t.id);
+
         // Fortschritt der Planungs-Tools je Turnier: Helfer-Plätze (belegt/Bedarf, ein Slot zählt höchstens mit seinem
         // Bedarf) und Orga-Hauptaufgaben (erledigt/gesamt). Turniere ohne Planungs-Tools bekommen nichts.
         const helferMap = {};
@@ -655,6 +666,7 @@ export async function getTurniere(knex, req, res) {
                 orga_gesamt: orgaMap[t.id] ? orgaMap[t.id].gesamt : 0,
                 orga_erledigt: orgaMap[t.id] ? orgaMap[t.id].erledigt : 0,
                 status_effektiv: ermittleEffektivenStatus(t),
+                abrechnung_offen: abrechnungOffen(t),
                 // Hallen-Server: darf das Turnier jetzt aktiviert werden (Knopf "Aktivieren")?
                 ...(istEinzelbenutzerBetrieb() ? (() => {
                     const a = ermittleAktivierbarkeit({ turnier: t, aktivesTurnier, heute });
