@@ -14,8 +14,11 @@ function mod97(ziffern) {
 
 export function pruefeGlaeubigerId(text) {
     const fehler = (meldung) => ({ ok: false, wert: null, fehler: meldung });
-    const wert = String(text ?? '').replace(/\s+/g, '').toUpperCase();
-    if (!wert) return fehler('Die Gläubiger-ID fehlt.');
+    const roh = String(text ?? '').replace(/\s+/g, '');
+    if (!roh) return fehler('Die Gläubiger-ID fehlt.');
+    // Erst prüfen, dann umwandeln: toUpperCase() würde z. B. ß zu SS falten.
+    if (/[^\x00-\x7F]/.test(roh)) return fehler('Die Gläubiger-ID darf nur Buchstaben und Ziffern enthalten.');
+    const wert = roh.toUpperCase();
     if (!/^[A-Z0-9]+$/.test(wert)) return fehler('Die Gläubiger-ID darf nur Buchstaben und Ziffern enthalten.');
     if (!/^[A-Z]{2}[0-9]{2}/.test(wert)) {
         return fehler('Die Gläubiger-ID beginnt mit Länderkennung und zwei Prüfziffern, z. B. DE98.');

@@ -2,9 +2,10 @@
 // Die IBAN liegt nur verschlüsselt in der Datenbank und verlässt den Service nie im Klartext,
 // außer über ermittleZahlungsempfaenger (für Rechnung und Girocode).
 import { FachFehler } from '../utils/fachFehler.js';
-import { verschluesseleFeld, entschluesseleFeld } from '../utils/feldVerschluesselung.js';
+import { verschluesseleFeld, entschluesseleFeld, schluesselVorhanden } from '../utils/feldVerschluesselung.js';
 import { pruefeIban, maskiereIban } from '../shared/iban.js';
-import { STAMMDATEN_FELDER, fehlendeStammdaten, pruefePraefix } from '../shared/abrechnung.js';
+import { STAMMDATEN_FELDER, fehlendeStammdaten, pruefePraefix, lastschriftMoeglich } from '../shared/abrechnung.js';
+import { pruefeGlaeubigerId } from '../shared/glaeubigerId.js';
 import { istGueltigeEmail } from '../shared/zahlweg.js';
 
 const TEXT_FELDER = [...STAMMDATEN_FELDER, 'steuernummer', 'ust_id', 'kontoinhaber'];
@@ -44,6 +45,15 @@ export async function speichereStammdaten(knex, vereinId, eingabe, benutzerId) {
     if ('rechnungs_praefix' in werte) {
         const fehler = pruefePraefix(werte.rechnungs_praefix);
         if (fehler) throw new FachFehler(400, fehler);
+    }
+    if ('glaeubiger_id' in e) {
+        if (leer(e.glaeubiger_id)) {
+            werte.glaeubiger_id = null;
+        } else {
+            const pruefung = pruefeGlaeubigerId(e.glaeubiger_id);
+            if (!pruefung.ok) throw new FachFehler(400, pruefung.fehler);
+            werte.glaeubiger_id = pruefung.wert;
+        }
     }
     if (e.iban_loeschen === true) {
         werte.iban_verschluesselt = null;
@@ -87,4 +97,16 @@ export async function pruefeStammdatenFuerTurnier(knex, turnier) {
     const stammdaten = turnier?.verein_id ? await ladeStammdaten(knex, turnier.verein_id) : null;
     const fehlt = fehlendeStammdaten(stammdaten, turnier);
     return { vollstaendig: fehlt.length === 0, fehlt };
+}
+
+// Kann der Ausrichter dieses Turniers Lastschriften einziehen? (Grundlage für das Angebot und den Hinweis im Turnierformular)
+export async function ladeLastschriftStatus(knex, turnier) {
+    const stammdaten = turnier?.verein_id ? await ladeStammdaten(knex, turnier.verein_id) : null;
+    let empfaengerLesbar = false;
+    try {
+        empfaengerLesbar = !!(await ermittleZahlungsempfaenger(knex, turnier));
+    } catch {
+        empfaengerLesbar = false; // Schlüssel fehlt oder passt nicht zur gespeicherten IBAN
+    }
+    return lastschriftMoeglich({ stammdaten, turnier, empfaengerLesbar, schluessel: schluesselVorhanden() });
 }

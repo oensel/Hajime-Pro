@@ -4,8 +4,15 @@
 const TAG_MS = 24 * 60 * 60 * 1000;
 
 function zuUtc(iso) {
-    const [j, m, t] = String(iso).split('-').map(Number);
-    return Date.UTC(j, m - 1, t);
+    const text = String(iso);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) throw new Error(`Ungültiges Datum (erwartet JJJJ-MM-TT): ${text}`);
+    const [j, m, t] = text.split('-').map(Number);
+    const ms = Date.UTC(j, m - 1, t);
+    const d = new Date(ms);
+    if (d.getUTCFullYear() !== j || d.getUTCMonth() !== m - 1 || d.getUTCDate() !== t) {
+        throw new Error(`Ungültiges Datum: ${text}`);
+    }
+    return ms;
 }
 
 function zuIso(ms) {
@@ -51,6 +58,7 @@ export function istTargetGeschaeftstag(isoDatum) {
 }
 
 export function naechsterGeschaeftstag(isoDatum) {
+    zuUtc(isoDatum);
     let iso = isoDatum;
     while (!istTargetGeschaeftstag(iso)) iso = addiereTage(iso, 1);
     return iso;
@@ -58,6 +66,7 @@ export function naechsterGeschaeftstag(isoDatum) {
 
 // n Geschäftstage nach dem Datum (n >= 0); das Ausgangsdatum selbst muss kein Geschäftstag sein.
 export function addiereGeschaeftstage(isoDatum, n) {
+    zuUtc(isoDatum);
     let iso = isoDatum;
     let rest = Math.max(0, Math.trunc(n));
     while (rest > 0) {
@@ -69,6 +78,7 @@ export function addiereGeschaeftstage(isoDatum, n) {
 
 // L7: nächster Geschäftstag ab max(Rechnungsdatum + Vorabankündigungsfrist, heute + 1 Geschäftstag)
 export function fruehestesFaelligkeitsdatum(rechnungsdatum, vorabTage, heute) {
+    zuUtc(heute);
     const nachFrist = addiereTage(rechnungsdatum, Number(vorabTage) || 0);
     const fruehestens = addiereGeschaeftstage(heute, 1);
     return naechsterGeschaeftstag(nachFrist > fruehestens ? nachFrist : fruehestens);

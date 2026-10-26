@@ -4,7 +4,7 @@
 export const ZAHLWEGE = ['ueberweisung', 'bar', 'lastschrift'];
 export const ABRECHNUNGSBASEN = ['gemeldet', 'teilnahme_waage'];
 
-// In Stufe 1 werden nur diese Zahlwege angeboten (lastschrift ist reserviert).
+// Ohne Angabe werden diese Zahlwege angeboten; Lastschrift nur auf ausdrücklichen Wunsch und bei vollständigen Stammdaten.
 const STANDARD_ANGEBOTEN = ['ueberweisung', 'bar'];
 const EMAIL_MUSTER = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -33,9 +33,11 @@ export function startgeldErfuellt(turnier, teilnehmer) {
     return Boolean(teilnehmer?.startgeld_zahlweg_gesichert) || Boolean(teilnehmer?.startgeld_bezahlt);
 }
 
-// Stufe 1: nur die Überweisung gilt als gesichert (Bar wird an der Kasse bezahlt).
+// Überweisung sichert das Startgeld sofort, Lastschrift erst mit bestätigtem Mandat (Bar wird an der Kasse bezahlt).
 export function istZahlwegGesichert(zeile) {
-    return zeile?.zahlweg === 'ueberweisung';
+    if (zeile?.zahlweg === 'ueberweisung') return true;
+    if (zeile?.zahlweg === 'lastschrift') return zeile.mandat_gueltig === true;
+    return false;
 }
 
 export function pruefeZahlwegEingabe(eingabe, angeboten) {

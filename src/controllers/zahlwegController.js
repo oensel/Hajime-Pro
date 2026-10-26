@@ -5,19 +5,11 @@ import { FachFehler } from '../utils/fachFehler.js';
 import { ladeBenutzerMitAktivemVerein, ladeVerwaltendenVereinsnamen } from '../utils/vereinHelper.js';
 import { ermittleEffektivenStatus } from './turnierController.js';
 import { turnierHatEchteKaempfe } from './poolController.js';
-import { ladeZahlwegFuerVerein, ladeVorbelegung, speichereZahlweg, ladeKasse, kassiereBar, erfasseVorOrt } from '../services/zahlwege.js';
-import { parseAngeboteneZahlwege, startgeldVerlangt } from '../shared/zahlweg.js';
+import { ladeZahlwegFuerVerein, ladeVorbelegung, speichereZahlweg, ladeKasse, kassiereBar, erfasseVorOrt, ermittleAngeboteneZahlwege } from '../services/zahlwege.js';
+import { startgeldVerlangt } from '../shared/zahlweg.js';
 import { darfTurnierSehen } from '../services/turnierSichtbarkeit.js';
 import { ermittleZahlungsempfaenger } from '../services/abrechnungStammdaten.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
-
-const STUFE1_ZAHLWEGE = ['ueberweisung', 'bar'];
-
-// Lastschrift ist reserviert und wird in Stufe 1 nie angeboten; leere Liste -> Standard.
-function angebotenInStufe1(turnier) {
-    const liste = parseAngeboteneZahlwege(turnier.angebotene_zahlwege).filter((z) => STUFE1_ZAHLWEGE.includes(z));
-    return liste.length > 0 ? liste : [...STUFE1_ZAHLWEGE];
-}
 
 function antworteFehler(res, err) {
     if (err instanceof FachFehler) {
@@ -86,7 +78,7 @@ export function erzeugeZahlwegController(knex) {
                 res.json({
                     erforderlich,
                     empfaenger,
-                    angebotene: angebotenInStufe1(turnier),
+                    angebotene: await ermittleAngeboteneZahlwege(knex, turnier),
                     startgeld: parseFloat(turnier.startgeld) || 0,
                     abrechnungsbasis: turnier.abrechnungsbasis,
                     zahlweg,

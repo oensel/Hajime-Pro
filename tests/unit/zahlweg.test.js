@@ -32,10 +32,12 @@ test('startgeldErfuellt', () => {
     assert.equal(startgeldErfuellt({ startgeld: 8 }, { startgeld_bezahlt: 1 }), true);
 });
 
-test('istZahlwegGesichert: nur Überweisung', () => {
+test('istZahlwegGesichert: Überweisung und Lastschrift mit gültigem Mandat', () => {
     assert.equal(istZahlwegGesichert({ zahlweg: 'ueberweisung' }), true);
     assert.equal(istZahlwegGesichert({ zahlweg: 'bar' }), false);
     assert.equal(istZahlwegGesichert(null), false);
+    assert.equal(istZahlwegGesichert({ zahlweg: 'lastschrift', mandat_gueltig: false }), false);
+    assert.equal(istZahlwegGesichert({ zahlweg: 'lastschrift', mandat_gueltig: true }), true);
 });
 
 test('parseAngeboteneZahlwege', () => {

@@ -18,6 +18,6 @@ export function baueMandatstext({ glaeubigerName, glaeubigerId, mandatsreferenz,
             'Es gelten dabei die mit unserem Kreditinstitut vereinbarten Bedingungen.',
         '',
         `Zahlungszweck: Startgeld ${turnierBezeichnung}`,
-        `Vorabankündigung: spätestens ${vorabTage} Tage vor Fälligkeit per E-Mail (Rechnung).`
+        `Vorabankündigung: spätestens ${vorabTage} ${Number(vorabTage) === 1 ? 'Tag' : 'Tage'} vor Fälligkeit per E-Mail (Rechnung).`
     ].join('\n');
 }

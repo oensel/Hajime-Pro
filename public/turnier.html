@@ -240,12 +240,21 @@
                                 Bar an der Waage
                                 <input type="checkbox" id="zahlwegBar" checked>
                             </label>
+                            <label class="planungs-haken" for="zahlwegLastschrift" id="zahlwegLastschriftZeile" hidden>
+                                Lastschrift (SEPA)
+                                <input type="checkbox" id="zahlwegLastschrift">
+                            </label>
+                            <div id="zahlwegLastschriftGrund" hidden style="font-size:12px;margin:-4px 0 6px;"></div>
                         </div>
                         <!-- Rechnungen (nur Cloud, turnier.js blendet den Block ein) -->
                         <div id="rechnungGruppe" hidden>
                             <div class="form-group">
                                 <label for="zahlungsziel_tage">Zahlungsziel (Tage)</label>
                                 <input type="number" id="zahlungsziel_tage" min="1" max="90" step="1" value="14">
+                            </div>
+                            <div class="form-group" id="vorabankuendigungGruppe">
+                                <label for="vorabankuendigung_tage">Vorabankündigung bei Lastschrift (Tage)</label>
+                                <input type="number" id="vorabankuendigung_tage" min="1" max="14" step="1" value="5">
                             </div>
                             <div class="form-group">
                                 <label for="rechnung_hinweis">Hinweistext auf der Rechnung</label>

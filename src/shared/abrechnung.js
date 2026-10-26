@@ -19,6 +19,17 @@ export function fehlendeStammdaten(stammdaten, turnier) {
     return fehlt;
 }
 
+// Lastschrift wird nur angeboten, wenn der Ausrichter sie auch einziehen kann (Gläubiger-ID, vollständige
+// Abrechnungsdaten, lesbares Konto, Schlüssel für die Zahlungsdaten). Grund = erster Mangel in dieser Reihenfolge.
+export function lastschriftMoeglich({ stammdaten, turnier, empfaengerLesbar, schluessel }) {
+    const nein = (grund) => ({ moeglich: false, grund });
+    if (leer(stammdaten?.glaeubiger_id)) return nein('Gläubiger-ID fehlt');
+    if (fehlendeStammdaten(stammdaten, turnier).length > 0) return nein('Abrechnungsdaten unvollständig');
+    if (!schluessel) return nein('Schlüssel für Zahlungsdaten fehlt');
+    if (!empfaengerLesbar) return nein('Konto des Ausrichters nicht lesbar');
+    return { moeglich: true, grund: null };
+}
+
 export function pruefePraefix(text) {
     if (leer(text)) return 'Der Rechnungsnummern-Präfix darf nicht leer sein.';
     if (!/^[A-Za-z0-9-]{1,12}$/.test(String(text))) {

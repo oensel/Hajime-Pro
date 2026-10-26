@@ -65,7 +65,7 @@ export const TURNIER_SPALTEN_OHNE_PDF = [
     'id', 'bezeichnung', 'ort', 'plz', 'bundesland', 'datum', 'ausrichter',
     'nutze_gewichtsklassen', 'anzahl_kampfflaechen', 'verein_id', 'altersklassen',
     'mannschafts_altersklassen', 'status', 'anmeldeschluss', 'startgeld', 'iban',
-    'abrechnungsbasis', 'angebotene_zahlwege', 'zahlungsziel_tage', 'rechnung_hinweis',
+    'abrechnungsbasis', 'angebotene_zahlwege', 'zahlungsziel_tage', 'vorabankuendigung_tage', 'rechnung_hinweis',
     'kontoinhaber', 'verwendungszweck', 'ausschreibung_dateiname', 'farbe_kaempfer2',
     'beginn_min', 'ende_min', 'waagen_anzahl', 'planungs_tools', 'sichtbarkeit', 'created_at', 'updated_at'
 ];
@@ -118,8 +118,8 @@ async function validiereZahlungsdaten(knex, { startgeld, iban, kontoinhaber, ver
     return 'Wenn ein Startgeld verlangt wird, braucht es IBAN und Kontoinhaber im Turnier oder in den Abrechnungsdaten des Vereins.';
 }
 
-// Startgeld-Zahlweg (Stufe 1): Abrechnungsbasis und angebotene Zahlwege des Ausrichters. Angeboten werden nur
-// Überweisung und Bar; bei Startgeld > 0 muss mindestens ein Zahlweg angeboten werden. Nicht mitgesendete Felder
+// Startgeld-Zahlweg: Abrechnungsbasis und angebotene Zahlwege des Ausrichters (Überweisung, Bar, Lastschrift;
+// ob Lastschrift möglich ist, prüft erst ermittleAngeboteneZahlwege); bei Startgeld > 0 muss mindestens ein Zahlweg angeboten werden. Nicht mitgesendete Felder
 // (undefined) bleiben unverändert bzw. bekommen beim Anlegen den Spalten-Standard.
 function leseZahlwegFelder(body, startgeld) {
     let abrechnungsbasis;
@@ -134,7 +134,7 @@ function leseZahlwegFelder(body, startgeld) {
         const roh = Array.isArray(body.angebotene_zahlwege) ? body.angebotene_zahlwege.join(',') : String(body.angebotene_zahlwege ?? '');
         angebotene = roh.trim() === ''
             ? []
-            : parseAngeboteneZahlwege(roh).filter((w) => w === 'ueberweisung' || w === 'bar');
+            : parseAngeboteneZahlwege(roh);
         const startgeldWert = startgeld !== undefined && startgeld !== '' ? parseInt(startgeld, 10) : 0;
         if (startgeldWert > 0 && angebotene.length === 0) {
             return { fehler: 'Bei einem Startgeld muss mindestens ein Zahlweg (Überweisung oder Bar) angeboten werden.' };
@@ -148,6 +148,14 @@ function leseZahlwegFelder(body, startgeld) {
         }
         zahlungszielTage = n;
     }
+    let vorabankuendigungTage;
+    if (body.vorabankuendigung_tage !== undefined && body.vorabankuendigung_tage !== null && body.vorabankuendigung_tage !== '') {
+        const n = Number(body.vorabankuendigung_tage);
+        if (!Number.isInteger(n) || n < 1 || n > 14) {
+            return { fehler: 'Die Vorabankündigung muss zwischen 1 und 14 Tagen liegen.' };
+        }
+        vorabankuendigungTage = n;
+    }
     let rechnungHinweis;
     if (body.rechnung_hinweis !== undefined) {
         const text = body.rechnung_hinweis == null ? '' : String(body.rechnung_hinweis).trim();
@@ -158,6 +166,7 @@ function leseZahlwegFelder(body, startgeld) {
         fehler: null,
         fragment: {
             ...(zahlungszielTage !== undefined ? { zahlungsziel_tage: zahlungszielTage } : {}),
+            ...(vorabankuendigungTage !== undefined ? { vorabankuendigung_tage: vorabankuendigungTage } : {}),
             ...(rechnungHinweis !== undefined ? { rechnung_hinweis: rechnungHinweis } : {}),
             ...(abrechnungsbasis !== undefined ? { abrechnungsbasis } : {}),
             ...(angebotene !== undefined ? { angebotene_zahlwege: angebotene.length ? angebotene.join(',') : 'ueberweisung,bar' } : {})
@@ -1035,6 +1044,7 @@ export async function importiereTurnierDaten(knex, sync, daten) {
                 abrechnungsbasis: ABRECHNUNGSBASEN.includes(t.abrechnungsbasis) ? t.abrechnungsbasis : 'gemeldet',
                 angebotene_zahlwege: t.angebotene_zahlwege ? String(t.angebotene_zahlwege) : 'ueberweisung,bar',
                 zahlungsziel_tage: Number.isInteger(Number(t.zahlungsziel_tage)) && t.zahlungsziel_tage >= 1 && t.zahlungsziel_tage <= 90 ? Number(t.zahlungsziel_tage) : 14,
+                vorabankuendigung_tage: Number.isInteger(Number(t.vorabankuendigung_tage)) && t.vorabankuendigung_tage >= 1 && t.vorabankuendigung_tage <= 14 ? Number(t.vorabankuendigung_tage) : 5,
                 rechnung_hinweis: typeof t.rechnung_hinweis === 'string' && t.rechnung_hinweis.trim() && t.rechnung_hinweis.length <= 1000 ? t.rechnung_hinweis.trim() : null,
                 farbe_kaempfer2: gueltigeFarbe(t.farbe_kaempfer2) || 'blau',
                 // Turnierzeit und Waagenanzahl (Helferplan); ältere Dateien ohne diese Felder: leer bzw. 1
@@ -1404,6 +1414,7 @@ export async function dupliziereTurnier(knex, req, res) {
                 abrechnungsbasis: quelle.abrechnungsbasis,
                 angebotene_zahlwege: quelle.angebotene_zahlwege,
                 zahlungsziel_tage: quelle.zahlungsziel_tage,
+                vorabankuendigung_tage: quelle.vorabankuendigung_tage,
                 rechnung_hinweis: quelle.rechnung_hinweis,
                 farbe_kaempfer2: quelle.farbe_kaempfer2,
                 ausschreibung_pdf: quelle.ausschreibung_pdf,

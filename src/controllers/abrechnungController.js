@@ -3,7 +3,7 @@
 import { FachFehler } from '../utils/fachFehler.js';
 import { darfVereinVerwalten } from '../services/vereinsRollen.js';
 import { fehlendeStammdaten } from '../shared/abrechnung.js';
-import { ladeStammdaten, speichereStammdaten, pruefeStammdatenFuerTurnier } from '../services/abrechnungStammdaten.js';
+import { ladeStammdaten, speichereStammdaten, pruefeStammdatenFuerTurnier, ladeLastschriftStatus } from '../services/abrechnungStammdaten.js';
 import { ladeAbrechnung, ordneVereinZu } from '../services/abrechnung.js';
 import { erfasseVorOrt } from '../services/zahlwege.js';
 import { erstelleRechnungen, sendeRechnungErneut, setzeBezahlt, ladeRechnungPdf } from '../services/rechnungslauf.js';
@@ -167,7 +167,8 @@ export function erzeugeAbrechnungController(knex, { sende } = {}) {
                 const turnier = req.tournament;
                 const { vollstaendig, fehlt } = await pruefeStammdatenFuerTurnier(knex, turnier);
                 const darfPflegen = turnier.verein_id ? await darfVereinVerwalten(knex, req.user.id, turnier.verein_id) : false;
-                res.json({ vollstaendig, fehlt, vereinId: turnier.verein_id ?? null, darfPflegen });
+                const lastschrift = await ladeLastschriftStatus(knex, turnier);
+                res.json({ vollstaendig, fehlt, vereinId: turnier.verein_id ?? null, darfPflegen, lastschrift });
             } catch (err) {
                 antworteFehler(res, err);
             }

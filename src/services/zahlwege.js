@@ -9,8 +9,19 @@ import { ermittleEffektivenStatus } from '../controllers/turnierController.js';
 import { turnierHatEchteKaempfe } from '../controllers/poolController.js';
 import { pruefeKampfbereitschaft, leiteStatusAusKampfbereitschaftAb, setzeStartgeldBezahlt } from '../controllers/teilnehmerController.js';
 import { istZahlwegGesichert, pruefeZahlwegEingabe, parseAngeboteneZahlwege, startgeldVerlangt } from '../shared/zahlweg.js';
+import { ladeLastschriftStatus } from './abrechnungStammdaten.js';
 
 const STANDARD_ANGEBOTEN = ['ueberweisung', 'bar'];
+
+// Angebotene Zahlwege eines Turniers: die Wahl des Ausrichters, Lastschrift nur wenn er sie einziehen kann;
+// bleibt nichts übrig, gilt der Standard (Überweisung und Bar).
+export async function ermittleAngeboteneZahlwege(knex, turnier) {
+    let liste = parseAngeboteneZahlwege(turnier.angebotene_zahlwege);
+    if (liste.includes('lastschrift') && !(await ladeLastschriftStatus(knex, turnier)).moeglich) {
+        liste = liste.filter((z) => z !== 'lastschrift');
+    }
+    return liste.length > 0 ? liste : [...STANDARD_ANGEBOTEN];
+}
 
 async function ladeAusrichterName(knex, turnier) {
     if (turnier.verein_id == null) return null;
@@ -43,9 +54,7 @@ export async function speichereZahlweg(knex, { turnier, vereinName, vereinId, be
     if (ausrichter && ausrichter === vereinName) {
         throw new FachFehler(403, 'Der ausrichtende Verein wählt keinen Zahlweg.');
     }
-    // Lastschrift ist reserviert und wird in Stufe 1 nie angeboten.
-    let angeboten = parseAngeboteneZahlwege(turnier.angebotene_zahlwege).filter((z) => STANDARD_ANGEBOTEN.includes(z));
-    if (angeboten.length === 0) angeboten = [...STANDARD_ANGEBOTEN];
+    const angeboten = await ermittleAngeboteneZahlwege(knex, turnier);
     const { fehler, werte } = pruefeZahlwegEingabe(eingabe, angeboten);
     if (fehler) throw new FachFehler(400, fehler);
 

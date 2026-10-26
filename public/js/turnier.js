@@ -368,15 +368,33 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- RECHNUNGEN (nur Cloud): Zahlungsziel, Hinweistext und Kasten mit fehlenden Abrechnungsdaten ---
     let rechnungenAktiv = false;
     let turnierAusCloud = false; // Hallen-Server: Turnier aus der Cloud geholt (Konto kommt nicht mit)
+    // Lastschrift (nur Cloud): ankreuzbar erst, wenn der Ausrichter sie einziehen kann; sonst deaktiviert mit Grund.
+    function zeigeLastschriftWahl(lastschrift) {
+        document.getElementById('zahlwegLastschriftZeile').hidden = false;
+        const haken = document.getElementById('zahlwegLastschrift');
+        const grund = document.getElementById('zahlwegLastschriftGrund');
+        const moeglich = !!(lastschrift && lastschrift.moeglich);
+        haken.disabled = !moeglich;
+        grund.hidden = moeglich;
+        grund.textContent = moeglich ? '' : `Lastschrift derzeit nicht möglich: ${lastschrift ? lastschrift.grund : 'erst nach dem Anlegen des Turniers prüfbar'}.`;
+    }
+
     async function initialisiereRechnungsBlock() {
         if (!(await istCloud())) return;
         rechnungenAktiv = true;
         document.getElementById('rechnungGruppe').hidden = false;
-        if (!turnierId) return;
+        if (!turnierId) {
+            zeigeLastschriftWahl(null);
+            return;
+        }
         try {
             const resp = await fetch(`/api/abrechnung/stammdaten-pruefung/${encodeURIComponent(turnierId)}`);
-            if (!resp.ok) return;
+            if (!resp.ok) {
+                zeigeLastschriftWahl(null);
+                return;
+            }
             const pruefung = await resp.json();
+            zeigeLastschriftWahl(pruefung.lastschrift);
             if (pruefung.vollstaendig) return;
             document.getElementById('rechnungStammdatenFehlt').textContent = (pruefung.fehlt || []).join(', ');
             const link = document.getElementById('rechnungStammdatenLink');
@@ -486,12 +504,14 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('kontoinhaber').value = turnier.kontoinhaber || '';
             document.getElementById('verwendungszweck').value = turnier.verwendungszweck || '';
             document.getElementById('zahlungsziel_tage').value = turnier.zahlungsziel_tage || 14;
+            document.getElementById('vorabankuendigung_tage').value = turnier.vorabankuendigung_tage || 5;
             document.getElementById('rechnung_hinweis').value = turnier.rechnung_hinweis || '';
             document.getElementById('abrechnungsbasis').value = turnier.abrechnungsbasis === 'teilnahme_waage' ? 'teilnahme_waage' : 'gemeldet';
             {
                 const angeboten = (turnier.angebotene_zahlwege || 'ueberweisung,bar').split(',').map(w => w.trim());
                 document.getElementById('zahlwegUeberweisung').checked = angeboten.includes('ueberweisung');
                 document.getElementById('zahlwegBar').checked = angeboten.includes('bar');
+                document.getElementById('zahlwegLastschrift').checked = angeboten.includes('lastschrift');
             }
 
             bestehendeAusschreibungVorhanden = !!turnier.hat_ausschreibung;
@@ -789,11 +809,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 abrechnungsbasis: document.getElementById('abrechnungsbasis').value,
                 ...(rechnungenAktiv ? {
                     zahlungsziel_tage: document.getElementById('zahlungsziel_tage').value,
+                    vorabankuendigung_tage: document.getElementById('vorabankuendigung_tage').value,
                     rechnung_hinweis: document.getElementById('rechnung_hinweis').value.trim()
                 } : {}),
                 angebotene_zahlwege: [
                     document.getElementById('zahlwegUeberweisung').checked ? 'ueberweisung' : null,
-                    document.getElementById('zahlwegBar').checked ? 'bar' : null
+                    document.getElementById('zahlwegBar').checked ? 'bar' : null,
+                    rechnungenAktiv && document.getElementById('zahlwegLastschrift').checked ? 'lastschrift' : null
                 ].filter(Boolean).join(',')
             };
 

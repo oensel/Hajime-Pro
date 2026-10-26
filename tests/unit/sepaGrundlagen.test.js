@@ -125,3 +125,33 @@ test('Mandatstext enthält die Pflichtangaben', () => {
     assert.ok(t.includes('Wir ermächtigen'));
     assert.ok(t.includes('weisen wir unser Kreditinstitut an'));
 });
+
+test('Gläubiger-ID: Nicht-ASCII-Zeichen werden vor dem Großschreiben abgelehnt', () => {
+    assert.equal(pruefeGlaeubigerId('DE98ZZZ0999999ß999').ok, false);
+    assert.equal(pruefeGlaeubigerId('DE98ZZZ09999999ß9').ok, false);
+    assert.equal(pruefeGlaeubigerId('ßE98ZZZ09999999999').ok, false);
+    // ß würde durch toUpperCase() zu SS und damit eine gültige ID ergeben
+    assert.equal(pruefeGlaeubigerId('DE22ZZZSS999999999').ok, true);
+    assert.equal(pruefeGlaeubigerId('DE22ZZZß999999999').ok, false);
+});
+
+test('Mandatstext: Einzahl bei einem Tag Vorabankündigung', () => {
+    const basis = {
+        glaeubigerName: 'A', glaeubigerId: 'DE98ZZZ09999999999', mandatsreferenz: 'X',
+        turnierBezeichnung: 'T', zahlenderVerein: 'V'
+    };
+    const eins = baueMandatstext({ ...basis, vorabTage: 1 });
+    assert.ok(eins.includes('1 Tag vor'));
+    assert.ok(!eins.includes('1 Tage'));
+    assert.ok(baueMandatstext({ ...basis, vorabTage: 2 }).includes('2 Tage vor'));
+});
+
+test('TARGET-Kalender: ungültige Datumsstrings werfen statt endlos zu laufen', () => {
+    for (const schlecht of ['abc', '2026-13-01', '2026-02-30', '', undefined, '2026-1-1', '26-01-01']) {
+        assert.throws(() => istTargetGeschaeftstag(schlecht), Error);
+        assert.throws(() => naechsterGeschaeftstag(schlecht), Error);
+        assert.throws(() => addiereGeschaeftstage(schlecht, 1), Error);
+        assert.throws(() => fruehestesFaelligkeitsdatum(schlecht, 5, '2026-11-02'), Error);
+        assert.throws(() => fruehestesFaelligkeitsdatum('2026-11-02', 5, schlecht), Error);
+    }
+});
