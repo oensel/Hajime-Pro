@@ -545,6 +545,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (startgeldCheckbox) {
             startgeldCheckbox.checked = !!athlet.startgeld_bezahlt;
         }
+        // Das Kästchen bleibt das Handflag (Speichern schreibt nur startgeld_bezahlt); ein über den Zahlweg
+        // gesicherter Kämpfer wird daneben als solcher gekennzeichnet.
+        const zahlwegHinweis = document.getElementById('startgeldZahlwegHinweis');
+        if (zahlwegHinweis) zahlwegHinweis.style.display = (!athlet.startgeld_bezahlt && !!athlet.startgeld_zahlweg_gesichert && !turnierOhneStartgeld) ? '' : 'none';
     };
 
     // Befüllt das Team-Name-Feld mit der aktuellen Mannschafts-Zuordnung eines bestehenden
@@ -789,6 +793,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (setzeLizenzAnzeigeZurueck) setzeLizenzAnzeigeZurueck();
         const startgeldCheckbox = document.getElementById('startgeld_bezahlt');
         if (startgeldCheckbox) startgeldCheckbox.checked = false;
+        const zahlwegHinweisReset = document.getElementById('startgeldZahlwegHinweis');
+        if (zahlwegHinweisReset) zahlwegHinweisReset.style.display = 'none';
         gewichtsklasseSelect.innerHTML = '<option value="" disabled selected hidden>Bitte Altersklasse wählen...</option>';
         if (kampfbereitBtn) {
             kampfbereitBtn.style.display = 'none';
@@ -1096,6 +1102,15 @@ document.addEventListener('DOMContentLoaded', () => {
                             kampfbereitBtn.style.display = 'inline-flex';
                             kampfbereitBtn.dataset.teilnehmerId = gespeicherteId;
                         }
+                    }
+
+                    // Cloud, Fremdverein mit Startgeld: den Zahlweg einmal je Turnier abfragen (nicht überspringbar).
+                    if (!effektiveId && window.ZahlwegDialog) {
+                        await window.ZahlwegDialog.frageNach(turnierId);
+                    }
+                    // Hallen-Server: neuer Verein ohne Zahlweg -> Rechnungsdaten gleich erfassen oder später an der Kasse.
+                    if (!effektiveId && window.ZahlwegDialog && window.ZahlwegDialog.frageNachVorOrt) {
+                        await window.ZahlwegDialog.frageNachVorOrt(turnierId, payload.verein);
                     }
 
                     // Nachzügler (Altersklasse schon ausgelost): Pool-Auswahl anbieten.

@@ -11,6 +11,7 @@ const { totpCode, pruefeTotpCode, base32Kodiere, base32Dekodiere, schrittFuer, o
 const zf = await import('../../src/services/zweiFaktor.js');
 const { anmeldungAbschliessen, zweiFaktorPruefen, zweiFaktorEinrichtungStart, zweiFaktorEinrichtungBestaetigen } = await import('../../src/controllers/authController.js');
 const { hashPassword } = await import('../../src/utils/password.js');
+const jwtDecode = (await import('jsonwebtoken')).default.decode;
 
 // RFC 6238, Anhang B (SHA-1, Geheimnis "12345678901234567890"): die letzten sechs Stellen der Achtstelligen Werte
 const RFC_GEHEIMNIS = base32Kodiere(Buffer.from('12345678901234567890'));
@@ -87,6 +88,10 @@ test('Zwei-Faktor: Einrichtung, Anmeldung, Backup-Codes, Zurücksetzen', async (
         await zweiFaktorEinrichtungBestaetigen(knex, { body: { zwischenToken: einrichtungsToken, code: totpCode(geheimnis, schritt) } }, res);
         assert.equal(res.statusCode, 200);
         assert.ok(res.body.token, 'Sitzung nach der Einrichtung');
+        // Claim zf: Zeitpunkt der bestandenen 2FA-Prüfung (Unix-Sekunden), für sensible Aktionen kurz danach
+        const zfEinrichtung = jwtDecode(res.body.token).zf;
+        assert.ok(Number.isInteger(zfEinrichtung) && Math.abs(zfEinrichtung - Date.now() / 1000) < 60);
+        assert.equal(jwtDecode(normal.token).zf, undefined, 'ohne 2FA kein zf');
         assert.equal(res.body.backupCodes.length, zf.ANZAHL_BACKUP_CODES);
         assert.match(res.body.backupCodes[0], /^[a-z0-9]{5}-[a-z0-9]{5}$/);
         const backupCodes = res.body.backupCodes;
@@ -110,6 +115,7 @@ test('Zwei-Faktor: Einrichtung, Anmeldung, Backup-Codes, Zurücksetzen', async (
         await zweiFaktorPruefen(knex, { body: { zwischenToken: zweiterLogin.zwischenToken, code: totpCode(geheimnis, schritt + 1) } }, res);
         assert.equal(res.statusCode, 200);
         assert.ok(res.body.token);
+        assert.ok(Math.abs(jwtDecode(res.body.token).zf - Date.now() / 1000) < 60);
         assert.equal(res.body.zweiFaktorArt, 'totp');
         assert.equal(res.body.verbleibendeBackupCodes, 10);
 

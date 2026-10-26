@@ -44,7 +44,7 @@ test('kopiereTeilnehmerFuerNeuesTurnier behält Gewicht und Lizenzdatum, setzt W
     const quelle = {
         id: 9, turnier_id: 1, pool_id: 4, judopass_id: 'DE123', vorname: 'Anna', nachname: 'Adler',
         geburtsjahr: 2010, lizenz_ablauf: '2030-12-31', geschlecht: 'weiblich', verein: 'JC Alpha',
-        gewicht: 41.5, altersklasse: 'U15', gewichtsklasse: '-44kg', startgeld_bezahlt: true,
+        gewicht: 41.5, altersklasse: 'U15', gewichtsklasse: '-44kg', startgeld_bezahlt: true, startgeld_zahlweg_gesichert: true,
         graduierung: '3. Kyu', status: 'kampfbereit', gewogen: true, dokument_id: 'teilnehmer:u-1',
         created_at: 'x', updated_at: 'y'
     };
@@ -56,6 +56,7 @@ test('kopiereTeilnehmerFuerNeuesTurnier behält Gewicht und Lizenzdatum, setzt W
     assert.equal(kopie.pool_id, null);
     assert.equal(kopie.gewogen, false);
     assert.equal(kopie.startgeld_bezahlt, false);
+    assert.equal(kopie.startgeld_zahlweg_gesichert, false);
     assert.equal(kopie.status, 'angemeldet');
     for (const feld of ['id', 'dokument_id', 'created_at', 'updated_at']) assert.equal(feld in kopie, false, feld);
 });

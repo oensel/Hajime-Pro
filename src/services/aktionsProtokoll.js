@@ -23,7 +23,7 @@ const AKTIONEN = {
     'DELETE /api/turniere/:id': ['turnier.loeschen', 'Turnier gelöscht'],
     'POST /api/turniere/:id/teilen': ['turnier.teilen', 'Turnier per Mail geteilt'],
     'POST /api/turniere/:id/duplizieren': ['turnier.duplizieren', 'Turnier dupliziert'],
-    'POST /api/turniere/:id/import-ergebnisse': ['turnier.ergebnisse', 'Turnierergebnisse importiert'],
+    'POST /api/turniere/:id/import-ergebnisse': ['turnier.zurueckspielen', 'Turnier in die Cloud zurückgespielt'],
     'PUT /api/auth/profile': ['profil.aendern', 'Profil geändert'],
     'POST /api/auth/steuerung-passwort': ['steuerung.passwort', 'Turnierleitungs-Passwort geändert'],
     'POST /api/auth/2fa/backup-codes': ['2fa.backupcodes', 'Neue Backup-Codes für die Zwei-Faktor-Anmeldung erzeugt'],
@@ -60,12 +60,19 @@ const AKTIONEN = {
     'POST /api/downloads/einloesecode': ['downloads.code', 'Einlösecode erzeugt'],
     'DELETE /api/downloads/schluessel/:id': ['downloads.widerruf', 'Geräteschlüssel widerrufen'],
     'POST /api/downloads/spiegel/pruefen': ['downloads.spiegel', 'Spiegelung der Releases angestoßen'],
+    'POST /api/abrechnung/:id/zuordnen': ['abrechnung.zuordnen', 'Kämpfer einem meldenden Verein zugeordnet'],
+    'POST /api/abrechnung/:id/rechnungsdaten': ['abrechnung.rechnungsdaten', 'Rechnungsdaten eines Vereins erfasst'],
+    'POST /api/abrechnung/:id/rueckspielen-freigeben': ['abrechnung.rueckspielfreigabe', 'Erneutes Zurückspielen freigegeben'],
+    'PUT /api/abrechnung/stammdaten/:id': ['abrechnung.stammdaten', 'Abrechnungsdaten des Vereins geändert'],
+    'POST /api/abrechnung/:id/rechnungen': ['abrechnung.rechnungslauf', 'Rechnungen erstellt und versendet'],
+    'POST /api/abrechnung/:id/rechnungen/:id/senden': ['abrechnung.senden', 'Rechnung erneut versendet'],
+    'POST /api/abrechnung/:id/rechnungen/:id/bezahlt': ['abrechnung.bezahlt', 'Zahlstatus einer Rechnung geändert'],
     'DELETE /api/konsole': ['konsole.leeren', 'Fehlerprotokoll (Konsole) geleert']
 };
 const RESSOURCEN = {
     turniere: 'Turnier', teilnehmer: 'Teilnehmer', pools: 'Pool', kampfflaechen: 'Matte', kaempfe: 'Kampf', mannschaften: 'Mannschaft',
     mannschaftskaempfe: 'Mannschaftskampf', orga: 'Orga-Aufgabe', 'helfer-plan': 'Helferplan', helfer: 'Helfer-App', urkunden: 'Urkunden',
-    vereine: 'Verein', nutzer: 'Benutzer', freigabe: 'Freischaltung', auth: 'Konto', sicherung: 'Sicherung', downloads: 'Download', einladung: 'Einladung'
+    vereine: 'Verein', nutzer: 'Benutzer', freigabe: 'Freischaltung', auth: 'Konto', sicherung: 'Sicherung', downloads: 'Download', einladung: 'Einladung', abrechnung: 'Abrechnung'
 };
 const VERBEN = { POST: 'angelegt bzw. ausgeführt', PUT: 'geändert', PATCH: 'geändert', DELETE: 'gelöscht' };
 

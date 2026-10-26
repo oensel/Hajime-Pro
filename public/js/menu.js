@@ -48,7 +48,7 @@ function vergissMenueStand() {
 // Menüpunkt bzw. Kopfleisten-Knopf → Seiten, auf denen er als aktiv hervorgehoben wird.
 const MENUE_AKTIVE_SEITEN = [
     ['nav-turniere', ['turniere.html']],
-    ['nav-turnier', ['turnier.html']],
+    ['nav-turnier', ['turnier.html', 'abrechnung.html']],
     ['nav-teilnehmer', ['teilnehmer.html']],
     ['nav-pools', ['pools.html']],
     ['nav-mannschaften', ['mannschaften.html']],

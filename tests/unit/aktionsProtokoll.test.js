@@ -147,7 +147,9 @@ test('Protokoll: Middleware, Rechte, Filter, Anmeldeereignisse, Aufbewahrung', a
         assert.equal((await liste('sa', '?suche=gelöscht')).daten.gesamt, 1);
         assert.equal((await liste('sa', '?suche=Opfer')).daten.gesamt, 1, 'Suche auch in den Einzelheiten');
         assert.equal((await liste('sa', '?von=2999-01-01')).daten.gesamt, 0);
-        assert.equal((await liste('sa', `?bis=${new Date().toISOString().slice(0, 10)}`)).daten.gesamt, 6, 'der heutige Tag zählt zum Zeitraum');
+        // Der Filter rechnet in der Zeitzone der Datenbank, nicht in UTC: zwischen 0 und 2 Uhr (Berlin) liegt das UTC-Datum noch einen Tag zurück.
+        const heuteLokal = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+        assert.equal((await liste('sa', `?bis=${heuteLokal}`)).daten.gesamt, 6, 'der heutige Tag zählt zum Zeitraum');
         const seite1 = (await liste('sa', '?proSeite=4&seite=1')).daten;
         const seite2 = (await liste('sa', '?proSeite=4&seite=2')).daten;
         assert.deepEqual([seite1.seiten, seite1.eintraege.length, seite2.eintraege.length], [2, 4, 2]);

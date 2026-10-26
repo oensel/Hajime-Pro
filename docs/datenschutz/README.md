@@ -15,6 +15,7 @@
 | Verschlüsselte, automatische Sicherung (AES-256-GCM) | `docs/betrieb.md` |
 | Aktionsprotokoll (365 Tage), Fehlerprotokoll (30 Tage), Rollen, 2FA für Super-Admins | Seiten „Protokoll“, „Konsole“ |
 | Automatische Löschung unbestätigter Konten nach 30 Tagen, Live-Daten nach 7, Push nach 3 Tagen | `src/services/kontenAufraeumen.js`, `src/liveCloud/` |
+| Startgeld-Abrechnung: IBAN des Ausrichters verschlüsselt (`ZAHLUNGSDATEN_SCHLUESSEL`), Rechnungen als Momentaufnahme mit 8 Jahren Aufbewahrung | `src/utils/feldVerschluesselung.js`, `src/services/rechnungslauf.js` |
 | Passwörter nur als PBKDF2-SHA512-Prüfwert mit 210.000 Durchläufen (alte Prüfwerte werden beim Login erneuert) | `src/utils/password.js` |
 
 ## Dokumente in diesem Ordner
@@ -42,6 +43,7 @@ Die Datenschutzerklärung beschreibt Dinge, die vom Betrieb abhängen. Prüfen S
 - **Server-Protokolle des Hosters/Proxys** nach `datenschutz.logfileTage` (Standard 7) löschen (Log-Rotation einrichten) oder die Angabe in `rechtliches.json` anpassen.
 - **Verträge zur Auftragsverarbeitung** mit Hoster, Datenbank-Anbieter, Mail-Anbieter und gegebenenfalls Backup-Ziel; bei Anbietern in den USA zusätzlich Standardvertragsklauseln bzw. Zertifizierung nach dem EU-US Data Privacy Framework.
 - **Sicherungskopie:** Nutzen Sie ein Google-Konto für die Kopie, gibt es bei privaten Konten keinen Vertrag zur Auftragsverarbeitung. Das ist nur mit der clientseitigen Verschlüsselung (so wie eingebaut) vertretbar; ein Google-Workspace-Konto mit AV-Vertrag ist sauberer.
+- **Startgeld-Abrechnung (nur wenn Sie sie nutzen):** `ZAHLUNGSDATEN_SCHLUESSEL` erzeugen (z. B. `openssl rand -base64 48`) und getrennt von den Sicherungen verwahren; `SICHERUNG_PASSWORT` setzen, weil Rechnungs-PDFs die Empfänger-IBAN im Klartext enthalten und in der Sicherung stehen; Rechnungen 8 Jahre aufbewahren und danach von Hand löschen; in der AV-Vereinbarung die Abrechnung als Verarbeitung im Auftrag des Veranstalters nennen (Verarbeitungsverzeichnis B4).
 - **Datenschutzbeauftragter** (§ 38 BDSG): Pflicht, wenn ständig mindestens 20 Personen mit der automatisierten Verarbeitung personenbezogener Daten beschäftigt sind, sonst freiwillig. Bei Kindern als Betroffenen lohnt sich die Benennung trotzdem.
 - **Veranstalter-Pflichten:** Die Vereine als Verantwortliche müssen ihre Teilnehmenden informieren und für die öffentliche Teilnehmer-App eine Grundlage haben (Einwilligung der Erziehungsberechtigten, siehe Muster). Weisen Sie die Vereine darauf hin.
 - **Nutzungsbedingungen/AGB** für das Vertragsverhältnis mit den Vereinen (Leistung, Entgelt, Haftung, Kündigung, Verfügbarkeit): rechtlich individuell, daher hier **nur Hinweis**, ohne Mustertext. Lassen Sie sie anwaltlich erstellen, wenn Sie das Angebot gewerblich oder gegen Entgelt anbieten.
@@ -56,6 +58,7 @@ Die Datenschutzerklärung beschreibt Dinge, die vom Betrieb abhängen. Prüfen S
 | **Keine Selbstbedienung für Betroffenenrechte** (Auskunft, Löschung, Export einer Person) | Abwicklung per Prozess und Abfragen (`prozesse-betroffenenrechte-datenpanne.md`) |
 | **Keine automatische Löschung abgeschlossener Turniere** | Das Löschen macht der Veranstalter oder Super-Admin; eine Frist-Automatik ließe sich ergänzen |
 | **AV-Vertrag wird nicht in der Software angenommen** (kein Häkchen bei Registrierung eines Vereins) | Abschluss außerhalb (Mail/Unterschrift); eine Online-Annahme ließe sich ergänzen |
+| **Keine automatische Löschung von Rechnungen** (Startgeld-Abrechnung) nach 8 Jahren | Löschung von Hand; Rechnungs-PDFs enthalten die Empfänger-IBAN im Klartext, Sicherungen daher verschlüsseln |
 | **Keine Einwilligungsverwaltung** für Fotos/Videos (Videoarchiv gibt es nur im Hallen-Server) | Einwilligung durch den Veranstalter, außerhalb der Software |
 
 Stand der Unterlagen: Oktober 2026.

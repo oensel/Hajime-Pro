@@ -364,6 +364,18 @@
                     aktionen.append(aktivKnopf);
                 }
 
+                // Abrechnungsdaten für Startgeld-Rechnungen: nur in der Cloud, für Admins des Vereins (Super-Admin im Modus: alle)
+                const istAdminHier = v.freigegeben && v.rolle === 'admin';
+                if (!einzelbenutzer && (istAdminHier || (aktuellerNutzer && aktuellerNutzer.super_admin_aktiv))) {
+                    const abrechnungLink = el('a', {
+                        class: 'btn btn-outlined', text: 'Abrechnungsdaten',
+                        href: `/verein-abrechnung.html?vereinId=${encodeURIComponent(v.verein_id)}`,
+                        style: 'padding: 6px 12px; font-size: 11px; text-decoration: none;'
+                    });
+                    abrechnungLink.dataset.action = 'abrechnungsdaten';
+                    aktionen.append(abrechnungLink);
+                }
+
                 const verlassenKnopf = kleinerKnopf('Verlassen', 'btn-outlined', ' color: #ef4444; border-color: #ef4444;');
                 verlassenKnopf.dataset.action = 'verlassen';
                 verlassenKnopf.addEventListener('click', async () => {

@@ -1,3 +1,7 @@
+// Startgeld erfüllt (kostenlos, bezahlt oder Zahlweg gesichert): dieselbe Ableitung wie am Server.
+import { startgeldErfuellt } from '/js/shared/zahlweg.js';
+import { baueGiroCodePayload } from '/js/shared/girocode.js';
+
 document.addEventListener('DOMContentLoaded', async () => {
     const urlParams = new URLSearchParams(window.location.search);
     const turnierId = urlParams.get('turnierId') || urlParams.get('id');
@@ -190,7 +194,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const heuteTag = lokalerTag(new Date());
         const stichtag = turnierDatumText && turnierDatumText > heuteTag ? turnierDatumText : heuteTag;
         const lizenzGueltig = !!athlet.lizenz_ablauf && lokalerTag(athlet.lizenz_ablauf) >= stichtag;
-        const startgeldBezahlt = turnierKostenlos || !!athlet.startgeld_bezahlt;
+        const startgeldBezahlt = startgeldErfuellt({ startgeld: turnierStartgeldWert }, athlet);
         const gewichtEingetragen = athlet.gewicht && parseFloat(athlet.gewicht) > 0;
         const gewogen = !!athlet.gewogen;
         const judopassVorhanden = !!(athlet.judopass_id && String(athlet.judopass_id).trim() !== '');
@@ -211,7 +215,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const lizenzDatumRoh = athlet.lizenz_ablauf ? String(athlet.lizenz_ablauf).split('T')[0] : null;
         const lizenzBestaetigt = !!lizenzDatumRoh && lizenzDatumRoh !== '1970-01-01';
         // Verlangt das Turnier kein Startgeld, verhindert das Feld "bezahlt" den Status "bereit" nicht.
-        return !!athlet.gewogen && lizenzBestaetigt && (turnierKostenlos || !!athlet.startgeld_bezahlt);
+        return !!athlet.gewogen && lizenzBestaetigt && startgeldErfuellt({ startgeld: turnierStartgeldWert }, athlet);
     }
 
     // --- GRADUIERUNGEN (Gürtelfarben) ---
@@ -525,6 +529,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Override für die Startberechtigt-Ampel) und würde das Icon sonst dauerhaft auf
             // "bezahlt" einfrieren, ohne dass ein Klick eine sichtbare Änderung bewirkt.
             const startgeldBezahltRoh = !!athlet.startgeld_bezahlt;
+            // Das Icon zeigt den abgeleiteten Stand (auch ein über den Zahlweg gesicherter Kämpfer gilt als bezahlt),
+            // der Klick schreibt weiterhin nur das Handflag startgeld_bezahlt (siehe Toggle unten).
+            const startgeldUeberZahlweg = !startgeldBezahltRoh && !turnierKostenlos && !!athlet.startgeld_zahlweg_gesichert;
+            const startgeldIconAktiv = startgeldBezahltRoh || startgeldUeberZahlweg;
+            const startgeldIconTitel = startgeldBezahltRoh ? 'Als unbezahlt markieren'
+                : startgeldUeberZahlweg ? 'Zahlweg gesichert – Startgeld noch nicht eingegangen (Klick markiert von Hand als bezahlt)'
+                : 'Als bezahlt markieren';
 
             // Zurückgezogene Anmeldungen bleiben zur Nachvollziehbarkeit sichtbar, aber
             // ausgegraut und nicht mehr editierbar.
@@ -572,7 +583,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         <span class="material-icons action-icon icon-toggle ${lizenzBestaetigt ? 'active' : ''}" data-id="${athlet.id}" data-toggle="lizenz" title="${lizenzBestaetigt ? 'Lizenz-Bestätigung zurücknehmen' : 'Lizenz bestätigen'}">badge</span>
                     </td>
                     <td style="text-align: center;${turnierKostenlos ? ' display: none;' : ''}">
-                        <span class="material-icons action-icon icon-toggle ${startgeldBezahltRoh ? 'active' : ''}" data-id="${athlet.id}" data-toggle="bezahlt" title="${startgeldBezahltRoh ? 'Als unbezahlt markieren' : 'Als bezahlt markieren'}">payments</span>
+                        <span class="material-icons action-icon icon-toggle ${startgeldIconAktiv ? 'active' : ''}" data-id="${athlet.id}" data-toggle="bezahlt" title="${startgeldIconTitel}">payments</span>
                     </td>
                     <td>
                         <div class="action-buttons">
@@ -1153,6 +1164,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                     meldung += ` ${data.mannschaftenBetroffen} Mannschaft(en) angelegt/aktualisiert.`;
                 }
                 importStatus.textContent = meldung;
+                // Cloud: ein fremder Verein wählt nach dem Import (wie nach der Einzelanmeldung) seinen Zahlweg.
+                if (data.imported > 0 && window.ZahlwegDialog) {
+                    await window.ZahlwegDialog.frageNach(turnierId);
+                }
 
                 if (window.zeigeNotification) {
                     window.zeigeNotification(meldung, data.skipped && data.skipped.length > 0 ? 'error' : 'success');
@@ -1402,10 +1417,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         }).length;
         const lizenzProzent = basisAnzahl > 0 ? Math.round((lizenzAnzahl / basisAnzahl) * 100) : 0;
 
-        // Bewusst der rohe Wert (nicht die turnierKostenlos-Maskierung aus berechneStatus): die
-        // Kachel soll den tatsächlichen Bezahlt-Status abbilden, den auch das Icon je Teilnehmer
-        // zeigt/umschaltet — sonst stünde hier "100%", obwohl einzelne Icons "unbezahlt" zeigen.
-        const bezahltAnzahl = basis.filter(a => !!a.startgeld_bezahlt).length;
+        // Bei kostenlosen Turnieren bewusst nicht maskiert (nur der rohe Haken zählt, wie beim Icon);
+        // sonst zählt auch ein durch den Zahlweg des Vereins gesicherter Kämpfer als bezahlt.
+        const bezahltAnzahl = basis.filter(a => !!a.startgeld_bezahlt || (!turnierKostenlos && !!a.startgeld_zahlweg_gesichert)).length;
         const unbezahltAnzahl = basisAnzahl - bezahltAnzahl;
         const bezahltProzent = basisAnzahl > 0 ? Math.round((bezahltAnzahl / basisAnzahl) * 100) : 0;
 
@@ -1652,25 +1666,36 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     pruefeUndZeigeStartgeldButton();
 
-    // --- STARTGELD BEZAHLEN: GiroCode/EPC-QR mit vorausgefülltem Betrag für den eigenen Verein ---
-    // Format nach EPC069-12 ("Girocode"), von SEPA-fähigen Banking-Apps direkt scanbar.
-    function baueGiroCodePayload({ name, iban, betrag, verwendungszweck }) {
-        const zeilen = [
-            'BCD',
-            '002',
-            '1',
-            'SCT',
-            '', // BIC — seit 2016 für IBANs aus dem EWR nicht mehr erforderlich
-            (name || '').slice(0, 70),
-            (iban || '').replace(/\s+/g, ''),
-            `EUR${betrag.toFixed(2)}`,
-            '', // Purpose
-            '', // Strukturierte Zahlungsreferenz
-            (verwendungszweck || '').slice(0, 140)
-        ];
-        return zeilen.join('\n');
+    // --- ZAHLWEG-ZEILE ("Zahlweg: Überweisung – ändern"), nur wenn die API einen Zahlweg verlangt (Cloud, Fremdverein) ---
+    async function aktualisiereZahlwegZeile() {
+        const zeile = document.getElementById('zahlwegZeile');
+        if (!zeile || !window.ZahlwegDialog) return;
+        const status = await window.ZahlwegDialog.ladeStatus(turnierId);
+        if (!status || !status.erforderlich) {
+            zeile.style.display = 'none';
+            return;
+        }
+        const name = status.zahlweg ? (window.ZahlwegDialog.NAMEN[status.zahlweg.zahlweg] || status.zahlweg.zahlweg) : 'noch nicht gewählt';
+        document.getElementById('zahlwegText').textContent = name;
+        const link = document.getElementById('zahlwegAendernLink');
+        link.textContent = status.zahlweg ? 'ändern' : 'wählen';
+        link.style.display = status.aenderbar ? '' : 'none';
+        zeile.style.display = '';
     }
+    const zahlwegAendernLink = document.getElementById('zahlwegAendernLink');
+    if (zahlwegAendernLink) {
+        zahlwegAendernLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (window.ZahlwegDialog) window.ZahlwegDialog.aendere(turnierId);
+        });
+    }
+    document.addEventListener('zahlweg:geaendert', () => {
+        aktualisiereZahlwegZeile();
+        if (typeof window.ladeTeilnehmerListe === 'function') window.ladeTeilnehmerListe();
+    });
+    aktualisiereZahlwegZeile();
 
+    // --- STARTGELD BEZAHLEN: GiroCode/EPC-QR mit vorausgefülltem Betrag für den eigenen Verein (baueGiroCodePayload aus /js/shared/girocode.js) ---
     const startgeldBezahlenBtn = document.getElementById('startgeldBezahlenBtn');
     const startgeldModal = document.getElementById('startgeldModal');
     if (startgeldBezahlenBtn && startgeldModal) {
@@ -1686,6 +1711,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                     return;
                 }
 
+                // Bewusst nur das Handflag: "über Zahlweg gesichert" heißt, dass der Verein später abrechnet bzw. bar zahlt,
+                // das Geld ist noch nicht da. Der Girocode bleibt damit der Weg, jetzt sofort zu überweisen.
                 const unbezahlt = athletenDaten.filter(a => a.verein === eigenerVerein && !a.startgeld_bezahlt);
                 if (unbezahlt.length === 0) {
                     if (window.zeigeNotification) window.zeigeNotification('Alle Teilnehmer Ihres Vereins sind bereits als bezahlt markiert.', 'success');
@@ -1693,19 +1720,46 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
 
                 const betrag = turnierStartgeldWert * unbezahlt.length;
-                const verwendungszweckErsetzt = (turnierVerwendungszweck || '')
+                // Leere Turnierfelder (Cloud): das Konto aus den Abrechnungsdaten des Ausrichters, wenn der eigene Zahlweg Überweisung ist.
+                let zielIban = turnierIban;
+                let zielKontoinhaber = turnierKontoinhaber;
+                let zielVerwendungszweck = turnierVerwendungszweck;
+                if (!zielIban || !zielKontoinhaber) {
+                    try {
+                        const zResp = await fetch(`/api/zahlweg/${encodeURIComponent(turnierId)}`);
+                        const z = zResp.ok ? await zResp.json() : null;
+                        if (z && z.empfaenger) {
+                            zielIban = z.empfaenger.iban;
+                            zielKontoinhaber = z.empfaenger.kontoinhaber;
+                            if (!zielVerwendungszweck) zielVerwendungszweck = z.empfaenger.verwendungszweck || 'Startgeld <Turniername> <Verein>';
+                        }
+                    } catch { /* ohne Konto bleibt der Code leer */ }
+                }
+                if (!zielIban || !zielKontoinhaber) {
+                    if (window.zeigeNotification) window.zeigeNotification('Für dieses Turnier ist kein Empfängerkonto verfügbar, daher gibt es keinen Girocode. Bitte beim Ausrichter nachfragen.', 'error');
+                    return;
+                }
+                const verwendungszweckErsetzt = (zielVerwendungszweck || '')
                     .replace(/<Turniername>/g, turnierBezeichnung)
                     .replace(/<Verein>/g, eigenerVerein);
 
-                document.getElementById('startgeldIbanFeld').value = turnierIban;
-                document.getElementById('startgeldKontoinhaberFeld').value = turnierKontoinhaber;
+                document.getElementById('startgeldIbanFeld').value = zielIban;
+                document.getElementById('startgeldKontoinhaberFeld').value = zielKontoinhaber;
                 document.getElementById('startgeldVerwendungszweckFeld').value = verwendungszweckErsetzt;
                 document.getElementById('startgeldBetragAnzeige').textContent =
                     `Offener Betrag: ${betrag.toFixed(2).replace('.', ',')} € (${unbezahlt.length} Teilnehmer)`;
+                const gesichertAnzahl = unbezahlt.filter(a => !!a.startgeld_zahlweg_gesichert).length;
+                const gesichertHinweis = document.getElementById('startgeldGesichertHinweis');
+                if (gesichertHinweis) {
+                    gesichertHinweis.textContent = gesichertAnzahl > 0
+                        ? `Enthalten sind ${gesichertAnzahl} Teilnehmer mit gesichertem Zahlweg, weil das Startgeld noch nicht eingegangen ist.`
+                        : '';
+                    gesichertHinweis.style.display = gesichertAnzahl > 0 ? 'block' : 'none';
+                }
 
                 const payload = baueGiroCodePayload({
-                    name: turnierKontoinhaber,
-                    iban: turnierIban,
+                    name: zielKontoinhaber,
+                    iban: zielIban,
                     betrag,
                     verwendungszweck: verwendungszweckErsetzt
                 });
@@ -1730,5 +1784,106 @@ document.addEventListener('DOMContentLoaded', async () => {
         startgeldModal.addEventListener('click', (e) => {
             if (e.target === startgeldModal) schliesseStartgeldModal();
         });
+    }
+
+    // --- KASSE (Ausrichter): Vereine mit Zahlweg Bar oder ohne Zahlweg, "Alles bar kassiert" ---
+    // Der Knopf erscheint nur bei Turnieren mit Startgeld und nur, wenn der Server die Kasse freigibt (sonst 403/409: still ausblenden).
+    const kasseBtn = document.getElementById('kasseBtn');
+    const kasseModal = document.getElementById('kasseModal');
+    if (kasseBtn && kasseModal) {
+        const ladeKasseEintraege = async () => {
+            const resp = await fetch(`/api/zahlweg/${encodeURIComponent(turnierId)}/kasse`);
+            if (!resp.ok) return null;
+            return (await resp.json()).eintraege || [];
+        };
+
+        const zeichneKasse = (eintraege) => {
+            const body = document.getElementById('kasseTabelleBody');
+            body.replaceChildren();
+            document.getElementById('kasseLeer').style.display = eintraege.length ? 'none' : 'block';
+            document.getElementById('kasseTabelle').style.display = eintraege.length ? '' : 'none';
+            for (const e of eintraege) {
+                const tr = document.createElement('tr');
+                const zelle = (text, rechts) => {
+                    const td = document.createElement('td');
+                    td.textContent = text;
+                    td.style.padding = '6px 8px';
+                    if (rechts) td.style.textAlign = 'right';
+                    tr.appendChild(td);
+                    return td;
+                };
+                zelle(e.vereinName);
+                zelle(e.zahlweg === 'ohneZahlweg' ? 'ohne Zahlweg' : 'Bar');
+                zelle(String(e.anzahlKaempfer), true);
+                zelle(String(e.anzahlOffen), true);
+                const aktion = document.createElement('td');
+                aktion.style.textAlign = 'right';
+                if (e.zahlweg === 'ohneZahlweg' && window.ZahlwegDialog && window.ZahlwegDialog.erfasseVorOrt) {
+                    const datenKnopf = document.createElement('button');
+                    datenKnopf.type = 'button';
+                    datenKnopf.className = 'btn btn-outlined';
+                    datenKnopf.style.marginRight = '8px';
+                    datenKnopf.textContent = 'Rechnungsdaten erfassen';
+                    datenKnopf.addEventListener('click', async () => {
+                        const ergebnis = await window.ZahlwegDialog.erfasseVorOrt(turnierId, e.vereinName);
+                        if (ergebnis !== 'gespeichert') return;
+                        const neu = await ladeKasseEintraege();
+                        if (neu) zeichneKasse(neu);
+                    });
+                    aktion.appendChild(datenKnopf);
+                }
+                const knopf = document.createElement('button');
+                knopf.type = 'button';
+                knopf.className = 'btn btn-raised';
+                knopf.textContent = 'Alles bar kassiert';
+                knopf.disabled = e.anzahlOffen === 0;
+                knopf.addEventListener('click', async () => {
+                    knopf.disabled = true;
+                    try {
+                        const resp = await fetch(`/api/zahlweg/${encodeURIComponent(turnierId)}/kasse/bar-kassiert`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ vereinName: e.vereinName })
+                        });
+                        const antwort = await resp.json().catch(() => ({}));
+                        if (!resp.ok) throw new Error(antwort.error || 'Kassieren fehlgeschlagen.');
+                    } catch (err) {
+                        if (window.zeigeNotification) window.zeigeNotification('Fehler: ' + err.message, 'error');
+                    }
+                    const neu = await ladeKasseEintraege();
+                    if (neu) zeichneKasse(neu);
+                    ladeTeilnehmer();
+                });
+                aktion.appendChild(knopf);
+                tr.appendChild(aktion);
+                body.appendChild(tr);
+            }
+        };
+
+        const schliesseKasse = () => { kasseModal.style.display = 'none'; };
+        kasseBtn.addEventListener('click', async () => {
+            const eintraege = await ladeKasseEintraege();
+            if (!eintraege) return;
+            zeichneKasse(eintraege);
+            kasseModal.style.display = 'flex';
+        });
+        document.getElementById('kasseModalClose').addEventListener('click', schliesseKasse);
+        kasseModal.addEventListener('click', (e) => { if (e.target === kasseModal) schliesseKasse(); });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && kasseModal.style.display !== 'none') schliesseKasse();
+        });
+
+        (async () => {
+            try {
+                const turnierResp = await fetch(`/api/turniere/${encodeURIComponent(turnierId)}`);
+                if (!turnierResp.ok) return;
+                const turnier = await turnierResp.json();
+                if (!(parseFloat(turnier.startgeld) > 0)) return;
+                if ((await ladeKasseEintraege()) === null) return;
+                kasseBtn.style.display = 'inline-flex';
+            } catch (err) {
+                console.error('Kasse konnte nicht geprüft werden:', err);
+            }
+        })();
     }
 });

@@ -4,7 +4,7 @@
 import fs from 'node:fs/promises';
 import { PDFDocument, rgb } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
-import qrcode from 'qrcode-generator';
+import { zeichneQr } from './pdfQr.js';
 import { FachFehler } from '../utils/fachFehler.js';
 import { formatiereMinuten } from '../shared/helferZeit.js';
 import { datumAlsText } from './helferPlan.js';
@@ -83,22 +83,6 @@ const zeichenSaetze = new WeakMap();
 function zeichenSatzVon(font) {
     if (!zeichenSaetze.has(font)) zeichenSaetze.set(font, new Set(font.getCharacterSet()));
     return zeichenSaetze.get(font);
-}
-
-function zeichneQr(seite, inhalt, x, y, groesse) {
-    const qr = qrcode(0, 'M');
-    qr.addData(inhalt);
-    qr.make();
-    const n = qr.getModuleCount();
-    const m = groesse / n;
-    seite.drawRectangle({ x, y, width: groesse, height: groesse, color: rgb(1, 1, 1) });
-    for (let z = 0; z < n; z++) {
-        for (let s = 0; s < n; s++) {
-            if (qr.isDark(z, s)) {
-                seite.drawRectangle({ x: x + s * m, y: y + groesse - (z + 1) * m, width: m + 0.02, height: m + 0.02, color: rgb(0, 0, 0) });
-            }
-        }
-    }
 }
 
 /**

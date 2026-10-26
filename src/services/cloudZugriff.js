@@ -1,4 +1,4 @@
-// HTTP-Zugriff eines Hallen-Servers auf die Cloud (Turniere des eigenen Vereins holen).
+// HTTP-Zugriff eines Hallen-Servers auf die Cloud (Turniere des eigenen Vereins holen und zurückspielen).
 // Die Adresse kommt ausschließlich aus CLOUD_URL, nie vom Client. Zugangsdaten und Token werden
 // nur durchgereicht, nicht gespeichert und nicht geloggt.
 import { FachFehler } from '../utils/fachFehler.js';
@@ -26,8 +26,8 @@ export function erzeugeCloudZugriff({ fetchFn = globalThis.fetch, env = process.
         return url;
     }
 
-    async function anfrage(pfad, { methode = 'GET', token = null, body = null, timeoutMs = ANFRAGE_TIMEOUT_MS } = {}) {
-        const headers = { Accept: 'application/json' };
+    async function anfrage(pfad, { methode = 'GET', token = null, body = null, timeoutMs = ANFRAGE_TIMEOUT_MS, zusatzHeader = {} } = {}) {
+        const headers = { Accept: 'application/json', ...zusatzHeader };
         if (body !== null) headers['Content-Type'] = 'application/json';
         if (token) headers.Authorization = `Bearer ${token}`;
         let antwort;
@@ -50,8 +50,9 @@ export function erzeugeCloudZugriff({ fetchFn = globalThis.fetch, env = process.
         try { daten = await antwort.json(); } catch { /* keine JSON-Antwort */ }
         if (!antwort.ok) {
             const meldung = (daten && (daten.error || daten.message)) || fallbackMeldung;
-            // 401 der Cloud-Anmeldung bleibt 401, alles andere fachlich durchreichen
-            throw new FachFehler(antwort.status >= 400 && antwort.status < 600 ? antwort.status : 502, meldung);
+            // 401 der Cloud-Anmeldung bleibt 401, alles andere fachlich durchreichen (samt Fehlercode, z. B. 'zwei_faktor')
+            const code = daten && typeof daten.code === 'string' ? daten.code : null;
+            throw new FachFehler(antwort.status >= 400 && antwort.status < 600 ? antwort.status : 502, meldung, { code });
         }
         return daten;
     }
@@ -69,9 +70,28 @@ export function erzeugeCloudZugriff({ fetchFn = globalThis.fetch, env = process.
             }
         },
 
-        async meldeAn(email, password) {
+        // Super-Admins melden sich in der Cloud mit zweitem Faktor an: die Cloud antwortet dann mit einem Zwischen-Token,
+        // das zusammen mit dem Code der Authenticator-App (oder einem Backup-Code) die Sitzung liefert.
+        async meldeAn(email, password, { code = null } = {}) {
             const antwort = await anfrage('/api/auth/login', { methode: 'POST', body: { email, password } });
-            const daten = await lesJson(antwort, 'Anmeldung an der Cloud fehlgeschlagen.');
+            let daten = await lesJson(antwort, 'Anmeldung an der Cloud fehlgeschlagen.');
+            if (daten && daten.zweiFaktor === 'einrichtung') {
+                throw new FachFehler(409, 'Bitte die Zwei-Faktor-Anmeldung zuerst in der Cloud einrichten.');
+            }
+            if (daten && daten.zweiFaktor === 'pruefen') {
+                const eingabe = code == null ? '' : String(code).trim();
+                if (!eingabe) throw new FachFehler(422, 'Bitte den Code der Authenticator-App eingeben.', { code: 'zwei_faktor' });
+                const pruefung = await anfrage('/api/auth/2fa/pruefen', {
+                    methode: 'POST', body: { zwischenToken: daten.zwischenToken, code: eingabe }
+                });
+                try {
+                    daten = await lesJson(pruefung, 'Der Code wurde von der Cloud nicht angenommen.');
+                } catch (e) {
+                    // abgelehnter Code: die Oberfläche lässt das Code-Feld stehen
+                    if (e instanceof FachFehler) throw new FachFehler(e.statusCode, e.message, { code: 'zwei_faktor' });
+                    throw e;
+                }
+            }
             if (!daten || !daten.token) throw new FachFehler(502, 'Unerwartete Antwort der Cloud bei der Anmeldung.');
             return { token: daten.token, user: daten.user || null };
         },
@@ -100,6 +120,22 @@ export function erzeugeCloudZugriff({ fetchFn = globalThis.fetch, env = process.
                 throw new FachFehler(502, 'Unerwartete Antwort der Cloud beim Export.');
             }
             return daten;
+        },
+
+        // Turnier nach dem Wettkampftag in die Cloud zurückspielen: dieselbe Datei wie beim Upload „Ergebnisse hochladen“.
+        // Der Code (X-2FA-Code) ist nur für Super-Admins nötig, deren Anmeldung länger als 10 Minuten zurückliegt.
+        async spieleZurueck(token, cloudTurnierId, daten, { code = null } = {}) {
+            const contentBase64 = Buffer.from(JSON.stringify(daten), 'utf8').toString('base64');
+            const eingabe = code == null ? '' : String(code).trim();
+            const antwort = await anfrage(`/api/turniere/${encodeURIComponent(cloudTurnierId)}/import-ergebnisse`, {
+                methode: 'POST', token, body: { contentBase64 }, timeoutMs: EXPORT_TIMEOUT_MS,
+                zusatzHeader: eingabe ? { 'X-2FA-Code': eingabe } : {}
+            });
+            const ergebnis = await lesJson(antwort, 'Das Turnier konnte nicht in die Cloud zurückgespielt werden.');
+            if (!ergebnis || typeof ergebnis !== 'object') {
+                throw new FachFehler(502, 'Unerwartete Antwort der Cloud beim Zurückspielen.');
+            }
+            return ergebnis;
         }
     };
 }

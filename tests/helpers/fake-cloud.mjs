@@ -1,5 +1,6 @@
 // Minimal-Attrappe der Cloud für die E2E-Suite (Turnier aus der Cloud holen): Erreichbarkeit, Login,
-// Turnierliste und Export (Turnier 13 zusätzlich mit Helferplan, Stand per /test/helferplan-stand). Zugangsdaten: FAKE_CLOUD_EMAIL / FAKE_CLOUD_PASSWORT. Port: FAKE_CLOUD_PORT.
+// Turnierliste und Export (Turnier 13 zusätzlich mit Helferplan, Stand per /test/helferplan-stand), Login mit Zwei-Faktor
+// (FAKE_CLOUD_EMAIL_2FA) und Zurückspielen (import-ergebnisse, mitgeschrieben unter /test/rueckspiel). Zugangsdaten: FAKE_CLOUD_EMAIL / FAKE_CLOUD_PASSWORT. Port: FAKE_CLOUD_PORT.
 import http from 'node:http';
 import zlib from 'node:zlib';
 
@@ -9,6 +10,10 @@ const PASSWORT = process.env.FAKE_CLOUD_PASSWORT || 'cloud-geheim';
 const TOKEN = 'fake-cloud-token';
 // Ingest-Token, das die Attrappe beim Export mit ?liveToken=1 mitgibt und am Ingest akzeptiert.
 const LIVE_TOKEN = 'hjl_fake-live-token';
+// Konto mit Zwei-Faktor-Anmeldung (Super-Admin): Login liefert ein Zwischen-Token, /api/auth/2fa/pruefen nimmt ZWEI_FAKTOR_CODE an.
+const EMAIL_2FA = process.env.FAKE_CLOUD_EMAIL_2FA || 'super@test.de';
+const ZWISCHEN_TOKEN = 'fake-zwischen-token';
+const ZWEI_FAKTOR_CODE = process.env.FAKE_CLOUD_2FA_CODE || '123456';
 
 const turniere = [
     {
@@ -86,6 +91,9 @@ function exportFuer(t) {
 // (ok | fehler = 500), 'erreichbar' false lässt die Erreichbarkeitsprüfung scheitern. Empfangene Pakete sind abrufbar.
 const live = { ingest: 'ok', erreichbar: true, pakete: [] };
 
+// Zurückgespielte Turniere (POST /api/turniere/:id/import-ergebnisse), abrufbar über GET /test/rueckspiel.
+let rueckspiele = [];
+
 function senden(res, status, daten) {
     res.writeHead(status, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(daten));
@@ -129,9 +137,21 @@ http.createServer((req, res) => {
             helferplanStand = eingabe.stand;
             return senden(res, 200, { success: true, stand: helferplanStand });
         }
+        if (url.pathname === '/test/rueckspiel' && req.method === 'GET') return senden(res, 200, { rueckspiele });
+        if (url.pathname === '/test/rueckspiel' && req.method === 'DELETE') { rueckspiele = []; return senden(res, 200, { success: true }); }
+        if (url.pathname === '/api/auth/2fa/pruefen' && req.method === 'POST') {
+            let eingabe = {};
+            try { eingabe = JSON.parse(body); } catch { /* leer */ }
+            if (eingabe.zwischenToken !== ZWISCHEN_TOKEN) return senden(res, 401, { success: false, error: 'Anmeldung abgelaufen.' });
+            if (eingabe.code !== ZWEI_FAKTOR_CODE) return senden(res, 401, { success: false, error: 'Der Code ist ungültig.' });
+            return senden(res, 200, { success: true, token: TOKEN, user: { id: 2, email: EMAIL_2FA, verein_id: 1, verein_freigegeben: true } });
+        }
         if (url.pathname === '/api/auth/login' && req.method === 'POST') {
             let eingabe = {};
             try { eingabe = JSON.parse(body); } catch { /* leer */ }
+            if (eingabe.email === EMAIL_2FA && eingabe.password === PASSWORT) {
+                return senden(res, 200, { success: true, zweiFaktor: 'pruefen', zwischenToken: ZWISCHEN_TOKEN });
+            }
             if (eingabe.email === EMAIL && eingabe.password === PASSWORT) {
                 return senden(res, 200, { success: true, token: TOKEN, user: { id: 1, email: EMAIL, verein_id: 1, verein_freigegeben: true } });
             }
@@ -141,6 +161,21 @@ http.createServer((req, res) => {
             return senden(res, 401, { success: false, error: 'Nicht angemeldet.' });
         }
         if (url.pathname === '/api/turniere') return senden(res, 200, turniere);
+        const rueck = url.pathname.match(/^\/api\/turniere\/(\d+)\/import-ergebnisse$/);
+        if (rueck && req.method === 'POST') {
+            let daten = null;
+            try { daten = JSON.parse(Buffer.from(JSON.parse(body).contentBase64, 'base64').toString('utf8')); } catch { /* ungültig */ }
+            if (!daten || !daten.turnier) return senden(res, 400, { success: false, error: 'Datei konnte nicht gelesen werden.' });
+            rueckspiele.push({ turnierId: Number(rueck[1]), zweiFaktorCode: req.headers['x-2fa-code'] || null, daten });
+            const laenge = (liste) => (Array.isArray(liste) ? liste.length : 0);
+            return senden(res, 200, {
+                success: true,
+                turnierId: Number(rueck[1]),
+                imported: { kampfflaechen: laenge(daten.kampfflaechen), pools: laenge(daten.pools), teilnehmer: laenge(daten.teilnehmer), kaempfe: laenge(daten.kaempfe) },
+                neueVereine: 0,
+                barzahlungen: laenge(daten.barzahlungen)
+            });
+        }
         const m = url.pathname.match(/^\/api\/turniere\/(\d+)\/export$/);
         if (m) {
             const t = [...turniere, HELFER_TURNIER].find(x => x.id === Number(m[1]));

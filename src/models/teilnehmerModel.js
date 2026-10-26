@@ -14,6 +14,7 @@
  * @property {string} altersklasse
  * @property {string} gewichtsklasse
  * @property {boolean} startgeldBezahlt
+ * @property {boolean} startgeldZahlwegGesichert
  * @property {string|null} graduierung
  */
 
@@ -34,6 +35,7 @@ export function mapTeilnehmer(row) {
         altersklasse: row.altersklasse,
         gewichtsklasse: row.gewichtsklasse,
         startgeldBezahlt: !!row.startgeld_bezahlt,
+        startgeldZahlwegGesichert: !!row.startgeld_zahlweg_gesichert,
         graduierung: row.graduierung
     };
 }
