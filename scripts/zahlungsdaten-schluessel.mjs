@@ -41,7 +41,10 @@ async function hauptprogramm() {
             const r = await schluesseleUm(knex, process.env);
             console.log(`Umgeschlüsselt: ${r.vereinsKonten} Konten von Ausrichtern, ${r.mandate} Mandate.`);
         }
-        zeigeBericht(await pruefeSchluessel(knex, process.env));
+        const bericht = await pruefeSchluessel(knex, process.env);
+        zeigeBericht(bericht);
+        // Exit-Code 2: es bleiben Einträge, die mit den gesetzten Schlüsseln nicht lesbar sind (für Skripte/Betrieb).
+        if (bericht.nichtEntschluesselbar > 0) process.exitCode = 2;
     } catch (fehler) {
         console.error(fehler.message);
         process.exitCode = 1;

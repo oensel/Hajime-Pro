@@ -77,3 +77,8 @@ test('Schlüsselwechsel: _ALT braucht dieselbe Mindestlänge, schluesselKennung 
     assert.notEqual(k.aktuell, k.alt);
     assert.equal(schluesselKennung({ ZAHLUNGSDATEN_SCHLUESSEL: NEU }).alt, null);
 });
+
+test('Schlüsselwechsel: ein defekter _ALT blockiert nicht das Lesen von Daten unter dem aktuellen Schlüssel', () => {
+    const aktuell = verschluesseleFeld('geheim', { ZAHLUNGSDATEN_SCHLUESSEL: NEU });
+    assert.equal(entschluesseleFeld(aktuell, { ZAHLUNGSDATEN_SCHLUESSEL: NEU, ZAHLUNGSDATEN_SCHLUESSEL_ALT: 'kurz' }), 'geheim');
+});
