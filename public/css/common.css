@@ -632,17 +632,6 @@ body {
     color: var(--primary);
 }
 
-.toolbar-btn-warnung {
-    background: #f59e0b;
-    border-color: #f59e0b;
-    color: #1f1300;
-    font-weight: 700;
-}
-.toolbar-btn-warnung:hover:not(:disabled) {
-    background: #d97706;
-    border-color: #d97706;
-}
-
 .toolbar-btn-danger {
     border-color: rgba(198, 40, 40, 0.4);
     color: #c62828;
