@@ -49,10 +49,31 @@ test('Quittung bei Überweisung: bereits bezahlt am, keine IBAN, kein Girocode',
     assert.equal(braucheGirocode(d), false);
     assert.equal(baueRechnungsZeilen(d).kopf[baueRechnungsZeilen(d).titelIndex], 'Quittung Nr. JCK-00001');
 });
-test('Lastschrift unverändert: keine Anrechnungszeile', () => {
-    const t = alles(baueRechnungsZeilen(basis({ zahlweg: 'lastschrift', zahlung: null, barErhaltenCent: 0 })));
+const LASTSCHRIFT = { mandatsreferenz: 'JCKM12V7', mandatDatum: '2026-10-01', glaeubigerId: 'DE98ZZZ09999999999', ibanMaske: 'DE02 **** **** **** **20 51', einzugAm: '2026-11-09' };
+test('Lastschrift: Vorabankündigung mit Betrag, Einzugsdatum, Maske, Mandatsreferenz und Gläubiger-ID; keine Anrechnung, kein Girocode', () => {
+    const d = basis({ zahlweg: 'lastschrift', zahlung: null, zahlungszielDatum: null, barErhaltenCent: 0, lastschrift: LASTSCHRIFT });
+    const z = baueRechnungsZeilen(d);
+    const t = alles(z);
+    assert.ok(z.zahlung.includes('Der Betrag von 24,00 € wird per SEPA-Lastschrift am 09.11.2026 von Ihrem Konto DE02 **** **** **** **20 51 eingezogen. Mandatsreferenz JCKM12V7, Gläubiger-ID DE98ZZZ09999999999.'), z.zahlung.join('|'));
     assert.ok(!t.includes('bereits bezahlt'));
-    assert.ok(t.includes('per Lastschrift eingezogen'));
+    assert.ok(!t.includes('überweisen'));
+    assert.ok(!t.includes('zahlbar bis'));
+    assert.ok(!t.includes('DE89'));
+    assert.ok(!t.includes('keine Bankverbindung'));
+    assert.equal(braucheGirocode(d), false);
+    // Selbst mit Ausrichter-Bankdaten bleibt es bei der Lastschrift (kein Überweisungsblock, kein Girocode)
+    const mitBank = basis({ zahlweg: 'lastschrift', lastschrift: LASTSCHRIFT });
+    assert.ok(!alles(baueRechnungsZeilen(mitBank)).includes('DE89'));
+    assert.equal(braucheGirocode(mitBank), false);
+});
+test('Lastschrift ohne vollständige Angaben wirft statt einen Satz ohne Datum zu drucken', () => {
+    for (const lastschrift of [undefined, null, { ...LASTSCHRIFT, einzugAm: null }, { ...LASTSCHRIFT, ibanMaske: '' }, { ...LASTSCHRIFT, glaeubigerId: undefined }, { ...LASTSCHRIFT, mandatsreferenz: null }]) {
+        assert.throws(() => baueRechnungsZeilen(basis({ zahlweg: 'lastschrift', zahlung: null, lastschrift })), /Lastschriftangaben/);
+    }
+});
+test('Lastschrift-PDF wird erzeugt', async () => {
+    const bytes = await erzeugeRechnungPdf(basis({ zahlweg: 'lastschrift', zahlung: null, zahlungszielDatum: null, lastschrift: LASTSCHRIFT }));
+    assert.equal((await PDFDocument.load(bytes)).getTitle(), 'Rechnung JCK-00001');
 });
 test('PDF mit 120 Kämpfern hat mehrere Seiten und Titel', async () => {
     const bytes = await erzeugeRechnungPdf(basis({ kaempfer: Array.from({ length: 120 }, (_, i) => `Kämpfer ${i}`), anzahl: 120, betragCent: 96000 }));
@@ -95,7 +116,7 @@ test('braucheGirocode: Entscheidungstabelle', () => {
     assert.equal(braucheGirocode(basis({ zahlweg: 'bar', barErhaltenCent: 800 })), true);
 });
 test('Lastschrift-Satz, barDatum, fehlende Bankdaten', () => {
-    assert.ok(alles(baueRechnungsZeilen(basis({ zahlweg: 'lastschrift', zahlung: null }))).includes('per Lastschrift eingezogen'));
+    assert.ok(alles(baueRechnungsZeilen(basis({ zahlweg: 'lastschrift', zahlung: null, lastschrift: LASTSCHRIFT }))).includes('per SEPA-Lastschrift am 09.11.2026'));
     const q = alles(baueRechnungsZeilen(basis({ art: 'quittung', zahlweg: 'bar', barErhaltenCent: 2400, barDatum: '2026-10-31', zahlung: null })));
     assert.ok(q.includes('bar erhalten am 31.10.2026'));
     assert.ok(alles(baueRechnungsZeilen(basis({ zahlung: null }))).includes('keine Bankverbindung'));

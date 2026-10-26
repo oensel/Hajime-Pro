@@ -32,9 +32,12 @@ const { getAbrechnungRoutes } = await import('../../src/routes/abrechnungRoutes.
 const { erzeugeProtokollMiddleware } = await import('../../src/services/aktionsProtokoll.js');
 const { setzeTestVersand } = await import('../../src/utils/mailer.js');
 const { speichereStammdaten } = await import('../../src/services/abrechnungStammdaten.js');
-const { ordneVereinZu } = await import('../../src/services/abrechnung.js');
+const { ordneVereinZu, ladeAbrechnung } = await import('../../src/services/abrechnung.js');
 const { erstelleRechnungen, rechnungsDatenAusZeile, baueRechnungsMail } = await import('../../src/services/rechnungslauf.js');
-const { giroCodePayloadFuer, erzeugeRechnungPdf } = await import('../../src/services/rechnungPdf.js');
+const { giroCodePayloadFuer, erzeugeRechnungPdf, baueRechnungsZeilen, braucheGirocode, datum } = await import('../../src/services/rechnungPdf.js');
+const { fruehestesFaelligkeitsdatum } = await import('../../src/shared/targetKalender.js');
+const { verschluesseleFeld } = await import('../../src/utils/feldVerschluesselung.js');
+const { maskiereIban } = await import('../../src/shared/iban.js');
 const { FachFehler } = await import('../../src/utils/fachFehler.js');
 const { heuteBerlin, addiereTage } = await import('../../src/shared/abrechnung.js');
 
@@ -503,9 +506,317 @@ test('Versand: jede Antwort ohne versendet:false gilt als versendet; Mail einer 
     assert.match(baueRechnungsMail({ ...ra, status: 'bezahlt' }).text, /bereits bezahlt/);
 });
 
+// ---------- Stufe 3: Lastschrift-Rechnungen (Task 7) ----------
+const IBAN_ZAHLER = 'DE02120300000000202051';
+const IBAN_ZAHLER_MUSTER = /DE02\s?1203\s?0000\s?0000\s?2020\s?51/;
+const GLAEUBIGER_ID = 'DE98ZZZ09999999999';
+let mandatNr = 0;
+/** Lastschrift-Zahlweg mit Mandat im angegebenen Status (null = ohne Mandat). */
+async function lastschriftVerein(turnierId, name, email, { status = 'gueltig', erteiltAm = '2030-03-10T10:00:00Z' } = {}) {
+    const [z] = await knex('turnier_zahlwege').insert({
+        turnier_id: turnierId, verein_name: name, zahlweg: 'lastschrift', rechnung_email: email, rechnung_ansprechperson: `Kasse ${name}`,
+        rechnung_anschrift: 'Weg 1\n12345 Ort', mandat_gueltig: status === 'gueltig'
+    }).returning('id');
+    if (status == null) return { zahlwegId: id(z), mandatId: null };
+    mandatNr += 1;
+    const [m] = await knex('lastschrift_mandate').insert({
+        turnier_id: turnierId, turnier_bezeichnung: 'Domstadt-Cup', zahlweg_id: id(z), verein_name: name,
+        mandatsreferenz: `TESTM${turnierId}V${mandatNr}`,
+        daten_verschluesselt: ['gueltig', 'unbestaetigt'].includes(status)
+            ? verschluesseleFeld(JSON.stringify({ iban: IBAN_ZAHLER, kontoinhaber: `${name} e.V.`, ip: '127.0.0.1' })) : null,
+        iban_maske: maskiereIban(IBAN_ZAHLER), mandatstext: 'Mandatstext', textversion: 'test', glaeubiger_id: GLAEUBIGER_ID,
+        glaeubiger_name: 'Ausrichter', status, erteilt_am: erteiltAm, erteilt_von: 'u-fremd', vertretung_bestaetigt: true
+    }).returning('id');
+    return { zahlwegId: id(z), mandatId: id(m) };
+}
+const ohnePdf = ({ pdf, ...rest }) => rest;
+
+test('Lastschrift mit gültigem Mandat: Rechnung als Vorabankündigung mit Einzugsdatum, ohne Klar-IBAN; andere Zahlwege rechnen weiter an', async () => {
+    const a = await neuerAusrichter('LS-');
+    await speichereStammdaten(knex, a.vereinId, { glaeubiger_id: GLAEUBIGER_ID }, a.admin);
+    const t = await a.neuesTurnier({ vorabankuendigung_tage: 5 });
+    const { mandatId } = await lastschriftVerein(t, 'JC Lasch', 'ls@jc-lasch.de');
+    await zw(t, 'JC Ueber', 'ueberweisung', 'ls@jc-ueber.de');
+    await zw(t, 'JC Bar', 'bar', 'ls@jc-bar.de');
+    await tn(t, 'JC Lasch', { gewogen: true, startgeld_bezahlt: true }); // bezahlt: bei Lastschrift KEINE Anrechnung (E9)
+    await tn(t, 'JC Lasch', { gewogen: true });
+    await tn(t, 'JC Ueber', { gewogen: true, startgeld_bezahlt: true });
+    await tn(t, 'JC Ueber', { gewogen: true });
+    await tn(t, 'JC Bar', { gewogen: true, startgeld_bezahlt: true });
+
+    const vorher = mails.length;
+    const r = await aufruf(a.admin, 'POST', `/api/abrechnung/${t}/rechnungen`);
+    assert.equal(r.status, 200, JSON.stringify(r.daten));
+    assert.deepEqual([r.daten.erstellt, r.daten.versendet, r.daten.fehler], [3, 3, []]);
+
+    const heute = heuteBerlin();
+    const ls = await knex('rechnungen').where({ turnier_id: t, verein_name: 'JC Lasch' }).first();
+    assert.deepEqual(
+        [ls.zahlweg, ls.art, ls.status, ls.anzahl, ls.betrag_cent, ls.bar_erhalten_cent, ls.zahlungsziel_datum],
+        ['lastschrift', 'rechnung', 'versandt', 2, 1600, 0, null]
+    );
+    assert.equal(ls.einzug_am, fruehestesFaelligkeitsdatum(heute, 5, heute));
+    assert.ok(ls.einzug_am > heute);
+    assert.equal(ls.mandat_id, mandatId);
+    assert.equal(ls.mandatsreferenz, (await knex('lastschrift_mandate').where({ id: mandatId }).first()).mandatsreferenz);
+    assert.equal(ls.mandat_datum, '2030-03-10');
+    assert.equal(ls.iban_maske_zahler, maskiereIban(IBAN_ZAHLER));
+    assert.equal(ls.aussteller.glaeubiger_id, GLAEUBIGER_ID);
+    assert.equal(ls.sepa_datei_id, null);
+    assert.doesNotMatch(JSON.stringify(ohnePdf(ls)), IBAN_ZAHLER_MUSTER);
+
+    // PDF-Daten: ohne Ausrichter-IBAN erzeugbar, Lastschrift-Text, kein Girocode, keine Klar-IBAN des Zahlers
+    const daten = rechnungsDatenAusZeile(ls);
+    assert.equal(daten.zahlung, null);
+    assert.equal(braucheGirocode(daten), false);
+    assert.deepEqual(daten.lastschrift, {
+        mandatsreferenz: ls.mandatsreferenz, mandatDatum: '2030-03-10', glaeubigerId: GLAEUBIGER_ID,
+        ibanMaske: maskiereIban(IBAN_ZAHLER), einzugAm: ls.einzug_am
+    });
+    const text = Object.values(baueRechnungsZeilen(daten)).flat().map((e) => (typeof e === 'string' ? e : `${e.text} ${e.betrag}`)).join('\n');
+    assert.ok(text.includes(`Der Betrag von 16,00 € wird per SEPA-Lastschrift am ${datum(ls.einzug_am)} von Ihrem Konto ${maskiereIban(IBAN_ZAHLER)} eingezogen. Mandatsreferenz ${ls.mandatsreferenz}, Gläubiger-ID ${GLAEUBIGER_ID}.`), text);
+    assert.doesNotMatch(text, IBAN_ZAHLER_MUSTER);
+    assert.doesNotMatch(text, IBAN_MUSTER);
+    assert.doesNotMatch(text, /bereits bezahlt|überweisen/);
+
+    const neu = mails.slice(vorher);
+    const mailLs = neu.find((m) => m.to === 'ls@jc-lasch.de');
+    assert.equal(mailLs.subject, `Rechnung ${ls.nummer} – Domstadt-Cup (Einzug per Lastschrift)`);
+    assert.ok(mailLs.text.includes(datum(ls.einzug_am)), mailLs.text);
+    assert.ok(mailLs.text.includes(maskiereIban(IBAN_ZAHLER)));
+    assert.match(mailLs.text, /nichts weiter tun/);
+    assert.doesNotMatch(mailLs.text, /überweisen/);
+    assert.doesNotMatch(mailLs.text, IBAN_ZAHLER_MUSTER);
+    assert.doesNotMatch(mailLs.text, IBAN_MUSTER);
+
+    // Regression E9: Überweisung rechnet bezahlte Kämpfer an, Bar komplett bezahlt -> Quittung
+    const ue = await knex('rechnungen').where({ turnier_id: t, verein_name: 'JC Ueber' }).first();
+    assert.deepEqual([ue.zahlweg, ue.art, ue.betrag_cent, ue.bar_erhalten_cent, ue.einzug_am, ue.mandat_id], ['ueberweisung', 'rechnung', 1600, 800, null, null]);
+    assert.equal(ue.zahlungsziel_datum, addiereTage(heute, 14));
+    assert.equal(neu.find((m) => m.to === 'ls@jc-ueber.de').subject, `Rechnung ${ue.nummer} – Domstadt-Cup`);
+    const bar = await knex('rechnungen').where({ turnier_id: t, verein_name: 'JC Bar' }).first();
+    assert.deepEqual([bar.art, bar.status, bar.bar_erhalten_cent], ['quittung', 'bezahlt', 800]);
+
+    // Übersicht: kein Hinweis beim gültigen Mandat; "eingezogen" erst mit Datei und erreichtem Einzugsdatum
+    let abr = await ladeAbrechnung(knex, await a.turnier(t));
+    let zeile = abr.vereine.find((v) => v.vereinName === 'JC Lasch');
+    assert.equal(zeile.hinweis, null);
+    assert.equal(zeile.rechnung.anzeigeStatus, 'versandt');
+    const [datei] = await knex('sepa_dateien').insert({ turnier_id: t, msg_id: `TEST-${t}`, erzeugt_von: a.admin, faelligkeit: ls.einzug_am, anzahl: 1, summe_cent: 1600 }).returning('id');
+    await knex('rechnungen').where({ id: ls.id }).update({ sepa_datei_id: id(datei) });
+    abr = await ladeAbrechnung(knex, await a.turnier(t));
+    assert.equal(abr.vereine.find((v) => v.vereinName === 'JC Lasch').rechnung.anzeigeStatus, 'versandt'); // Einzugsdatum noch nicht erreicht
+    await knex('rechnungen').where({ id: ls.id }).update({ einzug_am: heute });
+    abr = await ladeAbrechnung(knex, await a.turnier(t));
+    zeile = abr.vereine.find((v) => v.vereinName === 'JC Lasch');
+    assert.equal(zeile.rechnung.anzeigeStatus, 'eingezogen');
+    assert.equal(zeile.rechnung.einzug_am, heute);
+});
+
+test('Nur Lastschrift-Vereine: der Lauf braucht kein lesbares Konto des Ausrichters', async () => {
+    const a = await neuerAusrichter('LSK-');
+    await speichereStammdaten(knex, a.vereinId, { glaeubiger_id: GLAEUBIGER_ID }, a.admin);
+    const t = await a.neuesTurnier({ vorabankuendigung_tage: 3 });
+    await lastschriftVerein(t, 'JC Nur', 'nur@jc.de');
+    await tn(t, 'JC Nur', { gewogen: true });
+    process.env.ZAHLUNGSDATEN_SCHLUESSEL = 'ein-ganz-anderer-schluessel-mit-mindestens-32-zeichen';
+    let e;
+    try {
+        e = await erstelleRechnungen(knex, { turnier: await a.turnier(t), benutzerId: a.admin });
+    } finally {
+        process.env.ZAHLUNGSDATEN_SCHLUESSEL = SCHLUESSEL;
+    }
+    assert.deepEqual([e.erstellt, e.versendet, e.fehler], [1, 1, []]);
+    const rechnung = await knex('rechnungen').where({ turnier_id: t }).first();
+    assert.equal(rechnung.einzug_am, fruehestesFaelligkeitsdatum(heuteBerlin(), 3, heuteBerlin()));
+    assert.equal(rechnung.aussteller.iban_maske, null);
+});
+
+test('Lastschrift ohne gültiges Mandat: Übersicht nennt den Grund, der Lauf antwortet 409 ohne Nummer zu verbrauchen', async () => {
+    const a = await neuerAusrichter('LSM-');
+    await speichereStammdaten(knex, a.vereinId, { glaeubiger_id: GLAEUBIGER_ID }, a.admin);
+    const t = await a.neuesTurnier();
+    await lastschriftVerein(t, 'JC Offen', 'offen@jc.de', { status: 'unbestaetigt' });
+    await lastschriftVerein(t, 'JC Ohne', 'ohne@jc.de', { status: null });
+    await zw(t, 'JC A', 'ueberweisung', 'lsm@jc-a.de');
+    await tn(t, 'JC Offen', { gewogen: true });
+    await tn(t, 'JC Ohne', { gewogen: true });
+    await tn(t, 'JC A', { gewogen: true });
+
+    const abr = await ladeAbrechnung(knex, await a.turnier(t));
+    assert.deepEqual(abr.vereine.map((v) => v.vereinName), ['JC A', 'JC Offen', 'JC Ohne']);
+    const offen = abr.vereine.find((v) => v.vereinName === 'JC Offen');
+    const ohne = abr.vereine.find((v) => v.vereinName === 'JC Ohne');
+    assert.equal(offen.hinweis, 'Mandat nicht gültig');
+    assert.match(offen.hinweisGrund, /noch nicht von einem Admin des Vereins bestätigt/);
+    assert.equal(ohne.hinweis, 'Mandat nicht gültig');
+    assert.match(ohne.hinweisGrund, /kein Lastschriftmandat/);
+    assert.equal(abr.vereine.find((v) => v.vereinName === 'JC A').hinweis, null);
+
+    const r = await aufruf(a.admin, 'POST', `/api/abrechnung/${t}/rechnungen`);
+    assert.equal(r.status, 409);
+    assert.match(r.daten.error, /Verein JC Offen hat kein gültiges Mandat\./);
+    assert.match(r.daten.error, /Verein JC Ohne hat kein gültiges Mandat\./);
+    assert.equal((await knex('rechnungen').where({ turnier_id: t })).length, 0);
+    assert.equal(await a.zaehler(), 1);
+
+    // Umgestellt auf Bar (wie der Anmeldeschluss-Job): der Lauf geht durch
+    await knex('turnier_zahlwege').where({ turnier_id: t }).whereIn('verein_name', ['JC Offen', 'JC Ohne']).update({ zahlweg: 'bar' });
+    const e = await erstelleRechnungen(knex, { turnier: await a.turnier(t), benutzerId: a.admin });
+    assert.equal(e.erstellt, 3);
+});
+
+test('Mandat wird mitten im Lauf ungültig: 409 in der Transaktion, keine Nummer verbraucht, die schon erstellte Rechnung wird versendet', async () => {
+    const a = await neuerAusrichter('LST-');
+    await speichereStammdaten(knex, a.vereinId, { glaeubiger_id: GLAEUBIGER_ID }, a.admin);
+    const t = await a.neuesTurnier();
+    await lastschriftVerein(t, 'JC Eins', 'lst1@jc.de');
+    const { mandatId } = await lastschriftVerein(t, 'JC Zwei', 'lst2@jc.de');
+    await tn(t, 'JC Eins', { gewogen: true });
+    await tn(t, 'JC Zwei', { gewogen: true });
+    let aufrufe = 0;
+    await assert.rejects(
+        erstelleRechnungen(knex, {
+            turnier: await a.turnier(t), benutzerId: a.admin,
+            erzeugePdf: async (d) => {
+                aufrufe += 1;
+                if (aufrufe === 1) await knex('lastschrift_mandate').where({ id: mandatId }).update({ status: 'widerrufen', daten_verschluesselt: null });
+                return erzeugeRechnungPdf(d);
+            }
+        }),
+        (err) => {
+            assert.equal(err.statusCode, 409);
+            assert.match(err.message, /Verein JC Zwei hat kein gültiges Mandat\. Vorher wurden 1 Rechnung\(en\) erstellt, davon 1 versendet\./);
+            return true;
+        }
+    );
+    assert.deepEqual((await knex('rechnungen').where({ turnier_id: t })).map((x) => x.verein_name), ['JC Eins']);
+    assert.equal(await a.zaehler(), 2);
+});
+
+test('Abgesagtes Turnier: keine Abrechnung, Lastschrift-Zeilen ohne Mandat blockieren nichts', async () => {
+    const a = await neuerAusrichter('ABG-');
+    await speichereStammdaten(knex, a.vereinId, { glaeubiger_id: GLAEUBIGER_ID }, a.admin);
+    const t = await a.neuesTurnier({ status: 'abgesagt' });
+    await lastschriftVerein(t, 'JC Lasch', 'abg@jc.de', { status: 'widerrufen' });
+    await zw(t, 'JC A', 'ueberweisung', 'abg@jc-a.de');
+    await tn(t, 'JC Lasch', { gewogen: true });
+    await tn(t, 'JC A', { gewogen: true });
+    const abr = await ladeAbrechnung(knex, await a.turnier(t));
+    assert.equal(abr.bereit, false);
+    assert.match(abr.grund, /abgesagt/);
+    const r = await aufruf(a.admin, 'POST', `/api/abrechnung/${t}/rechnungen`);
+    assert.equal(r.status, 409);
+    assert.match(r.daten.error, /abgesagt/);
+    assert.doesNotMatch(r.daten.error, /Mandat/);
+    assert.equal(await a.zaehler(), 1);
+
+    // Andere Turniere desselben Ausrichters laufen normal
+    const t2 = await a.neuesTurnier({ bezeichnung: 'Nachhol-Cup' });
+    await zw(t2, 'JC A', 'ueberweisung', 'abg2@jc-a.de');
+    await tn(t2, 'JC A', { gewogen: true });
+    assert.equal((await erstelleRechnungen(knex, { turnier: await a.turnier(t2), benutzerId: a.admin })).erstellt, 1);
+});
+
+test('Gläubiger-ID geändert seit dem Mandat: Übersicht meldet es, Lauf 409 ohne Nummer; mitten im Lauf ebenso', async () => {
+    const a = await neuerAusrichter('GID-');
+    await speichereStammdaten(knex, a.vereinId, { glaeubiger_id: GLAEUBIGER_ID }, a.admin);
+    const t = await a.neuesTurnier();
+    await lastschriftVerein(t, 'JC Lasch', 'gid@jc.de');
+    await tn(t, 'JC Lasch', { gewogen: true });
+    // Wechsel an der Sperre in speichereStammdaten vorbei (direkt in der Datenbank)
+    await knex('vereins_abrechnung').where({ verein_id: a.vereinId }).update({ glaeubiger_id: 'DE09ZZZ00000000001' });
+    const abr = await ladeAbrechnung(knex, await a.turnier(t));
+    const zeile = abr.vereine.find((v) => v.vereinName === 'JC Lasch');
+    assert.deepEqual([zeile.hinweis, zeile.hinweisCode], ['Mandat nicht gültig', 'glaeubiger_id']);
+    assert.match(zeile.hinweisGrund, /Gläubiger-ID des Ausrichters hat sich seit dem Mandat geändert/);
+    const r = await aufruf(a.admin, 'POST', `/api/abrechnung/${t}/rechnungen`);
+    assert.equal(r.status, 409);
+    assert.equal(r.daten.error, 'Die Gläubiger-ID des Ausrichters hat sich seit dem Mandat von Verein JC Lasch geändert.');
+    assert.equal(await a.zaehler(), 1);
+    assert.equal((await knex('rechnungen').where({ turnier_id: t })).length, 0);
+
+    // Mitten im Lauf: das Mandat des zweiten Vereins nennt plötzlich eine andere ID -> 409 aus der Transaktion
+    await knex('vereins_abrechnung').where({ verein_id: a.vereinId }).update({ glaeubiger_id: GLAEUBIGER_ID });
+    const t2 = await a.neuesTurnier({ bezeichnung: 'GID-Cup 2' });
+    await lastschriftVerein(t2, 'JC Eins', 'gid1@jc.de');
+    const { mandatId } = await lastschriftVerein(t2, 'JC Zwei', 'gid2@jc.de');
+    await tn(t2, 'JC Eins', { gewogen: true });
+    await tn(t2, 'JC Zwei', { gewogen: true });
+    let aufrufe = 0;
+    await assert.rejects(
+        erstelleRechnungen(knex, {
+            turnier: await a.turnier(t2), benutzerId: a.admin,
+            erzeugePdf: async (d) => {
+                aufrufe += 1;
+                if (aufrufe === 1) await knex('lastschrift_mandate').where({ id: mandatId }).update({ glaeubiger_id: 'DE09ZZZ00000000001' });
+                return erzeugeRechnungPdf(d);
+            }
+        }),
+        (err) => {
+            assert.equal(err.statusCode, 409);
+            assert.match(err.message, /^Die Gläubiger-ID des Ausrichters hat sich seit dem Mandat von Verein JC Zwei geändert\. Vorher wurden 1 Rechnung/);
+            return true;
+        }
+    );
+    assert.deepEqual((await knex('rechnungen').where({ turnier_id: t2 })).map((x) => x.verein_name), ['JC Eins']);
+    assert.equal(await a.zaehler(), 2);
+});
+
+test('Gläubiger-ID lässt sich nicht ändern, solange Mandate mit ihr noch nicht eingezogen sind', async () => {
+    const a = await neuerAusrichter('GSP-');
+    await speichereStammdaten(knex, a.vereinId, { glaeubiger_id: GLAEUBIGER_ID }, a.admin);
+    const t = await a.neuesTurnier();
+    await lastschriftVerein(t, 'JC Eins', 'gsp1@jc.de');
+    await lastschriftVerein(t, 'JC Zwei', 'gsp2@jc.de', { status: 'unbestaetigt' });
+    await lastschriftVerein(t, 'JC Drei', 'gsp3@jc.de', { status: 'widerrufen' }); // zählt nicht
+    await assert.rejects(speichereStammdaten(knex, a.vereinId, { glaeubiger_id: 'DE09ZZZ00000000001' }, a.admin), (err) => {
+        assert.equal(err.statusCode, 409);
+        assert.match(err.message, /^Die Gläubiger-ID kann nicht geändert werden: 2 Lastschriftmandate beziehen sich/);
+        return true;
+    });
+    await assert.rejects(speichereStammdaten(knex, a.vereinId, { glaeubiger_id: '' }, a.admin), (err) => err.statusCode === 409);
+    // Gleiche ID (andere Schreibweise) und andere Felder sind erlaubt
+    await speichereStammdaten(knex, a.vereinId, { glaeubiger_id: 'de98 zzz0 9999 9999 99', absender_name: 'Neu' }, a.admin);
+    assert.equal((await knex('vereins_abrechnung').where({ verein_id: a.vereinId }).first()).glaeubiger_id, GLAEUBIGER_ID);
+
+    // JC Zwei auf Bar umgestellt, JC Eins abgerechnet und eingezogen -> Wechsel möglich
+    await knex('lastschrift_mandate').where({ turnier_id: t, verein_name: 'JC Zwei' }).update({ status: 'umgestellt', daten_verschluesselt: null });
+    await knex('turnier_zahlwege').where({ turnier_id: t, verein_name: 'JC Zwei' }).update({ zahlweg: 'bar' });
+    await knex('turnier_zahlwege').where({ turnier_id: t, verein_name: 'JC Drei' }).update({ zahlweg: 'bar' });
+    await tn(t, 'JC Eins', { gewogen: true });
+    assert.equal((await erstelleRechnungen(knex, { turnier: await a.turnier(t), benutzerId: a.admin })).erstellt, 1);
+    await assert.rejects(speichereStammdaten(knex, a.vereinId, { glaeubiger_id: 'DE09ZZZ00000000001' }, a.admin), (err) => {
+        assert.match(err.message, /1 Lastschriftmandat bezieht sich auf die bisherige Gläubiger-ID und wurde noch nicht eingezogen/);
+        return true;
+    });
+    const [datei] = await knex('sepa_dateien').insert({ turnier_id: t, msg_id: `GSP-${t}`, erzeugt_von: a.admin, faelligkeit: '2030-06-01', anzahl: 1, summe_cent: 800 }).returning('id');
+    await knex('rechnungen').where({ turnier_id: t, verein_name: 'JC Eins' }).update({ sepa_datei_id: id(datei) });
+    await speichereStammdaten(knex, a.vereinId, { glaeubiger_id: 'DE09ZZZ00000000001' }, a.admin);
+});
+
+test('Mandatsdatum ist das Berliner Datum der Erteilung; nach der Rechnung kein Mandatshinweis mehr', async () => {
+    const a = await neuerAusrichter('MDT-');
+    await speichereStammdaten(knex, a.vereinId, { glaeubiger_id: GLAEUBIGER_ID }, a.admin);
+    const t = await a.neuesTurnier();
+    const { mandatId } = await lastschriftVerein(t, 'JC Spaet', 'mdt@jc.de', { erteiltAm: '2030-03-10T23:30:00Z' });
+    await tn(t, 'JC Spaet', { gewogen: true });
+    assert.equal((await erstelleRechnungen(knex, { turnier: await a.turnier(t), benutzerId: a.admin })).erstellt, 1);
+    const rechnung = await knex('rechnungen').where({ turnier_id: t }).first();
+    assert.equal(rechnung.mandat_datum, '2030-03-11');
+    // Später widerrufen (z. B. Rücklastschrift): die Rechnung bleibt Beleg, kein Hinweis, keine Sperre
+    await knex('lastschrift_mandate').where({ id: mandatId }).update({ status: 'widerrufen', daten_verschluesselt: null });
+    await knex('turnier_zahlwege').where({ turnier_id: t }).update({ mandat_gueltig: false });
+    const zeile = (await ladeAbrechnung(knex, await a.turnier(t))).vereine.find((v) => v.vereinName === 'JC Spaet');
+    assert.deepEqual([zeile.hinweis, zeile.hinweisGrund], [null, null]);
+    assert.equal((await erstelleRechnungen(knex, { turnier: await a.turnier(t), benutzerId: a.admin })).erstellt, 0);
+});
+
 test('Protokoll und Konsole enthalten keine IBAN', async () => {
     const protokoll = await knex('aktionsprotokoll').select('aktion', 'beschreibung', 'details');
     assert.ok(protokoll.length > 0);
     assert.doesNotMatch(JSON.stringify(protokoll), IBAN_MUSTER);
     assert.doesNotMatch(konsole.join('\n'), IBAN_MUSTER);
+    assert.doesNotMatch(JSON.stringify(protokoll), IBAN_ZAHLER_MUSTER);
+    assert.doesNotMatch(konsole.join('\n'), IBAN_ZAHLER_MUSTER);
 });

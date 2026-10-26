@@ -33,6 +33,8 @@ treffen **zwei oder mehr** zu, spricht viel für eine DSFA. Die Analyse gehört 
 | 8. Innovative Technologie | nein | Standard-Webtechnik (Web-Push ist üblich) |
 | 9. Betroffene werden an der Ausübung von Rechten oder Nutzung eines Dienstes gehindert | nein | Teilnahme hängt nicht von der Live-Anzeige ab (Einwilligung freiwillig) |
 
+**Ergänzung Startgeld/Lastschrift:** Mit der SEPA-Lastschrift werden Bankverbindungen (IBAN, Kontoinhaber) von Vereinen verarbeitet, bei Einzelpersonen als Kontoinhaber also Finanzdaten (Kriterium 4: hoch persönlich, **grenzwertig**). Mildernd: Es sind Vereinskonten, Einmal-Mandate je Turnier, die IBAN liegt nur als Chiffretext in der Datenbank, wird in Protokollen geschwärzt und nach 14 Monaten gelöscht; die Sammeldatei wird nicht gespeichert. Die Einordnung ändert das vorläufige Ergebnis nicht, ist aber bei der Bestätigung durch den Datenschutzbeauftragten mitzuprüfen.
+
 **Ergebnis (vorläufig):** Kriterium 7 trifft zu, 4 und 5 sind grenzwertig. Es ist **empfehlenswert, die Analyse mit Ihrem Datenschutzbeauftragten oder Rechtsbeistand zu bestätigen**. Mit den vorgesehenen Maßnahmen
 (Einwilligung für die öffentliche Anzeige bei Minderjährigen, Datenminimierung, Verschlüsselung, kurze Löschfristen) ist das Risiko nach unserer Einschätzung **nicht hoch**; eine förmliche DSFA ist dann voraussichtlich nicht erforderlich.
 **Wird die Teilnehmer-App ohne Einwilligung oder mit Namen von Kindern im großen Stil betrieben, ist eine DSFA anzuraten.** Zur Prüfung auch die „Muss-Liste“ der Datenschutzkonferenz (DSK) und der zuständigen Landesbehörde heranziehen.

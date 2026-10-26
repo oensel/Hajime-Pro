@@ -19,6 +19,17 @@ export function fehlendeStammdaten(stammdaten, turnier) {
     return fehlt;
 }
 
+// Lastschrift wird nur angeboten, wenn der Ausrichter sie auch einziehen kann (Gläubiger-ID, vollständige
+// Abrechnungsdaten, lesbares Konto, Schlüssel für die Zahlungsdaten). Grund = erster Mangel in dieser Reihenfolge.
+export function lastschriftMoeglich({ stammdaten, turnier, empfaengerLesbar, schluessel }) {
+    const nein = (grund) => ({ moeglich: false, grund });
+    if (leer(stammdaten?.glaeubiger_id)) return nein('Gläubiger-ID fehlt');
+    if (fehlendeStammdaten(stammdaten, turnier).length > 0) return nein('Abrechnungsdaten unvollständig');
+    if (!schluessel) return nein('Schlüssel für Zahlungsdaten fehlt');
+    if (!empfaengerLesbar) return nein('Konto des Ausrichters nicht lesbar');
+    return { moeglich: true, grund: null };
+}
+
 export function pruefePraefix(text) {
     if (leer(text)) return 'Der Rechnungsnummern-Präfix darf nicht leer sein.';
     if (!/^[A-Za-z0-9-]{1,12}$/.test(String(text))) {
@@ -119,14 +130,35 @@ export function heuteBerlin(jetzt = new Date()) {
     }).format(jetzt);
 }
 
+// Datum als 'JJJJ-MM-TT': Text wird abgeschnitten, ein Date-Objekt (pg-DATE ohne Typparser = lokale Mitternacht)
+// über die lokalen Anteile gelesen.
+function isoTag(wert) {
+    if (wert == null || wert === '') return null;
+    if (wert instanceof Date) {
+        if (Number.isNaN(wert.getTime())) return null;
+        const p = (n) => String(n).padStart(2, '0');
+        return `${wert.getFullYear()}-${p(wert.getMonth() + 1)}-${p(wert.getDate())}`;
+    }
+    return String(wert).slice(0, 10);
+}
+
+// L9: Eine Lastschrift-Rechnung gilt als "eingezogen" (abgeleitet, nicht gespeichert), sobald sie in einer SEPA-Datei
+// steht und das Einzugsdatum erreicht ist; bezahlt und zurückgebucht bleiben, wie sie sind.
 export function rechnungsAnzeigeStatus(rechnung, heute) {
-    const { status, zahlungsziel_datum: ziel } = rechnung;
-    if (status === 'versandt' && ziel && String(ziel).slice(0, 10) < heute) return 'ueberfaellig';
+    const { status } = rechnung;
+    const ziel = isoTag(rechnung.zahlungsziel_datum);
+    const einzug = isoTag(rechnung.einzug_am);
+    if (rechnung.zahlweg === 'lastschrift' && rechnung.sepa_datei_id != null && einzug
+        && einzug <= heute && status !== 'bezahlt' && status !== 'zurueckgebucht') {
+        return 'eingezogen';
+    }
+    if (status === 'versandt' && ziel && ziel < heute) return 'ueberfaellig';
     return status;
 }
 
 // Bereits bezahlte Kämpfer (startgeld_bezahlt, z. B. an der Kasse kassiert) werden bei jedem Zahlweg angerechnet;
-// sind alle bezahlt, entsteht eine Quittung. Lastschrift bleibt außen vor (Stufe 3 regelt sie).
+// sind alle bezahlt, entsteht eine Quittung. Lastschrift bleibt außen vor (E9): dort wird der volle Betrag eingezogen,
+// die Rechnung ist immer eine Rechnung (zugleich Vorabankündigung).
 export function rechnungsArt({ zahlweg, anzahl, bezahltAnzahl }) {
     return zahlweg !== 'lastschrift' && anzahl > 0 && bezahltAnzahl >= anzahl ? 'quittung' : 'rechnung';
 }

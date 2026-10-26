@@ -16,6 +16,7 @@ import { getAuthRoutes } from './routes/authRoutes.js';
 import { initialisiere as initialisiereSteuerungPasswort } from './utils/steuerungPasswort.js';
 import { getVereinRoutes } from './routes/vereinRoutes.js';
 import { getFreigabeRoutes } from './routes/freigabeRoutes.js';
+import { getMandatRoutes } from './routes/mandatRoutes.js';
 import { getNutzerRoutes } from './routes/nutzerRoutes.js';
 import { getCloudUpdateRoutes } from './routes/cloudUpdateRoutes.js';
 import { getSicherungRoutes } from './routes/sicherungRoutes.js';
@@ -140,6 +141,9 @@ const __dirname = path.dirname(__filename);
 
 import { requireWriteAuth } from './middleware/auth.js';
 import { startOrgaErinnerung } from './services/orgaErinnerung.js';
+import { startMandatJob } from './services/mandatJob.js';
+import { loescheAbgelaufeneMandate } from './services/mandate.js';
+import { heuteBerlin } from './shared/abrechnung.js';
 
 // Express 5 lässt req.body undefined, wenn kein Body geparst wurde (Express 4: {}). Die Controller und
 // resolveTurnierId lesen req.body.<feld> direkt, daher hier wieder das gewohnte leere Objekt setzen.
@@ -394,6 +398,8 @@ if (syncKonfig.istClient) {
     app.use('/api/vereine', getVereinRoutes(knex));
     // Freischaltung per Mail-Link (Token trägt die Berechtigung, daher ohne Anmeldung) und Super-Admin-Verwaltung.
     app.use('/api/freigabe', getFreigabeRoutes(knex));
+    // Bestätigung eines Lastschriftmandats per Mail-Link (Startgeld Stufe 3): Token trägt die Berechtigung, daher ohne Anmeldung, nur Cloud.
+    if (bm.istCloud) app.use('/api/mandat', getMandatRoutes(knex));
     app.use('/api/nutzer', getNutzerRoutes(knex));
     // Update des Cloud-Servers durch den Super-Admin (src/utils/cloudUpdate.js).
     if (bm.istCloud) {
@@ -490,6 +496,16 @@ if (syncKonfig.istClient) {
     // Orga-Planer: stündliche Erinnerungsmails; nur mit SMTP, nie in Testläufen (Mail-Rauschen).
     if ((bm.istCloud || process.env.HELFER_APP_AKTIV === 'true') && process.env.SMTP_HOST && process.env.NODE_ENV !== 'test') {
         startOrgaErinnerung(knex);
+    }
+    // Lastschriftmandate: Erinnerung vor dem Anmeldeschluss, danach Umstellung auf Bar; nur Cloud, nie in Testläufen.
+    if (bm.istCloud && process.env.NODE_ENV !== 'test') {
+        startMandatJob(knex);
+        // Aufbewahrung der Mandate (14 Monate nach dem letzten Einzug bzw. Widerruf): täglich löschen, ohne Daten im Log.
+        const bereinigeMandate = () => loescheAbgelaufeneMandate(knex, heuteBerlin())
+            .then((n) => { if (n > 0) meldeInfo(`Aufräumen: ${n} abgelaufene Lastschriftmandate gelöscht`, { quelle: 'prozess' }); })
+            .catch((err) => console.error('[Mandate] Aufräumen fehlgeschlagen:', err?.name ?? ''));
+        setTimeout(bereinigeMandate, 90_000).unref();
+        setInterval(bereinigeMandate, 24 * 60 * 60 * 1000).unref();
     }
     app.use('/api/cloud', requireWriteAuth, getCloudRoutes(knex, { cloud: cloudZugriff, holeCluster: () => app.get('cluster'), datenDir: syncKonfig.datenverzeichnis ? path.dirname(path.resolve(syncKonfig.datenverzeichnis)) : '' }));
     if (liveApp) app.use('/api/live-app', requireWriteAuth, getLiveAppRoutes(liveApp));

@@ -231,6 +231,7 @@
     margin: 0;
     cursor: pointer;
 }
+#turnierForm .form-group label.planungs-haken[hidden] { display: none; }
 .planungs-haken input[type="checkbox"] {
     width: 18px;
     height: 18px;

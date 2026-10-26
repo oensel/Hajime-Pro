@@ -171,6 +171,15 @@ test('Datenschutzerklärung: Abschnitt Startgeld-Abrechnung', () => {
     assert.match(html, /<td>Rechnungen und Quittungen<\/td><td>[^<]*8 Jahre/);
 });
 
+test('Datenschutzerklärung: Abschnitt SEPA-Lastschrift', () => {
+    const html = rendereDatenschutz(ladeRechtliches({ RECHTLICHES_DATEI: BEISPIEL }), {});
+    assert.match(html, /<h2 id="lastschrift">/);
+    for (const text of ['SEPA-Lastschriftmandat', 'IP-Adresse', 'verschlüsselt', '14 Monate nach dem letzten Einzug', 'Sammeldatei', 'Bank des Veranstalters']) {
+        assert.ok(html.includes(text), text);
+    }
+    assert.match(html, /<td>SEPA-Lastschriftmandate[^<]*<\/td><td>[^<]*14 Monate/);
+});
+
 test('Rechtliches: Routen liefern die Seiten ohne Anmeldung, Status nur für Super-Admins', async () => {
     process.env.RECHTLICHES_DATEI = BEISPIEL;
     const app = express();

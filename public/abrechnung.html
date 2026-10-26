@@ -27,6 +27,8 @@
         .abr-chip.versandt { border-color: #3b82f6; color: #3b82f6; }
         .abr-chip.bezahlt { border-color: #2e7d32; color: #2e7d32; }
         .abr-chip.ueberfaellig { border-color: #ef4444; color: #ef4444; }
+        .abr-chip.eingezogen { border-color: #2e7d32; color: #2e7d32; }
+        .abr-chip.zurueckgebucht { border-color: #ef4444; color: #ef4444; }
         .abr-abweichung { display: inline-block; margin-left: 6px; font-size: 12px; font-weight: 700; color: #b45309; }
         .abr-aktionen { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
         .abr-aktionen .btn, .abr-zuordnen .btn, .abr-lauf .btn { padding: 2px 12px; font-size: 12px; white-space: nowrap; height: auto; min-height: 28px; line-height: 1.3; }
@@ -36,6 +38,12 @@
         .abr-zuordnen select { height: 30px; border: 2px solid var(--border); border-radius: 4px; background: var(--bg-card); color: var(--text-main); font-size: 13px; max-width: 100%; }
         .abr-lauf { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 18px 0 6px; }
         .abr-grund { font-size: 13px; color: var(--text-muted); margin: 0 0 12px; }
+        .abr-sepa-liste { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
+        .abr-sepa-liste label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+        .abr-sepa-hinweis { font-size: 12px; color: #b45309; }
+        .abr-ruecklastschrift-wahl { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+        .abr-ruecklastschrift-wahl select { font-size: 12px; min-height: 28px; }
+        .abr-sepa-datei { display: block; font-size: 12px; color: var(--text-muted); }
         @media (max-width: 700px) {
             .abr-seite { padding: 16px; }
             .abr-tabelle thead { display: none; }
@@ -98,6 +106,32 @@
         </div>
         <p class="abr-grund" id="abrLaufGrund" role="status"></p>
         <div id="abrErgebnis" class="abr-hinweis" hidden></div>
+
+        <section id="abrSepa" hidden>
+            <h2 class="abr-titel">SEPA-Lastschrift</h2>
+            <p class="abr-grund">Die Datei enthält alle versandten Lastschrift-Rechnungen, die noch in keiner Datei stehen. Reichen Sie sie im Online-Banking Ihres Vereins ein, und zwar jede Datei nur einmal.</p>
+            <p class="abr-grund">Eingezogen wird frühestens am nächsten Bankarbeitstag (TARGET) nach heute. Banken verlangen die Datei meist bis zu einem Annahmeschluss am Vortag des Einzugs: eine spät am Abend erzeugte Datei bitte sofort einreichen, sonst kann die Bank sie für dieses Datum ablehnen.</p>
+            <div class="abr-lauf">
+                <button type="button" class="btn btn-raised" id="abrSepaBtn">SEPA-Datei erzeugen</button>
+                <button type="button" class="btn btn-outlined" id="abrSepaNeuBtn" hidden>Neu erzeugen …</button>
+            </div>
+            <p class="abr-grund" id="abrSepaGrund" role="status"></p>
+            <div id="abrSepaFehler" class="abr-hinweis fehler" role="alert" hidden></div>
+            <div id="abrSepaWarnung" class="abr-hinweis warnung" role="alert" hidden></div>
+            <div id="abrSepaNeu" class="abr-hinweis warnung" hidden>
+                <div style="font-weight:700;">Neu erzeugen: Diese Lastschriften stehen schon in einer Datei.</div>
+                <div>Erzeugen Sie eine Datei nur neu, wenn die bisherige Datei nicht bei der Bank eingereicht wurde (z. B. verloren oder von der Bank abgelehnt). Sonst wird doppelt eingezogen.</div>
+                <div id="abrSepaNeuListe" class="abr-sepa-liste"></div>
+                <div class="abr-lauf">
+                    <button type="button" class="btn btn-raised" id="abrSepaNeuStart">Ausgewählte neu erzeugen</button>
+                    <button type="button" class="btn btn-outlined" id="abrSepaNeuAbbruch">Abbrechen</button>
+                </div>
+            </div>
+            <table class="abr-tabelle" id="abrSepaTabelle" hidden>
+                <thead><tr><th>Erzeugt am</th><th>Einzug am</th><th class="rechts">Lastschriften</th><th class="rechts">Summe</th><th>Hinweise</th></tr></thead>
+                <tbody id="abrSepaDateien"></tbody>
+            </table>
+        </section>
     </div>
 
     <div style="display: flex; justify-content: flex-end; margin-top: 16px;">

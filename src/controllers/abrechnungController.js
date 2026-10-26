@@ -3,10 +3,14 @@
 import { FachFehler } from '../utils/fachFehler.js';
 import { darfVereinVerwalten } from '../services/vereinsRollen.js';
 import { fehlendeStammdaten } from '../shared/abrechnung.js';
-import { ladeStammdaten, speichereStammdaten, pruefeStammdatenFuerTurnier } from '../services/abrechnungStammdaten.js';
+import { ladeStammdaten, speichereStammdaten, pruefeStammdatenFuerTurnier, ladeLastschriftStatus } from '../services/abrechnungStammdaten.js';
 import { ladeAbrechnung, ordneVereinZu } from '../services/abrechnung.js';
 import { erfasseVorOrt } from '../services/zahlwege.js';
-import { erstelleRechnungen, sendeRechnungErneut, setzeBezahlt, ladeRechnungPdf } from '../services/rechnungslauf.js';
+import { erstelleRechnungen, sendeRechnungErneut, setzeBezahlt, ladeRechnungPdf, erfasseRuecklastschrift } from '../services/rechnungslauf.js';
+import { erzeugeSepaExport, listeSepaDateien, pruefeSepaVorab } from '../services/sepaExport.js';
+import { hatSperrendeRechnung } from '../services/rueckspielen.js';
+import { pruefeSensibleAktion } from '../utils/sensibleAktion.js';
+import { protokolliere, ladeKontext, beschreibeAktion } from '../services/aktionsProtokoll.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 
 function antworteFehler(res, err) {
@@ -79,6 +83,31 @@ export function erzeugeAbrechnungController(knex, { sende } = {}) {
             }
         },
 
+        // Rücklastschrift erfassen und den Verein auf Überweisung/Bar umstellen (Gate: requireTurnierAdmin). Bewusst OHNE
+        // 2FA-Code für Super-Admins (anders als der SEPA-Download): es werden keine Kontodaten ausgeliefert und kein Geld
+        // bewegt, nur ein Bankereignis festgehalten (wie „bezahlt“); die Aktion ist protokolliert und nicht umkehrbar.
+        async erfasseRuecklastschrift(req, res) {
+            try {
+                const rechnungId = await pruefeRechnung(req);
+                const ergebnis = await erfasseRuecklastschrift(knex, {
+                    turnier: req.tournament, rechnungId, neuerZahlweg: req.body?.neuerZahlweg, benutzerId: req.user.id
+                });
+                // Eigener Eintrag mit Rechnung, neuem Zahlweg und Mandat (nie Kontodaten); die Middleware schreibt keinen zweiten.
+                res.locals.protokolliert = true;
+                const pfad = '/api/abrechnung/:id/rechnungen/:id/ruecklastschrift';
+                const kontext = await ladeKontext(knex, req.user.id, { turnierId: req.tournament.id }).catch(() => null);
+                const { aktion, beschreibung } = beschreibeAktion('POST', pfad);
+                await protokolliere(knex, {
+                    ...(kontext || { benutzerId: req.user.id }), turnierId: req.tournament.id, aktion, beschreibung,
+                    methode: 'POST', pfad, status: 200,
+                    details: { turnierId: req.tournament.id, rechnungId, neuerZahlweg: ergebnis.zahlweg.zahlweg, mandatId: ergebnis.mandatId }
+                });
+                res.json({ success: true, rechnung: ergebnis.rechnung, zahlweg: ergebnis.zahlweg });
+            } catch (err) {
+                antworteFehler(res, err);
+            }
+        },
+
         async ladePdf(req, res) {
             try {
                 const rechnungId = await pruefeRechnung(req);
@@ -87,6 +116,53 @@ export function erzeugeAbrechnungController(knex, { sende } = {}) {
                 res.setHeader('Content-Disposition', `attachment; filename="${String(nummer).replace(/[^A-Za-z0-9._-]/g, '_')}.pdf"`);
                 res.setHeader('Cache-Control', 'no-store');
                 res.end(Buffer.from(pdf));
+            } catch (err) {
+                antworteFehler(res, err);
+            }
+        },
+
+        // SEPA-Lastschriftdatei (Gate: requireTurnierAdmin). Super-Admins IMMER mit aktuellem Code (X-2FA-Code), eine frische
+        // Anmeldung genügt hier nicht. Die Datei enthält Klar-IBANs: nie gespeichert, nie im Protokoll, nicht zwischengespeichert.
+        async erzeugeSepa(req, res) {
+            try {
+                nurCloud();
+                // Reihenfolge: Anmeldung/Rechte (Gate) -> Eingabe und billige Fachprüfung (400/409, ohne Kontodaten) ->
+                // 2FA-Code (verbraucht ihn) -> Arbeit. So kostet eine ohnehin scheiternde Anfrage keinen Einmal-Code;
+                // die Vorprüfung gibt nur Auskünfte, die der Admin ohnehin sehen darf.
+                const body = req.body && typeof req.body === 'object' ? req.body : {};
+                const auftrag = { turnier: req.tournament, neu: body.neu ?? false, rechnungIds: body.rechnungIds ?? null };
+                await pruefeSepaVorab(knex, auftrag);
+                const pruefung = await pruefeSensibleAktion(knex, req, { frischeAnmeldungGenuegt: false });
+                if (!pruefung.ok) return res.status(pruefung.status).json({ success: false, error: pruefung.error, code: pruefung.code });
+                const ergebnis = await erzeugeSepaExport(knex, { ...auftrag, benutzerId: req.user.id });
+                // Ein eigener Eintrag mit Anzahl/Summe (ohne Kontodaten); die allgemeine Middleware schreibt dann keinen zweiten.
+                res.locals.protokolliert = true;
+                const kontext = await ladeKontext(knex, req.user.id, { turnierId: req.tournament.id }).catch(() => null);
+                const { aktion, beschreibung } = beschreibeAktion('POST', '/api/abrechnung/:id/sepa');
+                await protokolliere(knex, {
+                    ...(kontext || { benutzerId: req.user.id }), turnierId: req.tournament.id, aktion, beschreibung,
+                    methode: 'POST', pfad: '/api/abrechnung/:id/sepa', status: 200,
+                    details: { turnierId: req.tournament.id, anzahl: ergebnis.anzahl, summeCent: ergebnis.summeCent, sepaDateiId: ergebnis.sepaDateiId }
+                });
+                res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+                res.setHeader('Content-Disposition', `attachment; filename="${String(ergebnis.dateiname).replace(/[^A-Za-z0-9._-]/g, '_')}"`);
+                res.setHeader('Cache-Control', 'no-store');
+                res.setHeader('X-Content-Type-Options', 'nosniff');
+                res.setHeader('X-Sepa-Datei-Id', String(ergebnis.sepaDateiId));
+                // Header nur ASCII und kurz (URL-kodiert, höchstens rund 1 KB; Oberfläche: decodeURIComponent).
+                // Die vollständige Warnung liefert GET /:turnierId/sepa je Datei.
+                if (ergebnis.warnungHeader) res.setHeader('X-Sepa-Warnung', ergebnis.warnungHeader);
+                res.status(200).send(ergebnis.xml);
+            } catch (err) {
+                antworteFehler(res, err);
+            }
+        },
+
+        async listeSepa(req, res) {
+            try {
+                nurCloud();
+                res.setHeader('Cache-Control', 'no-store');
+                res.json({ dateien: await listeSepaDateien(knex, req.tournament.id) });
             } catch (err) {
                 antworteFehler(res, err);
             }
@@ -131,8 +207,7 @@ export function erzeugeAbrechnungController(knex, { sende } = {}) {
         async gibRueckspielenFrei(req, res) {
             try {
                 nurCloud();
-                const versandt = await knex('rechnungen').where({ turnier_id: req.tournament.id }).whereNotNull('versandt_am').first('id');
-                if (!versandt) throw new FachFehler(400, 'Es wurde noch keine Rechnung versandt, ein erneutes Zurückspielen braucht keine Freigabe.');
+                if (!(await hatSperrendeRechnung(knex, req.tournament.id))) throw new FachFehler(400, 'Es wurde noch keine Rechnung versandt, ein erneutes Zurückspielen braucht keine Freigabe.');
                 await knex('turniere').where({ id: req.tournament.id }).update({ rueckspielen_freigegeben: true });
                 res.json({ success: true });
             } catch (err) {
@@ -167,7 +242,8 @@ export function erzeugeAbrechnungController(knex, { sende } = {}) {
                 const turnier = req.tournament;
                 const { vollstaendig, fehlt } = await pruefeStammdatenFuerTurnier(knex, turnier);
                 const darfPflegen = turnier.verein_id ? await darfVereinVerwalten(knex, req.user.id, turnier.verein_id) : false;
-                res.json({ vollstaendig, fehlt, vereinId: turnier.verein_id ?? null, darfPflegen });
+                const lastschrift = await ladeLastschriftStatus(knex, turnier);
+                res.json({ vollstaendig, fehlt, vereinId: turnier.verein_id ?? null, darfPflegen, lastschrift });
             } catch (err) {
                 antworteFehler(res, err);
             }

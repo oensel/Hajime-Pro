@@ -9,8 +9,25 @@ import { ermittleEffektivenStatus } from '../controllers/turnierController.js';
 import { turnierHatEchteKaempfe } from '../controllers/poolController.js';
 import { pruefeKampfbereitschaft, leiteStatusAusKampfbereitschaftAb, setzeStartgeldBezahlt } from '../controllers/teilnehmerController.js';
 import { istZahlwegGesichert, pruefeZahlwegEingabe, parseAngeboteneZahlwege, startgeldVerlangt } from '../shared/zahlweg.js';
+import { ladeLastschriftStatus } from './abrechnungStammdaten.js';
+import {
+    sperreMandate, widerrufeMandatInTrx, erteileMandatInTrx, ladeAktivesMandat, pruefeMandatsEingabe,
+    pruefeBasisUrlFuerBestaetigung, versendeBestaetigungen, mandatOeffentlich, protokolliereMandat, zaehleBestaetiger
+} from './mandate.js';
+import { sendeMail } from '../utils/mailer.js';
+import betriebsmodus from '../config/betriebsmodus.cjs';
 
 const STANDARD_ANGEBOTEN = ['ueberweisung', 'bar'];
+
+// Angebotene Zahlwege eines Turniers: die Wahl des Ausrichters, Lastschrift nur wenn er sie einziehen kann;
+// bleibt nichts übrig, gilt der Standard (Überweisung und Bar).
+export async function ermittleAngeboteneZahlwege(knex, turnier) {
+    let liste = parseAngeboteneZahlwege(turnier.angebotene_zahlwege);
+    if (liste.includes('lastschrift') && !(await ladeLastschriftStatus(knex, turnier)).moeglich) {
+        liste = liste.filter((z) => z !== 'lastschrift');
+    }
+    return liste.length > 0 ? liste : [...STANDARD_ANGEBOTEN];
+}
 
 async function ladeAusrichterName(knex, turnier) {
     if (turnier.verein_id == null) return null;
@@ -31,7 +48,17 @@ export async function ladeVorbelegung(knex, vereinName) {
     return zeile || null;
 }
 
-export async function speichereZahlweg(knex, { turnier, vereinName, vereinId, benutzerId, eingabe }) {
+const hatIbanEingabe = (eingabe) => typeof eingabe?.iban === 'string' && eingabe.iban.trim() !== '';
+
+// Speichert die Zahlweg-Wahl eines Vereins. Lastschrift mit IBAN erteilt ein neues Mandat (erteileMandat-Kern),
+// Lastschrift ohne IBAN behält ein offenes/gültiges Mandat (nur Rechnungsangaben ändern), ein Wechsel weg von
+// Lastschrift widerruft das Mandat (L5). Zahlweg, Mandat und Gesichert-Flag ändern sich in EINER Transaktion;
+// Bestätigungsmails gehen erst nach dem Commit hinaus. Antwort: die Zahlweg-Zeile, bei Lastschrift zusätzlich
+// `mandat` (nur maskiert) und `bestaetigungNoetig`.
+export async function speichereZahlweg(knex, {
+    turnier, vereinName, vereinId, benutzerId, eingabe,
+    istAdminDesVereins = false, ip = null, basisUrl = null, sende = sendeMail
+}) {
     if (!startgeldVerlangt(turnier)) {
         throw new FachFehler(400, 'Für dieses Turnier wird kein Startgeld erhoben, ein Zahlweg ist nicht nötig.');
     }
@@ -43,28 +70,69 @@ export async function speichereZahlweg(knex, { turnier, vereinName, vereinId, be
     if (ausrichter && ausrichter === vereinName) {
         throw new FachFehler(403, 'Der ausrichtende Verein wählt keinen Zahlweg.');
     }
-    // Lastschrift ist reserviert und wird in Stufe 1 nie angeboten.
-    let angeboten = parseAngeboteneZahlwege(turnier.angebotene_zahlwege).filter((z) => STANDARD_ANGEBOTEN.includes(z));
-    if (angeboten.length === 0) angeboten = [...STANDARD_ANGEBOTEN];
+    const angeboten = await ermittleAngeboteneZahlwege(knex, turnier);
     const { fehler, werte } = pruefeZahlwegEingabe(eingabe, angeboten);
     if (fehler) throw new FachFehler(400, fehler);
 
-    const jetzt = knex.fn.now();
-    const zeile = {
-        turnier_id: turnier.id,
-        verein_id: vereinId ?? null,
-        verein_name: vereinName,
-        ...werte,
-        geaendert_von: benutzerId == null ? null : String(benutzerId),
-        updated_at: jetzt
+    const benutzer = { id: benutzerId, istAdminDesVereins: istAdminDesVereins === true };
+    const istLastschrift = werte.zahlweg === 'lastschrift';
+    const neuesMandat = istLastschrift && hatIbanEingabe(eingabe);
+    let mandatsDaten = null;
+    if (neuesMandat) {
+        if (benutzerId == null) throw new FachFehler(400, 'Ohne Konto kann kein Mandat erteilt werden.');
+        mandatsDaten = pruefeMandatsEingabe(eingabe);
+        pruefeBasisUrlFuerBestaetigung(basisUrl, benutzer);
+    }
+
+    const { zeile, erteilung, mandat, widerrufenId } = await knex.transaction(async (trx) => {
+        await sperreMandate(trx, turnier.id, vereinName);
+        let behalten = null;
+        let widerrufenId = null;
+        if (!istLastschrift) {
+            widerrufenId = await widerrufeMandatInTrx(trx, { turnierId: turnier.id, vereinName, benutzer, grund: 'wechsel' });
+        } else if (!neuesMandat) {
+            behalten = await ladeAktivesMandat(trx, turnier.id, vereinName);
+            if (!behalten) throw new FachFehler(400, 'Bitte IBAN und Kontoinhaber für das Lastschriftmandat angeben.');
+        }
+        const daten = {
+            turnier_id: turnier.id,
+            verein_id: vereinId ?? null,
+            verein_name: vereinName,
+            ...werte,
+            geaendert_von: benutzerId == null ? null : String(benutzerId),
+            updated_at: trx.fn.now()
+        };
+        const [gespeichert] = await trx('turnier_zahlwege')
+            .insert(daten)
+            .onConflict(['turnier_id', 'verein_name'])
+            .merge({ ...daten, turnier_id: undefined, verein_name: undefined })
+            .returning('*');
+        const erteilt = neuesMandat
+            ? await erteileMandatInTrx(trx, { turnier, zahlwegZeile: gespeichert, daten: mandatsDaten, benutzer, ip })
+            : null;
+        await synchronisiereGesichert(trx, turnier.id);
+        return {
+            zeile: await trx('turnier_zahlwege').where({ id: gespeichert.id }).first(),
+            erteilung: erteilt,
+            mandat: erteilt ? erteilt.zeile : behalten,
+            widerrufenId
+        };
+    });
+    if (erteilung) await versendeBestaetigungen(erteilung, basisUrl, sende);
+    // Aktionsprotokoll (nur IDs und IP, nie Kontodaten)
+    const protokoll = { turnierId: turnier.id, benutzerId, ip, vereinId: vereinId ?? null };
+    if (erteilung?.ersetztMandatId) await protokolliereMandat(knex, { ...protokoll, art: 'mandat.widerrufen', mandatId: erteilung.ersetztMandatId });
+    if (widerrufenId) await protokolliereMandat(knex, { ...protokoll, art: 'mandat.widerrufen', mandatId: widerrufenId });
+    if (erteilung) await protokolliereMandat(knex, { ...protokoll, art: 'mandat.erteilt', mandatId: erteilung.zeile.id });
+    if (!istLastschrift) return zeile;
+    const offen = mandat.status === 'unbestaetigt';
+    return {
+        ...zeile,
+        mandat: mandatOeffentlich(mandat),
+        bestaetigungNoetig: offen,
+        // Wie viele Admins können bestätigen? 0 -> der Dialog sagt klar, dass niemand die Mail bekommt.
+        empfaengerAnzahl: offen ? (erteilung ? erteilung.mails.length : await zaehleBestaetiger(knex, mandat.zahlender_verein_id)) : 0
     };
-    const [gespeichert] = await knex('turnier_zahlwege')
-        .insert(zeile)
-        .onConflict(['turnier_id', 'verein_name'])
-        .merge({ ...zeile, turnier_id: undefined, verein_name: undefined })
-        .returning('*');
-    await synchronisiereGesichert(knex, turnier.id);
-    return gespeichert;
 }
 
 // Setzt startgeld_zahlweg_gesichert für alle Teilnehmer des Turniers neu (gesicherter Zahlweg des Vereins
@@ -98,7 +166,8 @@ export async function synchronisiereGesichert(knex, turnierId, { statusAbleiten 
     });
 }
 
-// Vereine, die ihr Startgeld an der Kasse bar zahlen: Zahlweg Bar oder keine Wahl getroffen (und nicht Ausrichter).
+// Vereine, die ihr Startgeld an der Kasse bar zahlen: Zahlweg Bar, keine Wahl getroffen oder Lastschrift ohne gültiges Mandat
+// (Anzeige 'lastschriftOffen', nur am Hallen-Server); nie der Ausrichter.
 export async function ladeKasse(knex, turnierId) {
     const turnier = await knex('turniere').where({ id: turnierId }).first();
     if (!turnier) return [];
@@ -112,11 +181,16 @@ export async function ladeKasse(knex, turnierId) {
     for (const t of teilnehmer) {
         if (ausrichter && t.verein === ausrichter) continue;
         const zeile = zahlwege.get(t.verein);
-        if (zeile && zeile.zahlweg !== 'bar') continue;
+        // Gesicherte Zahlwege (Überweisung, Lastschrift mit gültigem Mandat) sind nicht an der Kasse; eine Lastschrift ohne
+        // gültiges Mandat sichert nichts, dort kassiert die Kasse bar (z. B. am Hallen-Server, wo nur das Flag ankommt).
+        if (zeile && zeile.zahlweg !== 'bar' && istZahlwegGesichert(zeile)) continue;
+        // 'lastschriftOffen' gibt es nur am Hallen-Server (dort kommt nur das Flag an, keine Mandatszeile). In der Cloud steht ein
+        // Verein mit offenem Mandat nie auf der Kasse: Lastschrift wird dort abgerechnet, nicht bar kassiert.
+        if (zeile && zeile.zahlweg !== 'bar' && !(zeile.zahlweg === 'lastschrift' && betriebsmodus.istEinzelbenutzerBetrieb())) continue;
         if (!nachVerein.has(t.verein)) {
             nachVerein.set(t.verein, {
                 vereinName: t.verein,
-                zahlweg: zeile ? 'bar' : 'ohneZahlweg',
+                zahlweg: !zeile ? 'ohneZahlweg' : zeile.zahlweg === 'lastschrift' ? 'lastschriftOffen' : 'bar',
                 anzahlKaempfer: 0,
                 anzahlOffen: 0,
                 rechnungEmail: zeile?.rechnung_email || null
@@ -137,6 +211,9 @@ export async function ladeKasse(knex, turnierId) {
 export async function kassiereBar(knex, turnierId, vereinName) {
     return knex.transaction(async (trx) => {
         await trx.raw('SELECT pg_advisory_xact_lock(?, hashtext(?))', [turnierId, vereinName]);
+        // Schutz in der Tiefe: ein Verein mit offenem oder gültigem Lastschriftmandat wird abgerechnet und nie bar kassiert.
+        const mandat = await trx('lastschrift_mandate').where({ turnier_id: turnierId, verein_name: vereinName }).whereIn('status', ['unbestaetigt', 'gueltig']).first('id');
+        if (mandat) throw new FachFehler(409, 'Für diesen Verein liegt ein Lastschriftmandat vor, das Startgeld wird per Lastschrift eingezogen und kann nicht bar kassiert werden.');
         const offene = await trx('turnier_teilnehmer')
             .where({ turnier_id: turnierId, verein: vereinName })
             .whereNot('status', 'zurueckgezogen')

@@ -76,7 +76,14 @@ export function baueRechnungsZeilen(d) {
         const am = datum(d.barDatum || d.rechnungsdatum);
         zahlung.push(istBar ? `Betrag bar erhalten am ${am}.` : `Betrag bereits bezahlt am ${am}.`);
     } else if (d.zahlweg === 'lastschrift') {
-        zahlung.push('Der Betrag wird per Lastschrift eingezogen.');
+        // Die Rechnung ist zugleich die Vorabankündigung (Pre-Notification); die IBAN des Zahlers nur maskiert.
+        const l = d.lastschrift;
+        if (!l || ['mandatsreferenz', 'glaeubigerId', 'ibanMaske', 'einzugAm'].some((k) => l[k] == null || l[k] === '')) {
+            // Eine Vorabankündigung ohne diese Angaben darf nie entstehen.
+            throw new Error('Lastschrift-Rechnung ohne vollständige Lastschriftangaben.');
+        }
+        zahlung.push(`Der Betrag von ${euro(offen)} wird per SEPA-Lastschrift am ${datum(l.einzugAm)} von Ihrem Konto ${l.ibanMaske} eingezogen. `
+            + `Mandatsreferenz ${l.mandatsreferenz}, Gläubiger-ID ${l.glaeubigerId}.`);
     } else if (d.zahlung?.iban) {
         zahlung.push(offen < (d.betragCent || 0) ? `Bitte überweisen Sie den offenen Betrag von ${euro(offen)}:` : 'Bitte überweisen Sie den Betrag:');
         zahlung.push(`Kontoinhaber: ${d.zahlung.kontoinhaber}`, `IBAN: ${formatiereIban(d.zahlung.iban)}`,

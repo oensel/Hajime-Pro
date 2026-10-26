@@ -38,6 +38,11 @@ export async function bereinigeTestPostgres(verzeichnis) {
     await fs.promises.rm(`${dir}.log`, { force: true, maxRetries: 5, retryDelay: 250 });
 }
 
+// Startfehler, weil der Port inzwischen belegt ist (Windows: winsock-Fehler 10048, sonst "Address already in use").
+export function istPortKonflikt(fehler) {
+    return /winsock error 10048|address already in use|EADDRINUSE|could not bind IPv4 address/i.test(String(fehler?.message ?? fehler ?? ''));
+}
+
 const TEMP_PRAEFIX = 'hajime-pg-';
 
 // Löscht liegen gebliebene temporäre Test-Datenbanken (älter als maxAlterMs und ohne postmaster.pid, also ohne
@@ -64,12 +69,22 @@ export async function starteTestPostgres({ verzeichnis, port, dbName = 'hajime_t
     if (!verzeichnis) raeumeAlteTempVerzeichnisseAuf();
     const dir = verzeichnis || fs.mkdtempSync(path.join(os.tmpdir(), TEMP_PRAEFIX));
     if (verzeichnis) await bereinigeTestPostgres(dir);
-    const instanz = await starteEingebettetesPostgres({
-        datenverzeichnis: dir,
-        port: port || await freierPort(),
-        dbName,
-        log: stillesLog
-    });
+    // Zwischen freierPort() und dem Start kann ein anderer Prozess (parallele Testdateien) den Port belegen:
+    // dann mit einem neuen freien Port erneut versuchen (höchstens 3 Versuche; ein vorgegebener Port wird nie gewechselt).
+    let instanz;
+    for (let versuch = 1; ; versuch += 1) {
+        try {
+            instanz = await starteEingebettetesPostgres({
+                datenverzeichnis: dir,
+                port: port || await freierPort(),
+                dbName,
+                log: stillesLog
+            });
+            break;
+        } catch (e) {
+            if (port || versuch >= 3 || !istPortKonflikt(e)) throw e;
+        }
+    }
     const verbindung = { host: instanz.host, port: instanz.port, user: instanz.user, password: instanz.password, database: instanz.database };
     const knex = knexLib({
         client: 'pg',

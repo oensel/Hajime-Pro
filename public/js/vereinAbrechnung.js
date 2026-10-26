@@ -36,6 +36,7 @@
         $('abrUstHinweis').value = s.ust_hinweis || '';
         $('abrKontoinhaber').value = s.kontoinhaber || '';
         $('abrPraefix').value = s.rechnungs_praefix || '';
+        $('abrGlaeubigerId').value = s.glaeubiger_id || '';
         naechsteNummer = s.naechste_rechnungsnummer || 1;
         zeigeIban(s);
         zeigeNaechsteNummer();
@@ -91,7 +92,8 @@
             ust_id: $('abrUstId').value,
             ust_hinweis: $('abrUstHinweis').value,
             kontoinhaber: $('abrKontoinhaber').value,
-            rechnungs_praefix: $('abrPraefix').value
+            rechnungs_praefix: $('abrPraefix').value,
+            glaeubiger_id: $('abrGlaeubigerId').value
         };
         if (ibanLoeschen) body.iban_loeschen = true;
         else if ($('abrIban').value.trim()) body.iban = $('abrIban').value;

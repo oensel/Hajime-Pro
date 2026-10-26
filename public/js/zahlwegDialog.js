@@ -3,7 +3,9 @@
 // und gibt die Rechnungsangaben an. Fachlogik (wann Pflicht, wann änderbar) liegt in /api/zahlweg; der Dialog
 // bleibt still (nichtNoetig), wenn die API nicht antwortet (Hallen-Server: 409, kein Mitglied: 403 usw.).
 (function () {
-    const NAMEN = { ueberweisung: 'Überweisung', bar: 'Bar an der Waage' };
+    // Lastschrift erscheint nur, wenn der Server sie in `angebotene` anbietet (Filter über NAMEN in zeigeDialog).
+    const NAMEN = { ueberweisung: 'Überweisung', bar: 'Bar an der Waage', lastschrift: 'Lastschrift' };
+    const MANDAT_STATUS = { unbestaetigt: 'Wartet auf Bestätigung durch einen Admin', gueltig: 'Mandat gültig' };
     const BASIS_TEXT = {
         gemeldet: 'Abgerechnet wird nach den gemeldeten Kämpfern.',
         teilnahme_waage: 'Abgerechnet wird nach den Kämpfern, die an der Waage teilgenommen haben.'
@@ -31,6 +33,10 @@
         return el;
     }
 
+    function erklaerungStil(el) {
+        el.style.cssText = 'margin:0 0 10px;font-size:12px;color:var(--text-muted);';
+    }
+
     function feld(beschriftung, steuerelement) {
         const label = element('label', { textContent: beschriftung });
         label.style.cssText = 'display:block;margin:0 0 4px;font-size:12px;font-weight:700;text-transform:uppercase;';
@@ -40,7 +46,10 @@
     }
 
     // Zeigt das Popup. pflicht = true: kein Schließen ohne Speichern (weder Escape noch Abbrechen-Knopf).
-    function zeigeDialog(status, pflicht) {
+    async function zeigeDialog(status, pflicht) {
+        // IBAN-Prüfung wie am Server (gleiche Datei); ohne das Modul prüft nur der Server.
+        let ibanLogik = null;
+        try { ibanLogik = await import('/js/shared/iban.js'); } catch { /* der Server prüft ohnehin */ }
         return new Promise((resolve) => {
             const vorhanden = status.zahlweg || {};
             const vor = status.vorbelegung || {};
@@ -60,6 +69,80 @@
             const person = element('input', { type: 'text', id: 'zahlwegAnsprechperson', value: vorhanden.rechnung_ansprechperson || vor.rechnung_ansprechperson || '' });
             const anschrift = element('textarea', { id: 'zahlwegAnschrift', rows: 3, value: vorhanden.rechnung_anschrift || vor.rechnung_anschrift || '' });
             for (const el of [email, person, anschrift]) el.style.cssText = eingabeStil;
+
+            // --- Lastschrift: Mandat (nur sichtbar, solange "Lastschrift" gewählt ist) ---
+            const vorschau = status.mandatsvorschau || null;
+            const altesMandat = status.mandat || null;
+            const zeigeNeuesFormular = () => !altesMandat || neuesMandatGewuenscht;
+            let neuesMandatGewuenscht = false;
+            const mandatBereich = element('div', { id: 'zahlwegMandat' });
+            mandatBereich.style.cssText = 'margin:0 0 12px;padding:12px;border:1px solid var(--border);border-radius:4px;display:none;';
+            const mandatErklaerung = element('p', {
+                textContent: 'Der Einzug erfolgt einmalig nach dem Turnier. Das Mandat erteilen Sie hier; ein Admin Ihres Vereins bestätigt es per E-Mail-Link, '
+                    + 'sofern Sie nicht selbst Admin sind. Bis zur Bestätigung gilt das Startgeld nicht als gesichert.'
+            });
+            erklaerungStil(mandatErklaerung);
+            const mandatStatus = element('p', { id: 'zahlwegMandatStatus' });
+            mandatStatus.style.cssText = 'margin:0 0 8px;font-size:13px;';
+            if (altesMandat) {
+                const chip = element('span', { textContent: MANDAT_STATUS[altesMandat.status] || altesMandat.status });
+                chip.style.cssText = 'display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:700;margin-right:8px;'
+                    + (altesMandat.status === 'gueltig' ? 'background:#2e7d32;color:#fff;' : 'background:#f9a825;color:#000;');
+                mandatStatus.append(chip, document.createTextNode(`Konto ${altesMandat.iban_maske || ''}`.trim()));
+            }
+            const iban = element('input', { type: 'text', id: 'zahlwegIban', autocomplete: 'off', spellcheck: false, placeholder: 'DE00 0000 0000 0000 0000 00' });
+            const ibanHinweis = element('div', { id: 'zahlwegIbanHinweis' });
+            ibanHinweis.style.cssText = 'font-size:12px;margin:4px 0 0;min-height:16px;';
+            const inhaber = element('input', { type: 'text', id: 'zahlwegKontoinhaber', maxLength: 70, autocomplete: 'off' });
+            for (const el of [iban, inhaber]) el.style.cssText = eingabeStil;
+            const mandatText = element('div', { id: 'zahlwegMandatText', textContent: vorschau ? vorschau.mandatstext : '' });
+            mandatText.style.cssText = 'white-space:pre-wrap;font-size:12px;line-height:1.5;max-height:160px;overflow:auto;border:1px solid var(--border);border-radius:4px;padding:8px;margin:0 0 8px;';
+            const hinweisAcht = element('p', {
+                textContent: 'Sie können innerhalb von acht Wochen ab Belastung die Erstattung des Betrages verlangen. '
+                    + `Eine Vorabankündigung (Rechnung) erhalten Sie spätestens ${vorschau ? vorschau.vorabTage : 5} Tage vor Fälligkeit per E-Mail.`
+            });
+            erklaerungStil(hinweisAcht);
+            const checkboxZeile = (id, text) => {
+                const box = element('input', { type: 'checkbox', id });
+                const zeile = element('label', {}, [box, document.createTextNode(' ' + text)]);
+                zeile.style.cssText = 'display:block;margin:0 0 6px;font-size:13px;cursor:pointer;';
+                return { box, zeile };
+            };
+            const vertretungBox = checkboxZeile('zahlwegVertretung', 'Ich bin berechtigt, den Verein zu vertreten.');
+            const zustimmungBox = checkboxZeile('zahlwegZustimmung', 'Ich erteile das Mandat.');
+            const andereKontoKnopf = element('button', { type: 'button', id: 'zahlwegNeuesMandatBtn', className: 'btn btn-outlined', textContent: 'Anderes Konto angeben (neues Mandat)' });
+            andereKontoKnopf.style.cssText = 'padding:2px 12px;margin:0 0 8px;';
+            const formular = element('div', { id: 'zahlwegMandatFormular' }, [
+                feld('IBAN', iban), ibanHinweis, feld('Kontoinhaber', inhaber),
+                feld('Lastschriftmandat', mandatText), hinweisAcht, vertretungBox.zeile, zustimmungBox.zeile
+            ]);
+            mandatBereich.append(mandatErklaerung);
+            if (altesMandat) mandatBereich.append(mandatStatus, andereKontoKnopf);
+            mandatBereich.append(formular);
+            if (!vorschau) {
+                // Ohne Mandatstext (Gläubiger-ID fehlt) kann kein Mandat erteilt werden.
+                mandatBereich.append(element('p', { textContent: 'Das Lastschriftmandat kann gerade nicht erteilt werden. Bitte den Ausrichter kontaktieren.' }));
+            }
+            const aktualisiereIbanHinweis = () => {
+                ibanHinweis.textContent = '';
+                if (!ibanLogik || !iban.value.trim()) return;
+                const ergebnisPruefung = ibanLogik.pruefeIban(iban.value);
+                ibanHinweis.textContent = ergebnisPruefung.ok ? 'IBAN ist gültig.' : ergebnisPruefung.fehler;
+                ibanHinweis.style.color = ergebnisPruefung.ok ? '#2e7d32' : '#c62828';
+            };
+            iban.addEventListener('input', aktualisiereIbanHinweis);
+            const aktualisiereMandatBereich = () => {
+                const wahlLastschrift = overlayWahl() === 'lastschrift';
+                mandatBereich.style.display = wahlLastschrift ? 'block' : 'none';
+                formular.style.display = wahlLastschrift && zeigeNeuesFormular() ? 'block' : 'none';
+                andereKontoKnopf.style.display = zeigeNeuesFormular() ? 'none' : 'inline-block';
+            };
+            andereKontoKnopf.addEventListener('click', () => { neuesMandatGewuenscht = true; aktualisiereMandatBereich(); iban.focus(); });
+            const overlayWahl = () => {
+                const gewaehltRadio = karte.querySelector('input[name="zahlwegWahl"]:checked');
+                return gewaehltRadio ? gewaehltRadio.value : '';
+            };
+            for (const zeile of wegeZeilen) zeile.querySelector('input').addEventListener('change', aktualisiereMandatBereich);
 
             const startgeldText = Number(status.startgeld).toLocaleString('de-DE');
             const info = element('p', {
@@ -86,7 +169,7 @@
 
             if (wegeZeilen.length) wegeZeilen[wegeZeilen.length - 1].style.marginBottom = '16px';
             const karte = element('div', { role: 'dialog' }, [
-                titel, info, ...wegeZeilen,
+                titel, info, ...wegeZeilen, mandatBereich,
                 feld('Rechnungs-E-Mail', email), feld('Ansprechperson', person), feld('Rechnungsanschrift', anschrift),
                 fehlerAnzeige, knoepfe
             ]);
@@ -100,7 +183,8 @@
                 if (e.key === 'Escape') {
                     e.stopPropagation();
                     e.preventDefault();
-                    if (!pflicht || keineWege) beenden('abgebrochen');
+                    if (gespeichertHinweis) beenden('gespeichert');
+                    else if (!pflicht || keineWege) beenden('abgebrochen');
                     return;
                 }
                 if (e.key === 'Tab') {
@@ -127,25 +211,71 @@
             };
             document.addEventListener('keydown', beiTaste, true);
             btnAbbrechen.addEventListener('click', () => beenden('abgebrochen'));
+            aktualisiereMandatBereich();
+
+            // Nach dem Speichern eines unbestätigten Mandats bleibt der Dialog mit dem Hinweis stehen, bis er geschlossen wird.
+            let gespeichertHinweis = false;
+            const zeigeBestaetigungsHinweis = (daten) => {
+                gespeichertHinweis = true;
+                const keinAdmin = daten.empfaengerAnzahl === 0;
+                const text = keinAdmin
+                    ? 'In Ihrem Verein gibt es keinen Admin, der das Mandat bestätigen kann (freigegeben, E-Mail bestätigt). '
+                        + 'Bitte lassen Sie einen Admin Ihres Vereins hinzufügen oder freischalten. Bis dahin gilt das Startgeld nicht als gesichert.'
+                    : 'Ein Admin Ihres Vereins muss das Mandat per Mail bestätigen. Bis dahin gilt das Startgeld nicht als gesichert.';
+                const hinweis = element('p', { id: 'zahlwegMandatHinweis', role: 'status', textContent: text });
+                hinweis.style.cssText = 'margin:0 0 16px;font-size:14px;font-weight:700;';
+                const schliessen = element('button', { type: 'button', id: 'zahlwegSchliessenBtn', className: 'btn btn-raised', textContent: 'Verstanden' });
+                schliessen.style.padding = '2px 16px';
+                schliessen.addEventListener('click', () => beenden('gespeichert'));
+                const unten = element('div', {}, [schliessen]);
+                unten.style.cssText = 'display:flex;justify-content:flex-end;';
+                karte.replaceChildren(titel, hinweis, unten);
+                titel.textContent = 'Lastschriftmandat erteilt';
+                schliessen.focus();
+            };
 
             btnSpeichern.addEventListener('click', async () => {
                 const wahl = overlay.querySelector('input[name="zahlwegWahl"]:checked');
-                btnSpeichern.disabled = true;
+                const istLastschrift = !!wahl && wahl.value === 'lastschrift';
                 fehlerAnzeige.style.display = 'none';
+                const body = {
+                    zahlweg: wahl ? wahl.value : '',
+                    rechnung_email: email.value,
+                    rechnung_ansprechperson: person.value,
+                    rechnung_anschrift: anschrift.value
+                };
+                if (istLastschrift && zeigeNeuesFormular()) {
+                    let meldungFehler = '';
+                    if (!vorschau) meldungFehler = 'Das Lastschriftmandat kann gerade nicht erteilt werden.';
+                    else if (ibanLogik && !ibanLogik.pruefeIban(iban.value).ok) meldungFehler = ibanLogik.pruefeIban(iban.value).fehler;
+                    else if (!iban.value.trim()) meldungFehler = 'Bitte eine IBAN angeben.';
+                    else if (!inhaber.value.trim()) meldungFehler = 'Bitte den Kontoinhaber angeben.';
+                    else if (!vertretungBox.box.checked) meldungFehler = 'Bitte bestätigen, dass Sie berechtigt sind, den Verein zu vertreten.';
+                    else if (!zustimmungBox.box.checked) meldungFehler = 'Bitte das Lastschriftmandat ausdrücklich erteilen.';
+                    if (meldungFehler) {
+                        fehlerAnzeige.textContent = meldungFehler;
+                        fehlerAnzeige.style.display = 'block';
+                        return;
+                    }
+                    Object.assign(body, {
+                        iban: iban.value, kontoinhaber: inhaber.value,
+                        zustimmung: zustimmungBox.box.checked, vertretung_bestaetigt: vertretungBox.box.checked
+                    });
+                }
+                btnSpeichern.disabled = true;
                 try {
                     const resp = await fetch(`/api/zahlweg/${encodeURIComponent(status.turnierId)}`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            zahlweg: wahl ? wahl.value : '',
-                            rechnung_email: email.value,
-                            rechnung_ansprechperson: person.value,
-                            rechnung_anschrift: anschrift.value
-                        })
+                        body: JSON.stringify(body)
                     });
                     const daten = await resp.json().catch(() => ({}));
                     if (!resp.ok || daten.success === false) throw new Error(daten.error || 'Speichern fehlgeschlagen.');
                     meldung('Zahlweg gespeichert.', 'success');
+                    if (istLastschrift && daten.bestaetigungNoetig) {
+                        zeigeBestaetigungsHinweis(daten);
+                        return;
+                    }
                     beenden('gespeichert');
                 } catch (error) {
                     fehlerAnzeige.textContent = error.message;

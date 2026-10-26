@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { schluesselVorhanden, verschluesseleFeld, entschluesseleFeld, SCHLUESSEL_MINDESTLAENGE } from '../../src/utils/feldVerschluesselung.js';
+import { schluesselVorhanden, verschluesseleFeld, entschluesseleFeld, schluesselKennung, SCHLUESSEL_MINDESTLAENGE } from '../../src/utils/feldVerschluesselung.js';
 import { FachFehler } from '../../src/utils/fachFehler.js';
 
 const env = { ZAHLUNGSDATEN_SCHLUESSEL: 'a'.repeat(40) };
@@ -41,4 +41,39 @@ test('Feldverschlüsselung: Manipulation wird abgewiesen', () => {
         teile.concat('x').join(':'),
         ''
     ]) assert.throws(() => entschluesseleFeld(text, env), generisch);
+});
+
+const ALT = 'z'.repeat(40);
+const NEU = 'n'.repeat(40);
+
+test('Schlüsselwechsel: alter Chiffretext ist mit _ALT lesbar, neue immer mit dem aktuellen Schlüssel', () => {
+    const alt = verschluesseleFeld('DE89370400440532013000', { ZAHLUNGSDATEN_SCHLUESSEL: ALT });
+    const envWechsel = { ZAHLUNGSDATEN_SCHLUESSEL: NEU, ZAHLUNGSDATEN_SCHLUESSEL_ALT: ALT };
+    assert.equal(entschluesseleFeld(alt, envWechsel), 'DE89370400440532013000');
+    const neu = verschluesseleFeld('x', envWechsel);
+    assert.equal(neu.split(':')[1], schluesselKennung(envWechsel).aktuell);
+    assert.equal(entschluesseleFeld(neu, { ZAHLUNGSDATEN_SCHLUESSEL: NEU }), 'x');
+    // ohne _ALT ist der alte Text nicht lesbar (generischer Fehler)
+    assert.throws(() => entschluesseleFeld(alt, { ZAHLUNGSDATEN_SCHLUESSEL: NEU }),
+        (e) => e instanceof FachFehler && e.statusCode === 500 && e.message === 'Zahlungsdaten konnten nicht entschlüsselt werden.');
+    // unbekannte kid trotz _ALT
+    const fremd = verschluesseleFeld('y', { ZAHLUNGSDATEN_SCHLUESSEL: 'q'.repeat(40) });
+    assert.throws(() => entschluesseleFeld(fremd, envWechsel),
+        (e) => e instanceof FachFehler && e.statusCode === 500 && e.message === 'Zahlungsdaten konnten nicht entschlüsselt werden.');
+    // beide Schlüssel gleich: unproblematisch
+    const gleich = { ZAHLUNGSDATEN_SCHLUESSEL: NEU, ZAHLUNGSDATEN_SCHLUESSEL_ALT: NEU };
+    assert.equal(entschluesseleFeld(verschluesseleFeld('g', gleich), gleich), 'g');
+});
+
+test('Schlüsselwechsel: _ALT braucht dieselbe Mindestlänge, schluesselKennung liefert die Kennungen', () => {
+    const alt = verschluesseleFeld('a', { ZAHLUNGSDATEN_SCHLUESSEL: ALT });
+    assert.throws(() => entschluesseleFeld(alt, { ZAHLUNGSDATEN_SCHLUESSEL: NEU, ZAHLUNGSDATEN_SCHLUESSEL_ALT: 'kurz' }),
+        (e) => e instanceof FachFehler && e.statusCode === 503 && !e.message.includes('kurz'));
+    assert.deepEqual(schluesselKennung({}), { aktuell: null, alt: null });
+    assert.deepEqual(schluesselKennung({ ZAHLUNGSDATEN_SCHLUESSEL: 'kurz', ZAHLUNGSDATEN_SCHLUESSEL_ALT: 'kurz' }), { aktuell: null, alt: null });
+    const k = schluesselKennung({ ZAHLUNGSDATEN_SCHLUESSEL: NEU, ZAHLUNGSDATEN_SCHLUESSEL_ALT: ALT });
+    assert.match(k.aktuell, /^[0-9a-f]{8}$/);
+    assert.match(k.alt, /^[0-9a-f]{8}$/);
+    assert.notEqual(k.aktuell, k.alt);
+    assert.equal(schluesselKennung({ ZAHLUNGSDATEN_SCHLUESSEL: NEU }).alt, null);
 });
