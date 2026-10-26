@@ -26,8 +26,10 @@ test('Hauptleiste enthält Orga mit Untermenü in fester Reihenfolge, Turniere o
     await expect(kopf(page)).toBeVisible();
     await expect(kopf(page)).toHaveAttribute('aria-expanded', 'true');
     await expect(kopf(page)).toHaveAttribute('aria-controls', 'nav-orga-liste');
-    await expect(page.locator('#nav-orga-liste > li > a > .menu-text')).toHaveText(
-        ['Aufgaben', 'Helfer', 'Technik', 'Catering', 'Medaillen und Pokale']);
+    await expect(page.locator('#nav-orga-liste a .menu-text')).toHaveText(
+        ['Aufgaben', 'Technik', 'Catering', 'Medaillen und Pokale', 'Helfer']);
+    // Technik, Catering und Medaillen hängen eingerückt unter „Aufgaben“
+    await expect(page.locator('#nav-orga-uebersicht + #nav-orga-kategorien #nav-orga-technik')).toHaveCount(1);
     // direkt nach „Turnier“
     const reihenfolge = await page.locator('#sidebarNavPrimary > *').evaluateAll((els) => els.map((e) => e.id));
     expect(reihenfolge.indexOf('nav-orga')).toBe(reihenfolge.indexOf('nav-turnier') + 1);

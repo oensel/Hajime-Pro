@@ -351,11 +351,15 @@ function baueMenueGeruest() {
                         <span class="material-icons menu-gruppe-pfeil" id="nav-orga-pfeil" aria-hidden="true">expand_more</span>
                     </button>
                     <ul class="menu-untermenue" id="nav-orga-liste">
-                        <li><a href="/orga.html" class="menu-item menu-subitem" id="nav-orga-uebersicht"><span class="menu-text">Aufgaben</span></a></li>
+                        <li>
+                            <a href="/orga.html" class="menu-item menu-subitem" id="nav-orga-uebersicht"><span class="menu-text">Aufgaben</span></a>
+                            <ul class="menu-untermenue menu-kategorien" id="nav-orga-kategorien">
+                                <li><a href="#" class="menu-item menu-subitem" id="nav-orga-technik" data-ohne-turnier style="display: none;"><span class="menu-text">Technik</span><span class="menu-item-badge" style="display: none;"></span></a></li>
+                                <li><a href="#" class="menu-item menu-subitem" id="nav-orga-catering" data-ohne-turnier style="display: none;"><span class="menu-text">Catering</span><span class="menu-item-badge" style="display: none;"></span></a></li>
+                                <li><a href="#" class="menu-item menu-subitem" id="nav-orga-medaillen" data-ohne-turnier style="display: none;"><span class="menu-text">Medaillen und Pokale</span><span class="menu-item-badge" style="display: none;"></span></a></li>
+                            </ul>
+                        </li>
                         <li><a href="/helfer-plan.html" class="menu-item menu-subitem" id="nav-helfer"><span class="menu-text">Helfer</span></a></li>
-                        <li><a href="#" class="menu-item menu-subitem" id="nav-orga-technik" data-ohne-turnier style="display: none;"><span class="menu-text">Technik</span><span class="menu-item-badge" style="display: none;"></span></a></li>
-                        <li><a href="#" class="menu-item menu-subitem" id="nav-orga-catering" data-ohne-turnier style="display: none;"><span class="menu-text">Catering</span><span class="menu-item-badge" style="display: none;"></span></a></li>
-                        <li><a href="#" class="menu-item menu-subitem" id="nav-orga-medaillen" data-ohne-turnier style="display: none;"><span class="menu-text">Medaillen und Pokale</span><span class="menu-item-badge" style="display: none;"></span></a></li>
                     </ul>
                 </div>
                 <a href="/teilnehmer.html" class="menu-item" id="nav-teilnehmer">
@@ -1543,8 +1547,31 @@ async function initialisiereMenue() {
         };
         const ZIELE = { technik_bereitstellen: 'nav-orga-technik', catering: 'nav-orga-catering', medaillen: 'nav-orga-medaillen' };
 
-        fetch(`/api/orga?turnierId=${encodeURIComponent(turnierId)}&nurLesen=1`).then((r) => (r.ok ? r.json() : null)).then((daten) => {
+        // Seiten rufen das nach Änderungen erneut auf (neue Kategorie), damit das Menü ohne Neuladen stimmt
+        const ladeEintraege = () => fetch(`/api/orga?turnierId=${encodeURIComponent(turnierId)}&nurLesen=1`).then((r) => (r.ok ? r.json() : null)).then((daten) => {
             if (!daten || !Array.isArray(daten.phasen)) return;
+            // Eigene Kategorien (neue Kategorie auf orga.html) hängen unter „Aufgaben“, neu aufgebaut bei jedem Laden
+            const kategorien = document.getElementById('nav-orga-kategorien');
+            kategorien.querySelectorAll('.nav-orga-eigene').forEach((li) => li.remove());
+            for (const aufgabe of daten.phasen.flatMap((p) => p.aufgaben || []).filter((x) => x.art === 'kategorie')) {
+                const li = document.createElement('li');
+                li.className = 'nav-orga-eigene';
+                const link = document.createElement('a');
+                link.className = 'menu-item menu-subitem';
+                link.setAttribute('href', `/orga-aufgabe.html?id=${aufgabe.id}&turnierId=${encodeURIComponent(turnierId)}`);
+                const name = document.createElement('span');
+                name.className = 'menu-text';
+                name.textContent = aufgabe.titel;
+                const zaehler = document.createElement('span');
+                zaehler.className = 'menu-item-badge';
+                zaehler.style.display = 'none';
+                link.append(name, zaehler);
+                li.appendChild(link);
+                kategorien.appendChild(li);
+                const st = aufgabe.status;
+                if (st && st.gesamt > 0 && (aufgabe.kinder || []).length) setzeZaehler(link, `${st.erledigt}/${st.gesamt}`);
+                if (aufgabeId && String(aufgabe.id) === String(aufgabeId)) link.classList.add('active');
+            }
             for (const aufgabe of daten.phasen.flatMap((p) => p.aufgaben || [])) {
                 const a = document.getElementById(ZIELE[aufgabe.vorlage_key]);
                 if (!a) continue;
@@ -1558,6 +1585,8 @@ async function initialisiereMenue() {
                 document.getElementById('nav-orga-uebersicht').classList.add('active');
             }
         }).catch(() => { /* ohne Zähler weiter */ });
+        window.hajimeAktualisiereOrgaMenue = ladeEintraege;
+        ladeEintraege();
     }
 
     // --- GLOBALER DARKMODE TOGGLE ---

@@ -64,6 +64,12 @@
 .og-phase-zaehler { color: var(--text-muted); font-size: 12px; margin-left: auto; }
 .og-leer { margin: 0; padding: 8px 12px; color: var(--text-muted); font-size: 13px; }
 
+/* Kategorien: ziehbar, Phasenblöcke als Ablageziel */
+.og-kategorie { cursor: grab; }
+.og-kategorie-icon { font-size: 18px; color: var(--og-akzent); align-self: center; margin-right: -4px; }
+.og-zieht { opacity: 0.4; }
+.og-phase.og-ziel { outline: 2px dashed var(--og-akzent); outline-offset: -2px; background: var(--og-akzent-bg); }
+
 /* Zeilen */
 .og-liste { display: flex; flex-direction: column; }
 .og-zeile {

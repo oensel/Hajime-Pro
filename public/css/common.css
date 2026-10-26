@@ -432,6 +432,8 @@ body {
 .menu-untermenue { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .menu-gruppe.zugeklappt .menu-untermenue { display: none; }
 .menu-subitem { padding: 7px 14px 7px 46px; font-size: 12px; font-weight: 600; text-transform: none; letter-spacing: 0.2px; }
+.menu-kategorien { margin-top: 2px; }
+.menu-kategorien .menu-subitem { padding-left: 62px; font-weight: 500; }
 .menu-subitem .menu-item-badge { height: 16px; min-width: 16px; line-height: 16px; font-size: 10px; }
 .menu-gruppe-kopf:focus-visible, .menu-subitem:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 

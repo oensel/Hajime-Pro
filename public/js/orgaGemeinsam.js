@@ -263,10 +263,14 @@ export function meldeZuweisung(modus, name, ctx, ohneMail = false) {
  * Aufgabe/Posten/Mitbringeintrag anlegen oder bearbeiten.
  * optionen: { art, aufgabe? (Bearbeiten), elternId?, phase? }
  */
+// Kategorien: eigene (art 'kategorie') und die drei Vorlagen-Aufgaben mit eigener Posten-Seite
+const KATEGORIE_KEYS = new Set(['technik_bereitstellen', 'catering', 'medaillen']);
+export const istKategorie = (a) => a.art === 'kategorie' || KATEGORIE_KEYS.has(a.vorlage_key);
+
 export function oeffneAufgabeDialog(ctx, optionen, onFertig) {
     const { art = 'aufgabe', aufgabe = null, elternId = null } = optionen;
     const bearbeiten = !!aufgabe;
-    const nenner = { aufgabe: 'Aufgabe', posten: 'Posten', mitbringen: 'Eintrag' }[art];
+    const nenner = optionen.nenner || { aufgabe: 'Aufgabe', kategorie: 'Kategorie', posten: 'Posten', mitbringen: 'Eintrag' }[art];
     const { karte, schliesse } = oeffneModal(bearbeiten ? `${nenner} bearbeiten` : `${nenner} hinzufügen`);
     const form = el('form');
     form.noValidate = true;
@@ -295,9 +299,9 @@ export function oeffneAufgabeDialog(ctx, optionen, onFertig) {
     aktionen.append(abbrechen, ok);
 
     form.append(feld('ogAufTitel', 'Titel', titel));
-    if (art === 'aufgabe') {
-        form.append(feld('ogAufNotiz', 'Notiz (optional)', notiz), feld('ogAufPhase', 'Phase', phase),
-            feld('ogAufFaellig', 'Fälligkeit (optional)', faellig), faelligHinweis);
+    if (art === 'aufgabe' || art === 'kategorie') {
+        form.append(feld('ogAufNotiz', 'Notiz (optional)', notiz), feld('ogAufPhase', 'Phase', phase));
+        if (art === 'aufgabe') form.append(feld('ogAufFaellig', 'Fälligkeit (optional)', faellig), faelligHinweis);
     } else {
         form.append(feld('ogAufMenge', 'Menge (optional)', menge));
     }
@@ -309,10 +313,10 @@ export function oeffneAufgabeDialog(ctx, optionen, onFertig) {
         fehler.textContent = '';
         if (!titel.value.trim()) { fehler.textContent = 'Titel eingeben.'; titel.focus(); return; }
         const body = { titel: titel.value.trim() };
-        if (art === 'aufgabe') {
+        if (art === 'aufgabe' || art === 'kategorie') {
             body.notiz = notiz.value.trim() || null;
             body.phase = phase.value;
-            if (faellig.value) body.faellig_am = faellig.value;
+            if (art === 'kategorie') { /* keine eigene Fälligkeit */ } else if (faellig.value) body.faellig_am = faellig.value;
             else if (aufgabe?.faellig_manuell) body.faellig_am = null;
         } else {
             body.menge = menge.value === '' ? null : Number(menge.value);
@@ -389,7 +393,7 @@ export function baueFaelligkeitChip(aufgabe, turnierDatum) {
 
 function fortschrittText(aufgabe) {
     const posten = (aufgabe.kinder || []).filter((k) => k.art !== 'mitbringen');
-    if (posten.length) return `${posten.filter((k) => k.status.status === 'erledigt').length} von ${posten.length} Posten`;
+    if (posten.length) return `${posten.filter((k) => k.status.status === 'erledigt').length} von ${posten.length} ${aufgabe.art === 'kategorie' ? 'Aufgaben' : 'Posten'}`;
     if (aufgabe.status?.quelle === 'helferplan') return `${aufgabe.status.erledigt} von ${aufgabe.status.gesamt} Plätzen`;
     return '';
 }
@@ -413,12 +417,14 @@ export function baueZeile(aufgabe, ctx, optionen) {
 
     const text = el('div', 'og-text');
     const titelZeile = el('div', 'og-titel-zeile');
+    if (istKategorie(aufgabe) && !postenModus) titelZeile.append(el('span', 'material-icons og-kategorie-icon', 'folder_open'));
     if (mitDetails && !postenModus) {
         // Der Titel öffnet die Posten der Aufgabe
         const titelLink = el('a', 'og-titel og-titel-link', aufgabe.titel);
         titelLink.href = `/orga-aufgabe.html?id=${encodeURIComponent(aufgabe.id)}&turnierId=${encodeURIComponent(ctx.turnierId)}`;
-        titelLink.setAttribute('aria-label', `${aufgabe.titel}: Posten öffnen`);
-        titelLink.title = 'Posten öffnen';
+        const oeffnenText = aufgabe.art === 'kategorie' ? 'Aufgaben öffnen' : 'Posten öffnen';
+        titelLink.setAttribute('aria-label', `${aufgabe.titel}: ${oeffnenText}`);
+        titelLink.title = oeffnenText;
         titelZeile.append(titelLink);
     } else {
         titelZeile.append(el('span', 'og-titel', aufgabe.titel));

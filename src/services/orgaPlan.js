@@ -13,7 +13,9 @@ import { ORGA_VORLAGE, ORGA_PHASEN } from '../shared/orgaVorlage.js';
 import { datumAlsText, heuteBerlin } from './helferPlan.js';
 import { istFreigegebenesMitglied } from '../utils/vereinHelper.js';
 
-const ARTEN = ['aufgabe', 'posten', 'mitbringen'];
+// kategorie: oberste Ebene wie eine Aufgabe, aber als Sammelstelle für eigene Aufgaben (Posten) gedacht
+const ARTEN = ['aufgabe', 'kategorie', 'posten', 'mitbringen'];
+const OBERSTE_ARTEN = ['aufgabe', 'kategorie'];
 const ANKER = ['turnier', 'anmeldeschluss'];
 const MAX_TEXT = 255;
 export const MITBRINGLISTEN_KEYS = new Set(ORGA_VORLAGE.filter((v) => v.mitbringliste).map((v) => v.vorlage_key));
@@ -182,12 +184,12 @@ export async function legeAufgabeAn(knex, turnierId, felder = {}) {
             const eltern = await trx('orga_aufgaben').where({ id: felder.eltern_id, turnier_id: turnierId }).first();
             if (!eltern) throw fehler(404, 'Übergeordnete Aufgabe nicht gefunden.');
             if (eltern.eltern_id != null) throw fehler(400, 'Unteraufgaben lassen sich nicht weiter schachteln.');
-            if (art === 'aufgabe') throw fehler(400, 'Unter einer Aufgabe liegen Posten oder Mitbringeinträge.');
+            if (OBERSTE_ARTEN.includes(art)) throw fehler(400, 'Unter einer Aufgabe liegen Posten oder Mitbringeinträge.');
             if (art === 'mitbringen' && !MITBRINGLISTEN_KEYS.has(eltern.vorlage_key)) {
                 throw fehler(400, 'Mitbringeinträge gibt es nur unter der Mitbringliste (Catering).');
             }
             phase = eltern.phase;
-        } else if (art !== 'aufgabe') {
+        } else if (!OBERSTE_ARTEN.includes(art)) {
             throw fehler(400, 'Posten und Mitbringeinträge brauchen eine übergeordnete Aufgabe.');
         }
         if (!ORGA_PHASEN.includes(phase)) throw fehler(400, 'Ungültige Phase.');
@@ -253,6 +255,8 @@ export async function aendereAufgabe(knex, aufgabeId, felder = {}) {
             }
         }
         if (Object.keys(update).length) await trx('orga_aufgaben').where({ id: aufgabeId }).update(update);
+        // Posten und Mitbringeinträge liegen in der Phase ihrer Aufgabe
+        if (update.phase && update.phase !== aufgabe.phase) await trx('orga_aufgaben').where({ eltern_id: aufgabeId }).update({ phase: update.phase });
         return { id: aufgabeId };
     });
 }

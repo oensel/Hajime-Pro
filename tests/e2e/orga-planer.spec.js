@@ -214,3 +214,37 @@ test('„Vorlage nachladen“ bringt eine gelöschte Vorlagen-Aufgabe zurück', 
     await page.getByRole('button', { name: 'Vorlage nachladen' }).click();
     await expect(page.getByText('Alle Aufgaben der Vorlage sind bereits vorhanden.')).toBeVisible();
 });
+
+test('Neue Kategorie: anlegen, per Drag&Drop in eine andere Phase, im Menü unter „Aufgaben“, Aufgaben darin anlegen', async ({ page }) => {
+    await page.goto(`/orga.html?turnierId=${turnierId}`);
+    await page.getByRole('button', { name: 'Neue Kategorie' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Titel').fill('Sanitätsdienst');
+    await dialog.getByRole('button', { name: 'Hinzufügen' }).click();
+    await expect(dialog).toBeHidden();
+    await expect(page.locator('.og-phase-vorbereitung .og-zeile').filter({ hasText: 'Sanitätsdienst' })).toBeVisible();
+
+    // Quelle und Ziel müssen gleichzeitig im Bild sein (kein Auto-Scroll beim Ziehen im Test)
+    await page.setViewportSize({ width: 1280, height: 1800 });
+    const quelle = await zeile(page, 'Sanitätsdienst').boundingBox();
+    const ziel = await page.locator('.og-phase-turniertag .og-phase-kopf').boundingBox();
+    await page.mouse.move(quelle.x + 200, quelle.y + quelle.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(quelle.x + 210, quelle.y + quelle.height / 2 + 10, { steps: 5 });
+    await page.mouse.move(ziel.x + 100, ziel.y + ziel.height / 2, { steps: 15 });
+    await page.mouse.up();
+    await expect(page.locator('.og-phase-turniertag .og-zeile').filter({ hasText: 'Sanitätsdienst' })).toBeVisible();
+    await expect(page.locator('.og-phase-vorbereitung .og-zeile').filter({ hasText: 'Sanitätsdienst' })).toHaveCount(0);
+
+    // Menü: eingerückt unter „Aufgaben“
+    await expect(page.locator('#nav-orga-kategorien .nav-orga-eigene .menu-text')).toHaveText('Sanitätsdienst');
+
+    await page.locator('#nav-orga-kategorien .nav-orga-eigene a').click();
+    await expect(page.locator('#ogPosten')).toContainText('Noch keine Aufgaben');
+    await page.getByRole('button', { name: 'Aufgabe hinzufügen' }).click();
+    await page.getByRole('dialog').getByLabel('Titel').fill('Arzt anfragen');
+    await page.getByRole('dialog').getByRole('button', { name: 'Hinzufügen' }).click();
+    await expect(page.locator('#ogFortschrittText')).toHaveText('0 von 1');
+    await page.locator('#ogPosten .og-punkt').click();
+    await expect(page.locator('#ogFortschrittText')).toHaveText('1 von 1');
+});

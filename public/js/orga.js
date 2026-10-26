@@ -1,7 +1,7 @@
 // Orga-Planer Übersicht (orga.html, Spec docs/specs/2026-10-18-orga-planer-design.md, Abschnitt Oberfläche):
 // Kennzahlen, Phasenblöcke, Abhaken, Zuweisen, Aufgaben anlegen/ändern/löschen.
 import {
-    api, el, melde, turnierIdAusUrl, ladeKontext, PHASEN, baueZeile, oeffneAufgabeDialog,
+    api, el, melde, turnierIdAusUrl, ladeKontext, PHASEN, baueZeile, oeffneAufgabeDialog, istKategorie,
     heuteBerlin, tageZwischen, formatiereDatum, zeigeZugriffsFehler
 } from './orgaGemeinsam.js';
 
@@ -22,6 +22,7 @@ async function neuLaden(optionen = {}) {
     meldungEl.textContent = '';
     state.daten = r.daten;
     render();
+    window.hajimeAktualisiereOrgaMenue?.();
     if (optionen.pruefeErledigt != null) {
         const a = state.daten.phasen.flatMap((p) => p.aufgaben).find((x) => x.id === optionen.pruefeErledigt);
         if (a && a.status.status === 'erledigt') {
@@ -60,7 +61,30 @@ function sichtbareAufgaben(aufgaben) {
 }
 
 function zeileFuer(aufgabe) {
-    return baueZeile(aufgabe, state.ctx, { turnierDatum: String(state.daten.turnier.datum || '').slice(0, 10), neuLaden });
+    const zeile = baueZeile(aufgabe, state.ctx, { turnierDatum: String(state.daten.turnier.datum || '').slice(0, 10), neuLaden });
+    if (istKategorie(aufgabe)) {
+        // Kategorien lassen sich per Drag&Drop in eine andere Phase schieben (alternativ: Bearbeiten → Phase)
+        zeile.draggable = true;
+        // Links und Knöpfe in der Zeile starten sonst ihren eigenen Drag (Link-Drag liefert die URL statt der Aufgabe)
+        zeile.querySelectorAll('a').forEach((a) => { a.draggable = false; });
+        zeile.classList.add('og-kategorie');
+        zeile.addEventListener('dragstart', (e) => {
+            e.dataTransfer.setData('application/x-orga-aufgabe', String(aufgabe.id));
+            e.dataTransfer.effectAllowed = 'move';
+            zeile.classList.add('og-zieht');
+        });
+        zeile.addEventListener('dragend', () => zeile.classList.remove('og-zieht'));
+    }
+    return zeile;
+}
+
+async function verschiebeInPhase(aufgabeId, phase) {
+    const gruppen = state.daten.phasen;
+    const aktuell = gruppen.find((p) => p.aufgaben.some((a) => String(a.id) === String(aufgabeId)));
+    if (!aktuell || aktuell.phase === phase) return;
+    const r = await api('PUT', `/api/orga/aufgaben/${aufgabeId}`, { phase });
+    if (!r.ok) { melde(r.daten.error || 'Verschieben fehlgeschlagen.'); return; }
+    await neuLaden();
 }
 
 // Phasen mit lauter erledigten Aufgaben sind zunächst eingeklappt; eine Wahl des Nutzers bleibt beim Neuladen erhalten
@@ -74,6 +98,14 @@ function rendereNachPhase() {
         if (state.nurMeine && !aufgaben.length) continue;
         const block = el('section', `og-phase og-phase-${def.key}`);
         block.dataset.phase = def.key;
+        block.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; block.classList.add('og-ziel'); });
+        block.addEventListener('dragleave', (e) => { if (!block.contains(e.relatedTarget)) block.classList.remove('og-ziel'); });
+        block.addEventListener('drop', (e) => {
+            e.preventDefault();
+            block.classList.remove('og-ziel');
+            const id = e.dataTransfer.getData('application/x-orga-aufgabe');
+            if (id) verschiebeInPhase(id, def.key);
+        });
         const kopf = el('div', 'og-phase-kopf');
         const erledigt = aufgaben.filter((a) => a.status.status === 'erledigt').length;
         kopf.append(el('span', 'material-icons og-phase-pfeil', 'expand_more'), el('h2', null, def.label),
@@ -118,6 +150,8 @@ async function start() {
         e.currentTarget.setAttribute('aria-pressed', String(state.nurMeine));
         if (state.daten) render();
     });
+    document.getElementById('ogNeueKategorie').addEventListener('click', () =>
+        oeffneAufgabeDialog(state.ctx, { art: 'kategorie', phase: 'vorbereitung' }, () => neuLaden()));
     document.getElementById('ogNeueAufgabe').addEventListener('click', () =>
         oeffneAufgabeDialog(state.ctx, { art: 'aufgabe', phase: 'vorbereitung' }, () => neuLaden()));
     document.getElementById('ogVorlageNachladen').addEventListener('click', async (e) => {

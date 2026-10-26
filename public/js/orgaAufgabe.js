@@ -44,19 +44,23 @@ function render() {
     info.classList.toggle('og-rot', ueberfaellig);
 
     const posten = a.kinder.filter((k) => k.art !== 'mitbringen');
+    // In einer Kategorie heißen die Einträge „Aufgaben“, sonst „Posten“
+    const inKategorie = a.art === 'kategorie';
+    state.nenner = inKategorie ? 'Aufgabe' : 'Posten';
+    document.getElementById('ogPostenNeu').lastChild.textContent = ` ${state.nenner} hinzufügen`;
     const fertig = posten.filter((k) => k.status.status === 'erledigt').length;
     const prozent = posten.length ? Math.round((fertig / posten.length) * 100) : 0;
     document.getElementById('ogFortschrittText').textContent = `${fertig} von ${posten.length}`;
     const balken = document.getElementById('ogBalken');
     balken.setAttribute('aria-valuenow', String(prozent));
-    balken.setAttribute('aria-valuetext', `${fertig} von ${posten.length} Posten erledigt`);
+    balken.setAttribute('aria-valuetext', `${fertig} von ${posten.length} ${inKategorie ? 'Aufgaben' : 'Posten'} erledigt`);
     document.getElementById('ogBalkenFuellung').style.width = `${prozent}%`;
     balken.classList.toggle('og-balken-fertig', posten.length > 0 && fertig === posten.length);
 
     const liste = document.getElementById('ogPosten');
     liste.replaceChildren(...(posten.length
         ? posten.map((k) => baueZeile(k, state.ctx, { turnierDatum, neuLaden, postenModus: true }))
-        : [el('p', 'og-leer', 'Noch keine Posten.')]));
+        : [el('p', 'og-leer', inKategorie ? 'Noch keine Aufgaben.' : 'Noch keine Posten.')]));
 
     document.getElementById('ogAlleAufMich').hidden = !state.ctx.ich.id;
 
@@ -148,7 +152,7 @@ async function start() {
     document.getElementById('ogZurueck').href = `/orga.html?turnierId=${encodeURIComponent(turnierId)}`;
     state.ctx = await ladeKontext(turnierId);
     document.getElementById('ogPostenNeu').addEventListener('click', () =>
-        oeffneAufgabeDialog(state.ctx, { art: 'posten', elternId: aufgabeId }, () => neuLaden()));
+        oeffneAufgabeDialog(state.ctx, { art: 'posten', elternId: aufgabeId, nenner: state.nenner }, () => neuLaden()));
     document.getElementById('ogAlleAufMich').addEventListener('click', alleAufMich);
     document.getElementById('ogMitbringForm').addEventListener('submit', mitbringEintragen);
     await neuLaden();
