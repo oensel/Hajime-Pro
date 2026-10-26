@@ -19,6 +19,7 @@ import { pruefeSensibleAktion } from '../utils/sensibleAktion.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 import { legeAusVorlageAn, berechneFaelligkeitenNeu, ladeOrga } from '../services/orgaPlan.js';
 import { datumAlsText } from '../services/helferPlan.js';
+import { stelleUnbestaetigteUm } from '../services/mandatJob.js';
 import { findeTerminKonflikt, ermittleAktivierbarkeit, kopiereTeilnehmerFuerNeuesTurnier, datumAlsIso } from '../shared/turnierAktivierung.js';
 const { istEinzelbenutzerBetrieb } = betriebsmodus;
 
@@ -1159,6 +1160,9 @@ export async function exportTurnier(knex, req, res) {
             return res.status(409).json({ success: false, error: 'Das Turnier läuft live in der Cloud. Es kann erst exportiert werden, wenn der Live-Betrieb beendet ist.' });
         }
 
+        // Unbestätigte Lastschriftmandate gelten nach dem Anmeldeschluss als Bar: der Hallen-Server bekommt den endgültigen Zahlweg.
+        // Bestätigungen nach dem Anmeldeschluss sind gesperrt, die Umstellung ist deshalb mit ihnen nicht im Wettlauf.
+        await stelleUnbestaetigteUm(knex, { turnierId });
         const exportData = await baueTurnierExport(knex, turnierId, turnier);
 
         // Die Datei lässt sich auf einem Hallen-Server einspielen: Live-Schalten in der Cloud warnt danach (Cloud-Live, Mischen-Sperre).

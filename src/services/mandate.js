@@ -18,10 +18,13 @@ import { ladeStammdaten } from './abrechnungStammdaten.js';
 import { erzeugeToken, pruefeToken, verbrauchePruefe, tokenBekannt, verbraucheAlleZuBezug } from './einmalToken.js';
 import { synchronisiereGesichert } from './zahlwege.js';
 import { protokolliereKonto } from './aktionsProtokoll.js';
+import { ermittleEffektivenStatus } from '../controllers/turnierController.js';
+import { turnierHatEchteKaempfe } from '../controllers/poolController.js';
 
 const AKTIV = ['unbestaetigt', 'gueltig'];
 const GUELTIG_STUNDEN = 168;
 const KONTOINHABER_MAX = 70;
+const MELDUNG_FRIST_ABGELAUFEN = 'Die Anmeldefrist ist abgelaufen. Das Mandat kann nicht mehr bestätigt werden, das Startgeld wird bar vor Ort kassiert.';
 const MELDUNG_ENTSCHIEDEN = 'Über dieses Mandat wurde schon entschieden oder es wurde zurückgezogen.';
 
 // +14 Monate (L12), Tag auf das Monatsende begrenzt (31.12. -> 28./29.02.).
@@ -92,7 +95,7 @@ export async function ladeAktivesMandat(knex, turnierId, vereinName, { sperren =
 }
 
 // Admins des zahlenden Vereins, die bestätigen dürfen: freigegeben, E-Mail bestätigt, nicht gesperrt.
-function adminAbfrage(knex, vereinId) {
+export function adminAbfrage(knex, vereinId) {
     return knex('benutzer_vereine')
         .join('benutzer', 'benutzer.id', 'benutzer_vereine.benutzer_id')
         .where({ 'benutzer_vereine.verein_id': vereinId, 'benutzer_vereine.freigegeben': 1, 'benutzer_vereine.rolle': 'admin' })
@@ -114,6 +117,22 @@ async function baueMandatsreferenz(trx, stammdaten, turnierId, zahlwegId) {
     const n = hoechste + 1;
     const zusatz = n > 1 ? `-${n}` : '';
     return sepaKennung(basis, 35 - zusatz.length) + zusatz;
+}
+
+/** Effektiver Turnierstatus (null = Turnier nicht mehr vorhanden); `db` ist knex oder eine Transaktion. */
+export async function ladeEffektivenTurnierStatus(db, turnierId) {
+    if (turnierId == null) return null;
+    const turnier = await db('turniere').where({ id: turnierId }).first();
+    if (!turnier) return null;
+    const hatEchteKaempfe = await turnierHatEchteKaempfe(db, turnierId);
+    return ermittleEffektivenStatus(turnier, { hatEchteKaempfe });
+}
+
+// Nach dem Anmeldeschluss ist ein Mandat nicht mehr bestätigbar (410); der Job stellt es auf Bar um.
+async function pruefeAnmeldungOffen(db, turnierId) {
+    if ((await ladeEffektivenTurnierStatus(db, turnierId)) !== 'veroeffentlicht') {
+        throw new FachFehler(410, MELDUNG_FRIST_ABGELAUFEN);
+    }
 }
 
 // Widerruf innerhalb einer Transaktion, die sperreMandate schon hält. L5: ein gültiges Mandat widerruft beim
@@ -218,7 +237,8 @@ export async function protokolliereMandat(knex, { art, mandatId, turnierId, benu
     const texte = {
         'mandat.erteilt': 'Lastschriftmandat erteilt',
         'mandat.widerrufen': 'Lastschriftmandat widerrufen',
-        'mandat.entscheidung': 'Lastschriftmandat bestätigt oder abgelehnt'
+        'mandat.entscheidung': 'Lastschriftmandat bestätigt oder abgelehnt',
+        'mandat.umgestellt': 'Lastschrift am Anmeldeschluss auf Barzahlung umgestellt'
     };
     await protokolliereKonto(knex, {
         konto: benutzerId == null ? null : { id: String(benutzerId) },
@@ -318,6 +338,7 @@ export async function ladeMandatFuerToken(knex, token) {
     if (!tokenZeile) return null;
     const mandat = await mandatZuToken(knex, tokenZeile);
     if (!mandat || mandat.status !== 'unbestaetigt') return null;
+    await pruefeAnmeldungOffen(knex, mandat.turnier_id);
     return {
         mandat: mandatOeffentlich(mandat),
         mandatstext: mandat.mandatstext,
@@ -351,6 +372,8 @@ export async function entscheideMandat(knex, token, { entscheidung, vertretung_b
         const istAdmin = vorabMandat.zahlender_verein_id != null
             && !!(await adminAbfrage(trx, vorabMandat.zahlender_verein_id).where('benutzer.id', tokenZeile.benutzer_id).first('benutzer.id'));
         if (!istAdmin) throw new FachFehler(403, 'Nur ein Admin des Vereins kann über das Mandat entscheiden.'); // Rollback: Link bleibt
+        // Unter dem Mandats-Lock geprüft (wie der Job): nach dem Anmeldeschluss gibt es keine Bestätigung/Ablehnung mehr.
+        await pruefeAnmeldungOffen(trx, vorabMandat.turnier_id);
         const updates = entscheidung === 'bestaetigen'
             ? { status: 'gueltig', bestaetigt_am: trx.fn.now(), bestaetigt_von: String(tokenZeile.benutzer_id) }
             : { status: 'abgelehnt', daten_verschluesselt: null, loeschen_ab: berechneLoeschenAb(heuteBerlin()) };

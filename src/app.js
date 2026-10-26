@@ -141,6 +141,7 @@ const __dirname = path.dirname(__filename);
 
 import { requireWriteAuth } from './middleware/auth.js';
 import { startOrgaErinnerung } from './services/orgaErinnerung.js';
+import { startMandatJob } from './services/mandatJob.js';
 
 // Express 5 lässt req.body undefined, wenn kein Body geparst wurde (Express 4: {}). Die Controller und
 // resolveTurnierId lesen req.body.<feld> direkt, daher hier wieder das gewohnte leere Objekt setzen.
@@ -493,6 +494,10 @@ if (syncKonfig.istClient) {
     // Orga-Planer: stündliche Erinnerungsmails; nur mit SMTP, nie in Testläufen (Mail-Rauschen).
     if ((bm.istCloud || process.env.HELFER_APP_AKTIV === 'true') && process.env.SMTP_HOST && process.env.NODE_ENV !== 'test') {
         startOrgaErinnerung(knex);
+    }
+    // Lastschriftmandate: Erinnerung vor dem Anmeldeschluss, danach Umstellung auf Bar; nur Cloud, nie in Testläufen.
+    if (bm.istCloud && process.env.NODE_ENV !== 'test') {
+        startMandatJob(knex);
     }
     app.use('/api/cloud', requireWriteAuth, getCloudRoutes(knex, { cloud: cloudZugriff, holeCluster: () => app.get('cluster'), datenDir: syncKonfig.datenverzeichnis ? path.dirname(path.resolve(syncKonfig.datenverzeichnis)) : '' }));
     if (liveApp) app.use('/api/live-app', requireWriteAuth, getLiveAppRoutes(liveApp));
