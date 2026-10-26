@@ -142,6 +142,8 @@ const __dirname = path.dirname(__filename);
 import { requireWriteAuth } from './middleware/auth.js';
 import { startOrgaErinnerung } from './services/orgaErinnerung.js';
 import { startMandatJob } from './services/mandatJob.js';
+import { loescheAbgelaufeneMandate } from './services/mandate.js';
+import { heuteBerlin } from './shared/abrechnung.js';
 
 // Express 5 lässt req.body undefined, wenn kein Body geparst wurde (Express 4: {}). Die Controller und
 // resolveTurnierId lesen req.body.<feld> direkt, daher hier wieder das gewohnte leere Objekt setzen.
@@ -498,6 +500,12 @@ if (syncKonfig.istClient) {
     // Lastschriftmandate: Erinnerung vor dem Anmeldeschluss, danach Umstellung auf Bar; nur Cloud, nie in Testläufen.
     if (bm.istCloud && process.env.NODE_ENV !== 'test') {
         startMandatJob(knex);
+        // Aufbewahrung der Mandate (14 Monate nach dem letzten Einzug bzw. Widerruf): täglich löschen, ohne Daten im Log.
+        const bereinigeMandate = () => loescheAbgelaufeneMandate(knex, heuteBerlin())
+            .then((n) => { if (n > 0) meldeInfo(`Aufräumen: ${n} abgelaufene Lastschriftmandate gelöscht`, { quelle: 'prozess' }); })
+            .catch((err) => console.error('[Mandate] Aufräumen fehlgeschlagen:', err?.name ?? ''));
+        setTimeout(bereinigeMandate, 90_000).unref();
+        setInterval(bereinigeMandate, 24 * 60 * 60 * 1000).unref();
     }
     app.use('/api/cloud', requireWriteAuth, getCloudRoutes(knex, { cloud: cloudZugriff, holeCluster: () => app.get('cluster'), datenDir: syncKonfig.datenverzeichnis ? path.dirname(path.resolve(syncKonfig.datenverzeichnis)) : '' }));
     if (liveApp) app.use('/api/live-app', requireWriteAuth, getLiveAppRoutes(liveApp));

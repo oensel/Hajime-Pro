@@ -416,6 +416,20 @@ export async function widerrufeMandat(knex, { turnierId, vereinName, benutzer = 
     return true;
 }
 
+/**
+ * Löscht Mandate, deren Aufbewahrung (loeschen_ab, L12) vor `heute` (YYYY-MM-DD) endet, samt zugehöriger
+ * Einmal-Tokens. Rechnungen behalten ihre Kopien (mandatsreferenz, iban_maske_zahler); mandat_id wird per FK NULL.
+ * @returns {Promise<number>} Anzahl gelöschter Mandate
+ */
+export async function loescheAbgelaufeneMandate(knex, heute) {
+    return knex.transaction(async (trx) => {
+        const ids = await trx('lastschrift_mandate').where('loeschen_ab', '<', heute).pluck('id');
+        if (ids.length === 0) return 0;
+        await trx('token_einmal').where({ zweck: 'mandat' }).whereIn('bezug', ids.map(String)).del();
+        return trx('lastschrift_mandate').whereIn('id', ids).del();
+    });
+}
+
 /** Klar-IBAN und Kontoinhaber, nur für die SEPA-Datei. */
 export async function ladeMandatIban(knex, mandatId) {
     const zeile = await knex('lastschrift_mandate').where({ id: mandatId }).first('id', 'daten_verschluesselt');
