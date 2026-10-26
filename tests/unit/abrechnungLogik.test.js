@@ -73,6 +73,23 @@ test('Datum und Status', () => {
     assert.equal(rechnungsAnzeigeStatus({ status: 'bezahlt', zahlungsziel_datum: '2026-11-01' }, '2026-12-01'), 'bezahlt');
 });
 
+test('rechnungsAnzeigeStatus: eingezogen nur bei Lastschrift mit Datei und erreichtem Einzugsdatum (L9)', () => {
+    const ls = (o) => ({ zahlweg: 'lastschrift', status: 'versandt', zahlungsziel_datum: null, sepa_datei_id: 7, einzug_am: '2026-11-09', ...o });
+    assert.equal(rechnungsAnzeigeStatus(ls(), '2026-11-09'), 'eingezogen');
+    assert.equal(rechnungsAnzeigeStatus(ls(), '2026-12-01'), 'eingezogen');
+    assert.equal(rechnungsAnzeigeStatus(ls(), '2026-11-08'), 'versandt');           // Einzugsdatum noch nicht erreicht
+    assert.equal(rechnungsAnzeigeStatus(ls({ sepa_datei_id: null }), '2026-12-01'), 'versandt'); // ohne Datei
+    assert.equal(rechnungsAnzeigeStatus(ls({ status: 'offen' }), '2026-12-01'), 'eingezogen');
+    assert.equal(rechnungsAnzeigeStatus(ls({ status: 'bezahlt' }), '2026-12-01'), 'bezahlt');
+    assert.equal(rechnungsAnzeigeStatus(ls({ status: 'zurueckgebucht' }), '2026-12-01'), 'zurueckgebucht');
+    assert.equal(rechnungsAnzeigeStatus(ls({ einzug_am: null }), '2026-12-01'), 'versandt');
+    // Datum als Date-Objekt (pg ohne Typparser)
+    assert.equal(rechnungsAnzeigeStatus(ls({ einzug_am: '2026-11-09T00:00:00.000Z' }), '2026-11-09'), 'eingezogen');
+    // Andere Zahlwege werden nie "eingezogen", auch mit Datei
+    assert.equal(rechnungsAnzeigeStatus(ls({ zahlweg: 'ueberweisung', zahlungsziel_datum: '2026-11-20' }), '2026-12-01'), 'ueberfaellig');
+    assert.equal(rechnungsAnzeigeStatus(ls({ zahlweg: 'ueberweisung', zahlungsziel_datum: '2026-11-20' }), '2026-11-10'), 'versandt');
+});
+
 test('rechnungsArt', () => {
     assert.equal(rechnungsArt({ zahlweg: 'bar', anzahl: 3, bezahltAnzahl: 3 }), 'quittung');
     assert.equal(rechnungsArt({ zahlweg: 'bar', anzahl: 3, bezahltAnzahl: 2 }), 'rechnung');

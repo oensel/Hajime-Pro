@@ -5,7 +5,7 @@
     const turnierId = new URLSearchParams(window.location.search).get('turnierId');
     const api = `/api/abrechnung/${encodeURIComponent(turnierId || '')}`;
     const ZAHLWEGE = { ueberweisung: 'Überweisung', bar: 'Bar', lastschrift: 'Lastschrift' };
-    const STATUS = { offen: 'Offen', versandt: 'Versandt', bezahlt: 'Bezahlt', ueberfaellig: 'Überfällig' };
+    const STATUS = { offen: 'Offen', versandt: 'Versandt', bezahlt: 'Bezahlt', ueberfaellig: 'Überfällig', eingezogen: 'Eingezogen', zurueckgebucht: 'Zurückgebucht' };
     let daten = null;
 
     const euro = (cent) => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format((cent || 0) / 100);
@@ -115,6 +115,13 @@
             } else {
                 status.textContent = v.anzahl > 0 ? 'Noch keine Rechnung' : 'Keine Kämpfer';
             }
+            if (v.hinweis) {
+                // z. B. Lastschrift ohne gültiges Mandat: Hinweis mit dem echten Grund
+                const marke = el('span', { className: 'abr-abweichung', textContent: v.hinweis });
+                marke.title = v.hinweisGrund || v.hinweis;
+                status.append(marke);
+                if (v.hinweisGrund) status.append(el('span', { className: 'abr-versandfehler', textContent: v.hinweisGrund }));
+            }
             const aktionen = el('div', { className: 'abr-aktionen' });
             if (r) {
                 const pdf = el('button', { type: 'button', className: 'btn btn-outlined abr-pdf', textContent: 'PDF' });
@@ -146,6 +153,8 @@
         if (!daten.bereit) return daten.grund || 'Die Abrechnung ist noch nicht möglich.';
         if (!daten.stammdaten.vollstaendig) return 'Die Abrechnungsdaten des Ausrichters sind unvollständig.';
         if (daten.nichtZugeordnet.length > 0) return 'Es gibt Kämpfer unter „Nicht zugeordnet“. Bitte zuerst zuordnen oder Rechnungsdaten erfassen.';
+        const ohneMandat = offeneVereine().filter((v) => v.zahlweg === 'lastschrift' && v.hinweis);
+        if (ohneMandat.length > 0) return ohneMandat.map((v) => `Verein ${v.vereinName} hat kein gültiges Mandat.`).join(' ');
         if (offeneVereine().length === 0) return 'Es gibt keine Vereine, für die noch eine Rechnung zu erstellen ist.';
         return null;
     }

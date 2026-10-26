@@ -22,11 +22,47 @@ async function ladeAusrichterSchluessel(knex, turnier) {
 // E5: bereit, sobald das Turnier zurückgespielt wurde, oder wenn es in der Cloud live lief (beendet) und nie auf einen
 // Hallen-Server geholt wurde (Entscheidung des Auftraggebers: solche Turniere sind ohne Zurückspielen abrechenbar).
 export async function ermittleAbrechnungsBereitschaft(knex, turnier) {
+    // Abgesagt: kein Startgeld geschuldet; Lastschrift-Zeilen solcher Turniere haben kein Mandat mehr (mandatJob).
+    if (turnier.status === 'abgesagt') return { bereit: false, grund: 'Das Turnier wurde abgesagt. Es gibt keine Abrechnung.' };
     if (!startgeldVerlangt(turnier)) return { bereit: false, grund: 'Für dieses Turnier wird kein Startgeld erhoben.' };
     if (turnier.zurueckgespielt_am) return { bereit: true, grund: null };
     const live = await knex('cloud_live').where({ turnier_id: turnier.id }).whereNotNull('beendet_am').first('turnier_id');
     if (live && !turnier.auf_hallen_server_geholt_am) return { bereit: true, grund: null };
     return { bereit: false, grund: 'Das Turnier wurde noch nicht vom Hallen-Server zurückgespielt.' };
+}
+
+// Mandatsstand je Verein (normalisierter Name): ein gültiges Mandat geht vor, sonst das jüngste.
+async function ladeMandatsStand(knex, turnierId) {
+    const stand = new Map();
+    const zeilen = await knex('lastschrift_mandate').where({ turnier_id: turnierId })
+        .select('id', 'verein_name', 'status').orderBy('id');
+    for (const m of zeilen) {
+        const k = normName(m.verein_name);
+        const bisher = stand.get(k);
+        if (!bisher || bisher.status !== 'gueltig') stand.set(k, m);
+    }
+    return stand;
+}
+
+const MANDAT_GRUENDE = {
+    unbestaetigt: 'Das Lastschriftmandat wurde noch nicht von einem Admin des Vereins bestätigt.',
+    abgelehnt: 'Das Lastschriftmandat wurde abgelehnt.',
+    widerrufen: 'Das Lastschriftmandat wurde widerrufen.',
+    umgestellt: 'Das Lastschriftmandat wurde auf Barzahlung umgestellt.'
+};
+
+// Grund, warum ein Lastschrift-Verein kein gültiges Mandat hat (null = gültig). Gültig nur, wenn Mandat und Zahlweg-Merker
+// übereinstimmen (L3: mandat_gueltig ist der abgeleitete Merker, das Mandat die Quelle).
+function mandatUngueltigGrund(zahlwegZeile, mandat) {
+    if (!mandat) return 'Es wurde kein Lastschriftmandat erteilt.';
+    if (mandat.status === 'gueltig' && zahlwegZeile.mandat_gueltig === true) return null;
+    if (mandat.status === 'gueltig') return 'Das Lastschriftmandat ist nicht als gültig vermerkt.';
+    return MANDAT_GRUENDE[mandat.status] || 'Das Lastschriftmandat ist nicht gültig.';
+}
+
+/** Lastschrift-Vereine, für die eine Rechnung zu erstellen wäre, die aber kein gültiges Mandat haben. */
+export function vereineOhneGueltigesMandat(abrechnung) {
+    return (abrechnung.vereine || []).filter((v) => v.zahlweg === 'lastschrift' && v.hinweis && v.anzahl > 0 && !v.rechnung);
 }
 
 // Autorität für "bezahlt" (Quittung statt offener Rechnung): allein das Flag turnier_teilnehmer.startgeld_bezahlt je Kämpfer.
@@ -57,23 +93,29 @@ export async function ladeAbrechnung(knex, turnier) {
     const rechnungen = new Map();
     const zeilen = await knex('rechnungen')
         .where({ turnier_id: turnier.id }).whereNot('status', 'zurueckgebucht')
-        .select('id', 'verein_name', 'nummer', 'art', 'status', 'versandt_am', 'bezahlt_am', 'versand_fehler', 'anzahl', 'betrag_cent',
-            knex.raw("to_char(zahlungsziel_datum, 'YYYY-MM-DD') as zahlungsziel_datum"))
+        .select('id', 'verein_name', 'zahlweg', 'nummer', 'art', 'status', 'versandt_am', 'bezahlt_am', 'versand_fehler', 'anzahl',
+            'betrag_cent', 'sepa_datei_id', 'mandatsreferenz', 'iban_maske_zahler',
+            knex.raw("to_char(zahlungsziel_datum, 'YYYY-MM-DD') as zahlungsziel_datum"),
+            knex.raw("to_char(einzug_am, 'YYYY-MM-DD') as einzug_am"))
         .orderBy('id');
     for (const z of zeilen) {
         rechnungen.set(normName(z.verein_name), {
             id: z.id, nummer: z.nummer, art: z.art, status: z.status,
             anzeigeStatus: rechnungsAnzeigeStatus(z, heute),
             versandt_am: z.versandt_am, bezahlt_am: z.bezahlt_am, versand_fehler: z.versand_fehler,
-            anzahl: z.anzahl, betrag_cent: z.betrag_cent
+            anzahl: z.anzahl, betrag_cent: z.betrag_cent,
+            zahlweg: z.zahlweg, einzug_am: z.einzug_am, sepa_datei_id: z.sepa_datei_id,
+            mandatsreferenz: z.mandatsreferenz, iban_maske_zahler: z.iban_maske_zahler
         });
     }
+    const mandate = await ladeMandatsStand(knex, turnier.id);
 
     for (const [schluessel, z] of zahlwege) {
         if (ausrichter.has(schluessel)) continue;
         const gezaehlt = zaehlung.get(schluessel);
         const anzahl = gezaehlt?.anzahl ?? 0;
         const rechnung = rechnungen.get(schluessel) ?? null;
+        const mandatGrund = z.zahlweg === 'lastschrift' ? mandatUngueltigGrund(z, mandate.get(schluessel)) : null;
         antwort.vereine.push({
             vereinName: z.verein_name,
             zahlweg: z.zahlweg,
@@ -83,7 +125,11 @@ export async function ladeAbrechnung(knex, turnier) {
             rechnungEmail: z.rechnung_email || null,
             rechnung,
             // Rechnungen sind Momentaufnahmen und werden nie angepasst; spätere Änderungen (z. B. ordneVereinZu) nur melden.
-            rechnungWeichtAb: !!rechnung && (rechnung.anzahl !== anzahl || rechnung.betrag_cent !== anzahl * startgeldCent)
+            rechnungWeichtAb: !!rechnung && (rechnung.anzahl !== anzahl || rechnung.betrag_cent !== anzahl * startgeldCent),
+            // Lastschrift ohne gültiges Mandat: sichtbar mit dem echten Grund; blockiert den Rechnungslauf, solange für den
+            // Verein noch eine Rechnung zu erstellen ist (vereineOhneGueltigesMandat).
+            hinweis: mandatGrund ? 'Mandat nicht gültig' : null,
+            hinweisGrund: mandatGrund
         });
     }
     antwort.vereine.sort((a, b) => a.vereinName.localeCompare(b.vereinName, 'de'));

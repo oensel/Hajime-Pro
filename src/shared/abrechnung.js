@@ -130,14 +130,21 @@ export function heuteBerlin(jetzt = new Date()) {
     }).format(jetzt);
 }
 
+// L9: Eine Lastschrift-Rechnung gilt als "eingezogen" (abgeleitet, nicht gespeichert), sobald sie in einer SEPA-Datei
+// steht und das Einzugsdatum erreicht ist; bezahlt und zurückgebucht bleiben, wie sie sind.
 export function rechnungsAnzeigeStatus(rechnung, heute) {
     const { status, zahlungsziel_datum: ziel } = rechnung;
+    if (rechnung.zahlweg === 'lastschrift' && rechnung.sepa_datei_id != null && rechnung.einzug_am
+        && String(rechnung.einzug_am).slice(0, 10) <= heute && status !== 'bezahlt' && status !== 'zurueckgebucht') {
+        return 'eingezogen';
+    }
     if (status === 'versandt' && ziel && String(ziel).slice(0, 10) < heute) return 'ueberfaellig';
     return status;
 }
 
 // Bereits bezahlte Kämpfer (startgeld_bezahlt, z. B. an der Kasse kassiert) werden bei jedem Zahlweg angerechnet;
-// sind alle bezahlt, entsteht eine Quittung. Lastschrift bleibt außen vor (Stufe 3 regelt sie).
+// sind alle bezahlt, entsteht eine Quittung. Lastschrift bleibt außen vor (E9): dort wird der volle Betrag eingezogen,
+// die Rechnung ist immer eine Rechnung (zugleich Vorabankündigung).
 export function rechnungsArt({ zahlweg, anzahl, bezahltAnzahl }) {
     return zahlweg !== 'lastschrift' && anzahl > 0 && bezahltAnzahl >= anzahl ? 'quittung' : 'rechnung';
 }
