@@ -426,7 +426,10 @@ export async function setzeBezahlt(knex, rechnungId, { bezahlt, benutzerId }) {
         ? { status: 'bezahlt', bezahlt_am: knex.fn.now(), bezahlt_von: benutzerId ?? null }
         : { status: zeile.versandt_am ? 'versandt' : 'offen', bezahlt_am: null, bezahlt_von: null };
     if (!(bezahlt && zeile.status === 'bezahlt')) {
-        await knex('rechnungen').where({ id: rechnungId }).update({ ...werte, updated_at: knex.fn.now() });
+        // Bedingt, damit eine parallel erfasste Rücklastschrift nicht überschrieben wird.
+        const geaendert = await knex('rechnungen').where({ id: rechnungId }).whereNot('status', 'zurueckgebucht')
+            .update({ ...werte, updated_at: knex.fn.now() });
+        if (geaendert !== 1) throw new FachFehler(409, 'Eine zurückgebuchte Rechnung kann nicht geändert werden.');
     }
     const neu = await knex('rechnungen').where({ id: rechnungId }).select(selectRechnung(knex)).first();
     return { ...neu, anzeigeStatus: rechnungsAnzeigeStatus(neu, heuteBerlin()) };

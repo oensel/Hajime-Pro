@@ -55,11 +55,16 @@ export function verschluesseleFeld(klartext, env = process.env) {
 // Wählt den Schlüssel über die kid des Chiffretexts (aktuell oder alt); unbekannte kid = generischer Fehler.
 export function entschluesseleFeld(text, env = process.env) {
     const aktuell = leiteSchluesselAb(env);
-    const alt = leiteAltSchluesselAb(env);
     const fehler = () => new FachFehler(500, 'Zahlungsdaten konnten nicht entschlüsselt werden.');
     const teile = String(text ?? '').split(':');
     if (teile.length !== 5 || teile[0] !== 'z1') throw fehler();
-    const gewaehlt = teile[1] === aktuell.kid ? aktuell : (alt && teile[1] === alt.kid ? alt : null);
+    // Der alte Schlüssel wird nur gebraucht, wenn der Chiffretext nicht zum aktuellen gehört: ein fehlerhafter
+    // _ALT-Eintrag blockiert so nicht das Entschlüsseln der bereits umgeschlüsselten Daten.
+    let gewaehlt = teile[1] === aktuell.kid ? aktuell : null;
+    if (!gewaehlt) {
+        const alt = leiteAltSchluesselAb(env);
+        gewaehlt = alt && teile[1] === alt.kid ? alt : null;
+    }
     if (!gewaehlt) throw fehler();
     try {
         const iv = Buffer.from(teile[2], 'base64');
