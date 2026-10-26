@@ -365,6 +365,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!c.isOffline) document.getElementById('sichtbarkeitGroup').style.display = '';
     }).catch(() => {});
 
+    // Weitere Zahlungsfelder erst bei Startgeld > 0
+    function aktualisiereStartgeldDetails() {
+        document.getElementById('startgeldDetails').hidden = !(parseFloat(document.getElementById('startgeld').value) > 0);
+    }
+    document.getElementById('startgeld').addEventListener('input', aktualisiereStartgeldDetails);
+    aktualisiereStartgeldDetails();
+
     // --- RECHNUNGEN (nur Cloud): Zahlungsziel, Hinweistext und Kasten mit fehlenden Abrechnungsdaten ---
     let rechnungenAktiv = false;
     let turnierAusCloud = false; // Hallen-Server: Turnier aus der Cloud geholt (Konto kommt nicht mit)
@@ -501,6 +508,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('farbe_kaempfer2').value = turnier.farbe_kaempfer2 === 'rot' ? 'rot' : 'blau';
             zeigeFarbPunkt();
             document.getElementById('startgeld').value = turnier.startgeld !== null && turnier.startgeld !== undefined ? turnier.startgeld : '';
+            aktualisiereStartgeldDetails();
             document.getElementById('iban').value = turnier.iban || '';
             document.getElementById('kontoinhaber').value = turnier.kontoinhaber || '';
             document.getElementById('verwendungszweck').value = turnier.verwendungszweck || '';

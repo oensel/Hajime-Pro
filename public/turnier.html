@@ -213,6 +213,8 @@
                             <label for="startgeld">Startgeld</label>
                             <input type="number" id="startgeld" min="0" max="999" step="1" placeholder="z.B. 8">
                         </div>
+                        <!-- Weitere Zahlungsfelder erscheinen erst bei Startgeld > 0 (turnier.js) -->
+                        <div id="startgeldDetails" hidden>
                         <!-- Konto: nur am Hallen-Server; in der Cloud kommt es aus den Zahlungsdaten des Vereins (turnier.js blendet aus) -->
                         <div id="kontoGruppe">
                         <div class="form-group">
@@ -263,6 +265,7 @@
                                 <a id="rechnungStammdatenLink" href="#" hidden style="margin-top:6px;font-weight:700;">Abrechnungsdaten des Vereins ergänzen</a>
                                 <div id="rechnungStammdatenBitte" hidden style="margin-top:6px;">Bitte einen Admin Ihres Vereins, die Abrechnungsdaten zu ergänzen.</div>
                             </div>
+                        </div>
                         </div>
                     </div>
                 </div>
