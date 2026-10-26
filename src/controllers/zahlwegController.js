@@ -9,6 +9,11 @@ import { ladeZahlwegFuerVerein, ladeVorbelegung, speichereZahlweg, ladeKasse, ka
 import { startgeldVerlangt } from '../shared/zahlweg.js';
 import { darfTurnierSehen } from '../services/turnierSichtbarkeit.js';
 import { ermittleZahlungsempfaenger } from '../services/abrechnungStammdaten.js';
+import { ladeStammdaten } from '../services/abrechnungStammdaten.js';
+import { ladeAktivesMandat, mandatOeffentlich } from '../services/mandate.js';
+import { baueMandatstext } from '../shared/mandatText.js';
+import { ermittleBasisUrl } from '../utils/basisUrl.js';
+import { clientIp } from '../liveCloud/ratenbegrenzung.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 
 function antworteFehler(res, err) {
@@ -45,6 +50,25 @@ export function erzeugeZahlwegController(knex) {
         return { turnier, benutzer, vereinName, istAusrichter };
     }
 
+    // Vorschau des Mandatstexts für den Dialog (Referenz wird erst beim Erteilen vergeben); nur wenn Lastschrift angeboten wird.
+    async function baueMandatsvorschau(turnier, vereinName) {
+        const stammdaten = turnier.verein_id ? await ladeStammdaten(knex, turnier.verein_id) : null;
+        if (!stammdaten?.glaeubiger_id) return null;
+        const glaeubigerName = stammdaten.absender_name || stammdaten.kontoinhaber;
+        const vorabTage = turnier.vorabankuendigung_tage ?? 5;
+        const mandatsreferenzMuster = 'wird bei Erteilung vergeben';
+        return {
+            mandatstext: baueMandatstext({
+                glaeubigerName, glaeubigerId: stammdaten.glaeubiger_id, mandatsreferenz: mandatsreferenzMuster,
+                vorabTage, turnierBezeichnung: turnier.bezeichnung, zahlenderVerein: vereinName
+            }),
+            glaeubigerId: stammdaten.glaeubiger_id,
+            glaeubigerName,
+            vorabTage,
+            mandatsreferenzMuster
+        };
+    }
+
     async function istAnmeldungOffen(turnier) {
         const hatEchteKaempfe = await turnierHatEchteKaempfe(knex, turnier.id);
         return ermittleEffektivenStatus(turnier, { hatEchteKaempfe }) === 'veroeffentlicht';
@@ -60,7 +84,7 @@ export function erzeugeZahlwegController(knex) {
     return {
         async lese(req, res) {
             try {
-                const { turnier, vereinName, istAusrichter } = await ladeKontext(req);
+                const { turnier, benutzer, vereinName, istAusrichter } = await ladeKontext(req);
                 const erforderlich = startgeldVerlangt(turnier) && !istAusrichter;
                 const zahlweg = erforderlich ? await ladeZahlwegFuerVerein(knex, turnier.id, vereinName) : null;
                 // Konto für den Girocode: nur wer per Überweisung zahlt, bekommt es (Turnierfelder vor Vereinskonto).
@@ -75,10 +99,17 @@ export function erzeugeZahlwegController(knex) {
                         console.error('[Zahlweg] Empfängerkonto nicht lesbar:', fehler?.code ?? '', fehler?.message ?? 'Fehler');
                     }
                 }
+                const angebotene = await ermittleAngeboteneZahlwege(knex, turnier);
+                // Mandat nur maskiert (nie Klar-IBAN); Vorschau nur, wenn Lastschrift angeboten wird.
+                const mandat = erforderlich ? mandatOeffentlich(await ladeAktivesMandat(knex, turnier.id, vereinName)) : null;
+                const mandatsvorschau = erforderlich && angebotene.includes('lastschrift') ? await baueMandatsvorschau(turnier, vereinName) : null;
                 res.json({
                     erforderlich,
                     empfaenger,
-                    angebotene: await ermittleAngeboteneZahlwege(knex, turnier),
+                    angebotene,
+                    mandat,
+                    mandatsvorschau,
+                    istAdminDesVereins: benutzer.verein_rolle === 'admin',
                     startgeld: parseFloat(turnier.startgeld) || 0,
                     abrechnungsbasis: turnier.abrechnungsbasis,
                     zahlweg,
@@ -101,9 +132,19 @@ export function erzeugeZahlwegController(knex) {
                     vereinName,
                     vereinId: benutzer.verein_id,
                     benutzerId: benutzer.id,
-                    eingabe: req.body || {}
+                    eingabe: req.body || {},
+                    // Rolle im aktiven (= zahlenden) Verein des angemeldeten Kontos, nie aus dem Request-Body.
+                    istAdminDesVereins: benutzer.verein_rolle === 'admin',
+                    ip: clientIp(req),
+                    basisUrl: ermittleBasisUrl(req)
                 });
-                res.json({ success: true, zahlweg: gespeichert });
+                res.json({
+                    success: true,
+                    zahlweg: gespeichert,
+                    ...(gespeichert.zahlweg === 'lastschrift'
+                        ? { bestaetigungNoetig: gespeichert.bestaetigungNoetig, mandat: gespeichert.mandat, empfaengerAnzahl: gespeichert.empfaengerAnzahl }
+                        : {})
+                });
             } catch (err) {
                 antworteFehler(res, err);
             }

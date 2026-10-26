@@ -17,6 +17,7 @@ import { heuteBerlin } from '../shared/abrechnung.js';
 import { ladeStammdaten } from './abrechnungStammdaten.js';
 import { erzeugeToken, pruefeToken, verbrauchePruefe, tokenBekannt, verbraucheAlleZuBezug } from './einmalToken.js';
 import { synchronisiereGesichert } from './zahlwege.js';
+import { protokolliereKonto } from './aktionsProtokoll.js';
 
 const AKTIV = ['unbestaetigt', 'gueltig'];
 const GUELTIG_STUNDEN = 168;
@@ -102,8 +103,15 @@ function adminAbfrage(knex, vereinId) {
 async function baueMandatsreferenz(trx, stammdaten, turnierId, zahlwegId) {
     const praefix = String(stammdaten?.rechnungs_praefix ?? '').replace(/-/g, '');
     const basis = `${praefix}M${turnierId}V${zahlwegId}`;
-    const [{ anzahl }] = await trx('lastschrift_mandate').where({ zahlweg_id: zahlwegId }).count({ anzahl: '*' });
-    const n = Number(anzahl) + 1;
+    // Nächste Nummer aus dem GRÖSSTEN vorhandenen Zusatz (nicht aus der Anzahl): gelöschte alte Mandate
+    // (Löschfrist L12) dürfen keine Referenz doppelt vergeben. Die Referenz ohne Zusatz zählt als 1.
+    const vorhandene = await trx('lastschrift_mandate').where({ zahlweg_id: zahlwegId }).select('mandatsreferenz');
+    let hoechste = 0;
+    for (const { mandatsreferenz } of vorhandene) {
+        const treffer = /-(\d+)$/.exec(String(mandatsreferenz));
+        hoechste = Math.max(hoechste, treffer ? Number(treffer[1]) : 1);
+    }
+    const n = hoechste + 1;
     const zusatz = n > 1 ? `-${n}` : '';
     return sepaKennung(basis, 35 - zusatz.length) + zusatz;
 }
@@ -113,7 +121,7 @@ async function baueMandatsreferenz(trx, stammdaten, turnierId, zahlwegId) {
 export async function widerrufeMandatInTrx(trx, { turnierId, vereinName, benutzer, grund }) {
     if (!['wechsel', 'umstellung', 'ruecklastschrift'].includes(grund)) throw new Error(`Unbekannter Widerrufsgrund: ${grund}`);
     const mandat = await ladeAktivesMandat(trx, turnierId, vereinName, { sperren: true });
-    if (!mandat) return false;
+    if (!mandat) return null;
     if (grund === 'wechsel' && mandat.status === 'gueltig' && benutzer?.istAdminDesVereins !== true) {
         throw new FachFehler(403, 'Ein bestätigtes Lastschriftmandat kann nur ein Admin des Vereins widerrufen.');
     }
@@ -127,11 +135,11 @@ export async function widerrufeMandatInTrx(trx, { turnierId, vereinName, benutze
             loeschen_ab: berechneLoeschenAb(mandat.letzter_einzug_am ?? heuteBerlin()),
             updated_at: trx.fn.now()
         });
-    if (geaendert === 0) return false;
+    if (geaendert === 0) return null;
     await verbraucheAlleZuBezug(trx, 'mandat', mandat.id);
     await trx('turnier_zahlwege').where({ turnier_id: turnierId, verein_name: vereinName })
         .update({ mandat_gueltig: false, updated_at: trx.fn.now() });
-    return true;
+    return mandat.id; // ID des widerrufenen Mandats (fürs Protokoll), null = es gab keines
 }
 
 // Neues Mandat innerhalb einer Transaktion, die sperreMandate schon hält. Liefert die zu versendenden Mails,
@@ -139,7 +147,7 @@ export async function widerrufeMandatInTrx(trx, { turnierId, vereinName, benutze
 export async function erteileMandatInTrx(trx, { turnier, zahlwegZeile, daten, benutzer, ip }) {
     const stammdaten = turnier.verein_id ? await ladeStammdaten(trx, turnier.verein_id) : null;
     if (!stammdaten?.glaeubiger_id) throw new FachFehler(400, 'Lastschrift wird für dieses Turnier nicht angeboten.');
-    await widerrufeMandatInTrx(trx, { turnierId: turnier.id, vereinName: zahlwegZeile.verein_name, benutzer, grund: 'wechsel' });
+    const ersetztMandatId = await widerrufeMandatInTrx(trx, { turnierId: turnier.id, vereinName: zahlwegZeile.verein_name, benutzer, grund: 'wechsel' });
 
     const glaeubigerName = stammdaten.absender_name || stammdaten.kontoinhaber;
     const mandatsreferenz = await baueMandatsreferenz(trx, stammdaten, turnier.id, zahlwegZeile.id);
@@ -195,7 +203,31 @@ export async function erteileMandatInTrx(trx, { turnier, zahlwegZeile, daten, be
             mails.push({ admin, token, ersteller });
         }
     }
-    return { zeile, mails };
+    return { zeile, mails, ersetztMandatId };
+}
+
+// Anzahl der Admins, die das Mandat per Mail bestätigen könnten (0 = niemand: der Dialog muss das klar sagen).
+export async function zaehleBestaetiger(knex, vereinId) {
+    if (vereinId == null) return 0;
+    const [{ anzahl }] = await adminAbfrage(knex, vereinId).count({ anzahl: '*' });
+    return Number(anzahl);
+}
+
+// Aktionsprotokoll: nur IDs und IP, nie Kontodaten. Fehler hier stören den Ablauf nie (protokolliereKonto fängt sie).
+export async function protokolliereMandat(knex, { art, mandatId, turnierId, benutzerId, ip = null, vereinId = null }) {
+    const texte = {
+        'mandat.erteilt': 'Lastschriftmandat erteilt',
+        'mandat.widerrufen': 'Lastschriftmandat widerrufen',
+        'mandat.entscheidung': 'Lastschriftmandat bestätigt oder abgelehnt'
+    };
+    await protokolliereKonto(knex, {
+        konto: benutzerId == null ? null : { id: String(benutzerId) },
+        vereinId,
+        aktion: art,
+        beschreibung: texte[art],
+        ip,
+        details: { mandatId, turnierId }
+    });
 }
 
 function baueBestaetigungsMail({ admin, token, ersteller }, zeile, basisUrl) {
@@ -252,12 +284,26 @@ export async function erteileMandat(knex, { turnier, zahlwegZeile, eingabe, benu
     pruefeBasisUrlFuerBestaetigung(basisUrl, benutzer);
     const ergebnis = await knex.transaction(async (trx) => {
         await sperreMandate(trx, turnier.id, zahlwegZeile.verein_name);
-        const r = await erteileMandatInTrx(trx, { turnier, zahlwegZeile, daten, benutzer, ip });
+        // Zeile erst NACH dem Lock neu laden: der Zahlweg kann sich seit dem Aufruf geändert haben (Wechsel/Löschung).
+        const aktuell = await trx('turnier_zahlwege').where({ id: zahlwegZeile.id }).first();
+        if (!aktuell || aktuell.zahlweg !== 'lastschrift' || aktuell.turnier_id !== turnier.id) {
+            throw new FachFehler(409, 'Der Zahlweg wurde gerade geändert, bitte erneut versuchen.');
+        }
+        const r = await erteileMandatInTrx(trx, { turnier, zahlwegZeile: aktuell, daten, benutzer, ip });
         await synchronisiereGesichert(trx, turnier.id);
         return r;
     });
     await versendeBestaetigungen(ergebnis, basisUrl, sende);
-    return { mandat: mandatOeffentlich(ergebnis.zeile), bestaetigungNoetig: ergebnis.zeile.status === 'unbestaetigt' };
+    const vereinId = zahlwegZeile.verein_id ?? null;
+    if (ergebnis.ersetztMandatId) {
+        await protokolliereMandat(knex, { art: 'mandat.widerrufen', mandatId: ergebnis.ersetztMandatId, turnierId: turnier.id, benutzerId: benutzer.id, ip, vereinId });
+    }
+    await protokolliereMandat(knex, { art: 'mandat.erteilt', mandatId: ergebnis.zeile.id, turnierId: turnier.id, benutzerId: benutzer.id, ip, vereinId });
+    return {
+        mandat: mandatOeffentlich(ergebnis.zeile),
+        bestaetigungNoetig: ergebnis.zeile.status === 'unbestaetigt',
+        empfaengerAnzahl: ergebnis.mails.length
+    };
 }
 
 async function mandatZuToken(knex, tokenZeile) {
@@ -284,7 +330,7 @@ export async function ladeMandatFuerToken(knex, token) {
  * Entscheidung eines Admins über den Mail-Link. Die erste Entscheidung verbraucht alle Links des Mandats;
  * zurückgezogene oder schon entschiedene Mandate antworten 410 und werden nie wieder gültig.
  */
-export async function entscheideMandat(knex, token, { entscheidung, vertretung_bestaetigt } = {}) {
+export async function entscheideMandat(knex, token, { entscheidung, vertretung_bestaetigt, ip = null } = {}) {
     if (!['bestaetigen', 'ablehnen'].includes(entscheidung)) throw new FachFehler(400, 'Ungültige Entscheidung.');
     if (entscheidung === 'bestaetigen' && vertretung_bestaetigt !== true) {
         throw new FachFehler(400, 'Bitte bestätigen, dass Sie berechtigt sind, den Verein zu vertreten.');
@@ -315,6 +361,7 @@ export async function entscheideMandat(knex, token, { entscheidung, vertretung_b
         // Auch wenn das Mandat nicht mehr offen war: der Link bleibt verbraucht (Commit), Antwort 410.
         await verbraucheAlleZuBezug(trx, 'mandat', vorabMandat.id);
         if (!zeile) return null;
+        zeile.entscheider_id = tokenZeile.benutzer_id;
         if (zeile.zahlweg_id != null) {
             await trx('turnier_zahlwege').where({ id: zeile.zahlweg_id })
                 .update({ mandat_gueltig: zeile.status === 'gueltig', updated_at: trx.fn.now() });
@@ -323,19 +370,26 @@ export async function entscheideMandat(knex, token, { entscheidung, vertretung_b
         return zeile;
     });
     if (!ergebnis) throw new FachFehler(410, MELDUNG_ENTSCHIEDEN);
+    await protokolliereMandat(knex, {
+        art: 'mandat.entscheidung', mandatId: ergebnis.id, turnierId: ergebnis.turnier_id,
+        benutzerId: ergebnis.entscheider_id, ip, vereinId: ergebnis.zahlender_verein_id
+    });
     return mandatOeffentlich(ergebnis);
 }
 
 /**
  * Widerruft das aktive Mandat eines Vereins (L5/L12). Gibt false zurück, wenn es keines gab.
  */
-export async function widerrufeMandat(knex, { turnierId, vereinName, benutzer = null, grund }) {
-    return knex.transaction(async (trx) => {
+export async function widerrufeMandat(knex, { turnierId, vereinName, benutzer = null, grund, ip = null }) {
+    const mandatId = await knex.transaction(async (trx) => {
         await sperreMandate(trx, turnierId, vereinName);
-        const widerrufen = await widerrufeMandatInTrx(trx, { turnierId, vereinName, benutzer, grund });
-        if (widerrufen) await synchronisiereGesichert(trx, turnierId);
-        return widerrufen;
+        const id = await widerrufeMandatInTrx(trx, { turnierId, vereinName, benutzer, grund });
+        if (id) await synchronisiereGesichert(trx, turnierId);
+        return id;
     });
+    if (!mandatId) return false;
+    await protokolliereMandat(knex, { art: 'mandat.widerrufen', mandatId, turnierId, benutzerId: benutzer?.id ?? null, ip });
+    return true;
 }
 
 /** Klar-IBAN und Kontoinhaber, nur für die SEPA-Datei. */

@@ -12,7 +12,7 @@ import { istZahlwegGesichert, pruefeZahlwegEingabe, parseAngeboteneZahlwege, sta
 import { ladeLastschriftStatus } from './abrechnungStammdaten.js';
 import {
     sperreMandate, widerrufeMandatInTrx, erteileMandatInTrx, ladeAktivesMandat, pruefeMandatsEingabe,
-    pruefeBasisUrlFuerBestaetigung, versendeBestaetigungen, mandatOeffentlich
+    pruefeBasisUrlFuerBestaetigung, versendeBestaetigungen, mandatOeffentlich, protokolliereMandat, zaehleBestaetiger
 } from './mandate.js';
 import { sendeMail } from '../utils/mailer.js';
 
@@ -83,11 +83,12 @@ export async function speichereZahlweg(knex, {
         pruefeBasisUrlFuerBestaetigung(basisUrl, benutzer);
     }
 
-    const { zeile, erteilung, mandat } = await knex.transaction(async (trx) => {
+    const { zeile, erteilung, mandat, widerrufenId } = await knex.transaction(async (trx) => {
         await sperreMandate(trx, turnier.id, vereinName);
         let behalten = null;
+        let widerrufenId = null;
         if (!istLastschrift) {
-            await widerrufeMandatInTrx(trx, { turnierId: turnier.id, vereinName, benutzer, grund: 'wechsel' });
+            widerrufenId = await widerrufeMandatInTrx(trx, { turnierId: turnier.id, vereinName, benutzer, grund: 'wechsel' });
         } else if (!neuesMandat) {
             behalten = await ladeAktivesMandat(trx, turnier.id, vereinName);
             if (!behalten) throw new FachFehler(400, 'Bitte IBAN und Kontoinhaber für das Lastschriftmandat angeben.');
@@ -112,12 +113,25 @@ export async function speichereZahlweg(knex, {
         return {
             zeile: await trx('turnier_zahlwege').where({ id: gespeichert.id }).first(),
             erteilung: erteilt,
-            mandat: erteilt ? erteilt.zeile : behalten
+            mandat: erteilt ? erteilt.zeile : behalten,
+            widerrufenId
         };
     });
     if (erteilung) await versendeBestaetigungen(erteilung, basisUrl, sende);
+    // Aktionsprotokoll (nur IDs und IP, nie Kontodaten)
+    const protokoll = { turnierId: turnier.id, benutzerId, ip, vereinId: vereinId ?? null };
+    if (erteilung?.ersetztMandatId) await protokolliereMandat(knex, { ...protokoll, art: 'mandat.widerrufen', mandatId: erteilung.ersetztMandatId });
+    if (widerrufenId) await protokolliereMandat(knex, { ...protokoll, art: 'mandat.widerrufen', mandatId: widerrufenId });
+    if (erteilung) await protokolliereMandat(knex, { ...protokoll, art: 'mandat.erteilt', mandatId: erteilung.zeile.id });
     if (!istLastschrift) return zeile;
-    return { ...zeile, mandat: mandatOeffentlich(mandat), bestaetigungNoetig: mandat.status === 'unbestaetigt' };
+    const offen = mandat.status === 'unbestaetigt';
+    return {
+        ...zeile,
+        mandat: mandatOeffentlich(mandat),
+        bestaetigungNoetig: offen,
+        // Wie viele Admins können bestätigen? 0 -> der Dialog sagt klar, dass niemand die Mail bekommt.
+        empfaengerAnzahl: offen ? (erteilung ? erteilung.mails.length : await zaehleBestaetiger(knex, mandat.zahlender_verein_id)) : 0
+    };
 }
 
 // Setzt startgeld_zahlweg_gesichert für alle Teilnehmer des Turniers neu (gesicherter Zahlweg des Vereins

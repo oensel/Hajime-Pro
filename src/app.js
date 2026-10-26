@@ -16,6 +16,7 @@ import { getAuthRoutes } from './routes/authRoutes.js';
 import { initialisiere as initialisiereSteuerungPasswort } from './utils/steuerungPasswort.js';
 import { getVereinRoutes } from './routes/vereinRoutes.js';
 import { getFreigabeRoutes } from './routes/freigabeRoutes.js';
+import { getMandatRoutes } from './routes/mandatRoutes.js';
 import { getNutzerRoutes } from './routes/nutzerRoutes.js';
 import { getCloudUpdateRoutes } from './routes/cloudUpdateRoutes.js';
 import { getSicherungRoutes } from './routes/sicherungRoutes.js';
@@ -394,6 +395,8 @@ if (syncKonfig.istClient) {
     app.use('/api/vereine', getVereinRoutes(knex));
     // Freischaltung per Mail-Link (Token trägt die Berechtigung, daher ohne Anmeldung) und Super-Admin-Verwaltung.
     app.use('/api/freigabe', getFreigabeRoutes(knex));
+    // Bestätigung eines Lastschriftmandats per Mail-Link (Startgeld Stufe 3): Token trägt die Berechtigung, daher ohne Anmeldung, nur Cloud.
+    if (bm.istCloud) app.use('/api/mandat', getMandatRoutes(knex));
     app.use('/api/nutzer', getNutzerRoutes(knex));
     // Update des Cloud-Servers durch den Super-Admin (src/utils/cloudUpdate.js).
     if (bm.istCloud) {
