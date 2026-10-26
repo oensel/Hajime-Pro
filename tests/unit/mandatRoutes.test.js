@@ -60,6 +60,7 @@ test('Mandat-API: erteilen, Link öffnen, bestätigen, Protokoll', async () => {
         });
         let daten = null;
         try { daten = await res.json(); } catch { /* leer */ }
+        if (pfad.startsWith('/api/mandat/')) assert.equal(res.headers.get('cache-control'), 'no-store', pfad);
         return { status: res.status, daten };
     };
     const klartextFrei = (obj) => assert.ok(!JSON.stringify(obj).replace(/\s/g, '').includes(IBAN), 'Klar-IBAN in der Antwort');
@@ -105,6 +106,10 @@ test('Mandat-API: erteilen, Link öffnen, bestätigen, Protokoll', async () => {
         assert.equal(r.daten.mandat.status, 'unbestaetigt');
         klartextFrei(r.daten);
 
+        // Der bestätigende Admin gehört mehreren Vereinen an und hat gerade JC B aktiv: der Eintrag gehört trotzdem zu JC A
+        await knex('benutzer_vereine').insert({ benutzer_id: 'u-ad1', verein_id: vB, freigegeben: 1, rolle: 'admin' });
+        await knex('benutzer').where({ id: 'u-ad1' }).update({ aktiver_verein_id: vB });
+
         // Öffentliche Seite ohne Anmeldung
         r = await aufruf(null, 'GET', `/api/mandat/${token}`);
         assert.equal(r.status, 200, JSON.stringify(r.daten));
@@ -141,6 +146,10 @@ test('Mandat-API: erteilen, Link öffnen, bestätigen, Protokoll', async () => {
         }
         assert.equal(protokoll[0].benutzer_id, 'u-ben');
         assert.equal(protokoll[1].benutzer_id, 'u-ad1');
+        // Alle Einträge gehören zum ZAHLENDEN Verein (nicht zum aktiven Verein des Handelnden)
+        assert.deepEqual(protokoll.map((p) => p.verein_id), [vA, vA]);
+        await knex('benutzer').where({ id: 'u-ad1' }).update({ aktiver_verein_id: vA });
+        await knex('benutzer_vereine').where({ benutzer_id: 'u-ad1', verein_id: vB }).del();
 
         // Ein Admin des zahlenden Vereins erteilt: sofort gültig, keine Mail
         const mailsVorher = mails.length;

@@ -183,7 +183,8 @@
                 if (e.key === 'Escape') {
                     e.stopPropagation();
                     e.preventDefault();
-                    if (!pflicht || keineWege) beenden('abgebrochen');
+                    if (gespeichertHinweis) beenden('gespeichert');
+                    else if (!pflicht || keineWege) beenden('abgebrochen');
                     return;
                 }
                 if (e.key === 'Tab') {
@@ -213,7 +214,9 @@
             aktualisiereMandatBereich();
 
             // Nach dem Speichern eines unbestätigten Mandats bleibt der Dialog mit dem Hinweis stehen, bis er geschlossen wird.
+            let gespeichertHinweis = false;
             const zeigeBestaetigungsHinweis = (daten) => {
+                gespeichertHinweis = true;
                 const keinAdmin = daten.empfaengerAnzahl === 0;
                 const text = keinAdmin
                     ? 'In Ihrem Verein gibt es keinen Admin, der das Mandat bestätigen kann (freigegeben, E-Mail bestätigt). '

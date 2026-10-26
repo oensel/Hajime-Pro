@@ -27,6 +27,7 @@ function antworteFehler(res, err) {
 export function erzeugeMandatController(knex) {
     return {
         async zeige(req, res) {
+            res.set('Cache-Control', 'no-store');
             try {
                 const token = tokenAus(req);
                 const daten = token ? await ladeMandatFuerToken(knex, token) : null;
@@ -47,6 +48,7 @@ export function erzeugeMandatController(knex) {
         },
 
         async entscheide(req, res) {
+            res.set('Cache-Control', 'no-store');
             try {
                 const token = tokenAus(req);
                 if (!token) throw new FachFehler(404, UNGUELTIG_TEXT);

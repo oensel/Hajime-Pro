@@ -213,7 +213,7 @@ export function erzeugeProtokollMiddleware(knex) {
  */
 export async function protokolliereKonto(knex, { konto = null, adresse = null, vereinId = null, aktion, beschreibung, ip = null, status = null, details = {} }) {
     try {
-        let kontext = konto ? await ladeKontext(knex, konto.id) : null;
+        let kontext = konto ? await ladeKontext(knex, konto.id, { vereinId }) : null;
         if (!kontext && vereinId != null) {
             const verein = await knex('vereine').where({ id: vereinId }).first('name');
             kontext = { benutzerEmail: adresse ? String(adresse).slice(0, 254) : null, vereinId, vereinName: verein ? verein.name : null };

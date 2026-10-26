@@ -125,7 +125,14 @@ test('Zahlweg-API', async () => {
         const tLast = await neuesTurnier({ angebotene_zahlwege: 'lastschrift,ueberweisung' });
         r = await aufruf('u-a1', 'GET', `/api/zahlweg/${tLast}`);
         assert.deepEqual(r.daten.angebotene, ['ueberweisung']);
+        // Lastschrift nicht angeboten (keine Gläubiger-ID): weder Mandat noch Mandatsvorschau, auch mit vollständigen Mandatsangaben 400
+        assert.equal(r.daten.mandat, null);
+        assert.equal(r.daten.mandatsvorschau, null);
+        assert.equal(typeof r.daten.istAdminDesVereins, 'boolean');
         assert.equal((await aufruf('u-a1', 'PUT', `/api/zahlweg/${tLast}`, { ...EINGABE, zahlweg: 'lastschrift' })).status, 400);
+        r = await aufruf('u-a1', 'PUT', `/api/zahlweg/${tLast}`, { ...EINGABE, zahlweg: 'lastschrift', iban: 'DE89 3704 0044 0532 0130 00', kontoinhaber: 'JC A', zustimmung: true, vertretung_bestaetigt: true });
+        assert.equal(r.status, 400);
+        assert.equal(r.daten.mandat, undefined);
         const tLeer = await neuesTurnier({ angebotene_zahlwege: 'lastschrift' });
         r = await aufruf('u-a1', 'GET', `/api/zahlweg/${tLeer}`);
         assert.deepEqual(r.daten.angebotene, ['ueberweisung', 'bar']);
