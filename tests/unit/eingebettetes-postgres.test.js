@@ -12,6 +12,14 @@ test('plattformPaket wählt das Binary-Paket je Betriebssystem und Architektur',
     assert.equal(plattformPaket('win32', 'arm64'), null);
 });
 
+test('istPortKonflikt erkennt einen belegten Port (Windows und Unix), andere Startfehler nicht', async () => {
+    const { istPortKonflikt } = await import('../helpers/testPostgres.js');
+    assert.equal(istPortKonflikt(new Error('PostgreSQL konnte nicht gestartet werden (Port 58643 belegt?):\nLOG:  could not bind IPv4 address "127.0.0.1": unrecognized winsock error 10048')), true);
+    assert.equal(istPortKonflikt(new Error('LOG:  could not bind IPv4 address "127.0.0.1": Address already in use')), true);
+    assert.equal(istPortKonflikt(new Error('PostgreSQL-Instanz konnte nicht angelegt werden (initdb): Zugriff verweigert')), false);
+    assert.equal(istPortKonflikt(null), false);
+});
+
 test('startHindernis: root darf PostgreSQL nicht starten (Linux/macOS), normale Benutzer und Windows schon', () => {
     assert.match(startHindernis({ platform: 'linux', uid: 0 }), /root/);
     assert.match(startHindernis({ platform: 'darwin', uid: 0 }), /DB_HOST/);

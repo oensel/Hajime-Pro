@@ -192,10 +192,21 @@
     // ---- SEPA-Lastschrift ----
     const lastschriftRechnungen = () => (daten ? daten.vereine
         .map((v) => (v.rechnung ? { ...v.rechnung, vereinName: v.vereinName } : null))
-        .filter((r) => r && r.zahlweg === 'lastschrift') : []);
+        .filter((r) => r && r.zahlweg === 'lastschrift' && r.art === 'rechnung') : []);
     const summeVon = (liste) => liste.reduce((s, r) => s + (r.betrag_cent || 0), 0);
+    // Wie der Server: nur versandte Lastschrift-Rechnungen (art 'rechnung'), ohne bzw. mit Datei.
     const sepaOffen = () => lastschriftRechnungen().filter((r) => r.status === 'versandt' && !r.sepa_datei_id);
     const sepaMitDatei = () => lastschriftRechnungen().filter((r) => r.status === 'versandt' && r.sepa_datei_id);
+
+    // Eigene Fehler-/Hinweisflächen des SEPA-Bereichs: lade() leert sie nicht, sie bleiben bis zur nächsten SEPA-Aktion.
+    function zeigeSepaFehler(text) {
+        $('abrSepaFehler').textContent = text || '';
+        $('abrSepaFehler').hidden = !text;
+    }
+    function zeigeSepaWarnung(text) {
+        $('abrSepaWarnung').textContent = text || '';
+        $('abrSepaWarnung').hidden = !text;
+    }
 
     function zeigeSepa() {
         const alle = lastschriftRechnungen();
@@ -224,7 +235,8 @@
                 zelle('Erzeugt am', zeitDe(d.erzeugt_am)),
                 zelle('Einzug am', datumDe(d.faelligkeit)),
                 zelle('Lastschriften', String(d.anzahl), 'rechts'),
-                zelle('Summe', euro(d.summe_cent), 'rechts')
+                zelle('Summe', euro(d.summe_cent), 'rechts'),
+                zelle('Hinweise', d.warnung || '–', 'abr-sepa-hinweis')
             );
             tbody.append(tr);
         }
@@ -240,6 +252,7 @@
     }
 
     function zeigeNeuAuswahl() {
+        zeigeSepaFehler('');
         const liste = $('abrSepaNeuListe');
         liste.replaceChildren();
         for (const r of sepaMitDatei()) {
@@ -262,10 +275,11 @@
     async function erzeugeSepa({ neu = false, rechnungIds = null } = {}) {
         if (sepaLaeuft) return;
         zeigeFehler('');
-        $('abrSepaWarnung').hidden = true;
+        zeigeSepaFehler('');
+        zeigeSepaWarnung('');
         let text;
         if (neu) {
-            if (!rechnungIds || rechnungIds.length === 0) return zeigeFehler('Bitte mindestens eine Rechnung auswählen.');
+            if (!rechnungIds || rechnungIds.length === 0) return zeigeSepaFehler('Bitte mindestens eine Rechnung auswählen.');
             text = `Achtung: Die ${rechnungIds.length} ausgewählte(n) Lastschrift(en) stehen schon in einer Datei. Reichen Sie die neue Datei nur ein, `
                 + 'wenn die bisherige NICHT eingereicht wurde, sonst wird doppelt eingezogen. Neu erzeugen?';
         } else {
@@ -276,7 +290,9 @@
         // Sperre schon vor der Rückfrage: ein zweiter Klick öffnet keinen zweiten Dialog und keine zweite Anfrage.
         sepaLaeuft = true;
         for (const k of ['abrSepaBtn', 'abrSepaNeuBtn', 'abrSepaNeuStart']) $(k).disabled = true;
-        let erzeugt = false;
+        let neuLaden = false;
+        let dateiId = null;
+        let kurzWarnung = null;
         try {
             if (!(await bestaetige(text, neu ? 'SEPA-Datei neu erzeugen' : 'SEPA-Datei erzeugen'))) return;
             const antwort = await rufe(`${api}/sepa`, {
@@ -286,29 +302,32 @@
             });
             if (!antwort.ok) {
                 const inhalt = await antwort.json().catch(() => ({}));
-                zeigeFehler(inhalt.error || 'Die SEPA-Datei konnte nicht erzeugt werden.');
-                erzeugt = antwort.status === 409; // Stand hat sich geändert: neu laden
+                zeigeSepaFehler(inhalt.error || 'Die SEPA-Datei konnte nicht erzeugt werden.');
+                neuLaden = antwort.status === 409; // Stand hat sich geändert: neu laden (die Meldung bleibt stehen)
                 return;
             }
-            erzeugt = true;
-            const warnung = antwort.headers.get('X-Sepa-Warnung');
+            neuLaden = true;
+            const roh = antwort.headers.get('X-Sepa-Warnung');
+            if (roh) {
+                kurzWarnung = roh;
+                try { kurzWarnung = decodeURIComponent(roh); } catch { /* Rohtext anzeigen */ }
+            }
+            dateiId = Number(antwort.headers.get('X-Sepa-Datei-Id')) || null;
             const treffer = /filename="([A-Za-z0-9._-]+)"/.exec(antwort.headers.get('Content-Disposition') || '');
             ladeHerunter(await antwort.blob(), treffer ? treffer[1] : `sepa-lastschrift-${turnierId}.xml`);
-            if (warnung) {
-                let hinweis = warnung;
-                try { hinweis = decodeURIComponent(warnung); } catch { /* Rohtext anzeigen */ }
-                $('abrSepaWarnung').textContent = hinweis;
-                $('abrSepaWarnung').hidden = false;
-            }
+            zeigeSepaWarnung(kurzWarnung);
             $('abrSepaNeu').hidden = true;
             meldung('Die SEPA-Datei wurde erzeugt. Bitte im Online-Banking einreichen.', 'success');
         } catch {
-            zeigeFehler('Die SEPA-Datei konnte nicht erzeugt werden.');
+            zeigeSepaFehler('Die SEPA-Datei konnte nicht erzeugt werden.');
         } finally {
             sepaLaeuft = false;
             $('abrSepaNeuStart').disabled = false;
-            if (erzeugt) {
+            if (neuLaden) {
                 try { await lade(); } catch { zeigeFehler('Die Abrechnung konnte nicht neu geladen werden.'); }
+                // Die vollständige Warnung steht an der Datei (der Header trägt nur eine gekürzte Fassung).
+                const datei = dateiId ? sepaDateien.find((d) => d.id === dateiId) : null;
+                if (datei && datei.warnung) zeigeSepaWarnung(datei.warnung);
             } else if (daten) {
                 zeigeSepa();
             }

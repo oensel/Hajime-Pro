@@ -7,7 +7,7 @@ import { ladeStammdaten, speichereStammdaten, pruefeStammdatenFuerTurnier, ladeL
 import { ladeAbrechnung, ordneVereinZu } from '../services/abrechnung.js';
 import { erfasseVorOrt } from '../services/zahlwege.js';
 import { erstelleRechnungen, sendeRechnungErneut, setzeBezahlt, ladeRechnungPdf } from '../services/rechnungslauf.js';
-import { erzeugeSepaExport, listeSepaDateien } from '../services/sepaExport.js';
+import { erzeugeSepaExport, listeSepaDateien, pruefeSepaVorab } from '../services/sepaExport.js';
 import { pruefeSensibleAktion } from '../utils/sensibleAktion.js';
 import { protokolliere, ladeKontext, beschreibeAktion } from '../services/aktionsProtokoll.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
@@ -100,12 +100,15 @@ export function erzeugeAbrechnungController(knex, { sende } = {}) {
         async erzeugeSepa(req, res) {
             try {
                 nurCloud();
+                // Reihenfolge: Anmeldung/Rechte (Gate) -> Eingabe und billige Fachprüfung (400/409, ohne Kontodaten) ->
+                // 2FA-Code (verbraucht ihn) -> Arbeit. So kostet eine ohnehin scheiternde Anfrage keinen Einmal-Code;
+                // die Vorprüfung gibt nur Auskünfte, die der Admin ohnehin sehen darf.
+                const body = req.body && typeof req.body === 'object' ? req.body : {};
+                const auftrag = { turnier: req.tournament, neu: body.neu ?? false, rechnungIds: body.rechnungIds ?? null };
+                await pruefeSepaVorab(knex, auftrag);
                 const pruefung = await pruefeSensibleAktion(knex, req, { frischeAnmeldungGenuegt: false });
                 if (!pruefung.ok) return res.status(pruefung.status).json({ success: false, error: pruefung.error, code: pruefung.code });
-                const body = req.body && typeof req.body === 'object' ? req.body : {};
-                const ergebnis = await erzeugeSepaExport(knex, {
-                    turnier: req.tournament, benutzerId: req.user.id, neu: body.neu ?? false, rechnungIds: body.rechnungIds ?? null
-                });
+                const ergebnis = await erzeugeSepaExport(knex, { ...auftrag, benutzerId: req.user.id });
                 // Ein eigener Eintrag mit Anzahl/Summe (ohne Kontodaten); die allgemeine Middleware schreibt dann keinen zweiten.
                 res.locals.protokolliert = true;
                 const kontext = await ladeKontext(knex, req.user.id, { turnierId: req.tournament.id }).catch(() => null);
@@ -119,8 +122,10 @@ export function erzeugeAbrechnungController(knex, { sende } = {}) {
                 res.setHeader('Content-Disposition', `attachment; filename="${String(ergebnis.dateiname).replace(/[^A-Za-z0-9._-]/g, '_')}"`);
                 res.setHeader('Cache-Control', 'no-store');
                 res.setHeader('X-Content-Type-Options', 'nosniff');
-                // Header nur ASCII: der Text ist URL-kodiert (Oberfläche: decodeURIComponent).
-                if (ergebnis.warnung) res.setHeader('X-Sepa-Warnung', encodeURIComponent(ergebnis.warnung));
+                res.setHeader('X-Sepa-Datei-Id', String(ergebnis.sepaDateiId));
+                // Header nur ASCII und kurz (URL-kodiert, höchstens rund 1 KB; Oberfläche: decodeURIComponent).
+                // Die vollständige Warnung liefert GET /:turnierId/sepa je Datei.
+                if (ergebnis.warnungHeader) res.setHeader('X-Sepa-Warnung', ergebnis.warnungHeader);
                 res.status(200).send(ergebnis.xml);
             } catch (err) {
                 antworteFehler(res, err);

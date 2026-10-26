@@ -59,15 +59,92 @@ async function ladeKontoDesAusrichters(trx, turnier) {
     return konto;
 }
 
+function pruefeNichtAbgesagt(turnier) {
+    if (turnier.status === 'abgesagt') {
+        throw new FachFehler(409, 'Das Turnier wurde abgesagt. Für abgesagte Turniere werden keine Lastschriften eingezogen.');
+    }
+}
+
+const nichtVersandtText = (liste) => 'Nicht enthalten, weil die Rechnung (Vorabankündigung) noch nicht versandt wurde: '
+    + `${liste.map((r) => `${r.nummer} (${r.verein_name})`).join(', ')}.`;
+
+/**
+ * Rechnungen für die Datei: ohne Auswahl alle versandten Lastschrift-Rechnungen ohne Datei (nicht versandte nur als
+ * Hinweis), mit Auswahl genau diese (alle aus dem Turnier, versandte Lastschrift-Rechnungen). Wirft 400/409.
+ * `sperren`: FOR UPDATE (in der Transaktion); ohne Sperre nur als Vorprüfung vor dem 2FA-Code.
+ */
+async function waehleRechnungen(db, turnierId, auswahl, { sperren = false } = {}) {
+    const spalten = [
+        'id', 'turnier_id', 'nummer', 'verein_name', 'zahlweg', 'art', 'status', 'betrag_cent', 'bar_erhalten_cent', 'verwendungszweck',
+        'mandat_id', 'mandatsreferenz', 'sepa_datei_id',
+        db.raw("to_char(einzug_am, 'YYYY-MM-DD') as einzug_am"),
+        db.raw("to_char(mandat_datum, 'YYYY-MM-DD') as mandat_datum")
+    ];
+    const gesperrt = (q) => (sperren ? q.forUpdate() : q);
+    if (auswahl) {
+        const rechnungen = await gesperrt(db('rechnungen').whereIn('id', auswahl)).orderBy('id').select(spalten);
+        if (rechnungen.length !== auswahl.length || rechnungen.some((r) => r.turnier_id !== turnierId)) {
+            throw new FachFehler(400, 'Mindestens eine ausgewählte Rechnung gehört nicht zu diesem Turnier.');
+        }
+        const unpassend = rechnungen.filter((r) => r.zahlweg !== 'lastschrift' || r.art !== 'rechnung' || r.status !== 'versandt');
+        if (unpassend.length > 0) {
+            throw new FachFehler(409, 'Nur versandte Lastschrift-Rechnungen können eingezogen werden, nicht: '
+                + `${unpassend.map((r) => `${r.nummer} (${r.verein_name}, ${r.zahlweg === 'lastschrift' ? r.status : r.zahlweg})`).join(', ')}.`);
+        }
+        return { rechnungen, nichtVersandt: [] };
+    }
+    const alle = await gesperrt(db('rechnungen')
+        .where({ turnier_id: turnierId, zahlweg: 'lastschrift', art: 'rechnung' })
+        .whereIn('status', ['offen', 'versandt'])
+        .whereNull('sepa_datei_id')).orderBy('id').select(spalten);
+    const rechnungen = alle.filter((r) => r.status === 'versandt');
+    // Nicht versandt = keine Vorabankündigung beim Zahler: nicht einziehen, aber sichtbar machen.
+    const nichtVersandt = alle.filter((r) => r.status !== 'versandt');
+    if (rechnungen.length === 0) {
+        if (nichtVersandt.length > 0) throw new FachFehler(409, `Keine Lastschrift kann eingezogen werden. ${nichtVersandtText(nichtVersandt)}`);
+        const irgendeine = await db('rechnungen').where({ turnier_id: turnierId, zahlweg: 'lastschrift' }).first('id');
+        throw new FachFehler(409, irgendeine ? MELDUNG_SCHON_DATEI : 'Für dieses Turnier gibt es keine Lastschrift-Rechnungen.');
+    }
+    return { rechnungen, nichtVersandt };
+}
+
+/**
+ * Vorprüfung ohne Sperren und ohne Kontodaten (Eingabe 400, abgesagt/nichts zu tun 409), damit ein Super-Admin seinen
+ * Einmal-Code nicht für eine Anfrage verbraucht, die ohnehin scheitert. Maßgeblich bleibt die Prüfung in der Transaktion.
+ */
+export async function pruefeSepaVorab(knex, { turnier, neu = false, rechnungIds = null }) {
+    const auswahl = pruefeAuswahl({ neu, rechnungIds });
+    if (!turnier?.id) throw new FachFehler(404, 'Turnier nicht gefunden.');
+    pruefeNichtAbgesagt(turnier);
+    await waehleRechnungen(knex, turnier.id, auswahl);
+}
+
+// Header-Fassung der Warnung: kurz und nur ASCII nach encodeURIComponent (Proxys begrenzen Header). Die volle Fassung
+// steht in sepa_dateien.warnung (GET /api/abrechnung/:turnierId/sepa).
+export const MAX_WARNUNG_HEADER = 1000;
+export function warnungFuerHeader(volltext, { faelligkeit, spaeterAnzahl, nichtVersandtAnzahl }) {
+    if (!volltext) return null;
+    const kodiert = encodeURIComponent(volltext);
+    if (kodiert.length <= MAX_WARNUNG_HEADER) return kodiert;
+    const teile = [];
+    if (spaeterAnzahl > 0) teile.push(`Eingezogen wird am ${datumDe(faelligkeit)}, später als angekündigt bei ${spaeterAnzahl} Rechnung(en).`);
+    if (nichtVersandtAnzahl > 0) teile.push(`${nichtVersandtAnzahl} noch nicht versandte Rechnung(en) sind nicht enthalten.`);
+    teile.push('Einzelheiten stehen in der Liste der SEPA-Dateien.');
+    return encodeURIComponent(teile.join(' '));
+}
+
 // Zeitstempel für die Nachrichten-ID (UTC, bis Millisekunden), z. B. 20261026081530123.
 const zeitstempel = (jetzt) => jetzt.toISOString().replace(/\D/g, '').slice(0, 17);
 
 /**
  * Erzeugt die pain.008-Datei für die Lastschriften eines Turniers und merkt sie an den Rechnungen.
  * @returns {Promise<{ xml: string, dateiname: string, anzahl: number, summeCent: number, faelligkeit: string,
- *   warnung: string|null, sepaDateiId: number, msgId: string }>}
+ *   warnung: string|null, warnungHeader: string|null, sepaDateiId: number, msgId: string }>}
+ * `warnungHeader` ist bereits URL-kodiert (nur ASCII, höchstens rund 1 KB); die volle Fassung steht in sepa_dateien.warnung.
  */
-export async function erzeugeSepaExport(knex, { turnier, benutzerId, neu = false, rechnungIds = null, heute = heuteBerlin(), jetzt = new Date() }) {
+export async function erzeugeSepaExport(knex, {
+    turnier, benutzerId, neu = false, rechnungIds = null, heute = heuteBerlin(), jetzt = new Date(), _vorAktualisierung = null
+}) {
     const auswahl = pruefeAuswahl({ neu, rechnungIds });
     if (!turnier?.id) throw new FachFehler(404, 'Turnier nicht gefunden.');
 
@@ -77,9 +154,7 @@ export async function erzeugeSepaExport(knex, { turnier, benutzerId, neu = false
 
         const aktuell = await trx('turniere').where({ id: turnier.id }).forShare().first('id', 'status', 'verein_id', 'bezeichnung', 'iban', 'kontoinhaber');
         if (!aktuell) throw new FachFehler(404, 'Turnier nicht gefunden.');
-        if (aktuell.status === 'abgesagt') {
-            throw new FachFehler(409, 'Das Turnier wurde abgesagt. Für abgesagte Turniere werden keine Lastschriften eingezogen.');
-        }
+        pruefeNichtAbgesagt(aktuell);
 
         // Gläubiger: EINE Gläubiger-ID je Datei (die aktuelle der Stammdaten, gesperrt gegen gleichzeitiges Ändern).
         const stamm = aktuell.verein_id
@@ -92,42 +167,9 @@ export async function erzeugeSepaExport(knex, { turnier, benutzerId, neu = false
         const konto = await ladeKontoDesAusrichters(trx, aktuell);
 
         // Auswahl der Rechnungen (gesperrt).
-        const spalten = [
-            'id', 'turnier_id', 'nummer', 'verein_name', 'zahlweg', 'art', 'status', 'betrag_cent', 'bar_erhalten_cent', 'verwendungszweck',
-            'mandat_id', 'mandatsreferenz', 'sepa_datei_id',
-            trx.raw("to_char(einzug_am, 'YYYY-MM-DD') as einzug_am"),
-            trx.raw("to_char(mandat_datum, 'YYYY-MM-DD') as mandat_datum")
-        ];
-        let rechnungen;
+        const { rechnungen, nichtVersandt } = await waehleRechnungen(trx, turnier.id, auswahl, { sperren: true });
         const hinweise = [];
-        if (auswahl) {
-            rechnungen = await trx('rechnungen').whereIn('id', auswahl).forUpdate().orderBy('id').select(spalten);
-            if (rechnungen.length !== auswahl.length || rechnungen.some((r) => r.turnier_id !== turnier.id)) {
-                throw new FachFehler(400, 'Mindestens eine ausgewählte Rechnung gehört nicht zu diesem Turnier.');
-            }
-            const unpassend = rechnungen.filter((r) => r.zahlweg !== 'lastschrift' || r.art !== 'rechnung' || r.status !== 'versandt');
-            if (unpassend.length > 0) {
-                throw new FachFehler(409, 'Nur versandte Lastschrift-Rechnungen können eingezogen werden, nicht: '
-                    + `${unpassend.map((r) => `${r.nummer} (${r.verein_name}, ${r.zahlweg === 'lastschrift' ? r.status : r.zahlweg})`).join(', ')}.`);
-            }
-        } else {
-            const alle = await trx('rechnungen')
-                .where({ turnier_id: turnier.id, zahlweg: 'lastschrift', art: 'rechnung' })
-                .whereIn('status', ['offen', 'versandt'])
-                .whereNull('sepa_datei_id')
-                .forUpdate().orderBy('id').select(spalten);
-            rechnungen = alle.filter((r) => r.status === 'versandt');
-            // Nicht versandt = keine Vorabankündigung beim Zahler: nicht einziehen, aber sichtbar machen.
-            const nichtVersandt = alle.filter((r) => r.status !== 'versandt');
-            if (nichtVersandt.length > 0) {
-                hinweise.push(`Nicht enthalten, weil die Rechnung (Vorabankündigung) noch nicht versandt wurde: ${nichtVersandt.map((r) => `${r.nummer} (${r.verein_name})`).join(', ')}.`);
-            }
-            if (rechnungen.length === 0) {
-                if (nichtVersandt.length > 0) throw new FachFehler(409, `Keine Lastschrift kann eingezogen werden. ${hinweise[0]}`);
-                const irgendeine = await trx('rechnungen').where({ turnier_id: turnier.id, zahlweg: 'lastschrift' }).first('id');
-                throw new FachFehler(409, irgendeine ? MELDUNG_SCHON_DATEI : 'Für dieses Turnier gibt es keine Lastschrift-Rechnungen.');
-            }
-        }
+        if (nichtVersandt.length > 0) hinweise.push(nichtVersandtText(nichtVersandt));
 
         // Je Rechnung: Mandat, Merker und Gläubiger-ID JETZT prüfen (Mandatszeilen gesperrt gegen gleichzeitigen Widerruf).
         const mandatIds = [...new Set(rechnungen.map((r) => r.mandat_id).filter((m) => m != null))].sort((a, b) => a - b);
@@ -198,16 +240,27 @@ export async function erzeugeSepaExport(knex, { turnier, benutzerId, neu = false
                 glaeubiger: { name: konto.kontoinhaber, iban: konto.iban, glaeubigerId: gid.wert }
             });
         } catch (err) {
-            // Meldungen des Generators nennen nur Posten-Nummern und Prüfergebnisse, keine IBAN.
-            if (err instanceof FachFehler) throw new FachFehler(409, `Die Lastschriftdatei kann nicht erzeugt werden: ${err.message}`);
+            // Meldungen des Generators nennen nur Posten-Nummern und Prüfergebnisse, keine IBAN; "Posten n" wird zur
+            // Rechnungsnummer mit Verein, damit der Admin weiß, wo er nachsehen muss.
+            if (err instanceof FachFehler) {
+                const text = err.message.replace(/Posten (\d+)/g, (treffer, n) => {
+                    const r = rechnungen[Number(n) - 1];
+                    return r ? `Rechnung ${r.nummer} (${r.verein_name})` : treffer;
+                });
+                throw new FachFehler(409, `Die Lastschriftdatei kann nicht erzeugt werden: ${text}`);
+            }
             throw err;
         }
 
+        const warnung = hinweise.length ? hinweise.join(' ') : null;
         const [kopf] = await trx('sepa_dateien').insert({
             turnier_id: turnier.id, msg_id: msgId, erzeugt_am: jetzt, erzeugt_von: benutzerId == null ? null : String(benutzerId),
-            faelligkeit, anzahl: datei.anzahl, summe_cent: datei.summeCent
+            faelligkeit, anzahl: datei.anzahl, summe_cent: datei.summeCent, warnung
         }).returning('id');
         const sepaDateiId = typeof kopf === 'object' ? kopf.id : kopf;
+
+        // Nur für Tests: Zustand zwischen Auswahl und UPDATE ändern (prüft den Rückfall bei gleichzeitiger Änderung).
+        if (typeof _vorAktualisierung === 'function') await _vorAktualisierung(trx, rechnungen);
 
         // Bedingtes UPDATE: nur Rechnungen, die noch so sind wie ausgewählt; sonst Rollback (gleichzeitiger Download).
         const ids = rechnungen.map((r) => r.id);
@@ -229,7 +282,8 @@ export async function erzeugeSepaExport(knex, { turnier, benutzerId, neu = false
             anzahl: datei.anzahl,
             summeCent: datei.summeCent,
             faelligkeit,
-            warnung: hinweise.length ? hinweise.join(' ') : null,
+            warnung,
+            warnungHeader: warnungFuerHeader(warnung, { faelligkeit, spaeterAnzahl: spaeter.length, nichtVersandtAnzahl: nichtVersandt.length }),
             sepaDateiId,
             msgId
         };
@@ -240,12 +294,13 @@ export async function erzeugeSepaExport(knex, { turnier, benutzerId, neu = false
 export async function listeSepaDateien(knex, turnierId) {
     const zeilen = await knex('sepa_dateien').where({ turnier_id: turnierId })
         .orderBy([{ column: 'erzeugt_am', order: 'desc' }, { column: 'id', order: 'desc' }])
-        .select('id', 'erzeugt_am', 'anzahl', 'summe_cent', knex.raw("to_char(faelligkeit, 'YYYY-MM-DD') as faelligkeit"));
+        .select('id', 'erzeugt_am', 'anzahl', 'summe_cent', 'warnung', knex.raw("to_char(faelligkeit, 'YYYY-MM-DD') as faelligkeit"));
     return zeilen.map((z) => ({
         id: z.id,
         erzeugt_am: z.erzeugt_am instanceof Date ? z.erzeugt_am.toISOString() : z.erzeugt_am,
         faelligkeit: z.faelligkeit,
         anzahl: z.anzahl,
-        summe_cent: z.summe_cent
+        summe_cent: z.summe_cent,
+        warnung: z.warnung ?? null
     }));
 }

@@ -76,7 +76,7 @@ async function warteAuf(pruefe, { zeitlimitMs = 5000 } = {}) {
 
 let nr = 0;
 /** Ausrichter mit vollständigen Stammdaten, Turnier (zurückgespielt) und n Lastschrift-Vereinen mit gültigem Mandat. */
-async function aufbau({ vereine = 2, mitRechnungen = true } = {}) {
+async function aufbau({ vereine = 2, mitRechnungen = true, teilnehmerJe = null, vereinsName = (n, i) => `TSV Zahler ${n}-${i}`, kontoinhaber = null } = {}) {
     nr += 1;
     const name = `JC Sepa ${nr}`;
     const vereinId = id((await knex('vereine').insert({ name }).returning('id'))[0]);
@@ -97,7 +97,7 @@ async function aufbau({ vereine = 2, mitRechnungen = true } = {}) {
     }).returning('id'))[0]);
     const zahler = [];
     for (let i = 1; i <= vereine; i += 1) {
-        const vName = `TSV Zahler ${nr}-${i}`;
+        const vName = vereinsName(nr, i);
         const [z] = await knex('turnier_zahlwege').insert({
             turnier_id: turnierId, verein_name: vName, zahlweg: 'lastschrift', rechnung_email: `z${nr}-${i}@zahler.de`,
             rechnung_ansprechperson: 'Kasse', rechnung_anschrift: 'Weg 1\n12345 Ort', mandat_gueltig: true
@@ -106,11 +106,11 @@ async function aufbau({ vereine = 2, mitRechnungen = true } = {}) {
         const [m] = await knex('lastschrift_mandate').insert({
             turnier_id: turnierId, turnier_bezeichnung: 'Domstadt-Cup', zahlweg_id: id(z), verein_name: vName,
             mandatsreferenz: `S${nr}M${turnierId}V${id(z)}`,
-            daten_verschluesselt: verschluesseleFeld(JSON.stringify({ iban, kontoinhaber: `${vName} & Söhne e.V.`, ip: '127.0.0.1' })),
+            daten_verschluesselt: verschluesseleFeld(JSON.stringify({ iban, kontoinhaber: kontoinhaber ?? `${vName} & Söhne e.V.`, ip: '127.0.0.1' })),
             iban_maske: maskiereIban(iban), mandatstext: 'Mandatstext', textversion: 'test', glaeubiger_id: GLAEUBIGER_ID,
             glaeubiger_name: name, status: 'gueltig', erteilt_am: '2026-01-10T10:00:00Z', erteilt_von: admin, vertretung_bestaetigt: true
         }).returning('id');
-        for (let k = 0; k < i + 1; k += 1) {
+        for (let k = 0; k < (teilnehmerJe ?? i + 1); k += 1) {
             await knex('turnier_teilnehmer').insert({
                 turnier_id: turnierId, judopass_id: `SP-${nr}-${i}-${k}`, vorname: 'V', nachname: `N${k}`, geschlecht: 'm', verein: vName,
                 gewicht: 40, altersklasse: 'U15', gewichtsklasse: '-44', lizenz_ablauf: '2099-01-01', geburtsjahr: 2012, gewogen: true
@@ -189,7 +189,9 @@ test('Erster Download: Datei mit allen versandten Lastschriften, Merker gesetzt,
     const liste = await aufruf(a.admin, 'GET', `/api/abrechnung/${a.turnierId}/sepa`);
     assert.equal(liste.status, 200);
     assert.equal(liste.daten.dateien.length, 1);
-    assert.deepEqual(Object.keys(liste.daten.dateien[0]).sort(), ['anzahl', 'erzeugt_am', 'faelligkeit', 'id', 'summe_cent']);
+    assert.deepEqual(Object.keys(liste.daten.dateien[0]).sort(), ['anzahl', 'erzeugt_am', 'faelligkeit', 'id', 'summe_cent', 'warnung']);
+    assert.equal(liste.daten.dateien[0].warnung, null);
+    assert.equal(r.headers.get('x-sepa-datei-id'), String(dateien[0].id));
     assert.equal(liste.daten.dateien[0].faelligkeit, angekuendigt);
 
     // Zweiter Download ohne neu → 409
@@ -231,23 +233,35 @@ test('Rechte: Benutzer des Ausrichters und Fremde 403; Super-Admin braucht immer
     const fremd = await aufbau({ vereine: 1, mitRechnungen: false });
     assert.equal((await sepa(fremd.admin, a.turnierId)).status, 403);
 
+    // 2FA für den Super-Admin einrichten: eine frische Anmeldung (zf) allein genügt trotzdem nicht
+    const start = await starteEinrichtung(knex, 'u-super');
+    const fertig = await bestaetigeEinrichtung(knex, 'u-super', totpCode(start.geheimnis, schrittFuer()));
+    assert.equal(fertig.ok, true);
     const jetzt = Math.floor(Date.now() / 1000);
     const ohne = await sepa('u-super', a.turnierId, {}, { zf: jetzt });
     assert.equal(ohne.status, 403);
     assert.equal(ohne.daten.code, 'zwei_faktor');
+    assert.match(ohne.daten.error, /Code/);
     const falsch = await sepa('u-super', a.turnierId, {}, { zf: jetzt, code: '000000' });
     assert.equal(falsch.status, 403);
     assert.equal(falsch.daten.code, 'zwei_faktor');
     assert.equal((await a.rechnungen())[0].sepa_datei_id, null);
     assert.equal((await knex('sepa_dateien').where({ turnier_id: a.turnierId })).length, 0);
 
-    // 2FA einrichten; der Backup-Code bestätigt die Aktion
-    const start = await starteEinrichtung(knex, 'u-super');
-    const fertig = await bestaetigeEinrichtung(knex, 'u-super', totpCode(start.geheimnis, schrittFuer()));
-    assert.equal(fertig.ok, true);
-    const mitCode = await sepa('u-super', a.turnierId, {}, { code: fertig.backupCodes[0] });
+    // Eingabefehler bzw. nichts zu tun: 400/409 VOR der Code-Prüfung, der Backup-Code bleibt unverbraucht
+    const code = fertig.backupCodes[0];
+    const ungueltig = await sepa('u-super', a.turnierId, { neu: true }, { code });
+    assert.equal(ungueltig.status, 400);
+    const b = await aufbau({ vereine: 1, mitRechnungen: false });
+    const nichts = await sepa('u-super', b.turnierId, {}, { code });
+    assert.equal(nichts.status, 409);
+    assert.equal(Number((await knex('totp_backup_codes').where({ benutzer_id: 'u-super' }).whereNotNull('benutzt_am').count({ n: '*' }).first()).n), 0);
+
+    // Der Backup-Code bestätigt die Aktion (und gilt danach nicht mehr)
+    const mitCode = await sepa('u-super', a.turnierId, {}, { code });
     assert.equal(mitCode.status, 200, mitCode.text);
     assert.equal(anzahlPosten(mitCode.text), 1);
+    assert.equal(Number((await knex('totp_backup_codes').where({ benutzer_id: 'u-super' }).whereNotNull('benutzt_am').count({ n: '*' }).first()).n), 1);
 });
 
 test('Einzugsdatum gestern: Fälligkeit nächster Geschäftstag nach heute, Warnung, tatsächliches Datum an der Rechnung', async () => {
@@ -382,4 +396,48 @@ test('Protokoll: ein Eintrag abrechnung.sepa je Datei mit Anzahl/Summe/Datei-ID,
     assert.ok(!ibanIn(JSON.stringify(protokoll)), 'keine IBAN im Protokoll');
     assert.ok(!konsole.join('\n').includes(IBAN_ZAHLER) && !konsole.join('\n').includes(IBAN_ZAHLER_2), 'keine Zahler-IBAN in der Konsole');
     assert.ok(!mails.some((m) => `${m.text}${m.subject}`.includes(IBAN_ZAHLER)), 'keine Klar-IBAN in Mails');
+});
+
+test('Viele verspätete Rechnungen: Warn-Header bleibt unter 2 KB (nur ASCII), die volle Warnung steht in der Dateiliste', async () => {
+    const a = await aufbau({ vereine: 60, teilnehmerJe: 1, vereinsName: (n, i) => `Turn- und Sportverein Übermäßig Langer Vereinsname ${n}-${i}` });
+    const gestern = addiereTage(heuteBerlin(), -1);
+    await knex('rechnungen').where({ turnier_id: a.turnierId }).update({ einzug_am: gestern });
+    const r = await sepa(a.admin, a.turnierId);
+    assert.equal(r.status, 200, r.text);
+    assert.equal(anzahlPosten(r.text), 60);
+    const roh = r.headers.get('x-sepa-warnung');
+    assert.ok(roh.length < 2048, `Header ${roh.length} Zeichen`);
+    assert.match(roh, /^[ -~]+$/);
+    assert.match(decodeURIComponent(roh), /später als angekündigt bei 60 Rechnung\(en\)/);
+    const liste = await aufruf(a.admin, 'GET', `/api/abrechnung/${a.turnierId}/sepa`);
+    const datei = liste.daten.dateien.find((d) => String(d.id) === r.headers.get('x-sepa-datei-id'));
+    assert.ok(datei.warnung.length > 2048);
+    for (const z of a.zahler) assert.ok(datei.warnung.includes(z.name), z.name);
+    assert.ok(!ibanIn(datei.warnung));
+});
+
+test('Zeilen ändern sich zwischen Auswahl und UPDATE: Rollback mit 409, keine Datei, kein Merker', async () => {
+    const a = await aufbau({ vereine: 2 });
+    const [r1] = await a.rechnungen();
+    await assert.rejects(
+        erzeugeSepaExport(knex, {
+            turnier: await a.turnier(), benutzerId: a.admin,
+            _vorAktualisierung: async (trx) => { await trx('rechnungen').where({ id: r1.id }).update({ status: 'bezahlt' }); }
+        }),
+        (err) => err.statusCode === 409 && /gleichzeitig geändert/.test(err.message)
+    );
+    assert.equal((await knex('sepa_dateien').where({ turnier_id: a.turnierId })).length, 0);
+    const nachher = await a.rechnungen();
+    assert.deepEqual(nachher.map((x) => [x.status, x.sepa_datei_id]), [['versandt', null], ['versandt', null]]);
+    for (const z of a.zahler) assert.equal((await knex('lastschrift_mandate').where({ id: z.mandatId }).first()).letzter_einzug_am, null);
+});
+
+test('Fehler des Generators nennen die Rechnungsnummer statt "Posten n"', async () => {
+    const a = await aufbau({ vereine: 2, kontoinhaber: '😀😀' });
+    const [r1] = await a.rechnungen();
+    const r = await sepa(a.admin, a.turnierId);
+    assert.equal(r.status, 409);
+    assert.ok(r.daten.error.includes(`Rechnung ${r1.nummer} (${a.zahler[0].name})`), r.daten.error);
+    assert.doesNotMatch(r.daten.error, /Posten \d/);
+    assert.equal((await knex('sepa_dateien').where({ turnier_id: a.turnierId })).length, 0);
 });
