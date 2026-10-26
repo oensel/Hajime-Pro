@@ -565,13 +565,13 @@ export async function getTurniere(knex, req, res) {
             const jetzt = new Date();
             const heuteStr = `${jetzt.getFullYear()}-${String(jetzt.getMonth() + 1).padStart(2, '0')}-${String(jetzt.getDate()).padStart(2, '0')}`;
 
-            // Eigene Entwürfe bleiben unabhängig vom (ggf. noch vorläufigen/falschen) Datum
-            // sichtbar — ein Entwurf ist noch in Bearbeitung, kein "vergangenes" Turnier, dessen
-            // Anlegerin/Anleger ihn sonst in der eigenen Übersicht nie wiederfinden würde.
+            // Eigene Turniere bleiben unabhängig vom Datum sichtbar: Entwürfe sind noch in Bearbeitung (ggf. noch
+            // vorläufiges Datum), vergangene Turniere braucht der Verein für die Abrechnung.
             if (user && user.verein_id && !istSuperAdmin) {
                 query = query.where(function () {
+                    // Vergangene Turniere des eigenen Vereins bleiben in der Liste (dort klein als archiviert)
                     this.where('datum', '>=', heuteStr)
-                        .orWhere({ status: 'entwurf', verein_id: user.verein_id });
+                        .orWhere({ verein_id: user.verein_id });
                 });
             } else {
                 query = query.where('datum', '>=', heuteStr);

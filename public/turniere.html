@@ -1046,11 +1046,27 @@
 
             // Section 1: Eigene Turniere (Only if exists)
             if (eigeneTurniere.length > 0) {
+                // Vergangene Turniere (Entwürfe ausgenommen) stehen klein und als archiviert unter den aktuellen.
+                const tagStart = new Date(); tagStart.setHours(0, 0, 0, 0);
+                const istVergangen = (t) => t.status !== 'entwurf' && t.datum && new Date(t.datum) < tagStart;
+                const eigeneAktuell = eigeneTurniere.filter(t => !istVergangen(t));
+                const eigeneArchiviert = eigeneTurniere.filter(istVergangen);
+                const datumKurzCloud = (d) => { const o = new Date(d); return `${String(o.getDate()).padStart(2, '0')}.${String(o.getMonth() + 1).padStart(2, '0')}.${o.getFullYear()}`; };
                 htmlContent += `
                     <h2 class="section-title"><span class="material-icons" style="font-size:20px;">star</span> Eigene Turniere</h2>
-                    <div class="tournaments-grid">
-                        ${eigeneTurniere.map(t => renderCard(t, true)).join('')}
-                    </div>
+                    ${eigeneAktuell.length ? `<div class="tournaments-grid">
+                        ${eigeneAktuell.map(t => renderCard(t, true)).join('')}
+                    </div>` : ''}
+                    ${eigeneArchiviert.length ? `<div class="abgeschlossen-liste">${eigeneArchiviert.map(t => `
+                        <div class="abgeschlossen-zeile" data-turnier-id="${t.id}">
+                            <span class="material-icons">inventory_2</span>
+                            <span class="az-name">${escHtml(t.bezeichnung)}</span>
+                            <span>${escHtml(datumKurzCloud(t.datum))}</span>
+                            <span>${escHtml(t.ort)}</span>
+                            <span>${escHtml(t.teilnehmer_anzahl || 0)} Teilnehmer</span>
+                            <span class="status-badge status-abgeschlossen">Archiviert</span>
+                            <button type="button" class="btn btn-outlined" onclick="window.location.href='/turnier.html?id=${encodeURIComponent(t.id)}'">Öffnen</button>
+                        </div>`).join('')}</div>` : ''}
                 `;
             }
 
