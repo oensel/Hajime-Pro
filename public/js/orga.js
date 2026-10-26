@@ -130,11 +130,6 @@ async function start() {
         melde(n ? `${n} ${n === 1 ? 'Aufgabe' : 'Aufgaben'} aus der Vorlage ergänzt.` : 'Alle Aufgaben der Vorlage sind bereits vorhanden.', 'success');
         await neuLaden();
     });
-    // Menüpunkt „Meine Aufgaben“ (orga.html?ansicht=meine): Filter gleich einschalten
-    if (new URLSearchParams(window.location.search).get('ansicht') === 'meine') {
-        state.nurMeine = true;
-        document.getElementById('ogNurMeine').setAttribute('aria-pressed', 'true');
-    }
     await neuLaden();
 }
 

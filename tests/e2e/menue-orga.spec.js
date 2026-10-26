@@ -1,6 +1,5 @@
 // End-to-End: Menü mit aufklappbarem Orga-Untermenü (public/js/menu.js, Spec Orga-Planer, Abschnitt Oberfläche → Menü).
-// Hallen-Server ohne Anmeldung (Einzelbenutzer); die Helfer-API (/api/helfer/orga/meine) gibt es dort nicht,
-// daher bleibt der Zähler „Meine Aufgaben“ verborgen.
+// Hallen-Server ohne Anmeldung (Einzelbenutzer).
 import { test, expect } from '@playwright/test';
 
 test.describe.configure({ mode: 'serial' });
@@ -28,7 +27,7 @@ test('Hauptleiste enthält Orga mit Untermenü in fester Reihenfolge, Turniere o
     await expect(kopf(page)).toHaveAttribute('aria-expanded', 'true');
     await expect(kopf(page)).toHaveAttribute('aria-controls', 'nav-orga-liste');
     await expect(page.locator('#nav-orga-liste > li > a > .menu-text')).toHaveText(
-        ['Übersicht', 'Meine Aufgaben', 'Helfer', 'Technik', 'Catering', 'Medaillen und Pokale']);
+        ['Aufgaben', 'Helfer', 'Technik', 'Catering', 'Medaillen und Pokale']);
     // direkt nach „Turnier“
     const reihenfolge = await page.locator('#sidebarNavPrimary > *').evaluateAll((els) => els.map((e) => e.id));
     expect(reihenfolge.indexOf('nav-orga')).toBe(reihenfolge.indexOf('nav-turnier') + 1);
@@ -39,7 +38,7 @@ test('Hauptleiste enthält Orga mit Untermenü in fester Reihenfolge, Turniere o
     await expect(page.locator('#sidebarNavPrimary #nav-urkunden-designer')).toHaveCount(0);
     await expect(page.locator('#sidebarNavUnten > #nav-urkunden-designer')).toHaveCount(1);
     await expect(page.locator('#nav-orga-liste #nav-helfer')).toHaveAttribute('href', `/helfer-plan.html?turnierId=${turnierId}`);
-    await expect(page.locator('#nav-orga-meine')).toHaveAttribute('href', `/orga.html?ansicht=meine&turnierId=${turnierId}`);
+    await expect(page.locator('#nav-orga-meine')).toHaveCount(0);
     // Systempunkte unten unverändert vorhanden
     await expect(page.locator('#sidebarNavUnten #nav-helfer-app')).toHaveCount(1);
 });
@@ -69,18 +68,6 @@ test('Zugeklappt, aber auf einer Orga-Seite öffnet sich das Untermenü wieder',
     await expect(page.locator('#nav-orga-liste')).toBeVisible();
     await expect(kopf(page)).toHaveClass(/active/);
     await expect(page.locator('#nav-orga-uebersicht')).toHaveClass(/active/);
-    await expect(page.locator('#nav-orga-meine')).not.toHaveClass(/active/);
-});
-
-test('Meine Aufgaben: Link aktiviert den Filter „Nur meine Aufgaben“ und ist aktiv markiert', async ({ page }) => {
-    await page.goto(`/orga.html?turnierId=${turnierId}`);
-    await page.locator('#nav-orga-meine').click();
-    await expect(page).toHaveURL(/ansicht=meine/);
-    await expect(page.locator('#ogNurMeine')).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.locator('#nav-orga-meine')).toHaveClass(/active/);
-    await expect(page.locator('#nav-orga-uebersicht')).not.toHaveClass(/active/);
-    // Hallen-Server hat keine Helfer-API: kein Zähler
-    await expect(page.locator('#nav-orga-meine-zaehler')).toBeHidden();
 });
 
 test('Aktiver Punkt auf helfer-plan.html (Eltern und Kind) und urkunden-designer.html (eigener Punkt)', async ({ page }) => {

@@ -351,8 +351,7 @@ function baueMenueGeruest() {
                         <span class="material-icons menu-gruppe-pfeil" id="nav-orga-pfeil" aria-hidden="true">expand_more</span>
                     </button>
                     <ul class="menu-untermenue" id="nav-orga-liste">
-                        <li><a href="/orga.html" class="menu-item menu-subitem" id="nav-orga-uebersicht"><span class="menu-text">Übersicht</span></a></li>
-                        <li><a href="/orga.html?ansicht=meine" class="menu-item menu-subitem" id="nav-orga-meine"><span class="menu-text">Meine Aufgaben</span><span class="menu-item-badge" id="nav-orga-meine-zaehler" style="display: none;"></span></a></li>
+                        <li><a href="/orga.html" class="menu-item menu-subitem" id="nav-orga-uebersicht"><span class="menu-text">Aufgaben</span></a></li>
                         <li><a href="/helfer-plan.html" class="menu-item menu-subitem" id="nav-helfer"><span class="menu-text">Helfer</span></a></li>
                         <li><a href="#" class="menu-item menu-subitem" id="nav-orga-technik" data-ohne-turnier style="display: none;"><span class="menu-text">Technik</span><span class="menu-item-badge" style="display: none;"></span></a></li>
                         <li><a href="#" class="menu-item menu-subitem" id="nav-orga-catering" data-ohne-turnier style="display: none;"><span class="menu-text">Catering</span><span class="menu-item-badge" style="display: none;"></span></a></li>
@@ -851,7 +850,7 @@ async function initialisiereMenue() {
 
     // Orga und Helferplan ausblenden (Rolle ohne Admin-Recht bzw. Turnier ohne Planungs-Tools); die Gruppe verschwindet ganz.
     const versteckeOrgaPunkte = () => {
-        versteckeMenuePunkte(['nav-helfer', 'nav-orga-uebersicht', 'nav-orga-meine', 'nav-orga-technik', 'nav-orga-catering', 'nav-orga-medaillen']);
+        versteckeMenuePunkte(['nav-helfer', 'nav-orga-uebersicht', 'nav-orga-technik', 'nav-orga-catering', 'nav-orga-medaillen']);
         versteckeMenuePunkte(['nav-orga']);
     };
 
@@ -1503,7 +1502,6 @@ async function initialisiereMenue() {
         if (!gruppe || !kopf || !liste) return;
         const SPEICHER_KEY = 'hajime-orga-menue-offen';
         const suche = new URLSearchParams(window.location.search);
-        const ansichtMeine = suche.get('ansicht') === 'meine';
         const aufgabeId = currentPath.includes('orga-aufgabe.html') ? suche.get('id') : null;
         const seiteIstOrga = currentPath.includes('orga.html') || currentPath.includes('orga-aufgabe.html')
             || currentPath.includes('helfer-plan.html');
@@ -1533,7 +1531,7 @@ async function initialisiereMenue() {
         // Aktiv-Markierung (Technik & Co. folgen nach dem Laden der Aufgaben)
         if (seiteIstOrga) kopf.classList.add('active');
         if (currentPath.includes('orga.html')) {
-            document.getElementById(ansichtMeine ? 'nav-orga-meine' : 'nav-orga-uebersicht').classList.add('active');
+            document.getElementById('nav-orga-uebersicht').classList.add('active');
         }
 
         if (!turnierId || gruppe.style.display === 'none') return;
@@ -1559,14 +1557,6 @@ async function initialisiereMenue() {
             if (aufgabeId && !liste.querySelector('.menu-subitem.active')) {
                 document.getElementById('nav-orga-uebersicht').classList.add('active');
             }
-        }).catch(() => { /* ohne Zähler weiter */ });
-
-        // Eigene offene Aufgaben (nur wo die Helfer-API gemountet ist; sonst 404 -> kein Zähler)
-        if (!rechte.helferApp) return;
-        fetch('/api/helfer/orga/meine').then((r) => (r.ok ? r.json() : null)).then((daten) => {
-            if (!daten || !Array.isArray(daten.aufgaben)) return;
-            const offene = daten.aufgaben.filter((a) => String(a.turnier_id) === String(turnierId) && a.status && a.status.status !== 'erledigt').length;
-            setzeZaehler(document.getElementById('nav-orga-meine'), offene > 0 ? String(offene) : '');
         }).catch(() => { /* ohne Zähler weiter */ });
     }
 
