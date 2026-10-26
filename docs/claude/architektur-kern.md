@@ -1,0 +1,15 @@
+# Kernarchitektur: Routen, shared, Manager, DJB-Regeln
+
+Ausgelagert aus der CLAUDE.md; nur lesen, wenn das Thema die Aufgabe betrifft.
+
+- **Routen als Factories mit Knex-Dependency-Injection:** jede Datei in `src/routes/` exportiert eine Funktion (`getXRoutes(knex)`), die in `src/app.js` mit der einen zentral erzeugten Knex-Instanz (Online/Offline je nach `IS_OFFLINE`) aufgerufen und gemountet wird; alle Schreib-Routen (`/api/turniere`, `/api/teilnehmer`, `/api/pools`, `/api/kampfflaechen`, `/api/kaempfe`, `/api/mannschaften`, `/api/mannschaftskaempfe`) laufen zusätzlich durch `requireWriteAuth` (`src/middleware/auth.js`); `/api/auth` und `/api/vereine` bewusst ohne dieses Gate (Login/Registrierung/Vereinsauswahl)
+- **`src/shared/`** ist bewusst framework-/DB-frei gehalten (kein knex, kein DOM) und läuft identisch am Server und auf Client-Geräten (Offline-Kaskade, Mattenansicht):
+  - `bracketTopologie.js` — deklarative Turnierbaum-Struktur pro Modus (welcher Kampf bezieht seine Kämpfer aus welchem Vorkampf)
+  - `kampfProgression.js` — Kaskaden-Engine: befüllt Folgekämpfe erst, wenn beide Kämpfer-Slots feststehen
+  - `pausenRegel.js` — Mindestpausenzeiten zwischen Kämpfen eines Athleten (DJB-WKO)
+  - `mannschaftsProgression.js` — Kaskaden-Engine für Mannschaftsbegegnungen, das Pendant zu `kampfProgression.js` auf Ebene der Begegnungen statt der Einzelkämpfe
+  - `platzierungen.js` — Platzierungen je Pool inkl. Platz 5/7 (Einzel und Mannschaft), gemeinsam für Siegerliste und Urkunden
+  - `urkundenText.js` / `urkundenSchriften.js` — Platzhalter, automatische Verkleinerung, Basislinie und die mitgelieferten Schriften (`public/fonts/urkunden/`), identisch im Editor und beim PDF-Rendern
+- **`src/services/*Manager.js`** — Turniermodus-Implementierungen (DoppelKo8/16/32Manager, GruppenUeberKreuzManager, JederGegenJedenManager), erzeugen die Kämpfe eines Pools beim Anlegen; für Mannschafts-Pools die entsprechenden `Mannschaft*Manager.js` (Jeder-gegen-Jeden, Doppel-KO-8/16), die Begegnungen statt Einzelkämpfe erzeugen
+- **`src/services/mannschaftsBegegnungEngine.js`** — erzeugt pro Begegnung die Einzelkämpfe je gemeinsam besetzter Gewichtsklasse, wertet Sieg-/Wertungspunkte aus und lost bei vollständigem Gleichstand automatisch einen Stichkampf aus (DJB-WKO Art. 3.12.13.1); das Abschenken-Verbot (Art. 3.12.13.3) hängt in `teilnehmerController.js` an den bestehenden „nicht angetreten“/„disqualifizieren“-Aktionen
+- **Regelkonformität DJB-WKO:** Alters-/Gewichtsklassen (`src/config/altersklassen.json`), Kampf-/Pausenzeiten und die dreistufige Golden-Score-Regel (kein Golden Score bis U13, 3 Min. begrenzt bei U15, unbegrenzt ab U18) sind explizit im Code nachgebildet und kommentiert (`poolController.js`, `pausenRegel.js`)
