@@ -129,14 +129,18 @@ test('Export trägt Lastschrift + gesichert, nie Mandat/IBAN; Import am Hallen-S
         assert.deepEqual(flags, { 'JC L': true, 'JC Offen': false, 'JC Ue': true, 'JC Bar': false });
 
         // Kasse am Hallen-Server: gesicherte Lastschrift nicht, nicht bestätigte als eigener Eintrag, Bar wie gehabt
-        const kasse = await zw.ladeKasse(knex, turnierId);
+        const vorherModus = process.env.BETRIEBSMODUS;
+        process.env.BETRIEBSMODUS = 'server';
+        let kasse;
+        try { kasse = await zw.ladeKasse(knex, turnierId); } finally { process.env.BETRIEBSMODUS = vorherModus; }
         const kk = Object.fromEntries(kasse.map((k) => [k.vereinName, k]));
         assert.deepEqual(Object.keys(kk).sort(), ['JC Bar', 'JC Offen']);
         assert.equal(kk['JC Offen'].zahlweg, 'lastschriftOffen');
         assert.equal(kk['JC Offen'].anzahlOffen, 1);
         assert.equal(kk['JC Bar'].zahlweg, 'bar');
         // Der Kassierer kann kassieren
-        assert.equal(await zw.kassiereBar(knex, turnierId, 'JC Offen'), 1);
+        process.env.BETRIEBSMODUS = 'server';
+        try { assert.equal(await zw.kassiereBar(knex, turnierId, 'JC Offen'), 1); } finally { process.env.BETRIEBSMODUS = vorherModus; }
 
         // Ersetzen einer Lastschrift-Zeile durch ersetzeZahlwege übernimmt das Flag
         await knex.transaction(async (trx) => {
@@ -149,23 +153,48 @@ test('Export trägt Lastschrift + gesichert, nie Mandat/IBAN; Import am Hallen-S
     }
 });
 
-test('Cloud: Kasse zeigt Lastschrift ohne gültiges Mandat als lastschriftOffen, gültige nicht', async () => {
+test('Cloud: Lastschrift-Vereine stehen nie auf der Kasse und lassen sich nicht bar kassieren; Hallen-Server: lastschriftOffen', async () => {
     const { knex, stoppe } = await starteTestPostgres();
     try {
-        const vAus = id((await knex('vereine').insert({ name: 'JC Chef' }).returning('id'))[0]);
+        const vAus = id((await knex('vereine').insert({ name: 'JC Ausrichter' }).returning('id'))[0]);
+        const vL = id((await knex('vereine').insert({ name: 'JC L' }).returning('id'))[0]);
+        await knex('benutzer').insert({ id: 'u-ad', email: 'ad@test.de', vorname: 'ad', nachname: 'T', email_bestaetigt_am: knex.fn.now(), aktiver_verein_id: vL });
+        await knex('benutzer_vereine').insert({ benutzer_id: 'u-ad', verein_id: vL, freigegeben: 1, rolle: 'admin' });
+        await speichereStammdaten(knex, vAus, STAMMDATEN, 'u-ad');
         const t = (await knex('turniere').insert({
-            bezeichnung: 'Cup', ort: 'O', datum: '2028-03-04', ausrichter: 'JC Chef', verein_id: vAus,
-            status: 'veroeffentlicht', startgeld: 10, anmeldeschluss: '2028-03-01'
+            bezeichnung: 'Cup', ort: 'O', datum: '2098-03-04', ausrichter: 'JC Ausrichter', verein_id: vAus,
+            status: 'veroeffentlicht', startgeld: 10, anmeldeschluss: '2098-03-01', angebotene_zahlwege: 'ueberweisung,bar,lastschrift'
         }).returning('*'))[0];
+        // JC L: Mandat offen (Nicht-Admin erteilt -> unbestätigt)
+        const erteilt = await zw.speichereZahlweg(knex, {
+            turnier: t, vereinName: 'JC L', vereinId: vL, benutzerId: 'u-ad', istAdminDesVereins: false,
+            eingabe: { zahlweg: 'lastschrift', ...MAIL, ...MANDAT }, basisUrl: 'https://hajime.example.de'
+        });
+        assert.equal(erteilt.mandat.status, 'unbestaetigt');
+        // JC G: gültiges Flag, JC O: Zeile ohne Mandat (wie am Hallen-Server nach Import)
         await knex('turnier_zahlwege').insert([
             { turnier_id: t.id, verein_name: 'JC G', zahlweg: 'lastschrift', mandat_gueltig: true, geaendert_von: 'u1', ...MAIL },
             { turnier_id: t.id, verein_name: 'JC O', zahlweg: 'lastschrift', mandat_gueltig: false, geaendert_von: 'u1', ...MAIL }
         ]);
-        await tn(knex, t.id, 'JC G'); await tn(knex, t.id, 'JC O');
+        for (const v of ['JC L', 'JC G', 'JC O']) await tn(knex, t.id, v);
         await zw.synchronisiereGesichert(knex, t.id);
         const flags = Object.fromEntries((await knex('turnier_teilnehmer').where({ turnier_id: t.id })).map((x) => [x.verein, x.startgeld_zahlweg_gesichert]));
-        assert.deepEqual(flags, { 'JC G': true, 'JC O': false });
-        assert.deepEqual((await zw.ladeKasse(knex, t.id)).map((k) => [k.vereinName, k.zahlweg]), [['JC O', 'lastschriftOffen']]);
+        assert.deepEqual(flags, { 'JC L': false, 'JC G': true, 'JC O': false });
+
+        // Cloud: keiner der Lastschrift-Vereine steht auf der Kasse
+        assert.deepEqual(await zw.ladeKasse(knex, t.id), []);
+        // Defence in depth: kassiereBar verweigert den Verein mit offenem Mandat, nichts wird markiert
+        await assert.rejects(() => zw.kassiereBar(knex, t.id, 'JC L'), (e) => e.statusCode === 409 && /Lastschrift/.test(e.message));
+        assert.equal((await knex('turnier_teilnehmer').where({ turnier_id: t.id, verein: 'JC L' }).first()).startgeld_bezahlt, false);
+        assert.equal((await knex('turnier_barzahlungen').where({ turnier_id: t.id })).length, 0);
+
+        // Hallen-Server (nur Flag, keine Mandatszeile): JC O steht als lastschriftOffen auf der Kasse und lässt sich kassieren
+        const vorherModus = process.env.BETRIEBSMODUS;
+        process.env.BETRIEBSMODUS = 'server';
+        try {
+            assert.deepEqual((await zw.ladeKasse(knex, t.id)).map((k) => [k.vereinName, k.zahlweg]), [['JC L', 'lastschriftOffen'], ['JC O', 'lastschriftOffen']]);
+            assert.equal(await zw.kassiereBar(knex, t.id, 'JC O'), 1);
+        } finally { process.env.BETRIEBSMODUS = vorherModus; }
     } finally {
         await stoppe();
     }

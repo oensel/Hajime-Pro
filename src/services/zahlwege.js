@@ -15,6 +15,7 @@ import {
     pruefeBasisUrlFuerBestaetigung, versendeBestaetigungen, mandatOeffentlich, protokolliereMandat, zaehleBestaetiger
 } from './mandate.js';
 import { sendeMail } from '../utils/mailer.js';
+import betriebsmodus from '../config/betriebsmodus.cjs';
 
 const STANDARD_ANGEBOTEN = ['ueberweisung', 'bar'];
 
@@ -166,7 +167,7 @@ export async function synchronisiereGesichert(knex, turnierId, { statusAbleiten 
 }
 
 // Vereine, die ihr Startgeld an der Kasse bar zahlen: Zahlweg Bar, keine Wahl getroffen oder Lastschrift ohne gültiges Mandat
-// (Anzeige 'lastschriftOffen'); nie der Ausrichter.
+// (Anzeige 'lastschriftOffen', nur am Hallen-Server); nie der Ausrichter.
 export async function ladeKasse(knex, turnierId) {
     const turnier = await knex('turniere').where({ id: turnierId }).first();
     if (!turnier) return [];
@@ -183,7 +184,9 @@ export async function ladeKasse(knex, turnierId) {
         // Gesicherte Zahlwege (Überweisung, Lastschrift mit gültigem Mandat) sind nicht an der Kasse; eine Lastschrift ohne
         // gültiges Mandat sichert nichts, dort kassiert die Kasse bar (z. B. am Hallen-Server, wo nur das Flag ankommt).
         if (zeile && zeile.zahlweg !== 'bar' && istZahlwegGesichert(zeile)) continue;
-        if (zeile && zeile.zahlweg !== 'bar' && zeile.zahlweg !== 'lastschrift') continue;
+        // 'lastschriftOffen' gibt es nur am Hallen-Server (dort kommt nur das Flag an, keine Mandatszeile). In der Cloud steht ein
+        // Verein mit offenem Mandat nie auf der Kasse: Lastschrift wird dort abgerechnet, nicht bar kassiert.
+        if (zeile && zeile.zahlweg !== 'bar' && !(zeile.zahlweg === 'lastschrift' && betriebsmodus.istEinzelbenutzerBetrieb())) continue;
         if (!nachVerein.has(t.verein)) {
             nachVerein.set(t.verein, {
                 vereinName: t.verein,
@@ -208,6 +211,9 @@ export async function ladeKasse(knex, turnierId) {
 export async function kassiereBar(knex, turnierId, vereinName) {
     return knex.transaction(async (trx) => {
         await trx.raw('SELECT pg_advisory_xact_lock(?, hashtext(?))', [turnierId, vereinName]);
+        // Schutz in der Tiefe: ein Verein mit offenem oder gültigem Lastschriftmandat wird abgerechnet und nie bar kassiert.
+        const mandat = await trx('lastschrift_mandate').where({ turnier_id: turnierId, verein_name: vereinName }).whereIn('status', ['unbestaetigt', 'gueltig']).first('id');
+        if (mandat) throw new FachFehler(409, 'Für diesen Verein liegt ein Lastschriftmandat vor, das Startgeld wird per Lastschrift eingezogen und kann nicht bar kassiert werden.');
         const offene = await trx('turnier_teilnehmer')
             .where({ turnier_id: turnierId, verein: vereinName })
             .whereNot('status', 'zurueckgezogen')
