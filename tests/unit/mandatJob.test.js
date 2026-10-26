@@ -200,11 +200,18 @@ test('Abgesagt, Entwurf, ohne Anmeldeschluss und Export (Verhalten)', async () =
         await konto('aus', vAus, 'admin');
         await konto('ben', vA, 'benutzer');
         await konto('ad1', vA, 'admin');
+        const vB = id((await knex('vereine').insert({ name: 'JC B' }).returning('id'))[0]);
+        await konto('adb', vB, 'admin');
         await speichereStammdaten(knex, vAus, STAMMDATEN, 'u-aus');
         const neuesTurnier = async (extra = {}) => (await knex('turniere').insert({
             bezeichnung: 'Herbst-Cup', ort: 'Halle', datum: inTagen(20), anmeldeschluss: inTagen(10), ausrichter: 'JC Ausrichter',
             verein_id: vAus, status: 'veroeffentlicht', startgeld: 8, angebotene_zahlwege: 'ueberweisung,bar,lastschrift', ...extra
         }).returning('*'))[0];
+        const speichereB = (turnier) => zw.speichereZahlweg(knex, {
+            turnier, vereinName: 'JC B', vereinId: vB, benutzerId: 'u-adb', eingabe: { zahlweg: 'lastschrift', ...RECHNUNG, ...MANDAT },
+            istAdminDesVereins: true, ip: '203.0.113.7', basisUrl: BASIS
+        });
+        const protokollAnzahl = async () => (await knex('aktionsprotokoll').whereIn('aktion', ['mandat.widerrufen', 'mandat.umgestellt'])).length;
         const speichere = (turnier) => zw.speichereZahlweg(knex, {
             turnier, vereinName: 'JC A', vereinId: vA, benutzerId: 'u-ben', eingabe: { zahlweg: 'lastschrift', ...RECHNUNG, ...MANDAT },
             istAdminDesVereins: false, ip: '203.0.113.7', basisUrl: BASIS
@@ -216,6 +223,7 @@ test('Abgesagt, Entwurf, ohne Anmeldeschluss und Export (Verhalten)', async () =
         // abgesagt: Mandat zurückgezogen (IBAN weg), Zahlweg bleibt, keine Mail, Bestätigung 410 "abgesagt"
         const tAbg = await neuesTurnier();
         await speichere(tAbg);
+        await speichereB(tAbg); // sofort gültig
         const token = tokenAus(mails.find((x) => x.to === 'ad1@test.de'));
         mails.length = 0;
         await knex('turniere').where({ id: tAbg.id }).update({ status: 'abgesagt', anmeldeschluss: inTagen(-2) });
@@ -224,6 +232,13 @@ test('Abgesagt, Entwurf, ohne Anmeldeschluss und Export (Verhalten)', async () =
         assert.equal(sperre.text, 'Das Turnier wurde abgesagt.');
         assert.equal((await fehlerInfo(() => m.ladeMandatFuerToken(knex, token))).text, 'Das Turnier wurde abgesagt.');
         assert.equal(await stelleUnbestaetigteUm(knex), 0);
+        const protokollNach1 = await protokollAnzahl();
+        assert.equal(protokollNach1, 2);
+        const stand1 = JSON.stringify(await knex('lastschrift_mandate').where({ turnier_id: tAbg.id }).orderBy('id'));
+        assert.equal(await stelleUnbestaetigteUm(knex), 0); // zweiter Lauf: nichts mehr, kein Protokoll
+        assert.equal(await protokollAnzahl(), protokollNach1);
+        assert.equal(JSON.stringify(await knex('lastschrift_mandate').where({ turnier_id: tAbg.id }).orderBy('id')), stand1);
+        assert.deepEqual((await knex('lastschrift_mandate').where({ turnier_id: tAbg.id }).orderBy('id')).map((x) => x.status), ['widerrufen', 'widerrufen']);
         assert.equal((await zahlweg(tAbg)).zahlweg, 'lastschrift');
         const md = await mandat(tAbg);
         assert.equal(md.status, 'widerrufen');
@@ -231,6 +246,18 @@ test('Abgesagt, Entwurf, ohne Anmeldeschluss und Export (Verhalten)', async () =
         assert.ok(md.loeschen_ab);
         assert.equal(mails.length, 0);
         assert.equal(await pruefeToken(knex, token, 'mandat'), null);
+
+        // abgeschlossen: stille Umstellung, ebenfalls nur einmal protokolliert
+        const tFertig = await neuesTurnier();
+        await speichere(tFertig);
+        await knex('turniere').where({ id: tFertig.id }).update({ status: 'abgeschlossen', anmeldeschluss: inTagen(-5), datum: inTagen(-3) });
+        mails.length = 0;
+        const vorher = await protokollAnzahl();
+        assert.equal(await stelleUnbestaetigteUm(knex, { turnierId: tFertig.id }), 1);
+        assert.equal(await stelleUnbestaetigteUm(knex, { turnierId: tFertig.id }), 0);
+        assert.equal(await protokollAnzahl(), vorher + 1);
+        assert.equal((await zahlweg(tFertig)).zahlweg, 'bar');
+        assert.equal(mails.length, 0);
 
         // Entwurf und Turnier ohne Anmeldeschluss: unberührt
         const tEnt = await neuesTurnier();

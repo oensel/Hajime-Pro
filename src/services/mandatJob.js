@@ -8,7 +8,7 @@ import { sendeMail } from '../utils/mailer.js';
 import { normalisiereBasisUrl } from '../utils/basisUrl.js';
 import { heuteBerlin, addiereTage } from '../shared/abrechnung.js';
 import {
-    sperreMandate, widerrufeMandatInTrx, adminAbfrage, ladeEffektivenTurnierStatus, protokolliereMandat
+    sperreMandate, widerrufeMandatInTrx, adminAbfrage, ladeAktivesMandat, ladeEffektivenTurnierStatus, protokolliereMandat
 } from './mandate.js';
 import { synchronisiereGesichert } from './zahlwege.js';
 import { erzeugeToken, verbraucheAlleZuBezug } from './einmalToken.js';
@@ -79,6 +79,8 @@ export async function stelleUnbestaetigteUm(knex, { turnierId = null, sende = se
         }
         const vorab = wahlAktion(statusJeTurnier.get(kandidat.turnier_id));
         if (!vorab || (kandidat.mandat_gueltig && vorab !== 'widerruf')) continue;
+        // Rücknahme nur, solange noch ein offenes oder gültiges Mandat existiert (sonst ist sie schon erledigt: idempotent).
+        if (vorab === 'widerruf' && !(await ladeAktivesMandat(knex, kandidat.turnier_id, kandidat.verein_name))) continue;
 
         let ergebnis;
         try {
@@ -90,10 +92,12 @@ export async function stelleUnbestaetigteUm(knex, { turnierId = null, sende = se
                 const aktion = wahlAktion(await ladeEffektivenTurnierStatus(trx, kandidat.turnier_id));
                 if (!aktion || (zahlweg.mandat_gueltig && aktion !== 'widerruf')) return null;
                 const turnier = await trx('turniere').where({ id: kandidat.turnier_id }).first('bezeichnung');
-                const mandatId = await widerrufeMandatInTrx(trx, {
+                const widerrufen = await widerrufeMandatInTrx(trx, {
                     turnierId: kandidat.turnier_id, vereinName: kandidat.verein_name, benutzer: null,
                     grund: aktion === 'widerruf' ? 'abgesagt' : 'umstellung'
-                }) ?? (await trx('lastschrift_mandate').where({ zahlweg_id: zahlweg.id }).orderBy('id', 'desc').first('id'))?.id ?? null;
+                });
+                if (aktion === 'widerruf' && !widerrufen) return null; // nichts mehr zurückzuziehen: keine Nebenwirkung, kein Protokoll
+                const mandatId = widerrufen ?? (await trx('lastschrift_mandate').where({ zahlweg_id: zahlweg.id }).orderBy('id', 'desc').first('id'))?.id ?? null;
                 if (aktion !== 'widerruf') {
                     const geaendert = await trx('turnier_zahlwege')
                         .where({ id: zahlweg.id, zahlweg: 'lastschrift', mandat_gueltig: false })
