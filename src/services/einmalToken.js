@@ -1,9 +1,10 @@
 // Einmal-Token für Links in Mails (Helferverwaltung, Spec Abschnitt 4): E-Mail-Bestätigung ('email') und
-// Freischaltung einer Beitrittsanfrage ('freischaltung') und Zurücksetzen des Passworts ('passwort'). In der Tabelle token_einmal steht nur der
+// Freischaltung einer Beitrittsanfrage ('freischaltung'), Zurücksetzen des Passworts ('passwort') und Bestätigung eines
+// SEPA-Lastschriftmandats ('mandat', bezug = Mandat-ID). In der Tabelle token_einmal steht nur der
 // SHA-256 des Tokens; der Klartext existiert nur im Link der Mail.
 import crypto from 'crypto';
 
-const ZWECKE = new Set(['email', 'freischaltung', 'passwort']);
+const ZWECKE = new Set(['email', 'freischaltung', 'passwort', 'mandat']);
 
 function hashToken(token) {
     return crypto.createHash('sha256').update(String(token)).digest('hex');
@@ -15,10 +16,10 @@ function istTokenText(token) {
 
 /**
  * Erzeugt einen Token und speichert seinen Hash.
- * @param {{ benutzerId: string, zweck: 'email'|'freischaltung'|'passwort', vereinId?: number|null, gueltigStunden?: number, angefragtUeber?: string|null }} p
+ * @param {{ benutzerId: string, zweck: 'email'|'freischaltung'|'passwort'|'mandat', vereinId?: number|null, gueltigStunden?: number, angefragtUeber?: string|null, bezug?: string|number|null }} p
  * @returns {Promise<string>} der Klartext-Token (URL-sicher)
  */
-export async function erzeugeToken(knex, { benutzerId, zweck, vereinId = null, gueltigStunden = 48, angefragtUeber = null }) {
+export async function erzeugeToken(knex, { benutzerId, zweck, vereinId = null, gueltigStunden = 48, angefragtUeber = null, bezug = null }) {
     if (!ZWECKE.has(zweck)) throw new Error(`Unbekannter Token-Zweck: ${zweck}`);
     if (!benutzerId) throw new Error('benutzerId fehlt.');
     const stunden = Number(gueltigStunden);
@@ -30,6 +31,7 @@ export async function erzeugeToken(knex, { benutzerId, zweck, vereinId = null, g
         zweck,
         verein_id: vereinId ?? null,
         angefragt_ueber: angefragtUeber ?? null,
+        bezug: bezug == null ? null : String(bezug),
         token_hash: hashToken(token),
         // Ablauf in der Datenbankzeit, damit Prüfung (now()) und Ablauf dieselbe Uhr nutzen.
         laeuft_ab_am: knex.raw("now() + (? * interval '1 hour')", [stunden])
@@ -37,7 +39,7 @@ export async function erzeugeToken(knex, { benutzerId, zweck, vereinId = null, g
     return token;
 }
 
-const SPALTEN = ['id', 'benutzer_id', 'verein_id', 'angefragt_ueber'];
+const SPALTEN = ['id', 'benutzer_id', 'verein_id', 'angefragt_ueber', 'bezug'];
 
 function gueltig(query, token, zweck) {
     return query
@@ -86,6 +88,19 @@ export async function tokenBekannt(knex, token, zweck) {
 export async function entwerteTokens(knex, benutzerId, zweck) {
     return knex('token_einmal')
         .where({ benutzer_id: benutzerId, zweck })
+        .whereNull('benutzt_am')
+        .update({ benutzt_am: knex.fn.now() });
+}
+
+/**
+ * Macht alle noch offenen Tokens eines Zwecks zu einem Bezug ungültig (z.B. alle Bestätigungslinks eines Mandats,
+ * sobald ein Admin entschieden hat oder das Mandat zurückgezogen wurde).
+ * @returns {Promise<number>} Anzahl entwerteter Tokens
+ */
+export async function verbraucheAlleZuBezug(knex, zweck, bezug) {
+    if (!ZWECKE.has(zweck) || bezug == null) return 0;
+    return knex('token_einmal')
+        .where({ zweck, bezug: String(bezug) })
         .whereNull('benutzt_am')
         .update({ benutzt_am: knex.fn.now() });
 }

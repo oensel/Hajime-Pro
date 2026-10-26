@@ -123,9 +123,11 @@ test('Lastschrift: Angebot, Gläubiger-ID, Vorabankündigung, Transfer', async (
 
         // Speichern des Zahlwegs prüft das Angebot mit derselben Funktion
         const eingabe = { zahlweg: 'lastschrift', rechnung_email: 'a@b.de', rechnung_ansprechperson: 'Anna', rechnung_anschrift: 'Weg 1, Köln' };
+        // (Lastschrift ist angeboten; ohne Mandatsangaben lehnt der Mandats-Service ab, Stufe 3 Task 3)
         r = await aufruf('u-a1', 'PUT', `/api/zahlweg/${t}`, eingabe);
-        assert.equal(r.status, 200, JSON.stringify(r.daten));
-        assert.equal(r.daten.zahlweg.mandat_gueltig, false);
+        assert.equal(r.status, 400, JSON.stringify(r.daten));
+        assert.equal(r.daten.error, 'Bitte IBAN und Kontoinhaber für das Lastschriftmandat angeben.');
+        assert.equal(await knex('turnier_zahlwege').where({ turnier_id: t }).first(), undefined);
 
         // ohne Schlüssel wieder ohne Lastschrift
         delete process.env.ZAHLUNGSDATEN_SCHLUESSEL;

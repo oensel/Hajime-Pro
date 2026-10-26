@@ -10,6 +10,11 @@ import { turnierHatEchteKaempfe } from '../controllers/poolController.js';
 import { pruefeKampfbereitschaft, leiteStatusAusKampfbereitschaftAb, setzeStartgeldBezahlt } from '../controllers/teilnehmerController.js';
 import { istZahlwegGesichert, pruefeZahlwegEingabe, parseAngeboteneZahlwege, startgeldVerlangt } from '../shared/zahlweg.js';
 import { ladeLastschriftStatus } from './abrechnungStammdaten.js';
+import {
+    sperreMandate, widerrufeMandatInTrx, erteileMandatInTrx, ladeAktivesMandat, pruefeMandatsEingabe,
+    pruefeBasisUrlFuerBestaetigung, versendeBestaetigungen, mandatOeffentlich
+} from './mandate.js';
+import { sendeMail } from '../utils/mailer.js';
 
 const STANDARD_ANGEBOTEN = ['ueberweisung', 'bar'];
 
@@ -42,7 +47,17 @@ export async function ladeVorbelegung(knex, vereinName) {
     return zeile || null;
 }
 
-export async function speichereZahlweg(knex, { turnier, vereinName, vereinId, benutzerId, eingabe }) {
+const hatIbanEingabe = (eingabe) => typeof eingabe?.iban === 'string' && eingabe.iban.trim() !== '';
+
+// Speichert die Zahlweg-Wahl eines Vereins. Lastschrift mit IBAN erteilt ein neues Mandat (erteileMandat-Kern),
+// Lastschrift ohne IBAN behält ein offenes/gültiges Mandat (nur Rechnungsangaben ändern), ein Wechsel weg von
+// Lastschrift widerruft das Mandat (L5). Zahlweg, Mandat und Gesichert-Flag ändern sich in EINER Transaktion;
+// Bestätigungsmails gehen erst nach dem Commit hinaus. Antwort: die Zahlweg-Zeile, bei Lastschrift zusätzlich
+// `mandat` (nur maskiert) und `bestaetigungNoetig`.
+export async function speichereZahlweg(knex, {
+    turnier, vereinName, vereinId, benutzerId, eingabe,
+    istAdminDesVereins = false, ip = null, basisUrl = null, sende = sendeMail
+}) {
     if (!startgeldVerlangt(turnier)) {
         throw new FachFehler(400, 'Für dieses Turnier wird kein Startgeld erhoben, ein Zahlweg ist nicht nötig.');
     }
@@ -58,22 +73,51 @@ export async function speichereZahlweg(knex, { turnier, vereinName, vereinId, be
     const { fehler, werte } = pruefeZahlwegEingabe(eingabe, angeboten);
     if (fehler) throw new FachFehler(400, fehler);
 
-    const jetzt = knex.fn.now();
-    const zeile = {
-        turnier_id: turnier.id,
-        verein_id: vereinId ?? null,
-        verein_name: vereinName,
-        ...werte,
-        geaendert_von: benutzerId == null ? null : String(benutzerId),
-        updated_at: jetzt
-    };
-    const [gespeichert] = await knex('turnier_zahlwege')
-        .insert(zeile)
-        .onConflict(['turnier_id', 'verein_name'])
-        .merge({ ...zeile, turnier_id: undefined, verein_name: undefined })
-        .returning('*');
-    await synchronisiereGesichert(knex, turnier.id);
-    return gespeichert;
+    const benutzer = { id: benutzerId, istAdminDesVereins: istAdminDesVereins === true };
+    const istLastschrift = werte.zahlweg === 'lastschrift';
+    const neuesMandat = istLastschrift && hatIbanEingabe(eingabe);
+    let mandatsDaten = null;
+    if (neuesMandat) {
+        if (benutzerId == null) throw new FachFehler(400, 'Ohne Konto kann kein Mandat erteilt werden.');
+        mandatsDaten = pruefeMandatsEingabe(eingabe);
+        pruefeBasisUrlFuerBestaetigung(basisUrl, benutzer);
+    }
+
+    const { zeile, erteilung, mandat } = await knex.transaction(async (trx) => {
+        await sperreMandate(trx, turnier.id, vereinName);
+        let behalten = null;
+        if (!istLastschrift) {
+            await widerrufeMandatInTrx(trx, { turnierId: turnier.id, vereinName, benutzer, grund: 'wechsel' });
+        } else if (!neuesMandat) {
+            behalten = await ladeAktivesMandat(trx, turnier.id, vereinName);
+            if (!behalten) throw new FachFehler(400, 'Bitte IBAN und Kontoinhaber für das Lastschriftmandat angeben.');
+        }
+        const daten = {
+            turnier_id: turnier.id,
+            verein_id: vereinId ?? null,
+            verein_name: vereinName,
+            ...werte,
+            geaendert_von: benutzerId == null ? null : String(benutzerId),
+            updated_at: trx.fn.now()
+        };
+        const [gespeichert] = await trx('turnier_zahlwege')
+            .insert(daten)
+            .onConflict(['turnier_id', 'verein_name'])
+            .merge({ ...daten, turnier_id: undefined, verein_name: undefined })
+            .returning('*');
+        const erteilt = neuesMandat
+            ? await erteileMandatInTrx(trx, { turnier, zahlwegZeile: gespeichert, daten: mandatsDaten, benutzer, ip })
+            : null;
+        await synchronisiereGesichert(trx, turnier.id);
+        return {
+            zeile: await trx('turnier_zahlwege').where({ id: gespeichert.id }).first(),
+            erteilung: erteilt,
+            mandat: erteilt ? erteilt.zeile : behalten
+        };
+    });
+    if (erteilung) await versendeBestaetigungen(erteilung, basisUrl, sende);
+    if (!istLastschrift) return zeile;
+    return { ...zeile, mandat: mandatOeffentlich(mandat), bestaetigungNoetig: mandat.status === 'unbestaetigt' };
 }
 
 // Setzt startgeld_zahlweg_gesichert für alle Teilnehmer des Turniers neu (gesicherter Zahlweg des Vereins
