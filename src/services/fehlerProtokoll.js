@@ -9,6 +9,7 @@
 // Eingetragen wird gebündelt und mit Obergrenze (bei Fehlerflut werden Einträge verworfen und das als eigener Eintrag gemeldet); ein Fehler
 // beim Eintragen löst nie einen neuen Eintrag aus. Aufbewahrung FEHLER_AUFBEWAHRUNG_TAGE (Standard 30).
 import util from 'util';
+import { IBAN_MUSTER } from '../shared/iban.js';
 
 export const STANDARD_AUFBEWAHRUNG_TAGE = 30;
 const MAX_MELDUNG = 500;
@@ -19,7 +20,8 @@ const FLUSH_MS = 1500;
 const SCHWAERZEN = [
     [/Bearer\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer ***'],
     [/eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, '***jwt***'],
-    [/((?:passwort|password|token|secret|schluessel)["']?\s*[:=]\s*["']?)[^\s"',;}]+/gi, '$1***']
+    [/((?:passwort|password|token|secret|schluessel)["']?\s*[:=]\s*["']?)[^\s"',;}]+/gi, '$1***'],
+    [IBAN_MUSTER, '***IBAN***']
 ];
 
 export function schwaerze(text) {

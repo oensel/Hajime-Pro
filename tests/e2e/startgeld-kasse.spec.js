@@ -20,7 +20,8 @@ test.describe.serial('Turnierformular: Zahlweg-Felder', () => {
         await page.locator('#abrechnungsbasis').selectOption('teilnahme_waage');
         await page.locator('#submitBtn').click();
         await expect(page.locator('#snackbarText')).toHaveText('Turnier erfolgreich angelegt!');
-        await expect(page).toHaveURL(/\/turnier\.html\?id=\d+/);
+        // turnier.js leitet nach 1 s per setTimeout weiter; das Laden der Folgeseite kann unter Last länger dauern
+        await expect(page).toHaveURL(/\/turnier\.html\?id=\d+/, { timeout: 15_000 });
         turnierId = Number(new URL(page.url()).searchParams.get('id'));
 
         await page.reload();
@@ -132,10 +133,60 @@ test.describe.serial('Kasse an der Waage', () => {
         await expect(page.locator('#teilnehmerTableBody [data-toggle="bezahlt"].active')).toHaveCount(3);
     });
 
+    test('Rechnungsdaten vor Ort erfassen: Verein ohne Zahlweg zeigt danach Bar', async ({ page, request }) => {
+        await page.goto(`/teilnehmer.html?turnierId=${turnierId}`);
+        await page.locator('#kasseBtn').click();
+        const ohne = page.locator('#kasseTabelleBody tr').filter({ hasText: ohneVerein });
+        await expect(ohne).toContainText('ohne Zahlweg');
+        await ohne.getByRole('button', { name: 'Rechnungsdaten erfassen' }).click();
+        await page.locator('#vorOrtSpeichernBtn').click();
+        await expect(page.locator('#vorOrtFehler')).toContainText('Rechnungs-E-Mail');
+        await page.locator('#vorOrtEmail').fill('neu@verein.de');
+        await page.locator('#vorOrtAnsprechperson').fill('Nora Neu');
+        await page.locator('#vorOrtAnschrift').fill('Weg 5, 50667 Köln');
+        await page.locator('#vorOrtSpeichernBtn').click();
+        await expect(page.locator('#vorOrtDialog')).toHaveCount(0);
+        const danach = page.locator('#kasseTabelleBody tr').filter({ hasText: ohneVerein });
+        await expect(danach.locator('td').nth(1)).toHaveText('Bar');
+        await expect(danach.getByRole('button', { name: 'Rechnungsdaten erfassen' })).toHaveCount(0);
+        const zeile = await db('turnier_zahlwege').where({ turnier_id: turnierId, verein_name: ohneVerein }).first();
+        expect(zeile.zahlweg).toBe('bar');
+        expect(zeile.geaendert_von).toBeNull();
+        // Zweiter Versuch über die API: der Verein hat nun einen Zahlweg
+        const resp = await request.post(`/api/zahlweg/${turnierId}/vor-ort`, {
+            data: { vereinName: ohneVerein, rechnung_email: 'x@y.de', rechnung_ansprechperson: 'X', rechnung_anschrift: 'Y' }
+        });
+        expect(resp.status()).toBe(400);
+    });
+
     test('Ohne Startgeld gibt es keinen Kassen-Knopf', async ({ page }) => {
         await page.goto(`/teilnehmer.html?turnierId=${freiId}`);
         await expect(page.locator('#teilnehmerTableBody')).toBeAttached();
         await page.waitForTimeout(500);
         await expect(page.locator('#kasseBtn')).toBeHidden();
+    });
+
+    test('Vor-Ort-Dialog: nur bei Cloud-Turnieren und nach „Später“ höchstens einmal je Verein und Sitzung', async ({ page }) => {
+        const neuVerein = `JC Neu ${ts}`;
+        await db('turnier_teilnehmer').insert({
+            turnier_id: turnierId, judopass_id: `K-${ts}-neu`, vorname: 'Vo', nachname: 'Neu', geschlecht: 'm', verein: neuVerein,
+            gewicht: 40, altersklasse: 'U15', gewichtsklasse: '-44', lizenz_ablauf: '2099-01-01', geburtsjahr: 2012
+        });
+        await page.goto(`/teilnehmer.html?turnierId=${turnierId}`);
+        const frage = () => page.evaluate(([id, name]) => window.ZahlwegDialog.frageNachVorOrt(id, name), [turnierId, neuVerein]);
+
+        // Lokal angelegtes Turnier (keine Herkunft aus der Cloud): keine Frage
+        expect(await frage()).toBe('nichtNoetig');
+        await expect(page.locator('#vorOrtDialog')).toHaveCount(0);
+
+        // Aus der Cloud geholt: die Frage erscheint, „Später“ merkt sich die Sitzung
+        await db('turniere').where({ id: turnierId }).update({ urspruengliche_id: 900000 + (ts % 90000) });
+        const erste = page.evaluate(([id, name]) => window.ZahlwegDialog.frageNachVorOrt(id, name), [turnierId, neuVerein]);
+        await expect(page.locator('#vorOrtDialog')).toBeVisible();
+        await page.locator('#vorOrtSpaeterBtn').click();
+        expect(await erste).toBe('abgebrochen');
+        expect(await frage()).toBe('nichtNoetig');
+        await expect(page.locator('#vorOrtDialog')).toHaveCount(0);
+        await db('turniere').where({ id: turnierId }).update({ urspruengliche_id: null });
     });
 });

@@ -148,3 +148,70 @@ test('Zahlwege-Service', async () => {
         await stoppe();
     }
 });
+
+test('Rechnungsdaten vor Ort und Kassenjournal', async () => {
+    const { knex, stoppe } = await starteTestPostgres();
+    try {
+        const ausrichter = id((await knex('vereine').insert({ name: 'JC Ausrichter' }).returning('id'))[0]);
+        const t = (await knex('turniere').insert({
+            bezeichnung: 'Cup', ort: 'O', datum: morgen(), ausrichter: 'JC Ausrichter', verein_id: ausrichter,
+            status: 'veroeffentlicht', startgeld: 8, anmeldeschluss: '2020-01-01'
+        }).returning('*'))[0];
+        await knex('turnier_zahlwege').insert({ turnier_id: t.id, verein_name: 'JC Ue', zahlweg: 'ueberweisung', geaendert_von: 'u1', rechnung_email: 'a@b.de', rechnung_ansprechperson: 'A', rechnung_anschrift: 'Weg 1' });
+        await teilnehmer(knex, t.id, 'JC Neu');
+        await teilnehmer(knex, t.id, 'JC Ue');
+        await teilnehmer(knex, t.id, 'JC Ausrichter');
+        const eingabe = { rechnung_email: 'neu@b.de', rechnung_ansprechperson: 'Nora', rechnung_anschrift: 'Weg 2, Köln' };
+
+        const zeile = await zw.erfasseVorOrt(knex, { turnier: t, vereinName: 'JC Neu', eingabe });
+        assert.equal(zeile.zahlweg, 'bar');
+        assert.equal(zeile.geaendert_von, null);
+        assert.equal(zeile.rechnung_email, 'neu@b.de');
+        assert.equal((await zw.ladeKasse(knex, t.id)).find((k) => k.vereinName === 'JC Neu').zahlweg, 'bar');
+        await assert.rejects(zw.erfasseVorOrt(knex, { turnier: t, vereinName: 'JC Neu', eingabe }), (e) => e.statusCode === 400);
+        await assert.rejects(zw.erfasseVorOrt(knex, { turnier: t, vereinName: 'JC Ue', eingabe }), (e) => e.statusCode === 400);
+        await assert.rejects(zw.erfasseVorOrt(knex, { turnier: t, vereinName: 'JC Ausrichter', eingabe }), (e) => e.statusCode === 400);
+        await assert.rejects(zw.erfasseVorOrt(knex, { turnier: t, vereinName: 'JC Unbekannt', eingabe }), (e) => e.statusCode === 400);
+        await assert.rejects(zw.erfasseVorOrt(knex, { turnier: t, vereinName: 'JC Neu2', eingabe: { ...eingabe, rechnung_email: 'x' } }), (e) => e.statusCode === 400);
+
+        // Journal
+        await teilnehmer(knex, t.id, 'JC B'); await teilnehmer(knex, t.id, 'JC B'); await teilnehmer(knex, t.id, 'JC B');
+        assert.equal(await zw.kassiereBar(knex, t.id, 'JC B'), 3);
+        const journal = await knex('turnier_barzahlungen').where({ turnier_id: t.id });
+        assert.equal(journal.length, 1);
+        assert.equal(journal[0].verein_name, 'JC B');
+        assert.equal(journal[0].anzahl, 3);
+        assert.equal(journal[0].betrag_cent, 2400);
+        assert.match(journal[0].uid, /^[0-9a-f-]{36}$/);
+        assert.equal(await zw.kassiereBar(knex, t.id, 'JC B'), 0);
+        assert.equal((await knex('turnier_barzahlungen').where({ turnier_id: t.id })).length, 1);
+
+        // Gleichzeitiges Kassieren desselben Vereins: nichts wird doppelt gezählt
+        for (let i = 0; i < 4; i += 1) await teilnehmer(knex, t.id, 'JC Par');
+        const [a, b, c] = await Promise.all([zw.kassiereBar(knex, t.id, 'JC Par'), zw.kassiereBar(knex, t.id, 'JC Par'), zw.kassiereBar(knex, t.id, 'JC Par')]);
+        assert.equal(a + b + c, 4);
+        const par = await knex('turnier_barzahlungen').where({ turnier_id: t.id, verein_name: 'JC Par' });
+        assert.equal(par.length, 1);
+        assert.equal(par[0].anzahl, 4);
+        assert.equal(par[0].betrag_cent, 3200);
+
+        // Scheitert das Journal, bleibt nichts markiert
+        const roll = await teilnehmer(knex, t.id, 'JC Roll');
+        await knex.raw('ALTER TABLE turnier_barzahlungen ADD CONSTRAINT test_sperre CHECK (verein_name <> \'JC Roll\')');
+        await assert.rejects(zw.kassiereBar(knex, t.id, 'JC Roll'));
+        await knex.raw('ALTER TABLE turnier_barzahlungen DROP CONSTRAINT test_sperre');
+        assert.ok(!(await knex('turnier_teilnehmer').where({ id: roll }).first()).startgeld_bezahlt);
+
+        // Gleichzeitiges Erfassen vor Ort: genau einer gewinnt, der andere bekommt 400 (kein 500)
+        await teilnehmer(knex, t.id, 'JC Doppel');
+        const ergebnisse = await Promise.allSettled([
+            zw.erfasseVorOrt(knex, { turnier: t, vereinName: 'JC Doppel', eingabe }),
+            zw.erfasseVorOrt(knex, { turnier: t, vereinName: 'JC Doppel', eingabe })
+        ]);
+        assert.equal(ergebnisse.filter((x) => x.status === 'fulfilled').length, 1);
+        const abgelehnt = ergebnisse.find((x) => x.status === 'rejected');
+        assert.equal(abgelehnt.reason.statusCode, 400);
+    } finally {
+        await stoppe();
+    }
+});

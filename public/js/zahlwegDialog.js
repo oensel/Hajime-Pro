@@ -180,5 +180,118 @@
         return ergebnis;
     }
 
-    window.ZahlwegDialog = { frageNach, aendere, ladeStatus, NAMEN };
+    // Rechnungsdaten eines Vereins erfassen, der erst vor Ort auftaucht (Hallen-Server/Kasse, Zahlweg immer Bar).
+    // "Später an der Kasse" bzw. Escape -> 'abgebrochen'. Optional { url }: anderes Ziel (Abrechnungsseite der Cloud).
+    function erfasseVorOrt(turnierId, vereinName, { url } = {}) {
+        return new Promise((resolve) => {
+            const eingabeStil = 'width:100%;padding:8px 10px;font-size:14px;box-sizing:border-box;';
+            const email = element('input', { type: 'email', id: 'vorOrtEmail' });
+            const person = element('input', { type: 'text', id: 'vorOrtAnsprechperson' });
+            const anschrift = element('textarea', { id: 'vorOrtAnschrift', rows: 3 });
+            for (const el of [email, person, anschrift]) el.style.cssText = eingabeStil;
+            const titel = element('h2', { id: 'vorOrtTitel', textContent: 'Neuer Verein: Rechnungsdaten jetzt erfassen?' });
+            titel.style.cssText = 'margin:0 0 8px;font-size:18px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-main);';
+            const info = element('p', { textContent: `${vereinName} hat noch keine Rechnungsdaten und zahlt das Startgeld bar an der Kasse.` });
+            info.style.cssText = 'margin:0 0 16px;font-size:13px;color:var(--text-muted);';
+            const fehlerAnzeige = element('p', { id: 'vorOrtFehler', role: 'alert' });
+            fehlerAnzeige.style.cssText = 'margin:0 0 12px;font-size:13px;font-weight:700;color:#c62828;display:none;';
+            const btnSpeichern = element('button', { type: 'button', id: 'vorOrtSpeichernBtn', className: 'btn btn-raised', textContent: 'Speichern' });
+            const btnSpaeter = element('button', { type: 'button', id: 'vorOrtSpaeterBtn', className: 'btn btn-outlined', textContent: 'Später an der Kasse' });
+            const knoepfe = element('div', {}, [btnSpaeter, btnSpeichern]);
+            knoepfe.style.cssText = 'display:flex;justify-content:flex-end;gap:12px;';
+            for (const b of [btnSpaeter, btnSpeichern]) b.style.padding = '2px 16px';
+            const karte = element('div', { role: 'dialog' }, [
+                titel, info, feld('Rechnungs-E-Mail', email), feld('Ansprechperson', person), feld('Rechnungsanschrift', anschrift),
+                fehlerAnzeige, knoepfe
+            ]);
+            karte.setAttribute('aria-modal', 'true');
+            karte.setAttribute('aria-labelledby', 'vorOrtTitel');
+            karte.style.cssText = 'background:var(--bg-card);color:var(--text-main);border:2px solid var(--border);border-radius:4px;padding:24px;max-width:520px;width:90%;max-height:90vh;overflow:auto;box-shadow:var(--shadow);';
+            const overlay = element('div', { id: 'vorOrtDialog' }, [karte]);
+            overlay.style.cssText = 'position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.4);backdrop-filter:blur(2px);';
+
+            const beiTaste = (e) => {
+                if (e.key === 'Escape') {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    beenden('abgebrochen');
+                }
+            };
+            const beenden = (ergebnis) => {
+                document.removeEventListener('keydown', beiTaste, true);
+                overlay.remove();
+                resolve(ergebnis);
+            };
+            document.addEventListener('keydown', beiTaste, true);
+            btnSpaeter.addEventListener('click', () => beenden('abgebrochen'));
+            btnSpeichern.addEventListener('click', async () => {
+                btnSpeichern.disabled = true;
+                fehlerAnzeige.style.display = 'none';
+                try {
+                    const resp = await fetch(url || `/api/zahlweg/${encodeURIComponent(turnierId)}/vor-ort`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            vereinName,
+                            rechnung_email: email.value,
+                            rechnung_ansprechperson: person.value,
+                            rechnung_anschrift: anschrift.value
+                        })
+                    });
+                    const daten = await resp.json().catch(() => ({}));
+                    if (!resp.ok || daten.success === false) throw new Error(daten.error || 'Speichern fehlgeschlagen.');
+                    meldung('Rechnungsdaten gespeichert.', 'success');
+                    beenden('gespeichert');
+                } catch (error) {
+                    fehlerAnzeige.textContent = error.message;
+                    fehlerAnzeige.style.display = 'block';
+                    btnSpeichern.disabled = false;
+                    btnSpeichern.focus();
+                }
+            });
+            document.body.append(overlay);
+            email.focus();
+        });
+    }
+
+    // Nach dem Anlegen eines Kämpfers am Hallen-Server: steht sein Verein ohne Zahlweg auf der Kassenliste
+    // (Startgeld > 0), wird gefragt, ob die Rechnungsdaten gleich erfasst werden sollen.
+    async function frageNachVorOrt(turnierId, vereinName) {
+        if (!turnierId || !vereinName) return 'nichtNoetig';
+        let logik;
+        try {
+            logik = await import('/js/shared/zahlweg.js');
+            const schluessel = logik.vorOrtSchluessel(turnierId, vereinName);
+            let spaeterGemerkt = false;
+            try { spaeterGemerkt = sessionStorage.getItem(schluessel) === '1'; } catch { /* ohne sessionStorage */ }
+            // 409 = Hallen-Server (Einzelbenutzerbetrieb); in der Cloud wählt der Verein selbst den Zahlweg.
+            const cloud = await fetch(`/api/zahlweg/${encodeURIComponent(turnierId)}`);
+            if (cloud.status !== 409) return 'nichtNoetig';
+            const turnierResp = await fetch(`/api/turniere/${encodeURIComponent(turnierId)}`);
+            if (!turnierResp.ok) return 'nichtNoetig';
+            const turnier = await turnierResp.json();
+            const kasseResp = await fetch(`/api/zahlweg/${encodeURIComponent(turnierId)}/kasse`);
+            if (!kasseResp.ok) return 'nichtNoetig';
+            const eintraege = (await kasseResp.json()).eintraege || [];
+            const vereinHatZahlweg = !eintraege.some((e) => e.vereinName === vereinName && e.zahlweg === 'ohneZahlweg');
+            if (!logik.sollVorOrtFragen({
+                cloudHerkunft: turnier.urspruengliche_id != null,
+                startgeld: turnier.startgeld,
+                vereinHatZahlweg,
+                spaeterGemerkt
+            })) return 'nichtNoetig';
+        } catch {
+            return 'nichtNoetig';
+        }
+        const ergebnis = await erfasseVorOrt(turnierId, vereinName);
+        if (ergebnis === 'gespeichert') {
+            document.dispatchEvent(new CustomEvent('zahlweg:geaendert'));
+        } else {
+            // „Später an der Kasse“: je Turnier und Verein nur einmal je Sitzung fragen.
+            try { sessionStorage.setItem(logik.vorOrtSchluessel(turnierId, vereinName), '1'); } catch { /* egal */ }
+        }
+        return ergebnis;
+    }
+
+    window.ZahlwegDialog = { frageNach, aendere, ladeStatus, NAMEN, erfasseVorOrt, frageNachVorOrt };
 })();

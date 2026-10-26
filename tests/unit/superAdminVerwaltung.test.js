@@ -224,6 +224,7 @@ test('Super-Admin-Verwaltung: sperren, Passwort-Reset, Bestätigung, Vereine, Tu
             { verein_id: quelle, name: 'Standard', pdf: Buffer.from('a'), seiten_breite_pt: 595, seiten_hoehe_pt: 842 }, { verein_id: neuId, name: 'Standard', pdf: Buffer.from('b'), seiten_breite_pt: 595, seiten_hoehe_pt: 842 }
         ]);
         await knex('orga_einladungen').insert({ verein_id: quelle, email: 'ein@test.de', token_hash: 'y'.repeat(64), laeuft_ab_am: knex.raw("now() + interval '1 day'") });
+        await knex('vereins_abrechnung').insert({ verein_id: quelle, anschrift: 'Quelle', naechste_rechnungsnummer: 7 });
         assert.equal((await nutzer('u-super', `/vereine/${quelle}/zusammenfuehren`, 'POST', {})).status, 400);
         assert.equal((await nutzer('u-super', `/vereine/${quelle}/zusammenfuehren`, 'POST', { zielId: quelle })).status, 400);
         assert.equal((await nutzer('u-super', `/vereine/${quelle}/zusammenfuehren`, 'POST', { zielId: 999999 })).status, 404);
@@ -241,6 +242,40 @@ test('Super-Admin-Verwaltung: sperren, Passwort-Reset, Bestätigung, Vereine, Tu
         assert.deepEqual((await knex('urkunden_vorlagen').where({ verein_id: neuId }).orderBy('name')).map(v => v.name), ['Standard', 'Standard (2)']);
         assert.equal((await knex('orga_einladungen').where({ email: 'ein@test.de' }).first()).verein_id, neuId);
         assert.equal((await knex('vereine').where({ id: neuId }).first()).bundesland, 'Hessen', 'vorhandenes Bundesland bleibt');
+
+        // Stammdaten der Abrechnung: nur die Quelle hat welche -> hängen am Ziel
+        const abrNachZiel = await knex('vereins_abrechnung').where({ verein_id: neuId });
+        assert.equal(abrNachZiel.length, 1);
+        assert.equal(abrNachZiel[0].anschrift, 'Quelle');
+        // Quelle und Ziel haben welche -> die des Ziels bleibt, keine Fehlermeldung
+        const q2 = id((await knex('vereine').insert({ name: 'Abr Quelle' }).returning('id'))[0]);
+        const z2 = id((await knex('vereine').insert({ name: 'Abr Ziel' }).returning('id'))[0]);
+        await knex('vereins_abrechnung').insert([{ verein_id: q2, anschrift: 'Q2' }, { verein_id: z2, anschrift: 'Z2' }]);
+        const zus2 = await nutzer('u-super', `/vereine/${q2}/zusammenfuehren`, 'POST', { zielId: z2 });
+        assert.equal(zus2.status, 200, JSON.stringify(zus2.daten));
+        const abr2 = await knex('vereins_abrechnung').whereIn('verein_id', [q2, z2]);
+        assert.equal(abr2.length, 1);
+        assert.equal(abr2[0].verein_id, z2);
+        assert.equal(abr2[0].anschrift, 'Z2');
+
+        // Rechnungen sind Momentaufnahmen: gleiche Nummern in Quelle und Ziel, sie wandern nicht
+        const q3 = id((await knex('vereine').insert({ name: 'Rg Quelle' }).returning('id'))[0]);
+        const z3 = id((await knex('vereine').insert({ name: 'Rg Ziel' }).returning('id'))[0]);
+        await knex('vereins_abrechnung').insert({ verein_id: z3, naechste_rechnungsnummer: 5 });
+        const rg = (v) => ({
+            aussteller_verein_id: v, verein_name: 'Empf', zahlweg: 'ueberweisung', art: 'rechnung', nummer: 'X-00001',
+            rechnungsdatum: '2031-01-01', anzahl: 1, einzelpreis_cent: 800, betrag_cent: 800,
+            positionen: '[]', empfaenger: '{}', aussteller: JSON.stringify({ name: v === q3 ? 'Rg Quelle' : 'Rg Ziel' })
+        });
+        await knex('rechnungen').insert([rg(q3), rg(z3)]);
+        const zus3 = await nutzer('u-super', `/vereine/${q3}/zusammenfuehren`, 'POST', { zielId: z3 });
+        assert.equal(zus3.status, 200, JSON.stringify(zus3.daten));
+        const rgs = await knex('rechnungen').orderBy('id');
+        assert.equal(rgs.length, 2);
+        assert.equal(rgs.filter((r) => r.aussteller_verein_id === z3).length, 1);
+        assert.equal(rgs.filter((r) => r.aussteller_verein_id === null).length, 1);
+        assert.equal(rgs.find((r) => r.aussteller_verein_id === null).aussteller.name, 'Rg Quelle');
+        assert.equal((await knex('vereins_abrechnung').where({ verein_id: z3 }).first()).naechste_rechnungsnummer, 5);
 
         // --- Vereine löschen: nur leere
         assert.equal((await nutzer('u-super', `/vereine/${neuId}`, 'DELETE')).status, 409);

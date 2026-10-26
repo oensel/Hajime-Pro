@@ -5,9 +5,10 @@ import { FachFehler } from '../utils/fachFehler.js';
 import { ladeBenutzerMitAktivemVerein, ladeVerwaltendenVereinsnamen } from '../utils/vereinHelper.js';
 import { ermittleEffektivenStatus } from './turnierController.js';
 import { turnierHatEchteKaempfe } from './poolController.js';
-import { ladeZahlwegFuerVerein, ladeVorbelegung, speichereZahlweg, ladeKasse, kassiereBar } from '../services/zahlwege.js';
+import { ladeZahlwegFuerVerein, ladeVorbelegung, speichereZahlweg, ladeKasse, kassiereBar, erfasseVorOrt } from '../services/zahlwege.js';
 import { parseAngeboteneZahlwege, startgeldVerlangt } from '../shared/zahlweg.js';
 import { darfTurnierSehen } from '../services/turnierSichtbarkeit.js';
+import { ermittleZahlungsempfaenger } from '../services/abrechnungStammdaten.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 
 const STUFE1_ZAHLWEGE = ['ueberweisung', 'bar'];
@@ -70,8 +71,21 @@ export function erzeugeZahlwegController(knex) {
                 const { turnier, vereinName, istAusrichter } = await ladeKontext(req);
                 const erforderlich = startgeldVerlangt(turnier) && !istAusrichter;
                 const zahlweg = erforderlich ? await ladeZahlwegFuerVerein(knex, turnier.id, vereinName) : null;
+                // Konto für den Girocode: nur wer per Überweisung zahlt, bekommt es (Turnierfelder vor Vereinskonto).
+                // Bewusst freigegeben: dieses Empfängerkonto steht ohnehin auf Rechnungen und im Girocode des Zahlers.
+                // Scheitert die Entschlüsselung (Schlüssel fehlt/geändert), bleibt es null; der Rest der Antwort ist unberührt.
+                let empfaenger = null;
+                if (zahlweg?.zahlweg === 'ueberweisung') {
+                    try {
+                        const e = await ermittleZahlungsempfaenger(knex, turnier);
+                        if (e) empfaenger = { kontoinhaber: e.kontoinhaber, iban: e.iban, verwendungszweck: turnier.verwendungszweck || null };
+                    } catch (fehler) {
+                        console.error('[Zahlweg] Empfängerkonto nicht lesbar:', fehler?.code ?? '', fehler?.message ?? 'Fehler');
+                    }
+                }
                 res.json({
                     erforderlich,
+                    empfaenger,
                     angebotene: angebotenInStufe1(turnier),
                     startgeld: parseFloat(turnier.startgeld) || 0,
                     abrechnungsbasis: turnier.abrechnungsbasis,
@@ -107,6 +121,24 @@ export function erzeugeZahlwegController(knex) {
             try {
                 const turnier = await ladeKasseTurnier(req);
                 res.json({ eintraege: await ladeKasse(knex, turnier.id) });
+            } catch (err) {
+                antworteFehler(res, err);
+            }
+        },
+
+        // Rechnungsdaten eines Vereins, der erst vor Ort auftaucht (Kasse am Wettkampftag, Zahlweg immer Bar).
+        async erfasseVorOrt(req, res) {
+            try {
+                if (!betriebsmodus.istEinzelbenutzerBetrieb()) {
+                    throw new FachFehler(409, 'Rechnungsdaten vor Ort werden nur am Hallen-Server erfasst; in der Cloud wählt der Verein seinen Zahlweg selbst.');
+                }
+                const turnier = await ladeKasseTurnier(req);
+                const vereinName = req.body?.vereinName;
+                if (typeof vereinName !== 'string' || !vereinName) {
+                    throw new FachFehler(400, 'Vereinsname fehlt.');
+                }
+                const zahlweg = await erfasseVorOrt(knex, { turnier, vereinName, eingabe: req.body });
+                res.json({ success: true, zahlweg });
             } catch (err) {
                 antworteFehler(res, err);
             }

@@ -1108,6 +1108,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (!effektiveId && window.ZahlwegDialog) {
                         await window.ZahlwegDialog.frageNach(turnierId);
                     }
+                    // Hallen-Server: neuer Verein ohne Zahlweg -> Rechnungsdaten gleich erfassen oder später an der Kasse.
+                    if (!effektiveId && window.ZahlwegDialog && window.ZahlwegDialog.frageNachVorOrt) {
+                        await window.ZahlwegDialog.frageNachVorOrt(turnierId, payload.verein);
+                    }
 
                     // Nachzügler (Altersklasse schon ausgelost): Pool-Auswahl anbieten.
                     // Nach der Pool-Auswahl ist der Nachzügler erledigt: das Fenster schließt sich.

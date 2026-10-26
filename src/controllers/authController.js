@@ -178,7 +178,7 @@ export async function zweiFaktorPruefen(knex, req, res) {
             konto, aktion: 'anmeldung.erfolgreich',
             beschreibung: ergebnis.art === 'backup' ? 'Angemeldet mit Zwei-Faktor (Backup-Code)' : 'Angemeldet mit Zwei-Faktor (Authenticator-App)', status: 200
         });
-        const antwort = await baueAnmeldeAntwort(knex, konto);
+        const antwort = await baueAnmeldeAntwort(knex, konto, { zweiFaktorAm: Date.now() });
         return res.json({ ...antwort, zweiFaktorArt: ergebnis.art, verbleibendeBackupCodes: ergebnis.verbleibendeBackupCodes });
     } catch (error) {
         console.error('[2FA-Pruefen-Fehler]:', error);
@@ -208,7 +208,7 @@ export async function zweiFaktorEinrichtungBestaetigen(knex, req, res) {
         if (!ergebnis.ok) return res.status(ergebnis.status).json({ success: false, error: ergebnis.error });
         const frisch = await knex('benutzer').where({ id: konto.id }).first();
         protokolliereAnmeldung(knex, req, { konto: frisch, aktion: '2fa.eingerichtet', beschreibung: 'Zwei-Faktor-Anmeldung eingerichtet und angemeldet', status: 200 });
-        const antwort = await baueAnmeldeAntwort(knex, frisch);
+        const antwort = await baueAnmeldeAntwort(knex, frisch, { zweiFaktorAm: Date.now() });
         return res.json({ ...antwort, backupCodes: ergebnis.backupCodes });
     } catch (error) {
         console.error('[2FA-Bestaetigen-Fehler]:', error);
@@ -245,16 +245,16 @@ export async function zweiFaktorBackupCodesRoute(knex, req, res) {
 }
 
 /** Antwort einer erfolgreichen Anmeldung (Token + Benutzer mit Vereinen); gemeinsam für Login und Einladung. */
-export async function baueAnmeldeAntwort(knex, user) {
+// zweiFaktorAm (Millisekunden, z. B. Date.now()): Zeitpunkt der gerade bestandenen Zwei-Faktor-Prüfung; steht als Claim zf
+// (Unix-Sekunden) im Token, damit sensible Aktionen kurz danach ohne zweiten Code gehen (utils/sensibleAktion.js).
+export async function baueAnmeldeAntwort(knex, user, { zweiFaktorAm = null } = {}) {
     // Ein Super-Admin startet nach jeder Anmeldung im Super-Admin-Modus (Wechsel in einen Verein über die Kopfleiste).
     if (user.ist_super_admin) {
         await knex('benutzer').where({ id: user.id }).update({ super_admin_modus: true });
     }
-    const token = jwt.sign(
-        { id: user.id, email: user.email },
-        JWT_SECRET,
-        { expiresIn: JWT_EXPIRES_IN }
-    );
+    const nutzlast = { id: user.id, email: user.email };
+    if (zweiFaktorAm != null) nutzlast.zf = Math.floor(zweiFaktorAm / 1000);
+    const token = jwt.sign(nutzlast, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 
     const aktuellerBenutzer = await ladeBenutzerMitAktivemVerein(knex, user.id);
     const vereine = await ladeVereineFuerBenutzer(knex, user.id);

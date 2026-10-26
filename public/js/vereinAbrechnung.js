@@ -1,0 +1,113 @@
+// Abrechnungsdaten eines Vereins (Startgeld-Rechnungen, Stufe 2). Server-Texte kommen nur über value/textContent in die Seite.
+(function () {
+    const $ = (id) => document.getElementById(id);
+    const vereinId = new URLSearchParams(window.location.search).get('vereinId');
+    const api = `/api/abrechnung/stammdaten/${encodeURIComponent(vereinId || '')}`;
+    let ibanLoeschen = false;
+    let naechsteNummer = 1;
+
+    const meldeFehler = (text) => { $('abrFehler').textContent = text || ''; };
+    const meldung = (text, typ) => { if (window.zeigeNotification) window.zeigeNotification(text, typ); };
+
+    function zeigeNaechsteNummer() {
+        const praefix = $('abrPraefix').value.trim();
+        $('abrNaechste').textContent = praefix ? `${praefix}${String(naechsteNummer).padStart(5, '0')}` : '-';
+    }
+
+    function zeigeIban(stammdaten) {
+        const vorhanden = !!(stammdaten && stammdaten.iban_vorhanden);
+        ibanLoeschen = false;
+        const feld = $('abrIban');
+        feld.value = '';
+        feld.placeholder = vorhanden ? (stammdaten.iban_maske || 'IBAN hinterlegt') : 'z.B. DE12345678901234567890';
+        $('abrIbanEntfernen').hidden = !vorhanden;
+        $('abrIbanHilfe').textContent = vorhanden
+            ? 'Die IBAN ist hinterlegt und wird nicht angezeigt. Zum Ändern eine neue IBAN eintragen, sonst das Feld leer lassen.'
+            : 'Noch keine IBAN hinterlegt.';
+    }
+
+    function fuelle(stammdaten) {
+        const s = stammdaten || {};
+        $('abrAbsender').value = s.absender_name || '';
+        $('abrAnschrift').value = s.anschrift || '';
+        $('abrEmail').value = s.rechnung_email || '';
+        $('abrSteuernummer').value = s.steuernummer || '';
+        $('abrUstId').value = s.ust_id || '';
+        $('abrUstHinweis').value = s.ust_hinweis || '';
+        $('abrKontoinhaber').value = s.kontoinhaber || '';
+        $('abrPraefix').value = s.rechnungs_praefix || '';
+        naechsteNummer = s.naechste_rechnungsnummer || 1;
+        zeigeIban(s);
+        zeigeNaechsteNummer();
+    }
+
+    async function lade() {
+        if (!/^\d+$/.test(String(vereinId || ''))) {
+            meldeFehler('Es wurde kein Verein angegeben.');
+            return;
+        }
+        try {
+            const resp = await fetch(api);
+            const daten = await resp.json().catch(() => ({}));
+            if (!resp.ok) {
+                meldeFehler(daten.error || 'Die Abrechnungsdaten konnten nicht geladen werden.');
+                return;
+            }
+            fuelle(daten.stammdaten);
+            $('abrForm').hidden = false;
+        } catch {
+            meldeFehler('Die Abrechnungsdaten konnten nicht geladen werden.');
+        }
+        try {
+            const resp = await fetch('/api/auth/me');
+            const me = resp.ok ? (await resp.json()).user : null;
+            const treffer = me && Array.isArray(me.vereine) ? me.vereine.find((v) => String(v.verein_id) === String(vereinId)) : null;
+            if (treffer) $('abrVerein').textContent = treffer.name;
+        } catch { /* der Name ist nur Zierde */ }
+    }
+
+    $('abrIbanEntfernen').addEventListener('click', async () => {
+        if (typeof window.zeigeZentraleBestaetigung === 'function') {
+            const ok = await window.zeigeZentraleBestaetigung('Die hinterlegte IBAN wirklich entfernen?', 'IBAN entfernen', 'warning');
+            if (!ok) return;
+        }
+        ibanLoeschen = true;
+        $('abrIban').value = '';
+        $('abrIban').placeholder = 'IBAN wird beim Speichern entfernt';
+        $('abrIbanEntfernen').hidden = true;
+        $('abrIbanHilfe').textContent = 'Die IBAN wird beim Speichern entfernt.';
+    });
+
+    $('abrPraefix').addEventListener('input', zeigeNaechsteNummer);
+
+    $('abrForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        meldeFehler('');
+        const body = {
+            absender_name: $('abrAbsender').value,
+            anschrift: $('abrAnschrift').value,
+            rechnung_email: $('abrEmail').value,
+            steuernummer: $('abrSteuernummer').value,
+            ust_id: $('abrUstId').value,
+            ust_hinweis: $('abrUstHinweis').value,
+            kontoinhaber: $('abrKontoinhaber').value,
+            rechnungs_praefix: $('abrPraefix').value
+        };
+        if (ibanLoeschen) body.iban_loeschen = true;
+        else if ($('abrIban').value.trim()) body.iban = $('abrIban').value;
+        try {
+            const resp = await fetch(api, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+            const daten = await resp.json().catch(() => ({}));
+            if (!resp.ok) {
+                meldeFehler(daten.error || 'Speichern fehlgeschlagen.');
+                return;
+            }
+            fuelle(daten.stammdaten);
+            meldung('Abrechnungsdaten gespeichert.', 'success');
+        } catch {
+            meldeFehler('Speichern fehlgeschlagen.');
+        }
+    });
+
+    lade();
+})();

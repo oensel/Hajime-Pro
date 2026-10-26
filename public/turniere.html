@@ -441,10 +441,23 @@
 <script src="/js/ausschreibung-viewer.js"></script>
 <script src="/js/turnierDuplizieren.js"></script>
 <script src="/js/turnierTeilenDialog.js"></script>
+<script src="/js/rueckspielDialog.js"></script>
 <script>
     // Turnierdaten können aus Importen oder der Cloud stammen: vor dem Einsetzen in HTML immer maskieren.
     function escHtml(wert) {
         return String(wert ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+    // Ist die Cloud konfiguriert und erreichbar (nur Hallen-Server)? Einmal je Seitenaufruf gefragt, gemeinsam für den
+    // Bereich „Turniere aus der Cloud“ und den Knopf „In die Cloud zurückspielen“.
+    var cloudStatusAnfrage = null;
+    function cloudVerfuegbar() {
+        if (!cloudStatusAnfrage) {
+            cloudStatusAnfrage = fetch('/api/cloud/status')
+                .then(r => (r.ok ? r.json() : { verfuegbar: false }))
+                .then(d => !!d.verfuegbar)
+                .catch(() => false);
+        }
+        return cloudStatusAnfrage;
     }
     async function ladeBenutzerStatus() {
         const meResp = await fetch('/api/auth/me');
@@ -776,11 +789,25 @@
                 return { klasse: 'geplant', label: 'Geplant' };
             }
 
+            // Zu jedem Cloud-Turnier zählt nur das jüngste lokale Turnier (dorthin spielt der Server zurück).
+            const juengsteJeCloudTurnier = new Map();
+            turniere.forEach(t => {
+                if (t.urspruengliche_id == null) return;
+                const bisher = juengsteJeCloudTurnier.get(String(t.urspruengliche_id));
+                if (bisher === undefined || Number(t.id) > bisher) juengsteJeCloudTurnier.set(String(t.urspruengliche_id), Number(t.id));
+            });
+            // Knopf „In die Cloud zurückspielen“: nur für Turniere aus der Cloud; sichtbar erst, wenn die Cloud erreichbar ist.
+            function rueckspielKnopf(t) {
+                if (!istOffline || t.urspruengliche_id == null) return '';
+                if (juengsteJeCloudTurnier.get(String(t.urspruengliche_id)) !== Number(t.id)) return '';
+                return `<button type="button" class="btn btn-outlined rueckspiel-knopf" style="display:none;" data-aktion="zurueckspielen" data-id="${escHtml(t.id)}" aria-label="In die Cloud zurückspielen" data-tooltip="Ergebnisse, Teilnehmer und Barzahlungen in die Cloud zurückspielen"><span class="material-icons" style="font-size:18px; vertical-align:middle;">cloud_upload</span> In die Cloud zurückspielen</button>`;
+            }
+
             function hallenAktionen(t) {
                 const aktivieren = t.aktivierbar
                     ? `<button type="button" class="btn btn-aktivieren" data-aktion="aktivieren" data-id="${t.id}">Aktivieren</button>` : '';
                 const duplizieren = `<button type="button" class="btn btn-outlined btn-icon-aktion" data-aktion="duplizieren" data-id="${t.id}" aria-label="Duplizieren" data-tooltip="Duplizieren"><span class="material-icons">content_copy</span></button>`;
-                return aktivieren + duplizieren;
+                return aktivieren + rueckspielKnopf(t) + duplizieren;
             }
 
             function renderCard(t, isEditable) {
@@ -969,6 +996,7 @@
                                 <span>${escHtml(datumKurz(t.datum))}</span>
                                 <span>${escHtml(t.ort)}</span>
                                 <span>${escHtml(t.teilnehmer_anzahl || 0)} Teilnehmer</span>
+                                ${t.status === 'abgeschlossen' ? rueckspielKnopf(t) : ''}
                                 <button type="button" class="btn btn-outlined btn-icon-aktion" data-aktion="duplizieren" data-id="${t.id}" aria-label="Duplizieren" data-tooltip="Duplizieren"><span class="material-icons">content_copy</span></button>
                             </div>`).join('')}</div>`;
                 }
@@ -976,6 +1004,10 @@
                 // Abgeschlossene Turniere stehen immer ganz unten, hinter dem Cloud-Bereich.
                 const abgeschlossenBereich = document.getElementById('abgeschlossenBereich');
                 abgeschlossenBereich.innerHTML = abgeschlossenHtml;
+                cloudVerfuegbar().then((verfuegbar) => {
+                    if (!verfuegbar) return;
+                    document.querySelectorAll('.rueckspiel-knopf').forEach(k => { k.style.display = ''; });
+                });
 
                 const behandleKlick = async (e) => {
                     const knopf = e.target.closest('button[data-aktion]');
@@ -983,6 +1015,8 @@
                     const turnier = turniere.find(t => String(t.id) === knopf.dataset.id);
                     if (knopf.dataset.aktion === 'duplizieren') {
                         window.TurnierDuplizieren.oeffne(turnier, () => window.location.reload());
+                    } else if (knopf.dataset.aktion === 'zurueckspielen') {
+                        window.RueckspielDialog.oeffne(turnier);
                     } else if (knopf.dataset.aktion === 'aktivieren') {
                         knopf.disabled = true;
                         const resp = await fetch(`/api/turniere/${knopf.dataset.id}/aktivieren`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
@@ -1213,16 +1247,9 @@
         });
 
         // Bereich nur einblenden, wenn dies ein Hallen-Server ist und die Cloud antwortet
-        (async () => {
-            try {
-                const resp = await fetch('/api/cloud/status');
-                if (!resp.ok) return;
-                const data = await resp.json();
-                if (data.verfuegbar) bereich.style.display = 'block';
-            } catch (err) {
-                // Cloud-Bereich bleibt ausgeblendet
-            }
-        })();
+        cloudVerfuegbar().then((verfuegbar) => {
+            if (verfuegbar) bereich.style.display = 'block';
+        });
     })();
 </script>
 </body>

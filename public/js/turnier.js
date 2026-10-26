@@ -365,6 +365,31 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!c.isOffline) document.getElementById('sichtbarkeitGroup').style.display = '';
     }).catch(() => {});
 
+    // --- RECHNUNGEN (nur Cloud): Zahlungsziel, Hinweistext und Kasten mit fehlenden Abrechnungsdaten ---
+    let rechnungenAktiv = false;
+    let turnierAusCloud = false; // Hallen-Server: Turnier aus der Cloud geholt (Konto kommt nicht mit)
+    async function initialisiereRechnungsBlock() {
+        if (!(await istCloud())) return;
+        rechnungenAktiv = true;
+        document.getElementById('rechnungGruppe').hidden = false;
+        if (!turnierId) return;
+        try {
+            const resp = await fetch(`/api/abrechnung/stammdaten-pruefung/${encodeURIComponent(turnierId)}`);
+            if (!resp.ok) return;
+            const pruefung = await resp.json();
+            if (pruefung.vollstaendig) return;
+            document.getElementById('rechnungStammdatenFehlt').textContent = (pruefung.fehlt || []).join(', ');
+            const link = document.getElementById('rechnungStammdatenLink');
+            if (pruefung.darfPflegen && pruefung.vereinId) {
+                link.href = `/verein-abrechnung.html?vereinId=${encodeURIComponent(pruefung.vereinId)}`;
+                link.hidden = false;
+            } else {
+                document.getElementById('rechnungStammdatenBitte').hidden = false;
+            }
+            document.getElementById('rechnungStammdatenKasten').hidden = false;
+        } catch { /* Hinweis ist optional */ }
+    }
+
     // --- NEUANLAGE: Verein des Users als austragenden Verein vorbelegen ---
     async function istCloud() {
         try {
@@ -391,6 +416,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (ausrichterFeld) ausrichterFeld.value = vereinWahl.value ? gewaehlt.textContent : '';
         });
     }
+
+    const rechnungsBlockBereit = initialisiereRechnungsBlock();
 
     const setzeAusrichterVorbelegung = async () => {
         if (turnierId) return; // nur bei Neuanlage, nicht im Edit-Modus
@@ -435,6 +462,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!response.ok) throw new Error('Turnierdaten konnten nicht geladen werden.');
 
             const turnier = await response.json();
+            turnierAusCloud = turnier.urspruengliche_id != null;
 
             // Titel der Maske auf Bearbeiten-Modus umstellen
             const formTitle = document.getElementById('formTitle');
@@ -457,6 +485,8 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('iban').value = turnier.iban || '';
             document.getElementById('kontoinhaber').value = turnier.kontoinhaber || '';
             document.getElementById('verwendungszweck').value = turnier.verwendungszweck || '';
+            document.getElementById('zahlungsziel_tage').value = turnier.zahlungsziel_tage || 14;
+            document.getElementById('rechnung_hinweis').value = turnier.rechnung_hinweis || '';
             document.getElementById('abrechnungsbasis').value = turnier.abrechnungsbasis === 'teilnahme_waage' ? 'teilnahme_waage' : 'gemeldet';
             {
                 const angeboten = (turnier.angebotene_zahlwege || 'ueberweisung,bar').split(',').map(w => w.trim());
@@ -757,6 +787,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 kontoinhaber: document.getElementById('kontoinhaber').value.trim(),
                 verwendungszweck: document.getElementById('verwendungszweck').value.trim(),
                 abrechnungsbasis: document.getElementById('abrechnungsbasis').value,
+                ...(rechnungenAktiv ? {
+                    zahlungsziel_tage: document.getElementById('zahlungsziel_tage').value,
+                    rechnung_hinweis: document.getElementById('rechnung_hinweis').value.trim()
+                } : {}),
                 angebotene_zahlwege: [
                     document.getElementById('zahlwegUeberweisung').checked ? 'ueberweisung' : null,
                     document.getElementById('zahlwegBar').checked ? 'bar' : null
@@ -774,7 +808,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const startgeldWert = parseInt(payload.startgeld, 10) || 0;
-            if (startgeldWert > 0 && (!payload.iban || !payload.kontoinhaber || !payload.verwendungszweck)) {
+            // In der Cloud darf das Konto auch aus den Abrechnungsdaten des Vereins kommen: dort prüft der Server.
+            // (Vor der Cloud-Erkennung gilt noch die strenge Prüfung: ein frühes Absenden ist nur strenger, nie laxer.)
+            if (!rechnungenAktiv && !turnierAusCloud && startgeldWert > 0 && (!payload.iban || !payload.kontoinhaber || !payload.verwendungszweck)) {
                 if (window.zeigeNotification) {
                     window.zeigeNotification('Wenn ein Startgeld verlangt wird, müssen IBAN, Kontoinhaber und Verwendungszweck ausgefüllt sein.', 'error');
                 }
@@ -910,6 +946,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (exportTurnierBtn && ['anmeldung_geschlossen', 'in_durchfuehrung', 'abgeschlossen'].includes(statusEffektiv)) {
                 exportTurnierBtn.style.display = 'inline-flex';
+            }
+            // Abrechnung: nur Cloud, mit Startgeld, für Admins des Ausrichters bzw. Super-Admins im Modus
+            const abrechnungBtn = document.getElementById('abrechnungBtn');
+            const istAusrichterAdmin = gehoertZuEigenemVerein && !!user.verein_freigegeben && user.verein_rolle === 'admin';
+            if (abrechnungBtn && !istOffline && (parseFloat(turnier.startgeld) || 0) > 0 && (istAusrichterAdmin || user.super_admin_aktiv)) {
+                abrechnungBtn.style.display = 'inline-flex';
+                abrechnungBtn.onclick = () => { window.location.href = `/abrechnung.html?turnierId=${encodeURIComponent(turnierId)}`; };
             }
             if (importTurnierBtn && !istOffline && wettkampftagErreicht && ['anmeldung_geschlossen', 'in_durchfuehrung'].includes(statusEffektiv)) {
                 importTurnierBtn.style.display = 'inline-flex';
@@ -1047,11 +1090,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const bestaetigt = window.zeigeZentraleBestaetigung
                 ? await window.zeigeZentraleBestaetigung(
-                    'Der Upload ersetzt Kampfflächen, Pools, Teilnehmer und Kämpfe dieses Turniers durch den Inhalt der Datei. Die Turnier-Stammdaten selbst bleiben unverändert. Fortfahren?',
+                    'Der Upload ersetzt Teilnehmer, Pools, Matten und Kämpfe dieses Turniers durch den Inhalt der Datei; Zahlungsdaten und Rechnungen bleiben unverändert. Fortfahren?',
                     'Ergebnisse hochladen',
                     'warning'
                 )
-                : confirm('Der Upload ersetzt die Wettkampfdaten dieses Turniers durch den Inhalt der Datei. Fortfahren?');
+                : confirm('Der Upload ersetzt Teilnehmer, Pools, Matten und Kämpfe; Zahlungsdaten und Rechnungen bleiben unverändert. Fortfahren?');
             if (!bestaetigt) return;
 
             importTurnierStatus.style.display = 'block';
@@ -1059,12 +1102,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
             try {
                 const contentBase64 = await liesDateiAlsBase64(file);
-                const response = await fetch(`/api/turniere/${turnierId}/import-ergebnisse`, {
+                const sende = (code) => fetch(`/api/turniere/${turnierId}/import-ergebnisse`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', ...(code ? { 'X-2FA-Code': code } : {}) },
                     body: JSON.stringify({ contentBase64 })
                 });
-                const data = await response.json();
+                let response = await sende(null);
+                let data = await response.json();
+                // Super-Admins bestätigen das Zurückspielen mit dem aktuellen Code der Authenticator-App
+                if (response.status === 403 && data.code === 'zwei_faktor') {
+                    const code = window.prompt(`${data.error || 'Zwei-Faktor-Bestätigung erforderlich.'}\n\nCode der Authenticator-App oder Backup-Code:`);
+                    if (!code || !code.trim()) {
+                        importTurnierStatus.textContent = '';
+                        return;
+                    }
+                    response = await sende(code.trim());
+                    data = await response.json();
+                }
 
                 if (!response.ok) {
                     throw new Error(data.error || 'Upload fehlgeschlagen.');

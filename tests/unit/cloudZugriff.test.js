@@ -103,3 +103,71 @@ test('ladeExport: liveToken fordert das Live-Token der Cloud an, sonst keine Que
     assert.equal(urls[0], 'https://cloud.example.de/api/turniere/5/export?liveToken=1');
     assert.equal(urls[1], 'https://cloud.example.de/api/turniere/5/export');
 });
+
+test('meldeAn: Zwei-Faktor ohne Code → 422 zwei_faktor, ohne die Prüfung aufzurufen', async () => {
+    const urls = [];
+    const cloud = erzeugeCloudZugriff({
+        env: { CLOUD_URL: 'https://cloud.example.de' },
+        fetchFn: async (url) => { urls.push(url); return antwort(200, { success: true, zweiFaktor: 'pruefen', zwischenToken: 'ZW' }); }
+    });
+    await assert.rejects(() => cloud.meldeAn('a@b.de', 'pw'),
+        (e) => e instanceof FachFehler && e.statusCode === 422 && e.code === 'zwei_faktor'
+            && e.message === 'Bitte den Code der Authenticator-App eingeben.');
+    assert.deepEqual(urls, ['https://cloud.example.de/api/auth/login']);
+});
+
+test('meldeAn: Zwei-Faktor mit Code prüft über /api/auth/2fa/pruefen und liefert das Token', async () => {
+    const gesendet = [];
+    const cloud = erzeugeCloudZugriff({
+        env: { CLOUD_URL: 'https://cloud.example.de' },
+        fetchFn: async (url, opt) => {
+            gesendet.push({ url, body: JSON.parse(opt.body) });
+            if (url.endsWith('/api/auth/login')) return antwort(200, { success: true, zweiFaktor: 'pruefen', zwischenToken: 'ZW' });
+            return antwort(200, { success: true, token: 'SITZUNG', user: { id: 9 } });
+        }
+    });
+    const r = await cloud.meldeAn('a@b.de', 'pw', { code: '123456' });
+    assert.equal(r.token, 'SITZUNG');
+    assert.equal(gesendet[1].url, 'https://cloud.example.de/api/auth/2fa/pruefen');
+    assert.deepEqual(gesendet[1].body, { zwischenToken: 'ZW', code: '123456' });
+});
+
+test('meldeAn: Zwei-Faktor-Einrichtung fehlt → 409', async () => {
+    const cloud = erzeugeCloudZugriff({
+        env: { CLOUD_URL: 'https://cloud.example.de' },
+        fetchFn: async () => antwort(200, { success: true, zweiFaktor: 'einrichtung', zwischenToken: 'ZW' })
+    });
+    await assert.rejects(() => cloud.meldeAn('a@b.de', 'pw', { code: '123456' }),
+        (e) => e instanceof FachFehler && e.statusCode === 409
+            && e.message === 'Bitte die Zwei-Faktor-Anmeldung zuerst in der Cloud einrichten.');
+});
+
+test('spieleZurueck: sendet die Datei als Base64, X-2FA-Code nur mit Code, reicht den Code der Cloud durch', async () => {
+    const gesendet = [];
+    const cloud = erzeugeCloudZugriff({
+        env: { CLOUD_URL: 'https://cloud.example.de' },
+        fetchFn: async (url, opt) => {
+            gesendet.push({ url, opt });
+            return antwort(200, { success: true, turnierId: 7, imported: { teilnehmer: 2 } });
+        }
+    });
+    const daten = { turnier: { id: 3, urspruengliche_id: 7, bezeichnung: 'Ä' }, teilnehmer: [] };
+    const r = await cloud.spieleZurueck('T0KEN', 7, daten);
+    assert.equal(r.imported.teilnehmer, 2);
+    assert.equal(gesendet[0].url, 'https://cloud.example.de/api/turniere/7/import-ergebnisse');
+    assert.equal(gesendet[0].opt.method, 'POST');
+    assert.equal(gesendet[0].opt.headers.Authorization, 'Bearer T0KEN');
+    assert.equal(gesendet[0].opt.headers['X-2FA-Code'], undefined);
+    const body = JSON.parse(gesendet[0].opt.body);
+    assert.deepEqual(JSON.parse(Buffer.from(body.contentBase64, 'base64').toString('utf8')), daten);
+
+    await cloud.spieleZurueck('T0KEN', 7, daten, { code: '654321' });
+    assert.equal(gesendet[1].opt.headers['X-2FA-Code'], '654321');
+
+    const verlangt = erzeugeCloudZugriff({
+        env: { CLOUD_URL: 'https://cloud.example.de' },
+        fetchFn: async () => antwort(403, { success: false, code: 'zwei_faktor', error: 'Code nötig.' })
+    });
+    await assert.rejects(() => verlangt.spieleZurueck('T', 7, daten),
+        (e) => e instanceof FachFehler && e.statusCode === 403 && e.code === 'zwei_faktor' && e.message === 'Code nötig.');
+});

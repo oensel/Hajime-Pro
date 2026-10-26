@@ -11,8 +11,11 @@ import { entfernungZuPlzInKm } from '../utils/entfernungHelper.js';
 import { turnierHatEchteKaempfe } from './poolController.js';
 import { FachFehler } from '../utils/fachFehler.js';
 import { ABRECHNUNGSBASEN, parseAngeboteneZahlwege } from '../shared/zahlweg.js';
-import { exportiereZahlwege, ersetzeZahlwege } from '../services/zahlwegTransfer.js';
+import { exportiereZahlwege, ersetzeZahlwege, exportiereBarzahlungen, uebernehmeBarzahlungen } from '../services/zahlwegTransfer.js';
 import { synchronisiereGesichert } from '../services/zahlwege.js';
+import { ladeStammdaten } from '../services/abrechnungStammdaten.js';
+import { spieleTurnierZurueck } from '../services/rueckspielen.js';
+import { pruefeSensibleAktion } from '../utils/sensibleAktion.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 import { legeAusVorlageAn, berechneFaelligkeitenNeu, ladeOrga } from '../services/orgaPlan.js';
 import { datumAlsText } from '../services/helferPlan.js';
@@ -62,7 +65,7 @@ export const TURNIER_SPALTEN_OHNE_PDF = [
     'id', 'bezeichnung', 'ort', 'plz', 'bundesland', 'datum', 'ausrichter',
     'nutze_gewichtsklassen', 'anzahl_kampfflaechen', 'verein_id', 'altersklassen',
     'mannschafts_altersklassen', 'status', 'anmeldeschluss', 'startgeld', 'iban',
-    'abrechnungsbasis', 'angebotene_zahlwege',
+    'abrechnungsbasis', 'angebotene_zahlwege', 'zahlungsziel_tage', 'rechnung_hinweis',
     'kontoinhaber', 'verwendungszweck', 'ausschreibung_dateiname', 'farbe_kaempfer2',
     'beginn_min', 'ende_min', 'waagen_anzahl', 'planungs_tools', 'sichtbarkeit', 'created_at', 'updated_at'
 ];
@@ -96,14 +99,23 @@ function baueAusschreibungFragment(ausschreibungPdfBase64, ausschreibungDateinam
 
 // Wird ein Startgeld verlangt, müssen die Zahlungsdaten vollständig sein, sonst kann später
 // niemand zuverlässig bezahlen (fehlende IBAN/Kontoinhaber/Verwendungszweck).
-function validiereZahlungsdaten(startgeld, iban, kontoinhaber, verwendungszweck) {
+// In der Cloud genügt ein Konto in den Abrechnungsdaten des Vereins (IBAN + Kontoinhaber), der Verwendungszweck entfällt.
+async function validiereZahlungsdaten(knex, { startgeld, iban, kontoinhaber, verwendungszweck, vereinId, ausCloud = false }) {
     const startgeldWert = startgeld !== undefined && startgeld !== '' ? parseInt(startgeld, 10) : 0;
-    if (startgeldWert > 0) {
-        if (!iban || !iban.trim() || !kontoinhaber || !kontoinhaber.trim() || !verwendungszweck || !verwendungszweck.trim()) {
+    if (!(startgeldWert > 0)) return null;
+    const gefuellt = (w) => !!w && String(w).trim() !== '';
+    if (istEinzelbenutzerBetrieb()) {
+        // Ein aus der Cloud geholtes Turnier trägt das Vereinskonto nicht mit (Export ohne Konto): lokal nicht erzwingen.
+        if (ausCloud) return null;
+        if (!gefuellt(iban) || !gefuellt(kontoinhaber) || !gefuellt(verwendungszweck)) {
             return 'Wenn ein Startgeld verlangt wird, müssen IBAN, Kontoinhaber und Verwendungszweck ausgefüllt sein.';
         }
+        return null;
     }
-    return null;
+    if (gefuellt(iban) && gefuellt(kontoinhaber)) return null;
+    const stammdaten = vereinId ? await ladeStammdaten(knex, vereinId) : null;
+    if (stammdaten?.iban_vorhanden && gefuellt(stammdaten.kontoinhaber)) return null;
+    return 'Wenn ein Startgeld verlangt wird, braucht es IBAN und Kontoinhaber im Turnier oder in den Abrechnungsdaten des Vereins.';
 }
 
 // Startgeld-Zahlweg (Stufe 1): Abrechnungsbasis und angebotene Zahlwege des Ausrichters. Angeboten werden nur
@@ -128,9 +140,25 @@ function leseZahlwegFelder(body, startgeld) {
             return { fehler: 'Bei einem Startgeld muss mindestens ein Zahlweg (Überweisung oder Bar) angeboten werden.' };
         }
     }
+    let zahlungszielTage;
+    if (body.zahlungsziel_tage !== undefined && body.zahlungsziel_tage !== null && body.zahlungsziel_tage !== '') {
+        const n = Number(body.zahlungsziel_tage);
+        if (!Number.isInteger(n) || n < 1 || n > 90) {
+            return { fehler: 'Das Zahlungsziel muss zwischen 1 und 90 Tagen liegen.' };
+        }
+        zahlungszielTage = n;
+    }
+    let rechnungHinweis;
+    if (body.rechnung_hinweis !== undefined) {
+        const text = body.rechnung_hinweis == null ? '' : String(body.rechnung_hinweis).trim();
+        if (text.length > 1000) return { fehler: 'Der Hinweistext für Rechnungen darf höchstens 1000 Zeichen lang sein.' };
+        rechnungHinweis = text || null;
+    }
     return {
         fehler: null,
         fragment: {
+            ...(zahlungszielTage !== undefined ? { zahlungsziel_tage: zahlungszielTage } : {}),
+            ...(rechnungHinweis !== undefined ? { rechnung_hinweis: rechnungHinweis } : {}),
             ...(abrechnungsbasis !== undefined ? { abrechnungsbasis } : {}),
             ...(angebotene !== undefined ? { angebotene_zahlwege: angebotene.length ? angebotene.join(',') : 'ueberweisung,bar' } : {})
         }
@@ -203,11 +231,6 @@ export async function createTurnier(knex, req, res) {
         const { bezeichnung, ort, datum, ausrichter, anzahl_kampfflaechen, nutze_gewichtsklassen, bundesland, plz, altersklassen, mannschafts_altersklassen, anmeldeschluss, startgeld, iban, kontoinhaber, verwendungszweck, ausschreibung_pdf_base64, ausschreibung_dateiname, farbe_kaempfer2 } = req.body;
         const userId = req.user.id; // Logged in user ID from middleware
 
-        const zahlungsFehler = validiereZahlungsdaten(startgeld, iban, kontoinhaber, verwendungszweck);
-        if (zahlungsFehler) {
-            return res.status(400).json({ success: false, error: zahlungsFehler });
-        }
-
         const zahlwegFelder = leseZahlwegFelder(req.body, startgeld);
         if (zahlwegFelder.fehler) {
             return res.status(400).json({ success: false, error: zahlwegFelder.fehler });
@@ -234,6 +257,10 @@ export async function createTurnier(knex, req, res) {
         }
         if (!vereinId) {
             return res.status(400).json({ success: false, error: 'Bitte zuerst einen aktiven Verein wählen.' });
+        }
+        const zahlungsFehler = await validiereZahlungsdaten(knex, { startgeld, iban, kontoinhaber, verwendungszweck, vereinId });
+        if (zahlungsFehler) {
+            return res.status(400).json({ success: false, error: zahlungsFehler });
         }
 
         // Sicherer Check: Akzeptiert die Zahl 1, den String "1" oder das Boolean true
@@ -296,11 +323,6 @@ export async function updateTurnier(knex, req, res) {
         const { id } = req.params;
         const { bezeichnung, ort, datum, ausrichter, anzahl_kampfflaechen, nutze_gewichtsklassen, bundesland, plz, altersklassen, mannschafts_altersklassen, anmeldeschluss, startgeld, iban, kontoinhaber, verwendungszweck, ausschreibung_pdf_base64, ausschreibung_dateiname, farbe_kaempfer2 } = req.body;
 
-        const zahlungsFehler = validiereZahlungsdaten(startgeld, iban, kontoinhaber, verwendungszweck);
-        if (zahlungsFehler) {
-            return res.status(400).json({ success: false, error: zahlungsFehler });
-        }
-
         const zahlwegFelder = leseZahlwegFelder(req.body, startgeld);
         if (zahlwegFelder.fehler) {
             return res.status(400).json({ success: false, error: zahlwegFelder.fehler });
@@ -318,6 +340,10 @@ export async function updateTurnier(knex, req, res) {
         // 'abgeschlossen' wird nie abgeleitet, sondern immer direkt gespeichert -> Statusvergleich reicht.
         if (bestehendesTurnier.status === 'abgeschlossen') {
             return res.status(403).json({ success: false, error: 'Ein abgeschlossenes Turnier befindet sich im schreibgeschützten Archiv-Zustand.' });
+        }
+        const zahlungsFehler = await validiereZahlungsdaten(knex, { startgeld, iban, kontoinhaber, verwendungszweck, vereinId: bestehendesTurnier.verein_id, ausCloud: bestehendesTurnier.urspruengliche_id != null });
+        if (zahlungsFehler) {
+            return res.status(400).json({ success: false, error: zahlungsFehler });
         }
         const turnierzeit = leseTurnierzeit(req.body, bestehendesTurnier);
 
@@ -501,7 +527,8 @@ export async function getTurniere(knex, req, res) {
         // Explizite Spaltenliste ohne die (potenziell mehrere MB große) PDF-Binärspalte — dieser
         // Endpunkt liefert oft viele Turniere auf einmal (siehe turniere.html) und soll die
         // Ausschreibungen dafür nicht unnötig aus der DB laden.
-        let query = knex('turniere').select([...TURNIER_SPALTEN_OHNE_PDF, 'aktiv', knex.raw('(ausschreibung_pdf is not null) as hat_ausschreibung')]);
+        // urspruengliche_id: Herkunft aus der Cloud (Hallen-Server: Knopf „In die Cloud zurückspielen“)
+        let query = knex('turniere').select([...TURNIER_SPALTEN_OHNE_PDF, 'aktiv', 'urspruengliche_id', knex.raw('(ausschreibung_pdf is not null) as hat_ausschreibung')]);
         // Archivierte Turniere (Super-Admin, admin-turniere.html) erscheinen in keiner Turnierliste
         query = query.where({ archiviert: false });
 
@@ -1007,6 +1034,8 @@ export async function importiereTurnierDaten(knex, sync, daten) {
                 verwendungszweck: t.verwendungszweck || null,
                 abrechnungsbasis: ABRECHNUNGSBASEN.includes(t.abrechnungsbasis) ? t.abrechnungsbasis : 'gemeldet',
                 angebotene_zahlwege: t.angebotene_zahlwege ? String(t.angebotene_zahlwege) : 'ueberweisung,bar',
+                zahlungsziel_tage: Number.isInteger(Number(t.zahlungsziel_tage)) && t.zahlungsziel_tage >= 1 && t.zahlungsziel_tage <= 90 ? Number(t.zahlungsziel_tage) : 14,
+                rechnung_hinweis: typeof t.rechnung_hinweis === 'string' && t.rechnung_hinweis.trim() && t.rechnung_hinweis.length <= 1000 ? t.rechnung_hinweis.trim() : null,
                 farbe_kaempfer2: gueltigeFarbe(t.farbe_kaempfer2) || 'blau',
                 // Turnierzeit und Waagenanzahl (Helferplan); ältere Dateien ohne diese Felder: leer bzw. 1
                 ...importTurnierzeit(t),
@@ -1033,6 +1062,7 @@ export async function importiereTurnierDaten(knex, sync, daten) {
             // Orga-Checkliste; alte Exportdateien ohne Abschnitt lassen sie leer (wird beim ersten Öffnen aus der Vorlage angelegt)
             await ersetzeOrga(trx, turnierId, daten.orga);
             await ersetzeZahlwege(trx, turnierId, daten.zahlwege);
+            await uebernehmeBarzahlungen(trx, turnierId, daten.barzahlungen);
 
             return turnierId;
         });
@@ -1051,35 +1081,21 @@ export async function importiereTurnierDaten(knex, sync, daten) {
         };
 }
 
-// Lädt die Ergebnisse eines Turniers hoch, das offline durchgeführt wurde, und ersetzt DAMIT
-// NUR die Wettkampfdaten (Kampfflächen/Pools/Teilnehmer/Kämpfe) DIESES EINEN, bereits online
-// bestehenden Turniers. Ausschließlich online und nur für Mitglieder des ausrichtenden Vereins
-// (Gegenteil von importTurnier: rührt turniere/benutzer/vereine nicht an, löscht nichts
-// anderes). Schützt per Turnier-ID-Abgleich davor, versehentlich die falsche Datei hochzuladen.
+// Zurückspielen eines am Hallen-Server durchgeführten Turniers (Datei-Upload bzw. Direktweg vom Hallen-Server): dünner
+// Handler um spieleTurnierZurueck (services/rueckspielen.js), dort stehen alle Prüfungen und was ersetzt wird. Super-Admins
+// bestätigen zusätzlich per 2FA (frische Anmeldung genügt, weil der Direktweg den Code schon beim Login verbraucht).
 export async function importTurnierErgebnisse(knex, req, res) {
     try {
         if (istEinzelbenutzerBetrieb()) {
             return res.status(403).json({ success: false, error: 'Der Ergebnis-Upload ist nur im Online-Modus verfügbar.' });
         }
 
-        const turnierId = parseInt(req.params.id, 10);
-        const turnier = await knex('turniere').where({ id: turnierId }).first();
-        if (!turnier) {
-            return res.status(404).json({ success: false, error: 'Turnier nicht gefunden.' });
+        const pruefung = await pruefeSensibleAktion(knex, req, { frischeAnmeldungGenuegt: true });
+        if (!pruefung.ok) {
+            return res.status(pruefung.status).json({ success: false, error: pruefung.error, code: pruefung.code });
         }
 
-        const hatEchteKaempfeVorUpload = await turnierHatEchteKaempfe(knex, turnierId);
-        const statusVorUpload = ermittleEffektivenStatus(turnier, { hatEchteKaempfe: hatEchteKaempfeVorUpload });
-        if (!['anmeldung_geschlossen', 'in_durchfuehrung'].includes(statusVorUpload)) {
-            return res.status(403).json({ success: false, error: 'Ergebnisse können erst hochgeladen werden, wenn die Anmeldefrist abgelaufen ist. Ein bereits abgeschlossenes Turnier ist schreibgeschützt.' });
-        }
-
-        const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
-        if (!user || !hatVereinsZugriffAufTurnier(user, turnier)) {
-            return res.status(403).json({ success: false, error: 'Nur freigegebene Mitglieder des ausrichtenden Vereins dürfen Ergebnisse hochladen.' });
-        }
-
-        const { contentBase64 } = req.body;
+        const { contentBase64 } = req.body || {};
         if (!contentBase64) {
             return res.status(400).json({ success: false, error: 'Dateiinhalt ist erforderlich.' });
         }
@@ -1092,64 +1108,14 @@ export async function importTurnierErgebnisse(knex, req, res) {
             return res.status(400).json({ success: false, error: 'Datei konnte nicht gelesen werden: ' + e.message });
         }
 
-        const t = daten && daten.turnier;
-        if (!t || t.id == null) {
-            return res.status(400).json({ success: false, error: 'Ungültiges Import-Format: Turnier-ID fehlt in der Datei.' });
-        }
-        // Stammt die Datei aus einem Offline-Import (siehe urspruengliche_id in importTurnier),
-        // steht dort die tatsächliche Online-Herkunfts-ID — die eigene (lokale) Offline-ID der
-        // Datei wäre für den Abgleich mit diesem Online-Turnier bedeutungslos.
-        const quellTurnierId = t.urspruengliche_id ?? t.id;
-        if (parseInt(quellTurnierId, 10) !== turnierId) {
-            return res.status(400).json({
-                success: false,
-                error: `Die Datei gehört zu Turnier-ID ${quellTurnierId}, nicht zum ausgewählten Turnier (ID ${turnierId}).`
-            });
-        }
-
-        const kampfflaechen = (daten && daten.kampfflaechen) || [];
-        const pools = (daten && daten.pools) || [];
-        const teilnehmer = (daten && daten.teilnehmer) || [];
-        const kaempfe = (daten && daten.kaempfe) || [];
-        const mannschaften = (daten && daten.mannschaften) || [];
-        const mannschaftMitglieder = (daten && daten.mannschaft_mitglieder) || [];
-
-        await knex.transaction(async (trx) => {
-            // Nur die Wettkampfdaten DIESES Turniers ersetzen — turniere/benutzer/vereine
-            // bleiben unangetastet, andere Turniere sind von dieser Löschung nicht betroffen.
-            // mannschaften bewusst NICHT gelöscht (siehe importWettkampfdaten): sie werden dort
-            // per (verein, bezeichnung) mit den online bereits bestehenden Zeilen abgeglichen statt
-            // neu angelegt, damit ihre IDs stabil bleiben (worauf mannschaftskaempfe verweisen).
-            const altePools = await trx('pools').where({ turnier_id: turnierId }).select('id');
-            const altePoolIds = altePools.map(p => p.id);
-            if (altePoolIds.length > 0) {
-                await trx('kaempfe').whereIn('pool_id', altePoolIds).del();
-            }
-            await trx('turnier_teilnehmer').where({ turnier_id: turnierId }).del();
-            await trx('pools').where({ turnier_id: turnierId }).del();
-            await trx('kampfflaechen').where({ turnier_id: turnierId }).del();
-
-            await importWettkampfdaten(trx, turnierId, { kampfflaechen, pools, teilnehmer, kaempfe, mannschaften, mannschaftMitglieder });
-            // Zahlungsdaten bleiben unberührt (Spec Abschnitt 4): bestehende turnier_zahlwege werden nicht ersetzt.
-
-            // Automatischer Übergang in den Archiv-Zustand (Zustand 5: "wird automatisch durch
-            // den Upload der Ergebnisdaten ... ausgelöst").
-            await trx('turniere').where({ id: turnierId }).update({ status: 'abgeschlossen', updated_at: trx.fn.now() });
-        });
-        // Flag der neu eingelesenen Teilnehmer aus den bestehenden Zahlwegen ableiten; der archivierte Status bleibt wie importiert.
-        await synchronisiereGesichert(knex, turnierId, { statusAbleiten: false });
-
-        return res.json({
-            success: true,
-            turnierId,
-            imported: {
-                kampfflaechen: kampfflaechen.length,
-                pools: pools.length,
-                teilnehmer: teilnehmer.length,
-                kaempfe: kaempfe.length
-            }
-        });
+        const benutzer = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
+        const turnierId = /^\d+$/.test(String(req.params.id)) ? parseInt(req.params.id, 10) : NaN;
+        const ergebnis = await spieleTurnierZurueck(knex, { turnierId, daten, benutzer });
+        return res.json({ success: true, ...ergebnis });
     } catch (error) {
+        if (error instanceof FachFehler) {
+            return res.status(error.statusCode).json({ success: false, error: error.message, code: error.code });
+        }
         console.error('[Turnier-Ergebnisse-Upload-Fehler]:', error);
         return res.status(500).json({ success: false, error: error.message });
     }
@@ -1281,7 +1247,18 @@ export async function baueTurnierExport(knex, turnierId, turnierZeile = null) {
             helferplan: await exportiereHelferplan(knex, turnierId, kampfflaechen),
             orga: await exportiereOrga(knex, turnierId),
             // Zahlwege je Verein (nur Namen und Rechnungsdaten, ohne Benutzerbezug)
-            zahlwege: await exportiereZahlwege(knex, turnierId)
+            zahlwege: await exportiereZahlwege(knex, turnierId),
+            // Kassenjournal der Barzahlungen (für die Abrechnung nach dem Rückspielen)
+            barzahlungen: await exportiereBarzahlungen(knex, turnierId)
+        };
+        // Längen der Listen: die Cloud erkennt damit abgeschnittene oder unvollständige Dateien
+        exportData.anzahl = {
+            kampfflaechen: kampfflaechen.length,
+            pools: pools.length,
+            teilnehmer: teilnehmer.length,
+            kaempfe: kaempfe.length,
+            mannschaften: mannschaften.length,
+            mannschaft_mitglieder: mannschaftMitglieder.length
         };
         return exportData;
 }
@@ -1426,6 +1403,8 @@ export async function dupliziereTurnier(knex, req, res) {
                 verwendungszweck: quelle.verwendungszweck,
                 abrechnungsbasis: quelle.abrechnungsbasis,
                 angebotene_zahlwege: quelle.angebotene_zahlwege,
+                zahlungsziel_tage: quelle.zahlungsziel_tage,
+                rechnung_hinweis: quelle.rechnung_hinweis,
                 farbe_kaempfer2: quelle.farbe_kaempfer2,
                 ausschreibung_pdf: quelle.ausschreibung_pdf,
                 ausschreibung_dateiname: quelle.ausschreibung_dateiname

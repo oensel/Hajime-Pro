@@ -605,6 +605,10 @@ export async function spieleMatteAmServerDurch(page, baseUrl, turnierId, kampffl
  * BESTEHENDE Online-Turnier hoch (POST /api/turniere/:id/import-ergebnisse — ersetzt nur
  * Kampfflächen/Pools/Teilnehmer/Kämpfe/Mannschaften dieses einen Turniers, setzt es danach
  * automatisch auf Status "abgeschlossen").
+ *
+ * Voraussetzung (Startgeld Stufe 2): Das Zurückspielen verlangt die Rolle Admin des ausrichtenden Vereins
+ * (Super-Admins zusätzlich eine frische 2FA-Anmeldung). Das mit `page` angemeldete Cloud-Konto (hier jan@test.de)
+ * muss in der Cloud-Datenbank also als Admin seines Vereins freigegeben sein, sonst antwortet der Server mit 403.
  */
 export async function importiereErgebnisseOnline(page, baseUrl, turnierId, dateiPfad) {
     await page.goto(`${baseUrl}/turnier.html?id=${turnierId}`);

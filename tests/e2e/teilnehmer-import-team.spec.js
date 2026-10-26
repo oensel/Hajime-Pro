@@ -17,6 +17,7 @@
 // die Suite läuft ohnehin mit einem Worker gegen eine gemeinsame Test-Datenbank).
 import { test, expect } from '@playwright/test';
 import * as XLSX from 'xlsx';
+import { schliesseVorOrtDialogAutomatisch } from './helpers/vor-ort-dialog.js';
 
 const TURNIER_NAME = `E2E-Import-Mannschaft-Turnier ${Date.now()}`;
 
@@ -211,6 +212,7 @@ test.describe.serial('Teilnehmer-Import und -Verwaltung, reines Mannschaftsturni
     test.beforeAll(async ({ browser }) => {
         const context = await browser.newContext();
         page = await context.newPage();
+        await schliesseVorOrtDialogAutomatisch(page);
     });
 
     test.afterAll(async () => {

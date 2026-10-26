@@ -234,6 +234,48 @@ export function requireTournamentEditAccess(knex) {
 }
 
 /**
+ * Wie requireTournamentEditAccess, aber nur für Admins des ausrichtenden Vereins (freigegeben, Rolle admin)
+ * oder Super-Admins im Super-Admin-Modus. Die Abrechnung gibt es nur in der Cloud: im
+ * Einzelbenutzerbetrieb antwortet die Middleware mit 409. Setzt req.tournament.
+ * @param {Object} knex - Knex instance
+ */
+export function requireTurnierAdmin(knex) {
+    return async (req, res, next) => {
+        if (istEinzelbenutzerBetrieb()) {
+            return res.status(409).json({ success: false, error: 'Die Abrechnung gibt es nur in der Cloud.' });
+        }
+        try {
+            const turnierId = await resolveTurnierId(knex, req);
+            if (!turnierId) {
+                return res.status(400).json({ success: false, error: 'Turnier-ID konnte nicht ermittelt werden.' });
+            }
+            if (!/^\d+$/.test(String(turnierId))) {
+                return res.status(404).json({ success: false, error: 'Turnier nicht gefunden.' });
+            }
+            const turnier = await knex('turniere').where({ id: parseInt(turnierId) }).first();
+            if (!turnier) {
+                return res.status(404).json({ success: false, error: 'Turnier nicht gefunden.' });
+            }
+            const user = await ladeBenutzerMitAktivemVerein(knex, req.user.id);
+            const istAdmin = !!(user && user.verein_freigegeben && user.verein_id
+                && turnier.verein_id && user.verein_id === turnier.verein_id
+                && rolleReicht(user.verein_rolle, 'admin'));
+            if (!user || !(user.super_admin_aktiv || istAdmin)) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Dafür sind die Admins des ausrichtenden Vereins zuständig.'
+                });
+            }
+            req.tournament = turnier;
+            next();
+        } catch (error) {
+            console.error('[Turnier-Admin-Check-Fehler]:', error);
+            return res.status(500).json({ success: false, error: 'Interner Server-Fehler bei der Berechtigungsprüfung.' });
+        }
+    };
+}
+
+/**
  * Middleware factory to block write operations on the tournament's competition data (pools,
  * Kampfflächen, Kämpfe) once the tournament is 'abgesagt' or
  * 'abgeschlossen'. Deliberately separate from requireTournamentEditAccess: that middleware is

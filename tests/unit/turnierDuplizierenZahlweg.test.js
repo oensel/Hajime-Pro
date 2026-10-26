@@ -20,7 +20,8 @@ test('Duplizieren: Zahlweg-Flag wird zurückgesetzt und nur für den Ausrichter 
         const ausrichter = id((await knex('vereine').insert({ name: 'JC Ausrichter' }).returning('id'))[0]);
         const quelle = id((await knex('turniere').insert({
             bezeichnung: 'Cup', ort: 'O', datum: '2028-03-04', ausrichter: 'JC Ausrichter', verein_id: ausrichter,
-            status: 'veroeffentlicht', startgeld: 10, anmeldeschluss: '2028-03-01'
+            status: 'veroeffentlicht', startgeld: 10, anmeldeschluss: '2028-03-01',
+            zahlungsziel_tage: 30, rechnung_hinweis: 'Danke'
         }).returning('id'))[0]);
         await knex('turnier_zahlwege').insert({
             turnier_id: quelle, verein_name: 'JC Fremd', zahlweg: 'bar',
@@ -46,6 +47,9 @@ test('Duplizieren: Zahlweg-Flag wird zurückgesetzt und nur für den Ausrichter 
             .map((t) => [t.verein, t.startgeld_zahlweg_gesichert]));
         assert.deepEqual(flags, { 'JC Ausrichter': true, 'JC Fremd': false });
         assert.equal((await knex('turnier_zahlwege').where({ turnier_id: antwort.turnierId })).length, 0);
+        const kopie = await knex('turniere').where({ id: antwort.turnierId }).first();
+        assert.equal(kopie.zahlungsziel_tage, 30);
+        assert.equal(kopie.rechnung_hinweis, 'Danke');
     } finally {
         await stoppe();
     }

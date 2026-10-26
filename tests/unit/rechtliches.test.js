@@ -162,6 +162,15 @@ test('Datenschutzerklärung: Inhalt, Fristen aus der Konfiguration, bedingte Abs
     assert.ok(html.includes('[ANGABE FEHLT: Hosting-Anbieter]'));
 });
 
+test('Datenschutzerklärung: Abschnitt Startgeld-Abrechnung', () => {
+    const html = rendereDatenschutz(ladeRechtliches({ RECHTLICHES_DATEI: BEISPIEL }), {});
+    assert.match(html, /<h2 id="startgeld">/);
+    for (const text of ['Startgeld-Abrechnung', 'Rechnungsdaten', 'verschlüsselt', 'acht Jahre', 'per E-Mail']) {
+        assert.ok(html.includes(text), text);
+    }
+    assert.match(html, /<td>Rechnungen und Quittungen<\/td><td>[^<]*8 Jahre/);
+});
+
 test('Rechtliches: Routen liefern die Seiten ohne Anmeldung, Status nur für Super-Admins', async () => {
     process.env.RECHTLICHES_DATEI = BEISPIEL;
     const app = express();

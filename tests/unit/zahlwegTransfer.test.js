@@ -148,12 +148,76 @@ test('Ergebnis-Re-Import lässt bestehende Zahlwege und den Teilnehmerstatus unb
             body: { contentBase64: Buffer.from(JSON.stringify(datei)).toString('base64') }
         }, res);
         assert.equal(antwort.success, true, JSON.stringify(antwort));
-        assert.deepEqual((await knex('turnier_zahlwege').where({ turnier_id: t.id })).map((z) => z.verein_name), ['JC Alt']);
+        // Bestehende Zeile bleibt, vor Ort neu erfasste Vereine kommen dazu (Stufe 2, E12: immer als Bar)
+        assert.deepEqual((await knex('turnier_zahlwege').where({ turnier_id: t.id }).orderBy('verein_name')).map((z) => [z.verein_name, z.zahlweg, z.geaendert_von]),
+            [['JC Alt', 'ueberweisung', 'u1'], ['JC Neu', 'bar', null]]);
         const tn = Object.fromEntries((await knex('turnier_teilnehmer').where({ turnier_id: t.id })).map((x) => [x.verein, x]));
         assert.equal(tn['JC Alt'].startgeld_zahlweg_gesichert, true);
         assert.equal(tn['JC Chef'].startgeld_zahlweg_gesichert, true);
         // Archivierte Ergebnisse werden nicht auf kampfbereit umgestellt
         assert.equal(tn['JC Chef'].status, 'nicht_erschienen');
+    } finally {
+        await stoppe();
+    }
+});
+
+test('Exportdatei: barzahlungen und anzahl, Import übernimmt Barzahlungen einmalig', async () => {
+    const { knex, stoppe } = await starteTestPostgres();
+    const { exportiereBarzahlungen, uebernehmeBarzahlungen, pruefeTransferZeile } = await import('../../src/services/zahlwegTransfer.js');
+    try {
+        const ausrichter = id((await knex('vereine').insert({ name: 'JC Chef' }).returning('id'))[0]);
+        const t = (await knex('turniere').insert({
+            bezeichnung: 'Cup4', ort: 'O', datum: '2028-03-04', ausrichter: 'JC Chef', verein_id: ausrichter,
+            status: 'veroeffentlicht', startgeld: 8, anmeldeschluss: '2028-03-01'
+        }).returning('*'))[0];
+        await tn(knex, t.id, 'JC Bar'); await tn(knex, t.id, 'JC Bar');
+        const uid = '11111111-1111-4111-8111-111111111111';
+        await knex('turnier_barzahlungen').insert({ uid, turnier_id: t.id, verein_name: 'JC Bar', anzahl: 2, betrag_cent: 1600 });
+
+        const export1 = await baueTurnierExport(knex, t.id);
+        assert.equal(export1.barzahlungen.length, 1);
+        assert.deepEqual(Object.keys(export1.barzahlungen[0]).sort(), ['anzahl', 'betrag_cent', 'kassiert_am', 'uid', 'verein_name']);
+        assert.deepEqual(export1.anzahl, {
+            kampfflaechen: export1.kampfflaechen.length, pools: export1.pools.length, teilnehmer: export1.teilnehmer.length,
+            kaempfe: export1.kaempfe.length, mannschaften: export1.mannschaften.length, mannschaft_mitglieder: export1.mannschaft_mitglieder.length
+        });
+        assert.equal(export1.anzahl.teilnehmer, 2);
+
+        const datei = JSON.parse(JSON.stringify(export1));
+        datei.turnier.datum = '2028-05-06';
+        const { turnierId } = await importiereTurnierDaten(knex, undefined, datei);
+        // Dieselbe uid im anderen (neuen) Turnier wird übernommen, im Quell-Turnier bleibt sie unberührt
+        assert.equal((await knex('turnier_barzahlungen').where({ uid })).length, 2);
+        assert.equal((await knex('turnier_barzahlungen').where({ uid, turnier_id: t.id })).length, 1);
+        assert.equal((await knex('turnier_barzahlungen').where({ uid, turnier_id: turnierId })).length, 1);
+        await knex('turnier_barzahlungen').where({ turnier_id: turnierId }).del();
+
+        // Neue uid wird übernommen, doppelt nicht; ungültige Zeilen fliegen raus
+        const n = await knex.transaction((trx) => uebernehmeBarzahlungen(trx, turnierId, [
+            { uid: '22222222-2222-4222-8222-222222222222', verein_name: 'JC Bar', anzahl: 2, betrag_cent: 1600, kassiert_am: '2028-05-06T10:00:00.000Z' },
+            { uid: '22222222-2222-4222-8222-222222222222', verein_name: 'JC Bar', anzahl: 2, betrag_cent: 1600 },
+            { uid: 'keine-uuid', verein_name: 'JC Bar', anzahl: 1, betrag_cent: 800 },
+            { uid: '33333333-3333-4333-8333-333333333333', verein_name: '', anzahl: 1, betrag_cent: 800 },
+            { uid: '44444444-4444-4444-8444-444444444444', verein_name: 'JC Bar', anzahl: -1, betrag_cent: 800 },
+            { uid: '55555555-5555-4555-8555-555555555555', verein_name: 'JC Bar', anzahl: 1, betrag_cent: 1.5 },
+            null
+        ]));
+        assert.equal(n, 1);
+        assert.equal((await knex('turnier_barzahlungen').where({ turnier_id: turnierId })).length, 1);
+        // Gleiche uid im selben Turnier wird verworfen, im anderen Turnier übernommen
+        assert.equal(await knex.transaction((trx) => uebernehmeBarzahlungen(trx, turnierId, [
+            { uid: '22222222-2222-4222-8222-222222222222', verein_name: 'JC Bar', anzahl: 2, betrag_cent: 1600 }
+        ])), 0);
+        assert.equal(await knex.transaction((trx) => uebernehmeBarzahlungen(trx, t.id, [
+            { uid: '22222222-2222-4222-8222-222222222222', verein_name: 'JC Bar', anzahl: 2, betrag_cent: 1600 }
+        ])), 1);
+        await knex('turnier_barzahlungen').where({ turnier_id: t.id }).whereNot({ uid }).del();
+        assert.equal(await knex.transaction((trx) => uebernehmeBarzahlungen(trx, turnierId, undefined)), 0);
+        assert.deepEqual((await exportiereBarzahlungen(knex, turnierId)).map((b) => b.uid), ['22222222-2222-4222-8222-222222222222']);
+
+        assert.equal(pruefeTransferZeile({ verein_name: 'X', zahlweg: 'lastschrift' }), null);
+        assert.equal(pruefeTransferZeile(null), null);
+        assert.equal(pruefeTransferZeile({ verein_name: ' JC A ', zahlweg: 'bar', rechnung_email: 'a@b.de' }).verein_name, 'JC A');
     } finally {
         await stoppe();
     }
