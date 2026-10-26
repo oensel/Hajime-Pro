@@ -28,6 +28,7 @@ Turnierverwaltungssoftware für Judo-Wettkämpfe nach den Regeln des Deutschen J
 | `cloud-verwaltung.md` | Helferverwaltung, Helfer einladen, Nachrichten, Turnier teilen, Super-Admin, 2FA, Sicherung, Protokoll, Konsole, Impressum/Datenschutz, Planungs-Tools, Orga-Planer |
 | `teilnehmer-app-cloud-live.md` | Live-Uplink, Teilnehmer-App (Zugang, Schalter), Cloud-Live-Betrieb |
 | `mannschaften.md` | Mannschafts-Pools und -Begegnungen |
+| `startgeld-lastschrift.md` | Startgeld-Abrechnung, Rechnungen, SEPA-Lastschrift (Mandate, pain.008, Rücklastschrift, Zahlungsdaten-Schlüssel) |
 | `seiten.md` | Seitenstruktur von `public/` |
 
 ## Commands (Kurzfassung)
