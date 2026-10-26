@@ -42,59 +42,97 @@ function baueUmstellungsMail(an, turnierBezeichnung, vereinName) {
     };
 }
 
+class NichtMehrOffen extends Error {}
+
+// Was mit einem Lastschrift-Zahlweg ohne gültiges Mandat nach dem Anmeldeschluss geschieht (je effektivem Turnierstatus):
+//  - anmeldung_geschlossen, in_durchfuehrung: auf Bar umstellen, Mail "Startgeld bar vor Ort"
+//  - abgeschlossen: auf Bar umstellen ohne Mail (das Turnier ist vorbei, eine Ankündigung wäre falsch)
+//  - abgesagt: Mandat zurückziehen (Kontodaten weg, Status widerrufen), Zahlweg bleibt, keine Mail
+//  - veroeffentlicht, entwurf, unbekannt: nichts
+function wahlAktion(status) {
+    if (status === 'anmeldung_geschlossen' || status === 'in_durchfuehrung') return 'bar-mail';
+    if (status === 'abgeschlossen') return 'bar';
+    if (status === 'abgesagt') return 'widerruf';
+    return null;
+}
+
 /**
- * Stellt Lastschrift-Zahlwege ohne gültiges Mandat nach dem Anmeldeschluss auf Bar um.
+ * Stellt Lastschrift-Zahlwege ohne gültiges Mandat nach dem Anmeldeschluss auf Bar um (Regeln siehe wahlAktion).
  * Gesichert-Flag: weder Lastschrift ohne gültiges Mandat noch Bar sichern das Startgeld, das Flag ändert sich hier also nie.
  * Die Statusableitung (statusAbleiten) ist trotzdem aus: nach dem Anmeldeschluss sollen keine Teilnehmerstatus mehr springen.
- * @returns {Promise<number>} Anzahl umgestellter Zahlwege
+ * Bei abgesagten Turnieren werden auch gültige Mandate zurückgezogen (Kontodaten löschen), der Zahlweg bleibt.
+ * `mailsAbwarten: false` (Export): die Datenbankumstellung wird abgewartet, Mails und Protokoll laufen danach ohne Warten,
+ * damit ein langsames SMTP den Export nicht aufhält.
+ * @returns {Promise<number>} Anzahl auf Bar umgestellter Zahlwege (Rücknahmen abgesagter Turniere zählen nicht mit)
  */
-export async function stelleUnbestaetigteUm(knex, { turnierId = null, sende = sendeMail } = {}) {
-    const kandidaten = knex('turnier_zahlwege').where({ zahlweg: 'lastschrift', mandat_gueltig: false });
+export async function stelleUnbestaetigteUm(knex, { turnierId = null, sende = sendeMail, mailsAbwarten = true } = {}) {
+    const kandidaten = knex('turnier_zahlwege').where({ zahlweg: 'lastschrift' });
     if (turnierId != null) kandidaten.where({ turnier_id: turnierId });
-    const zeilen = await kandidaten.select('id', 'turnier_id', 'verein_name');
+    const zeilen = await kandidaten.select('id', 'turnier_id', 'verein_name', 'mandat_gueltig');
 
     const statusJeTurnier = new Map();
+    const nachlauf = [];
     let umgestellt = 0;
     for (const kandidat of zeilen) {
         if (!statusJeTurnier.has(kandidat.turnier_id)) {
             statusJeTurnier.set(kandidat.turnier_id, await ladeEffektivenTurnierStatus(knex, kandidat.turnier_id));
         }
-        // Offene Anmeldung (oder Entwurf) bleibt unverändert; nur Turniere nach dem Anmeldeschluss.
-        if (['veroeffentlicht', 'entwurf', null].includes(statusJeTurnier.get(kandidat.turnier_id))) continue;
+        const vorab = wahlAktion(statusJeTurnier.get(kandidat.turnier_id));
+        if (!vorab || (kandidat.mandat_gueltig && vorab !== 'widerruf')) continue;
 
-        const ergebnis = await knex.transaction(async (trx) => {
-            await sperreMandate(trx, kandidat.turnier_id, kandidat.verein_name);
-            // Unter dem Lock neu lesen und bedingt umstellen: zwischenzeitlich bestätigt/gewechselt = nichts tun.
-            const zahlweg = await trx('turnier_zahlwege').where({ id: kandidat.id, zahlweg: 'lastschrift', mandat_gueltig: false }).first();
-            if (!zahlweg) return null;
-            const status = await ladeEffektivenTurnierStatus(trx, kandidat.turnier_id);
-            if (['veroeffentlicht', 'entwurf', null].includes(status)) return null;
-            const turnier = await trx('turniere').where({ id: kandidat.turnier_id }).first('bezeichnung');
-            const mandatId = await widerrufeMandatInTrx(trx, {
-                turnierId: kandidat.turnier_id, vereinName: kandidat.verein_name, benutzer: null, grund: 'umstellung'
-            }) ?? (await trx('lastschrift_mandate').where({ zahlweg_id: zahlweg.id }).orderBy('id', 'desc').first('id'))?.id ?? null;
-            const geaendert = await trx('turnier_zahlwege')
-                .where({ id: zahlweg.id, zahlweg: 'lastschrift', mandat_gueltig: false })
-                .update({ zahlweg: 'bar', mandat_gueltig: false, updated_at: trx.fn.now() });
-            if (geaendert === 0) return null;
-            await synchronisiereGesichert(trx, kandidat.turnier_id, { statusAbleiten: false });
-            const admins = zahlweg.verein_id == null ? [] : await adminAbfrage(trx, zahlweg.verein_id).select('benutzer.email');
-            return { zahlweg, mandatId, bezeichnung: turnier?.bezeichnung ?? '', admins };
-        });
-        if (!ergebnis) continue;
-        umgestellt += 1;
-
-        const empfaenger = new Set([ergebnis.zahlweg.rechnung_email, ...ergebnis.admins.map((a) => a.email)]
-            .map((a) => String(a ?? '').trim()).filter(Boolean));
-        for (const an of empfaenger) {
-            await sendeSicher(sende, baueUmstellungsMail(an, ergebnis.bezeichnung, kandidat.verein_name), `Zahlweg ${kandidat.id}`);
+        let ergebnis;
+        try {
+            ergebnis = await knex.transaction(async (trx) => {
+                await sperreMandate(trx, kandidat.turnier_id, kandidat.verein_name);
+                // Unter dem Lock neu lesen und bedingt umstellen: zwischenzeitlich bestätigt/gewechselt = nichts tun.
+                const zahlweg = await trx('turnier_zahlwege').where({ id: kandidat.id, zahlweg: 'lastschrift' }).first();
+                if (!zahlweg) return null;
+                const aktion = wahlAktion(await ladeEffektivenTurnierStatus(trx, kandidat.turnier_id));
+                if (!aktion || (zahlweg.mandat_gueltig && aktion !== 'widerruf')) return null;
+                const turnier = await trx('turniere').where({ id: kandidat.turnier_id }).first('bezeichnung');
+                const mandatId = await widerrufeMandatInTrx(trx, {
+                    turnierId: kandidat.turnier_id, vereinName: kandidat.verein_name, benutzer: null,
+                    grund: aktion === 'widerruf' ? 'abgesagt' : 'umstellung'
+                }) ?? (await trx('lastschrift_mandate').where({ zahlweg_id: zahlweg.id }).orderBy('id', 'desc').first('id'))?.id ?? null;
+                if (aktion !== 'widerruf') {
+                    const geaendert = await trx('turnier_zahlwege')
+                        .where({ id: zahlweg.id, zahlweg: 'lastschrift', mandat_gueltig: false })
+                        .update({ zahlweg: 'bar', mandat_gueltig: false, updated_at: trx.fn.now() });
+                    // Nichts geändert (z. B. gleichzeitig bestätigt): alles zurückrollen, auch den Widerruf oben.
+                    if (geaendert === 0) throw new NichtMehrOffen();
+                }
+                await synchronisiereGesichert(trx, kandidat.turnier_id, { statusAbleiten: false });
+                const admins = aktion === 'bar-mail' && zahlweg.verein_id != null
+                    ? await adminAbfrage(trx, zahlweg.verein_id).select('benutzer.email') : [];
+                return { aktion, zahlweg, mandatId, bezeichnung: turnier?.bezeichnung ?? '', admins };
+            });
+        } catch (fehler) {
+            if (fehler instanceof NichtMehrOffen) continue;
+            throw fehler;
         }
-        // Systemaktion ohne Konto: Der Eintrag gehört dem zahlenden Verein (protokolliereKonto ohne Konto + vereinId).
-        await protokolliereMandat(knex, {
-            art: 'mandat.umgestellt', mandatId: ergebnis.mandatId, turnierId: kandidat.turnier_id,
-            benutzerId: null, vereinId: ergebnis.zahlweg.verein_id ?? null
-        });
+        if (!ergebnis) continue;
+        if (ergebnis.aktion !== 'widerruf') umgestellt += 1;
+
+        const nachher = async () => {
+            if (ergebnis.aktion === 'bar-mail') {
+                const empfaenger = new Set([ergebnis.zahlweg.rechnung_email, ...ergebnis.admins.map((a) => a.email)]
+                    .map((a) => String(a ?? '').trim()).filter(Boolean));
+                for (const an of empfaenger) {
+                    await sendeSicher(sende, baueUmstellungsMail(an, ergebnis.bezeichnung, kandidat.verein_name), `Zahlweg ${kandidat.id}`);
+                }
+            }
+            // Systemaktion ohne Konto: Der Eintrag gehört dem zahlenden Verein (protokolliereKonto ohne Konto + vereinId).
+            await protokolliereMandat(knex, {
+                art: ergebnis.aktion === 'widerruf' ? 'mandat.widerrufen' : 'mandat.umgestellt',
+                mandatId: ergebnis.mandatId, turnierId: kandidat.turnier_id,
+                benutzerId: null, vereinId: ergebnis.zahlweg.verein_id ?? null
+            });
+        };
+        nachlauf.push(nachher);
     }
+    const ausfuehren = async () => { for (const schritt of nachlauf) await schritt(); };
+    if (mailsAbwarten) await ausfuehren();
+    else ausfuehren().catch((fehler) => console.error('[Mandat-Job] Nachlauf fehlgeschlagen:', fehler?.name ?? 'Fehler'));
     return umgestellt;
 }
 

@@ -186,12 +186,97 @@ test('Anmeldeschluss-Job: Umstellung auf Bar, Sperre der Bestätigung, einmalige
     }
 });
 
-test('startMandatJob liefert eine Stopp-Funktion, Export und App rufen den Job auf', () => {
+test('Abgesagt, Entwurf, ohne Anmeldeschluss und Export (Verhalten)', async () => {
+    const { knex, stoppe } = await starteTestPostgres();
+    const mails = [];
+    setzeTestVersand((mail) => { mails.push(mail); });
+    try {
+        const vAus = id((await knex('vereine').insert({ name: 'JC Ausrichter' }).returning('id'))[0]);
+        const vA = id((await knex('vereine').insert({ name: 'JC A' }).returning('id'))[0]);
+        const konto = async (n, verein, rolle) => {
+            await knex('benutzer').insert({ id: `u-${n}`, email: `${n}@test.de`, vorname: n, nachname: 'T', email_bestaetigt_am: knex.fn.now(), aktiver_verein_id: verein });
+            await knex('benutzer_vereine').insert({ benutzer_id: `u-${n}`, verein_id: verein, freigegeben: 1, rolle });
+        };
+        await konto('aus', vAus, 'admin');
+        await konto('ben', vA, 'benutzer');
+        await konto('ad1', vA, 'admin');
+        await speichereStammdaten(knex, vAus, STAMMDATEN, 'u-aus');
+        const neuesTurnier = async (extra = {}) => (await knex('turniere').insert({
+            bezeichnung: 'Herbst-Cup', ort: 'Halle', datum: inTagen(20), anmeldeschluss: inTagen(10), ausrichter: 'JC Ausrichter',
+            verein_id: vAus, status: 'veroeffentlicht', startgeld: 8, angebotene_zahlwege: 'ueberweisung,bar,lastschrift', ...extra
+        }).returning('*'))[0];
+        const speichere = (turnier) => zw.speichereZahlweg(knex, {
+            turnier, vereinName: 'JC A', vereinId: vA, benutzerId: 'u-ben', eingabe: { zahlweg: 'lastschrift', ...RECHNUNG, ...MANDAT },
+            istAdminDesVereins: false, ip: '203.0.113.7', basisUrl: BASIS
+        });
+        const tokenAus = (mail) => /token=([A-Za-z0-9_-]+)/.exec(mail.text)[1];
+        const zahlweg = (t) => knex('turnier_zahlwege').where({ turnier_id: t.id, verein_name: 'JC A' }).first();
+        const mandat = (t) => knex('lastschrift_mandate').where({ turnier_id: t.id, verein_name: 'JC A' }).orderBy('id').first();
+
+        // abgesagt: Mandat zurückgezogen (IBAN weg), Zahlweg bleibt, keine Mail, Bestätigung 410 "abgesagt"
+        const tAbg = await neuesTurnier();
+        await speichere(tAbg);
+        const token = tokenAus(mails.find((x) => x.to === 'ad1@test.de'));
+        mails.length = 0;
+        await knex('turniere').where({ id: tAbg.id }).update({ status: 'abgesagt', anmeldeschluss: inTagen(-2) });
+        const sperre = await fehlerInfo(() => m.entscheideMandat(knex, token, { entscheidung: 'bestaetigen', vertretung_bestaetigt: true }));
+        assert.equal(sperre.status, 410);
+        assert.equal(sperre.text, 'Das Turnier wurde abgesagt.');
+        assert.equal((await fehlerInfo(() => m.ladeMandatFuerToken(knex, token))).text, 'Das Turnier wurde abgesagt.');
+        assert.equal(await stelleUnbestaetigteUm(knex), 0);
+        assert.equal((await zahlweg(tAbg)).zahlweg, 'lastschrift');
+        const md = await mandat(tAbg);
+        assert.equal(md.status, 'widerrufen');
+        assert.equal(md.daten_verschluesselt, null);
+        assert.ok(md.loeschen_ab);
+        assert.equal(mails.length, 0);
+        assert.equal(await pruefeToken(knex, token, 'mandat'), null);
+
+        // Entwurf und Turnier ohne Anmeldeschluss: unberührt
+        const tEnt = await neuesTurnier();
+        await speichere(tEnt);
+        await knex('turniere').where({ id: tEnt.id }).update({ status: 'entwurf', anmeldeschluss: inTagen(-2) });
+        const tOhne = await neuesTurnier();
+        await speichere(tOhne);
+        await knex('turniere').where({ id: tOhne.id }).update({ anmeldeschluss: null });
+        mails.length = 0;
+        assert.equal(await stelleUnbestaetigteUm(knex), 0);
+        for (const t of [tEnt, tOhne]) {
+            assert.equal((await zahlweg(t)).zahlweg, 'lastschrift');
+            assert.equal((await mandat(t)).status, 'unbestaetigt');
+        }
+        assert.equal(mails.length, 0);
+
+        // Export-Handler: stellt um, Antwort enthält den Bar-Zahlweg, Mails kommen ohne Warten hinterher
+        const tExp = await neuesTurnier();
+        await speichere(tExp);
+        await knex('turniere').where({ id: tExp.id }).update({ anmeldeschluss: inTagen(-2) });
+        mails.length = 0;
+        const { exportTurnier } = await import('../../src/controllers/turnierController.js');
+        const antwort = { kopf: {}, status: 200 };
+        const res = {
+            status(code) { antwort.status = code; return this; },
+            json(daten) { antwort.daten = daten; return this; },
+            setHeader(k, v) { antwort.kopf[k] = v; },
+            send(text) { antwort.text = text; return this; }
+        };
+        await exportTurnier(knex, { params: { id: String(tExp.id) }, user: { id: 'u-aus' }, query: {} }, res);
+        assert.equal(antwort.status, 200, JSON.stringify(antwort.daten));
+        assert.equal((await zahlweg(tExp)).zahlweg, 'bar');
+        assert.equal((await mandat(tExp)).status, 'umgestellt');
+        assert.ok(!antwort.text.includes('DE89'));
+        for (let i = 0; i < 50 && mails.length < 2; i += 1) await new Promise((r) => setTimeout(r, 100));
+        assert.ok(mails.some((x) => x.to === 'zahler@jc-a.de'));
+    } finally {
+        setzeTestVersand(null);
+        await stoppe();
+    }
+});
+
+test('startMandatJob liefert eine Stopp-Funktion, die App startet den Job nur in der Cloud', () => {
     const stopp = startMandatJob({}, { intervallMs: 1000 });
     assert.equal(typeof stopp, 'function');
     stopp();
-    const quelle = fs.readFileSync(new URL('../../src/controllers/turnierController.js', import.meta.url), 'utf8');
-    assert.match(quelle, /await stelleUnbestaetigteUm\(knex, \{ turnierId \}\);\s*\n\s*const exportData = await baueTurnierExport/);
     const app = fs.readFileSync(new URL('../../src/app.js', import.meta.url), 'utf8');
-    assert.match(app, /istCloud && process\.env\.NODE_ENV !== 'test'\) \{\s*\n\s*startMandatJob\(knex\)/);
+    assert.match(app, /istCloud && process\.env\.NODE_ENV !== 'test'\) \{\s+startMandatJob\(knex\)/);
 });

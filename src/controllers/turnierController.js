@@ -1162,7 +1162,8 @@ export async function exportTurnier(knex, req, res) {
 
         // Unbestätigte Lastschriftmandate gelten nach dem Anmeldeschluss als Bar: der Hallen-Server bekommt den endgültigen Zahlweg.
         // Bestätigungen nach dem Anmeldeschluss sind gesperrt, die Umstellung ist deshalb mit ihnen nicht im Wettlauf.
-        await stelleUnbestaetigteUm(knex, { turnierId });
+        // Mails und Protokoll laufen ohne Warten, ein langsames SMTP darf den Export nicht aufhalten.
+        await stelleUnbestaetigteUm(knex, { turnierId, mailsAbwarten: false });
         const exportData = await baueTurnierExport(knex, turnierId, turnier);
 
         // Die Datei lässt sich auf einem Hallen-Server einspielen: Live-Schalten in der Cloud warnt danach (Cloud-Live, Mischen-Sperre).

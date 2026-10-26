@@ -122,7 +122,8 @@ async function baueMandatsreferenz(trx, stammdaten, turnierId, zahlwegId) {
 /** Effektiver Turnierstatus (null = Turnier nicht mehr vorhanden); `db` ist knex oder eine Transaktion. */
 export async function ladeEffektivenTurnierStatus(db, turnierId) {
     if (turnierId == null) return null;
-    const turnier = await db('turniere').where({ id: turnierId }).first();
+    // Nur die Spalten, die ermittleEffektivenStatus braucht (nie die PDF-Spalte der Ausschreibung).
+    const turnier = await db('turniere').where({ id: turnierId }).first('id', 'status', 'datum', 'anmeldeschluss');
     if (!turnier) return null;
     const hatEchteKaempfe = await turnierHatEchteKaempfe(db, turnierId);
     return ermittleEffektivenStatus(turnier, { hatEchteKaempfe });
@@ -130,15 +131,15 @@ export async function ladeEffektivenTurnierStatus(db, turnierId) {
 
 // Nach dem Anmeldeschluss ist ein Mandat nicht mehr bestätigbar (410); der Job stellt es auf Bar um.
 async function pruefeAnmeldungOffen(db, turnierId) {
-    if ((await ladeEffektivenTurnierStatus(db, turnierId)) !== 'veroeffentlicht') {
-        throw new FachFehler(410, MELDUNG_FRIST_ABGELAUFEN);
-    }
+    const status = await ladeEffektivenTurnierStatus(db, turnierId);
+    if (status === 'abgesagt') throw new FachFehler(410, 'Das Turnier wurde abgesagt.');
+    if (status !== 'veroeffentlicht') throw new FachFehler(410, MELDUNG_FRIST_ABGELAUFEN);
 }
 
 // Widerruf innerhalb einer Transaktion, die sperreMandate schon hält. L5: ein gültiges Mandat widerruft beim
 // Wechsel nur ein Admin des zahlenden Vereins (Umstellung durch den Job und Rücklastschrift sind keine Wechsel).
 export async function widerrufeMandatInTrx(trx, { turnierId, vereinName, benutzer, grund }) {
-    if (!['wechsel', 'umstellung', 'ruecklastschrift'].includes(grund)) throw new Error(`Unbekannter Widerrufsgrund: ${grund}`);
+    if (!['wechsel', 'umstellung', 'ruecklastschrift', 'abgesagt'].includes(grund)) throw new Error(`Unbekannter Widerrufsgrund: ${grund}`);
     const mandat = await ladeAktivesMandat(trx, turnierId, vereinName, { sperren: true });
     if (!mandat) return null;
     if (grund === 'wechsel' && mandat.status === 'gueltig' && benutzer?.istAdminDesVereins !== true) {

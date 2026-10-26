@@ -275,3 +275,55 @@ test('Mandatsreferenz: Zusatz aus dem größten vorhandenen Zusatz, erteileManda
         await stoppe();
     }
 });
+
+test('Mandat-API: nach dem Anmeldeschluss antworten GET und POST 410 mit Text, bei abgesagtem Turnier mit eigenem Text', async () => {
+    const { knex, stoppe } = await starteTestPostgres();
+    const mails = [];
+    setzeTestVersand((mail) => { mails.push(mail); });
+    const zw = await import('../../src/services/zahlwege.js');
+    const app = express();
+    app.use(express.json());
+    app.use('/api/mandat', getMandatRoutes(knex));
+    const server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
+    const basis = `http://127.0.0.1:${server.address().port}`;
+    const aufruf = async (methode, token, body) => {
+        const res = await fetch(`${basis}/api/mandat/${token}`, {
+            method: methode, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body)
+        });
+        return { status: res.status, daten: await res.json() };
+    };
+    try {
+        const vAus = id((await knex('vereine').insert({ name: 'JC Ausrichter' }).returning('id'))[0]);
+        const vA = id((await knex('vereine').insert({ name: 'JC A' }).returning('id'))[0]);
+        for (const [n, v, rolle] of [['ben', vA, 'benutzer'], ['ad1', vA, 'admin']]) {
+            await knex('benutzer').insert({ id: `u-${n}`, email: `${n}@test.de`, vorname: n, nachname: 'T', email_bestaetigt_am: knex.fn.now(), aktiver_verein_id: v });
+            await knex('benutzer_vereine').insert({ benutzer_id: `u-${n}`, verein_id: v, freigegeben: 1, rolle });
+        }
+        await speichereStammdaten(knex, vAus, STAMMDATEN, 'u-ben');
+        const turnier = (await knex('turniere').insert({
+            bezeichnung: 'Herbst-Cup', ort: 'Halle', datum: inTagen(20), anmeldeschluss: inTagen(10), ausrichter: 'JC Ausrichter',
+            verein_id: vAus, status: 'veroeffentlicht', startgeld: 8, angebotene_zahlwege: 'ueberweisung,bar,lastschrift'
+        }).returning('*'))[0];
+        await zw.speichereZahlweg(knex, {
+            turnier, vereinName: 'JC A', vereinId: vA, benutzerId: 'u-ben', eingabe: LASTSCHRIFT,
+            istAdminDesVereins: false, ip: '203.0.113.7', basisUrl: process.env.PUBLIC_BASE_URL
+        });
+        const token = tokenAusMail(mails.find((x) => x.to === 'ad1@test.de'));
+        const entscheidung = { entscheidung: 'bestaetigen', vertretung_bestaetigt: true };
+
+        await knex('turniere').where({ id: turnier.id }).update({ anmeldeschluss: inTagen(-2) });
+        for (const r of [await aufruf('GET', token), await aufruf('POST', token, entscheidung)]) {
+            assert.equal(r.status, 410);
+            assert.match(r.daten.error, /Die Anmeldefrist ist abgelaufen/);
+        }
+        await knex('turniere').where({ id: turnier.id }).update({ status: 'abgesagt' });
+        for (const r of [await aufruf('GET', token), await aufruf('POST', token, entscheidung)]) {
+            assert.equal(r.status, 410);
+            assert.equal(r.daten.error, 'Das Turnier wurde abgesagt.');
+        }
+    } finally {
+        setzeTestVersand(null);
+        server.close();
+        await stoppe();
+    }
+});
