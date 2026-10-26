@@ -15,6 +15,15 @@ export const MELDUNG_UNVOLLSTAENDIG = 'Die Datei ist unvollständig.';
 export const MELDUNG_RECHNUNGEN_VERSANDT = 'Für dieses Turnier wurden schon Rechnungen versandt. Erneutes Zurückspielen muss ein Admin auf der Abrechnungsseite freigeben.';
 const MELDUNG_STATUS = 'Ergebnisse können erst hochgeladen werden, wenn die Anmeldefrist abgelaufen ist. Ein bereits abgeschlossenes Turnier ist schreibgeschützt.';
 
+// Sperrt eine Rechnung das erneute Zurückspielen? Ja, sobald eine Rechnung versandt wurde; zurückgebuchte Rechnungen
+// (Rücklastschrift) zählen nicht mehr: sie sind erledigt, für den Verein entsteht eine neue Rechnung, die nach ihrem
+// Versand wieder wie üblich sperrt. `db` ist knex oder eine Transaktion.
+export async function hatSperrendeRechnung(db, turnierId) {
+    const zeile = await db('rechnungen').where({ turnier_id: turnierId }).whereNotNull('versandt_am')
+        .whereNot('status', 'zurueckgebucht').first('id');
+    return !!zeile;
+}
+
 // Listen der Exportdatei, deren Längen `anzahl` festhält (siehe baueTurnierExport).
 const PFLICHT_LISTEN = ['kampfflaechen', 'pools', 'teilnehmer', 'kaempfe'];
 const OPTIONALE_LISTEN = ['mannschaften', 'mannschaft_mitglieder'];
@@ -119,8 +128,7 @@ export async function spieleTurnierZurueck(knex, { turnierId, daten, benutzer })
             || (status === 'abgeschlossen' && gesperrt.zurueckgespielt_am != null);
         if (!erlaubt) throw new FachFehler(403, MELDUNG_STATUS);
 
-        const versandt = await trx('rechnungen').where({ turnier_id: turnierId }).whereNotNull('versandt_am').first('id');
-        if (versandt && !gesperrt.rueckspielen_freigegeben) throw new FachFehler(409, MELDUNG_RECHNUNGEN_VERSANDT);
+        if (await hatSperrendeRechnung(trx, turnierId) && !gesperrt.rueckspielen_freigegeben) throw new FachFehler(409, MELDUNG_RECHNUNGEN_VERSANDT);
 
         // Nur die Wettkampfdaten DIESES Turniers ersetzen — turniere/benutzer/vereine bleiben unangetastet, andere
         // Turniere sind von dieser Löschung nicht betroffen. mannschaften bewusst NICHT gelöscht (siehe

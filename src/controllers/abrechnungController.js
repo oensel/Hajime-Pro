@@ -6,8 +6,9 @@ import { fehlendeStammdaten } from '../shared/abrechnung.js';
 import { ladeStammdaten, speichereStammdaten, pruefeStammdatenFuerTurnier, ladeLastschriftStatus } from '../services/abrechnungStammdaten.js';
 import { ladeAbrechnung, ordneVereinZu } from '../services/abrechnung.js';
 import { erfasseVorOrt } from '../services/zahlwege.js';
-import { erstelleRechnungen, sendeRechnungErneut, setzeBezahlt, ladeRechnungPdf } from '../services/rechnungslauf.js';
+import { erstelleRechnungen, sendeRechnungErneut, setzeBezahlt, ladeRechnungPdf, erfasseRuecklastschrift } from '../services/rechnungslauf.js';
 import { erzeugeSepaExport, listeSepaDateien, pruefeSepaVorab } from '../services/sepaExport.js';
+import { hatSperrendeRechnung } from '../services/rueckspielen.js';
 import { pruefeSensibleAktion } from '../utils/sensibleAktion.js';
 import { protokolliere, ladeKontext, beschreibeAktion } from '../services/aktionsProtokoll.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
@@ -77,6 +78,31 @@ export function erzeugeAbrechnungController(knex, { sende } = {}) {
                 const rechnungId = await pruefeRechnung(req);
                 const rechnung = await setzeBezahlt(knex, rechnungId, { bezahlt: req.body?.bezahlt, benutzerId: req.user.id });
                 res.json({ success: true, rechnung });
+            } catch (err) {
+                antworteFehler(res, err);
+            }
+        },
+
+        // Rücklastschrift erfassen und den Verein auf Überweisung/Bar umstellen (Gate: requireTurnierAdmin). Bewusst OHNE
+        // 2FA-Code für Super-Admins (anders als der SEPA-Download): es werden keine Kontodaten ausgeliefert und kein Geld
+        // bewegt, nur ein Bankereignis festgehalten (wie „bezahlt“); die Aktion ist protokolliert und nicht umkehrbar.
+        async erfasseRuecklastschrift(req, res) {
+            try {
+                const rechnungId = await pruefeRechnung(req);
+                const ergebnis = await erfasseRuecklastschrift(knex, {
+                    turnier: req.tournament, rechnungId, neuerZahlweg: req.body?.neuerZahlweg, benutzerId: req.user.id
+                });
+                // Eigener Eintrag mit Rechnung, neuem Zahlweg und Mandat (nie Kontodaten); die Middleware schreibt keinen zweiten.
+                res.locals.protokolliert = true;
+                const pfad = '/api/abrechnung/:id/rechnungen/:id/ruecklastschrift';
+                const kontext = await ladeKontext(knex, req.user.id, { turnierId: req.tournament.id }).catch(() => null);
+                const { aktion, beschreibung } = beschreibeAktion('POST', pfad);
+                await protokolliere(knex, {
+                    ...(kontext || { benutzerId: req.user.id }), turnierId: req.tournament.id, aktion, beschreibung,
+                    methode: 'POST', pfad, status: 200,
+                    details: { turnierId: req.tournament.id, rechnungId, neuerZahlweg: ergebnis.zahlweg.zahlweg, mandatId: ergebnis.mandatId }
+                });
+                res.json({ success: true, rechnung: ergebnis.rechnung, zahlweg: ergebnis.zahlweg });
             } catch (err) {
                 antworteFehler(res, err);
             }
@@ -181,8 +207,7 @@ export function erzeugeAbrechnungController(knex, { sende } = {}) {
         async gibRueckspielenFrei(req, res) {
             try {
                 nurCloud();
-                const versandt = await knex('rechnungen').where({ turnier_id: req.tournament.id }).whereNotNull('versandt_am').first('id');
-                if (!versandt) throw new FachFehler(400, 'Es wurde noch keine Rechnung versandt, ein erneutes Zurückspielen braucht keine Freigabe.');
+                if (!(await hatSperrendeRechnung(knex, req.tournament.id))) throw new FachFehler(400, 'Es wurde noch keine Rechnung versandt, ein erneutes Zurückspielen braucht keine Freigabe.');
                 await knex('turniere').where({ id: req.tournament.id }).update({ rueckspielen_freigegeben: true });
                 res.json({ success: true });
             } catch (err) {

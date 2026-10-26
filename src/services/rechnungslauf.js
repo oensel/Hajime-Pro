@@ -23,6 +23,8 @@ import { ladeStammdaten, ermittleZahlungsempfaenger } from './abrechnungStammdat
 import { erzeugeRechnungPdf, euro, datum, berechneOffenCent } from './rechnungPdf.js';
 import { maskiereIban } from '../shared/iban.js';
 import { ladeAusrichterNamen } from './zahlwegTransfer.js';
+import { sperreMandate, widerrufeMandatInTrx, ladeEffektivenTurnierStatus, protokolliereMandat } from './mandate.js';
+import { synchronisiereGesichert } from './zahlwege.js';
 
 const normName = (s) => String(s ?? '').trim().toLowerCase();
 const mandatFehltText = (vereinName) => mandatSperrText({ vereinName, hinweisCode: 'mandat' });
@@ -435,4 +437,91 @@ export async function ladeRechnungPdf(knex, rechnungId) {
     const zeile = await knex('rechnungen').where({ id: rechnungId }).first('nummer', 'pdf');
     if (!zeile || !zeile.pdf) throw new FachFehler(404, 'Rechnung nicht gefunden.');
     return { nummer: zeile.nummer, pdf: zeile.pdf };
+}
+
+// ---- Rücklastschrift (Stufe 3, Plan L9) ----
+export const RUECKLASTSCHRIFT_ZAHLWEGE = ['ueberweisung', 'bar'];
+const MELDUNG_SCHON_ZURUECKGEBUCHT = 'Diese Rechnung wurde schon als zurückgebucht erfasst.';
+
+// Nur eine eingezogene (in einer SEPA-Datei stehende) Lastschrift-Rechnung kann zurückgebucht werden.
+function pruefeRuecklastschriftFaehig(zeile) {
+    if (zeile.zahlweg !== 'lastschrift' || zeile.art !== 'rechnung') {
+        throw new FachFehler(400, 'Eine Rücklastschrift gibt es nur für Lastschrift-Rechnungen.');
+    }
+    if (zeile.status === 'zurueckgebucht') throw new FachFehler(409, MELDUNG_SCHON_ZURUECKGEBUCHT);
+    if (zeile.sepa_datei_id == null) {
+        throw new FachFehler(400, 'Diese Lastschrift steht noch in keiner SEPA-Datei und kann daher nicht zurückgebucht worden sein.');
+    }
+}
+
+/**
+ * Erfasst die Rücklastschrift einer eingezogenen Lastschrift-Rechnung (Ausrichter-Admin, auch nach dem Anmeldeschluss):
+ * Rechnung -> 'zurueckgebucht' (sonst unverändert, sie bleibt Beleg), Mandat widerrufen (Klartext gelöscht, Löschfrist ab
+ * dem letzten Einzug, L12), Zahlweg des Vereins -> neuerZahlweg. Der nächste Rechnungslauf erstellt dann genau eine neue
+ * Rechnung mit der nächsten Nummer (der Partial-Unique-Index lässt sie neben der zurückgebuchten zu); die Anrechnung
+ * bezahlter Kämpfer folgt dem neuen Zahlweg (E9). Der Status der Kämpfer wird nicht neu abgeleitet (Turnier ist vorbei).
+ *
+ * Alles in EINER Transaktion. Lock-Reihenfolge: Mandats-Lock (Turnier, Verein; wie mandate.js/zahlwege.js/mandatJob.js)
+ * -> SEPA-Lock (Turnier) -> Rechnungslauf-Lock (Turnier) -> Rechnungszeile -> Mandatszeile -> Tokens -> Zahlweg ->
+ * Turnier-Lock (synchronisiereGesichert). Keiner der anderen Wege nimmt einen dieser Locks in umgekehrter Folge: SEPA-Export
+ * und Rechnungslauf nehmen nie den Mandats-Lock, der SEPA-Export nie den Rechnungslauf-Lock (und umgekehrt); ihre
+ * Zeilensperren (Mandat FOR UPDATE/SHARE, Rechnungen) liegen hinter dem jeweiligen Turnier-Lock, den hier schon wir halten.
+ * @returns {Promise<{ rechnung: object, zahlweg: { id, verein_name, zahlweg, mandat_gueltig }, mandatId: number|null }>}
+ */
+export async function erfasseRuecklastschrift(knex, { turnier, rechnungId, neuerZahlweg, benutzerId }) {
+    if (typeof neuerZahlweg !== 'string' || !RUECKLASTSCHRIFT_ZAHLWEGE.includes(neuerZahlweg)) {
+        throw new FachFehler(400, 'Bitte den neuen Zahlweg wählen: Überweisung oder Bar.');
+    }
+    const vorab = await knex('rechnungen').where({ id: rechnungId, turnier_id: turnier.id })
+        .first('id', 'verein_name', 'zahlweg', 'art', 'status', 'sepa_datei_id');
+    if (!vorab) throw new FachFehler(404, 'Rechnung nicht gefunden.');
+    if ((await ladeEffektivenTurnierStatus(knex, turnier.id)) === 'abgesagt') {
+        throw new FachFehler(400, 'Das Turnier wurde abgesagt. Es gibt keine Abrechnung.');
+    }
+    pruefeRuecklastschriftFaehig(vorab);
+
+    const ergebnis = await knex.transaction(async (trx) => {
+        await sperreMandate(trx, turnier.id, vorab.verein_name);
+        await trx.raw("SELECT pg_advisory_xact_lock(hashtext('sepa_datei'), ?)", [turnier.id]);
+        await trx.raw("SELECT pg_advisory_xact_lock(hashtext('rechnungslauf'), ?)", [turnier.id]);
+        const aktuell = await trx('rechnungen').where({ id: rechnungId, turnier_id: turnier.id }).forUpdate()
+            .first('id', 'verein_name', 'zahlweg', 'art', 'status', 'sepa_datei_id', 'mandat_id');
+        if (!aktuell) throw new FachFehler(404, 'Rechnung nicht gefunden.');
+        pruefeRuecklastschriftFaehig(aktuell);
+        // Bedingtes UPDATE als zweite Absicherung (nie doppelt zurückbuchen, nur mit Datei).
+        const geaendert = await trx('rechnungen')
+            .where({ id: rechnungId, turnier_id: turnier.id, zahlweg: 'lastschrift' })
+            .whereNot('status', 'zurueckgebucht')
+            .whereNotNull('sepa_datei_id')
+            .update({ status: 'zurueckgebucht', zurueckgebucht_am: trx.fn.now(), updated_at: trx.fn.now() });
+        if (geaendert !== 1) throw new FachFehler(409, MELDUNG_SCHON_ZURUECKGEBUCHT);
+
+        // Mandat des Vereins widerrufen (falls noch aktiv; nach der Löschfrist kann es fehlen).
+        const mandatId = await widerrufeMandatInTrx(trx, {
+            turnierId: turnier.id, vereinName: aktuell.verein_name, benutzer: null, grund: 'ruecklastschrift'
+        });
+        const zahlwegZeile = await trx('turnier_zahlwege').where({ turnier_id: turnier.id, verein_name: aktuell.verein_name }).forUpdate().first('id');
+        if (!zahlwegZeile) throw new FachFehler(409, 'Für diesen Verein gibt es keinen Zahlweg mehr.');
+        // Bewusst ohne Anmeldeschluss-Sperre (speichereZahlweg verweigert das danach): das ist die Umstellung durch den Ausrichter.
+        await trx('turnier_zahlwege').where({ id: zahlwegZeile.id }).update({
+            zahlweg: neuerZahlweg,
+            mandat_gueltig: false,
+            geaendert_von: benutzerId == null ? null : String(benutzerId),
+            updated_at: trx.fn.now()
+        });
+        await synchronisiereGesichert(trx, turnier.id, { statusAbleiten: false });
+        const rechnung = await trx('rechnungen').where({ id: rechnungId }).select(selectRechnung(trx)).first();
+        const zahlweg = await trx('turnier_zahlwege').where({ id: zahlwegZeile.id }).first('id', 'verein_name', 'zahlweg', 'mandat_gueltig');
+        return { rechnung, zahlweg, mandatId };
+    });
+    if (ergebnis.mandatId) {
+        await protokolliereMandat(knex, {
+            art: 'mandat.widerrufen', mandatId: ergebnis.mandatId, turnierId: turnier.id, benutzerId, vereinId: turnier.verein_id ?? null
+        });
+    }
+    return {
+        rechnung: { ...ergebnis.rechnung, anzeigeStatus: rechnungsAnzeigeStatus(ergebnis.rechnung, heuteBerlin()) },
+        zahlweg: ergebnis.zahlweg,
+        mandatId: ergebnis.mandatId ?? null
+    };
 }

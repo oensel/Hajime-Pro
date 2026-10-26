@@ -68,6 +68,7 @@ const AKTIONEN = {
     'POST /api/abrechnung/:id/rechnungen': ['abrechnung.rechnungslauf', 'Rechnungen erstellt und versendet'],
     'POST /api/abrechnung/:id/rechnungen/:id/senden': ['abrechnung.senden', 'Rechnung erneut versendet'],
     'POST /api/abrechnung/:id/rechnungen/:id/bezahlt': ['abrechnung.bezahlt', 'Zahlstatus einer Rechnung geändert'],
+    'POST /api/abrechnung/:id/rechnungen/:id/ruecklastschrift': ['abrechnung.ruecklastschrift', 'Rücklastschrift erfasst und Zahlweg umgestellt'],
     'POST /api/abrechnung/:id/sepa': ['abrechnung.sepa', 'SEPA-Lastschriftdatei erzeugt'],
     'DELETE /api/konsole': ['konsole.leeren', 'Fehlerprotokoll (Konsole) geleert']
 };

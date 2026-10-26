@@ -151,6 +151,10 @@
                 haken.addEventListener('change', () => setzeBezahlt(r, haken));
                 const bezahlt = el('label', { className: 'abr-bezahlt' }, [haken, document.createTextNode('Bezahlt')]);
                 aktionen.append(pdf, senden, bezahlt);
+                // Rücklastschrift: nur für Lastschriften, die schon in einer SEPA-Datei stehen (wie der Server prüft).
+                if (r.zahlweg === 'lastschrift' && r.art === 'rechnung' && r.sepa_datei_id && r.status !== 'zurueckgebucht') {
+                    aktionen.append(baueRuecklastschrift(r, v.vereinName));
+                }
             }
             const tr = el('tr');
             tr.dataset.verein = v.vereinName;
@@ -433,6 +437,61 @@
             return zeigeFehler(antwort.error || 'Der Zahlstatus konnte nicht gespeichert werden.');
         }
         await lade();
+    }
+
+    // ---- Rücklastschrift ----
+    let ruecklastschriftLaeuft = false; // Doppelklick-Schutz: höchstens eine Erfassung gleichzeitig
+
+    // Knopf mit Auswahl des neuen Zahlwegs (Überweisung/Bar); die Auswahl erscheint erst nach dem Klick.
+    function baueRuecklastschrift(r, vereinName) {
+        const box = el('div', { className: 'abr-ruecklastschrift' });
+        const knopf = el('button', { type: 'button', className: 'btn btn-outlined abr-ruecklastschrift-btn', textContent: 'Rücklastschrift erfassen' });
+        const auswahl = el('select', { className: 'abr-ruecklastschrift-zahlweg' });
+        auswahl.setAttribute('aria-label', 'Neuer Zahlweg');
+        auswahl.append(el('option', { value: 'ueberweisung', textContent: 'künftig per Überweisung' }), el('option', { value: 'bar', textContent: 'künftig bar' }));
+        const erfassen = el('button', { type: 'button', className: 'btn btn-outlined abr-ruecklastschrift-start', textContent: 'Erfassen' });
+        const abbrechen = el('button', { type: 'button', className: 'btn btn-outlined abr-ruecklastschrift-abbruch', textContent: 'Abbrechen' });
+        const wahl = el('div', { className: 'abr-ruecklastschrift-wahl', hidden: true }, [auswahl, erfassen, abbrechen]);
+        knopf.addEventListener('click', () => { wahl.hidden = false; knopf.hidden = true; });
+        abbrechen.addEventListener('click', () => { wahl.hidden = true; knopf.hidden = false; });
+        erfassen.addEventListener('click', () => erfasseRuecklastschrift(r, vereinName, auswahl.value, [erfassen, abbrechen, auswahl]));
+        box.append(knopf, wahl);
+        return box;
+    }
+
+    async function erfasseRuecklastschrift(r, vereinName, neuerZahlweg, bedienelemente) {
+        if (ruecklastschriftLaeuft) return;
+        zeigeFehler('');
+        zeigeSepaFehler('');
+        // Sperre schon vor der Rückfrage: ein zweiter Klick öffnet keinen zweiten Dialog und keine zweite Anfrage.
+        ruecklastschriftLaeuft = true;
+        for (const k of bedienelemente) k.disabled = true;
+        let neuLaden = false;
+        try {
+            const text = `Rechnung ${r.nummer} (${vereinName}, ${euro(r.betrag_cent)}) wurde von der Bank zurückgebucht? `
+                + `Die Rechnung gilt dann als „zurückgebucht“, das Lastschriftmandat wird widerrufen und der Verein zahlt künftig `
+                + `${neuerZahlweg === 'bar' ? 'bar' : 'per Überweisung'}. Der nächste Rechnungslauf erstellt eine neue Rechnung mit neuer Nummer. `
+                + 'Das lässt sich nicht rückgängig machen. Fortfahren?';
+            if (!(await bestaetige(text, 'Rücklastschrift erfassen'))) return;
+            const { ok, status, daten: antwort } = await post(`${api}/rechnungen/${encodeURIComponent(r.id)}/ruecklastschrift`, { neuerZahlweg });
+            if (!ok) {
+                zeigeSepaFehler(antwort.error || 'Die Rücklastschrift konnte nicht erfasst werden.');
+                neuLaden = status === 409; // Stand hat sich geändert: neu laden (die Meldung bleibt stehen)
+                return;
+            }
+            neuLaden = true;
+            meldung(`Rücklastschrift zu ${r.nummer} erfasst. ${vereinName} zahlt künftig ${neuerZahlweg === 'bar' ? 'bar' : 'per Überweisung'}; `
+                + 'bitte den Rechnungslauf erneut starten.', 'success');
+        } catch {
+            zeigeSepaFehler('Die Rücklastschrift konnte nicht erfasst werden.');
+        } finally {
+            ruecklastschriftLaeuft = false;
+            for (const k of bedienelemente) k.disabled = false;
+            if (neuLaden) {
+                try { await lade(); } catch { zeigeFehler('Die Abrechnung konnte nicht neu geladen werden.'); }
+            }
+            if (!$('abrSepaFehler').hidden) $('abrSepaFehler').scrollIntoView({ block: 'nearest' });
+        }
     }
 
     function zeigeErgebnis(ergebnis, abbruchText) {
