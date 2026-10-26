@@ -213,6 +213,8 @@
                             <label for="startgeld">Startgeld</label>
                             <input type="number" id="startgeld" min="0" max="999" step="1" placeholder="z.B. 8">
                         </div>
+                        <!-- Konto: nur am Hallen-Server; in der Cloud kommt es aus den Zahlungsdaten des Vereins (turnier.js blendet aus) -->
+                        <div id="kontoGruppe">
                         <div class="form-group">
                             <label for="kontoinhaber">Kontoinhaber</label>
                             <input type="text" id="kontoinhaber" placeholder="z.B. Judo Club Senden e.V.">
@@ -220,6 +222,7 @@
                         <div class="form-group">
                             <label for="iban">IBAN</label>
                             <input type="text" id="iban" maxlength="34" placeholder="z.B. DE12345678901234567890">
+                        </div>
                         </div>
                         <div class="form-group">
                             <label for="verwendungszweck">Verwendungszweck</label>
@@ -248,14 +251,9 @@
                         </div>
                         <!-- Rechnungen (nur Cloud, turnier.js blendet den Block ein) -->
                         <div id="rechnungGruppe" hidden>
-                            <div class="form-group">
-                                <label for="zahlungsziel_tage">Zahlungsziel (Tage)</label>
-                                <input type="number" id="zahlungsziel_tage" min="1" max="90" step="1" value="14">
-                            </div>
-                            <div class="form-group" id="vorabankuendigungGruppe">
-                                <label for="vorabankuendigung_tage">Vorabankündigung bei Lastschrift (Tage)</label>
-                                <input type="number" id="vorabankuendigung_tage" min="1" max="14" step="1" value="5">
-                            </div>
+                            <!-- Zahlungsziel und Vorabankündigung: nicht mehr einstellbar, die Werte (Standard 14 und 5 Tage) bleiben erhalten -->
+                            <input type="hidden" id="zahlungsziel_tage" value="14">
+                            <input type="hidden" id="vorabankuendigung_tage" value="5">
                             <div class="form-group">
                                 <label for="rechnung_hinweis">Hinweistext auf der Rechnung</label>
                                 <textarea id="rechnung_hinweis" rows="3" maxlength="1000" style="width:100%;box-sizing:border-box;padding:6px;border:2px solid var(--border);border-radius:4px;font-size:14px;font-family:inherit;background:var(--bg-card);color:var(--text-main);"></textarea>

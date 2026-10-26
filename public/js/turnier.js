@@ -383,6 +383,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!(await istCloud())) return;
         rechnungenAktiv = true;
         document.getElementById('rechnungGruppe').hidden = false;
+        document.getElementById('kontoGruppe').hidden = true; // Konto kommt in der Cloud aus den Zahlungsdaten des Vereins
         if (!turnierId) {
             zeigeLastschriftWahl(null);
             return;
