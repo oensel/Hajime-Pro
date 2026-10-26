@@ -68,6 +68,7 @@ const AKTIONEN = {
     'POST /api/abrechnung/:id/rechnungen': ['abrechnung.rechnungslauf', 'Rechnungen erstellt und versendet'],
     'POST /api/abrechnung/:id/rechnungen/:id/senden': ['abrechnung.senden', 'Rechnung erneut versendet'],
     'POST /api/abrechnung/:id/rechnungen/:id/bezahlt': ['abrechnung.bezahlt', 'Zahlstatus einer Rechnung geändert'],
+    'POST /api/abrechnung/:id/sepa': ['abrechnung.sepa', 'SEPA-Lastschriftdatei erzeugt'],
     'DELETE /api/konsole': ['konsole.leeren', 'Fehlerprotokoll (Konsole) geleert']
 };
 const RESSOURCEN = {
@@ -184,6 +185,8 @@ export function erzeugeProtokollMiddleware(knex) {
         res.on('finish', async () => {
             try {
                 if (!req.user || !req.user.id || res.statusCode >= 400) return;
+                // Die Route hat selbst einen ausführlicheren Eintrag geschrieben (z. B. SEPA-Datei mit Anzahl und Summe).
+                if (res.locals && res.locals.protokolliert === true) return;
                 const body = req.body && typeof req.body === 'object' ? req.body : {};
                 const query = req.query || {};
                 const turnierId = pfad.startsWith('/api/turniere/') || pfad.startsWith('/api/nutzer/turniere/')

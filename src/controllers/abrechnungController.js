@@ -7,6 +7,9 @@ import { ladeStammdaten, speichereStammdaten, pruefeStammdatenFuerTurnier, ladeL
 import { ladeAbrechnung, ordneVereinZu } from '../services/abrechnung.js';
 import { erfasseVorOrt } from '../services/zahlwege.js';
 import { erstelleRechnungen, sendeRechnungErneut, setzeBezahlt, ladeRechnungPdf } from '../services/rechnungslauf.js';
+import { erzeugeSepaExport, listeSepaDateien } from '../services/sepaExport.js';
+import { pruefeSensibleAktion } from '../utils/sensibleAktion.js';
+import { protokolliere, ladeKontext, beschreibeAktion } from '../services/aktionsProtokoll.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 
 function antworteFehler(res, err) {
@@ -87,6 +90,48 @@ export function erzeugeAbrechnungController(knex, { sende } = {}) {
                 res.setHeader('Content-Disposition', `attachment; filename="${String(nummer).replace(/[^A-Za-z0-9._-]/g, '_')}.pdf"`);
                 res.setHeader('Cache-Control', 'no-store');
                 res.end(Buffer.from(pdf));
+            } catch (err) {
+                antworteFehler(res, err);
+            }
+        },
+
+        // SEPA-Lastschriftdatei (Gate: requireTurnierAdmin). Super-Admins IMMER mit aktuellem Code (X-2FA-Code), eine frische
+        // Anmeldung genügt hier nicht. Die Datei enthält Klar-IBANs: nie gespeichert, nie im Protokoll, nicht zwischengespeichert.
+        async erzeugeSepa(req, res) {
+            try {
+                nurCloud();
+                const pruefung = await pruefeSensibleAktion(knex, req, { frischeAnmeldungGenuegt: false });
+                if (!pruefung.ok) return res.status(pruefung.status).json({ success: false, error: pruefung.error, code: pruefung.code });
+                const body = req.body && typeof req.body === 'object' ? req.body : {};
+                const ergebnis = await erzeugeSepaExport(knex, {
+                    turnier: req.tournament, benutzerId: req.user.id, neu: body.neu ?? false, rechnungIds: body.rechnungIds ?? null
+                });
+                // Ein eigener Eintrag mit Anzahl/Summe (ohne Kontodaten); die allgemeine Middleware schreibt dann keinen zweiten.
+                res.locals.protokolliert = true;
+                const kontext = await ladeKontext(knex, req.user.id, { turnierId: req.tournament.id }).catch(() => null);
+                const { aktion, beschreibung } = beschreibeAktion('POST', '/api/abrechnung/:id/sepa');
+                await protokolliere(knex, {
+                    ...(kontext || { benutzerId: req.user.id }), turnierId: req.tournament.id, aktion, beschreibung,
+                    methode: 'POST', pfad: '/api/abrechnung/:id/sepa', status: 200,
+                    details: { turnierId: req.tournament.id, anzahl: ergebnis.anzahl, summeCent: ergebnis.summeCent, sepaDateiId: ergebnis.sepaDateiId }
+                });
+                res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+                res.setHeader('Content-Disposition', `attachment; filename="${String(ergebnis.dateiname).replace(/[^A-Za-z0-9._-]/g, '_')}"`);
+                res.setHeader('Cache-Control', 'no-store');
+                res.setHeader('X-Content-Type-Options', 'nosniff');
+                // Header nur ASCII: der Text ist URL-kodiert (Oberfläche: decodeURIComponent).
+                if (ergebnis.warnung) res.setHeader('X-Sepa-Warnung', encodeURIComponent(ergebnis.warnung));
+                res.status(200).send(ergebnis.xml);
+            } catch (err) {
+                antworteFehler(res, err);
+            }
+        },
+
+        async listeSepa(req, res) {
+            try {
+                nurCloud();
+                res.setHeader('Cache-Control', 'no-store');
+                res.json({ dateien: await listeSepaDateien(knex, req.tournament.id) });
             } catch (err) {
                 antworteFehler(res, err);
             }

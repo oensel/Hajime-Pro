@@ -7,7 +7,14 @@
     const ZAHLWEGE = { ueberweisung: 'Überweisung', bar: 'Bar', lastschrift: 'Lastschrift' };
     const STATUS = { offen: 'Offen', versandt: 'Versandt', bezahlt: 'Bezahlt', ueberfaellig: 'Überfällig', eingezogen: 'Eingezogen', zurueckgebucht: 'Zurückgebucht' };
     let daten = null;
+    let sepaDateien = [];
+    let sepaLaeuft = false; // Doppelklick-Schutz: höchstens eine Datei-Anfrage gleichzeitig
 
+    const datumDe = (iso) => (iso ? String(iso).slice(0, 10).split('-').reverse().join('.') : '');
+    const zeitDe = (iso) => {
+        const d = new Date(iso);
+        return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'medium', timeStyle: 'short' });
+    };
     const euro = (cent) => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format((cent || 0) / 100);
     const meldung = (text, typ) => { if (window.zeigeNotification) window.zeigeNotification(text, typ); };
 
@@ -112,6 +119,17 @@
                     status.append(marke);
                 }
                 if (r.versand_fehler) status.append(el('span', { className: 'abr-versandfehler', textContent: r.versand_fehler }));
+                if (r.zahlweg === 'lastschrift' && r.sepa_datei_id) {
+                    const datei = sepaDateien.find((d) => d.id === r.sepa_datei_id);
+                    status.append(el('span', {
+                        className: 'abr-sepa-datei',
+                        textContent: datei
+                            ? `Datei erzeugt am ${zeitDe(datei.erzeugt_am)}, Einzug am ${datumDe(r.einzug_am)}`
+                            : `In einer SEPA-Datei, Einzug am ${datumDe(r.einzug_am)}`
+                    }));
+                } else if (r.zahlweg === 'lastschrift' && r.einzug_am) {
+                    status.append(el('span', { className: 'abr-sepa-datei', textContent: `Einzug angekündigt für ${datumDe(r.einzug_am)}` }));
+                }
             } else {
                 status.textContent = v.anzahl > 0 ? 'Noch keine Rechnung' : 'Keine Kämpfer';
             }
@@ -171,12 +189,139 @@
         $('abrFreigabeBtn').hidden = !daten.vereine.some((v) => v.rechnung && v.rechnung.versandt_am);
     }
 
+    // ---- SEPA-Lastschrift ----
+    const lastschriftRechnungen = () => (daten ? daten.vereine
+        .map((v) => (v.rechnung ? { ...v.rechnung, vereinName: v.vereinName } : null))
+        .filter((r) => r && r.zahlweg === 'lastschrift') : []);
+    const summeVon = (liste) => liste.reduce((s, r) => s + (r.betrag_cent || 0), 0);
+    const sepaOffen = () => lastschriftRechnungen().filter((r) => r.status === 'versandt' && !r.sepa_datei_id);
+    const sepaMitDatei = () => lastschriftRechnungen().filter((r) => r.status === 'versandt' && r.sepa_datei_id);
+
+    function zeigeSepa() {
+        const alle = lastschriftRechnungen();
+        $('abrSepa').hidden = alle.length === 0 && sepaDateien.length === 0;
+        const offen = sepaOffen();
+        const nichtVersandt = alle.filter((r) => r.status === 'offen' && !r.sepa_datei_id);
+        let grund;
+        if (offen.length === 0) {
+            grund = nichtVersandt.length > 0
+                ? 'Die Lastschrift-Rechnungen wurden noch nicht versandt (Vorabankündigung). Bitte zuerst erneut senden.'
+                : 'Für alle Lastschriften gibt es schon eine Datei.';
+        } else {
+            grund = `${offen.length} Lastschrift(en) über ${euro(summeVon(offen))} noch ohne Datei.`;
+            if (nichtVersandt.length > 0) grund += ` ${nichtVersandt.length} noch nicht versandte Rechnung(en) sind nicht enthalten.`;
+        }
+        $('abrSepaBtn').disabled = sepaLaeuft || offen.length === 0;
+        $('abrSepaGrund').textContent = grund;
+        $('abrSepaNeuBtn').hidden = sepaMitDatei().length === 0;
+        $('abrSepaNeuBtn').disabled = sepaLaeuft;
+        const tbody = $('abrSepaDateien');
+        tbody.replaceChildren();
+        $('abrSepaTabelle').hidden = sepaDateien.length === 0;
+        for (const d of sepaDateien) {
+            const tr = el('tr');
+            tr.append(
+                zelle('Erzeugt am', zeitDe(d.erzeugt_am)),
+                zelle('Einzug am', datumDe(d.faelligkeit)),
+                zelle('Lastschriften', String(d.anzahl), 'rechts'),
+                zelle('Summe', euro(d.summe_cent), 'rechts')
+            );
+            tbody.append(tr);
+        }
+    }
+
+    async function ladeSepaDateien() {
+        sepaDateien = [];
+        if (lastschriftRechnungen().length === 0) return;
+        try {
+            const antwort = await fetch(`${api}/sepa`);
+            if (antwort.ok) sepaDateien = (await antwort.json()).dateien || [];
+        } catch { /* Übersicht ist optional */ }
+    }
+
+    function zeigeNeuAuswahl() {
+        const liste = $('abrSepaNeuListe');
+        liste.replaceChildren();
+        for (const r of sepaMitDatei()) {
+            const haken = el('input', { type: 'checkbox', value: String(r.id), className: 'abr-sepa-haken' });
+            const text = `${r.nummer} – ${r.vereinName} – ${euro(r.betrag_cent)} (Einzug ${datumDe(r.einzug_am)})`;
+            liste.append(el('label', {}, [haken, document.createTextNode(text)]));
+        }
+        $('abrSepaNeu').hidden = false;
+    }
+
+    function ladeHerunter(blob, dateiname) {
+        const adresse = URL.createObjectURL(blob);
+        const link = el('a', { href: adresse, download: dateiname });
+        document.body.append(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(adresse), 10000);
+    }
+
+    async function erzeugeSepa({ neu = false, rechnungIds = null } = {}) {
+        if (sepaLaeuft) return;
+        zeigeFehler('');
+        $('abrSepaWarnung').hidden = true;
+        let text;
+        if (neu) {
+            if (!rechnungIds || rechnungIds.length === 0) return zeigeFehler('Bitte mindestens eine Rechnung auswählen.');
+            text = `Achtung: Die ${rechnungIds.length} ausgewählte(n) Lastschrift(en) stehen schon in einer Datei. Reichen Sie die neue Datei nur ein, `
+                + 'wenn die bisherige NICHT eingereicht wurde, sonst wird doppelt eingezogen. Neu erzeugen?';
+        } else {
+            const offen = sepaOffen();
+            text = `Es wird eine SEPA-Lastschriftdatei mit ${offen.length} Lastschrift(en) über ${euro(summeVon(offen))} erzeugt. `
+                + 'Die Lastschriften gelten danach als „in einer Datei“. Fortfahren?';
+        }
+        // Sperre schon vor der Rückfrage: ein zweiter Klick öffnet keinen zweiten Dialog und keine zweite Anfrage.
+        sepaLaeuft = true;
+        for (const k of ['abrSepaBtn', 'abrSepaNeuBtn', 'abrSepaNeuStart']) $(k).disabled = true;
+        let erzeugt = false;
+        try {
+            if (!(await bestaetige(text, neu ? 'SEPA-Datei neu erzeugen' : 'SEPA-Datei erzeugen'))) return;
+            const antwort = await rufe(`${api}/sepa`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(neu ? { neu: true, rechnungIds } : {})
+            });
+            if (!antwort.ok) {
+                const inhalt = await antwort.json().catch(() => ({}));
+                zeigeFehler(inhalt.error || 'Die SEPA-Datei konnte nicht erzeugt werden.');
+                erzeugt = antwort.status === 409; // Stand hat sich geändert: neu laden
+                return;
+            }
+            erzeugt = true;
+            const warnung = antwort.headers.get('X-Sepa-Warnung');
+            const treffer = /filename="([A-Za-z0-9._-]+)"/.exec(antwort.headers.get('Content-Disposition') || '');
+            ladeHerunter(await antwort.blob(), treffer ? treffer[1] : `sepa-lastschrift-${turnierId}.xml`);
+            if (warnung) {
+                let hinweis = warnung;
+                try { hinweis = decodeURIComponent(warnung); } catch { /* Rohtext anzeigen */ }
+                $('abrSepaWarnung').textContent = hinweis;
+                $('abrSepaWarnung').hidden = false;
+            }
+            $('abrSepaNeu').hidden = true;
+            meldung('Die SEPA-Datei wurde erzeugt. Bitte im Online-Banking einreichen.', 'success');
+        } catch {
+            zeigeFehler('Die SEPA-Datei konnte nicht erzeugt werden.');
+        } finally {
+            sepaLaeuft = false;
+            $('abrSepaNeuStart').disabled = false;
+            if (erzeugt) {
+                try { await lade(); } catch { zeigeFehler('Die Abrechnung konnte nicht neu geladen werden.'); }
+            } else if (daten) {
+                zeigeSepa();
+            }
+        }
+    }
+
     function zeigeAlles() {
         $('abrInhalt').hidden = false;
         zeigeKennzahlen();
         zeigeNichtZugeordnet();
         zeigeVereine();
         zeigeLaufKnoepfe();
+        zeigeSepa();
     }
 
     async function ladeStammdatenLink() {
@@ -211,6 +356,7 @@
             $('abrStammdatenFehlt').textContent = (daten.stammdaten.fehlt || []).join(', ');
             await ladeStammdatenLink();
         }
+        await ladeSepaDateien();
         // Auch ohne Bereitschaft anzeigen: der gesperrte Knopf nennt den Grund.
         zeigeAlles();
     }
@@ -329,6 +475,13 @@
         } catch { /* Name ist optional */ }
         $('abrLaufBtn').addEventListener('click', rechnungslauf);
         $('abrFreigabeBtn').addEventListener('click', gibRueckspielenFrei);
+        $('abrSepaBtn').addEventListener('click', () => erzeugeSepa());
+        $('abrSepaNeuBtn').addEventListener('click', zeigeNeuAuswahl);
+        $('abrSepaNeuAbbruch').addEventListener('click', () => { $('abrSepaNeu').hidden = true; });
+        $('abrSepaNeuStart').addEventListener('click', () => {
+            const ids = [...document.querySelectorAll('.abr-sepa-haken:checked')].map((h) => Number(h.value)).filter(Number.isInteger);
+            erzeugeSepa({ neu: true, rechnungIds: ids });
+        });
         try {
             await lade();
         } catch {

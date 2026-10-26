@@ -23,6 +23,8 @@ export function getAbrechnungRoutes(knex, { sende = sendeMail } = {}) {
     router.post('/:turnierId/rechnungen/:rechnungId/senden', requireTurnierAdmin(knex), c.sendeErneut);
     router.post('/:turnierId/rechnungen/:rechnungId/bezahlt', requireTurnierAdmin(knex), c.setzeBezahlt);
     router.get('/:turnierId/rechnungen/:rechnungId/pdf', requireTurnierAdmin(knex), c.ladePdf);
+    router.get('/:turnierId/sepa', requireTurnierAdmin(knex), c.listeSepa);
+    router.post('/:turnierId/sepa', requireTurnierAdmin(knex), c.erzeugeSepa);
 
     return router;
 }
