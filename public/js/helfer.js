@@ -7,6 +7,7 @@ import { platzText, gruppiereNachBezeichnung, datumText, wartetAufFreischaltung 
 import { heuteBerlin, faelligkeitText, statusText, gruppiereAufgaben, zaehleOffene, tageBis } from '/js/shared/orgaAnzeige.js';
 import { formatiereMinuten } from '/js/shared/helferZeit.js';
 import { ansichtProfil } from '/js/helferProfil.js';
+import { ansichtNachrichten } from '/js/helferNachrichten.js';
 
 const TOKEN_SCHLUESSEL = 'dokume_token';
 const FRIST_TEXT = 'Bitte melde dich bei der Turnierleitung.';
@@ -462,7 +463,7 @@ function liesRoute() {
     const hash = decodeURIComponent(window.location.hash.slice(1));
     const treffer = /^turnier=(\d+)$/.exec(hash);
     if (treffer) return { reiter: 'turniere', turnierId: Number(treffer[1]) };
-    if (hash === 'dienste' || hash === 'aufgaben' || hash === 'profil') return { reiter: hash };
+    if (hash === 'dienste' || hash === 'aufgaben' || hash === 'nachrichten' || hash === 'profil') return { reiter: hash };
     return { reiter: 'turniere' };
 }
 
@@ -499,6 +500,7 @@ export async function zeige({ fokus } = {}) {
         if (route.turnierId) knoten = await ansichtDienste(route.turnierId);
         else if (route.reiter === 'dienste') knoten = await ansichtMeine();
         else if (route.reiter === 'aufgaben') knoten = await ansichtAufgaben();
+        else if (route.reiter === 'nachrichten') knoten = await ansichtNachrichten({ apiFetch, el, leer, aktualisiereZaehler: aktualisiereNachrichtenZaehler });
         else if (route.reiter === 'profil') knoten = await ansichtProfil({ apiFetch, ladeJson, el, abmelden, zeige });
         else knoten = await ansichtTurniere();
     } catch (e) {
