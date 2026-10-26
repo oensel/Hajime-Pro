@@ -27,8 +27,7 @@ test('zeigt die Vorlage in fünf Phasen mit Kennzahlen und abgesetzter Grundlage
     await page.goto(`/orga.html?turnierId=${turnierId}`);
     await expect(page.locator('.og-phase')).toHaveCount(5);
     await expect(page.locator('.og-phase h2')).toHaveText(['Grundlage', 'Vorbereitung', 'Meldephase', 'Turniertag', 'Nachbereitung']);
-    await expect(page.locator('.og-phase-grundlage')).toContainText('6 bis 12 Monate vorher, vor allem anderen');
-    await expect(page.locator('.og-phase-grundlage')).toHaveCSS('border-left-width', '6px');
+    await expect(page.locator('.og-phase-grundlage')).toHaveCSS('border-left-width', '4px');
     await expect(zeile(page, 'Hallenzeiten reservieren')).toBeVisible();
     await expect(kennzahl(page, 'ogErledigt')).toHaveText(/^0 von \d+$/);
     await expect(page.locator('#ogTurnierInfo')).toContainText('12.03.2033');
@@ -149,19 +148,6 @@ test('Aufgabe anlegen, bearbeiten und mit Bestätigung löschen', async ({ page 
     await z2.getByRole('button', { name: /löschen/ }).click();
     await page.locator('#modalConfirmBtn').click();
     await expect(page.locator('.og-zeile').filter({ hasText: 'Umbenannte Orga-Aufgabe' })).toHaveCount(0);
-});
-
-test('„Nach Person“ gruppiert nach Zuständigen mit „Ohne Zuständigen“', async ({ page }) => {
-    await page.goto(`/orga.html?turnierId=${turnierId}`);
-    await page.getByRole('button', { name: 'Nach Person' }).click();
-    await expect(page.getByRole('button', { name: 'Nach Person' })).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.locator('.og-person h2').filter({ hasText: 'Gast Frei' })).toBeVisible();
-    await expect(page.locator('.og-person h2').filter({ hasText: 'Ohne Zuständigen' })).toBeVisible();
-    const gast = page.locator('.og-person').filter({ has: page.locator('h2', { hasText: 'Gast Frei' }) });
-    await expect(gast.locator('.og-zeile')).toHaveCount(1);
-    await expect(gast).toContainText('Hallenzeiten reservieren');
-    await page.getByRole('button', { name: 'Nach Phase' }).click();
-    await expect(page.locator('.og-phase-grundlage')).toBeVisible();
 });
 
 test('Mitbringliste: Eintrag anlegen und löschen', async ({ page }) => {

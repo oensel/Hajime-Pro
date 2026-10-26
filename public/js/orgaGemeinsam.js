@@ -413,7 +413,16 @@ export function baueZeile(aufgabe, ctx, optionen) {
 
     const text = el('div', 'og-text');
     const titelZeile = el('div', 'og-titel-zeile');
-    titelZeile.append(el('span', 'og-titel', aufgabe.titel));
+    if (mitDetails && !postenModus) {
+        // Der Titel öffnet die Posten der Aufgabe
+        const titelLink = el('a', 'og-titel og-titel-link', aufgabe.titel);
+        titelLink.href = `/orga-aufgabe.html?id=${encodeURIComponent(aufgabe.id)}&turnierId=${encodeURIComponent(ctx.turnierId)}`;
+        titelLink.setAttribute('aria-label', `${aufgabe.titel}: Posten öffnen`);
+        titelLink.title = 'Posten öffnen';
+        titelZeile.append(titelLink);
+    } else {
+        titelZeile.append(el('span', 'og-titel', aufgabe.titel));
+    }
     if (postenModus && aufgabe.menge != null) titelZeile.append(el('span', 'og-menge', `${aufgabe.menge}×`));
     const url = !postenModus && aufgabe.link ? linkUrl(aufgabe.link, ctx.turnierId) : null;
     if (url) {
@@ -437,14 +446,6 @@ export function baueZeile(aufgabe, ctx, optionen) {
     if (faellig) chips.append(faellig);
 
     const aktionen = el('div', 'og-aktionen');
-    if (mitDetails && !postenModus) {
-        const oeffnen = el('a', 'og-icon-knopf og-oeffnen');
-        oeffnen.href = `/orga-aufgabe.html?id=${encodeURIComponent(aufgabe.id)}&turnierId=${encodeURIComponent(ctx.turnierId)}`;
-        oeffnen.setAttribute('aria-label', `${aufgabe.titel}: Posten öffnen`);
-        oeffnen.title = 'Posten öffnen';
-        oeffnen.append(el('span', 'material-icons', 'chevron_right'));
-        aktionen.append(oeffnen);
-    }
     if (mitAktionen) {
         const bearbeiten = el('button', 'og-icon-knopf');
         bearbeiten.type = 'button';
