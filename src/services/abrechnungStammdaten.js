@@ -27,6 +27,31 @@ export async function ladeStammdaten(knex, vereinId) {
     return zuStammdaten(zeile);
 }
 
+// Die Gläubiger-ID steht im Mandatstext und ist für den Einzug maßgeblich. Solange offene oder gültige Mandate mit der
+// bisherigen ID noch nicht eingezogen sind (keine Rechnung in einer SEPA-Datei), darf sie nicht geändert werden.
+async function pruefeGlaeubigerIdWechsel(knex, vereinId, bisherigeId) {
+    const zeile = await knex('lastschrift_mandate as m')
+        .join('turniere as t', 't.id', 'm.turnier_id')
+        .where('t.verein_id', vereinId)
+        .whereIn('m.status', ['unbestaetigt', 'gueltig'])
+        .where('m.glaeubiger_id', bisherigeId)
+        .whereNotExists(function eingezogen() {
+            this.select(knex.raw('1')).from('rechnungen as r')
+                .whereRaw('r.mandat_id = m.id')
+                .whereNot('r.status', 'zurueckgebucht')
+                .whereNotNull('r.sepa_datei_id');
+        })
+        .count({ anzahl: 'm.id' }).first();
+    const anzahl = Number(zeile?.anzahl ?? 0);
+    if (anzahl > 0) {
+        const teil = anzahl === 1
+            ? '1 Lastschriftmandat bezieht sich auf die bisherige Gläubiger-ID und wurde noch nicht eingezogen'
+            : `${anzahl} Lastschriftmandate beziehen sich auf die bisherige Gläubiger-ID und wurden noch nicht eingezogen`;
+        throw new FachFehler(409, `Die Gläubiger-ID kann nicht geändert werden: ${teil}. `
+            + 'Bitte diese Mandate zuerst widerrufen bzw. die Vereine auf einen anderen Zahlweg umstellen.');
+    }
+}
+
 export async function speichereStammdaten(knex, vereinId, eingabe, benutzerId) {
     const e = eingabe && typeof eingabe === 'object' ? eingabe : {};
     const werte = {};
@@ -68,6 +93,9 @@ export async function speichereStammdaten(knex, vereinId, eingabe, benutzerId) {
     werte.updated_at = knex.fn.now();
 
     const vorhanden = await knex('vereins_abrechnung').where({ verein_id: vereinId }).first();
+    if (vorhanden && 'glaeubiger_id' in werte && !leer(vorhanden.glaeubiger_id) && werte.glaeubiger_id !== vorhanden.glaeubiger_id) {
+        await pruefeGlaeubigerIdWechsel(knex, vereinId, vorhanden.glaeubiger_id);
+    }
     if (vorhanden) {
         await knex('vereins_abrechnung').where({ verein_id: vereinId }).update(werte);
     } else {

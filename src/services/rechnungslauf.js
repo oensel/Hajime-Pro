@@ -18,14 +18,14 @@ import {
     rechnungsArt, rechnungsAnzeigeStatus, angerechneterBetragCent
 } from '../shared/abrechnung.js';
 import { fruehestesFaelligkeitsdatum } from '../shared/targetKalender.js';
-import { ladeAbrechnung, vereineOhneGueltigesMandat } from './abrechnung.js';
+import { ladeAbrechnung, vereineOhneGueltigesMandat, mandatSperrText, glaeubigerIdGeaendertText } from './abrechnung.js';
 import { ladeStammdaten, ermittleZahlungsempfaenger } from './abrechnungStammdaten.js';
 import { erzeugeRechnungPdf, euro, datum, berechneOffenCent } from './rechnungPdf.js';
 import { maskiereIban } from '../shared/iban.js';
 import { ladeAusrichterNamen } from './zahlwegTransfer.js';
 
 const normName = (s) => String(s ?? '').trim().toLowerCase();
-const mandatFehltText = (vereinName) => `Verein ${vereinName} hat kein gültiges Mandat.`;
+const mandatFehltText = (vereinName) => mandatSperrText({ vereinName, hinweisCode: 'mandat' });
 
 // Spalten einer Rechnung für API-Antworten (ohne PDF).
 const RECHNUNG_SPALTEN = [
@@ -209,17 +209,24 @@ async function legeRechnungAn(knex, { turnier, vereinEintrag, zahlwegZeile, kopf
         let mandat = null;
         if (zahlwegZeile.zahlweg === 'lastschrift') {
             mandat = await trx('lastschrift_mandate')
-                .where({ turnier_id: turnier.id, status: 'gueltig' })
-                .whereRaw('lower(trim(verein_name)) = ?', [normName(zahlwegZeile.verein_name)])
-                .forShare().first('id', 'mandatsreferenz', 'iban_maske', 'erteilt_am');
+                .where({ turnier_id: turnier.id, zahlweg_id: zahlwegZeile.id, status: 'gueltig' })
+                .forShare().first('id', 'mandatsreferenz', 'iban_maske', 'erteilt_am', 'glaeubiger_id');
             const merker = await trx('turnier_zahlwege').where({ id: zahlwegZeile.id }).first('zahlweg', 'mandat_gueltig');
             if (!mandat || merker?.zahlweg !== 'lastschrift' || merker.mandat_gueltig !== true) {
                 throw new FachFehler(409, mandatFehltText(zahlwegZeile.verein_name));
             }
+            // Maßgeblich ist die im Mandat zugesagte Gläubiger-ID; weicht die der Rechnung ab: 409, keine Nummer.
+            if (mandat.glaeubiger_id !== kopf.aussteller.glaeubiger_id) {
+                throw new FachFehler(409, glaeubigerIdGeaendertText(zahlwegZeile.verein_name));
+            }
         }
         const zaehler = await trx('vereins_abrechnung').where({ verein_id: turnier.verein_id }).forUpdate()
-            .first('naechste_rechnungsnummer', 'rechnungs_praefix');
+            .first('naechste_rechnungsnummer', 'rechnungs_praefix', 'glaeubiger_id');
         if (!zaehler || !zaehler.rechnungs_praefix) throw new FachFehler(409, 'Die Abrechnungsdaten des Ausrichters sind unvollständig.');
+        // Stammdaten seit Laufbeginn geändert (Zeile ist jetzt gesperrt): ebenfalls vor dem Hochzählen abbrechen.
+        if (mandat && zaehler.glaeubiger_id !== mandat.glaeubiger_id) {
+            throw new FachFehler(409, glaeubigerIdGeaendertText(zahlwegZeile.verein_name));
+        }
         const nummer = formatiereRechnungsnummer(zaehler.rechnungs_praefix, zaehler.naechste_rechnungsnummer);
 
         const { anzahl, bezahltAnzahl, kaempfer } = vereinEintrag;
@@ -298,7 +305,7 @@ export async function erstelleRechnungen(knex, { turnier, benutzerId, sende = se
     }
 
     const ohneMandat = vereineOhneGueltigesMandat(abrechnung);
-    if (ohneMandat.length > 0) throw new FachFehler(409, ohneMandat.map((v) => mandatFehltText(v.vereinName)).join(' '));
+    if (ohneMandat.length > 0) throw new FachFehler(409, ohneMandat.map(mandatSperrText).join(' '));
 
     const hinweise = abrechnung.vereine
         .filter((v) => v.rechnungWeichtAb)

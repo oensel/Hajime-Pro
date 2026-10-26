@@ -130,15 +130,29 @@ export function heuteBerlin(jetzt = new Date()) {
     }).format(jetzt);
 }
 
+// Datum als 'JJJJ-MM-TT': Text wird abgeschnitten, ein Date-Objekt (pg-DATE ohne Typparser = lokale Mitternacht)
+// über die lokalen Anteile gelesen.
+function isoTag(wert) {
+    if (wert == null || wert === '') return null;
+    if (wert instanceof Date) {
+        if (Number.isNaN(wert.getTime())) return null;
+        const p = (n) => String(n).padStart(2, '0');
+        return `${wert.getFullYear()}-${p(wert.getMonth() + 1)}-${p(wert.getDate())}`;
+    }
+    return String(wert).slice(0, 10);
+}
+
 // L9: Eine Lastschrift-Rechnung gilt als "eingezogen" (abgeleitet, nicht gespeichert), sobald sie in einer SEPA-Datei
 // steht und das Einzugsdatum erreicht ist; bezahlt und zurückgebucht bleiben, wie sie sind.
 export function rechnungsAnzeigeStatus(rechnung, heute) {
-    const { status, zahlungsziel_datum: ziel } = rechnung;
-    if (rechnung.zahlweg === 'lastschrift' && rechnung.sepa_datei_id != null && rechnung.einzug_am
-        && String(rechnung.einzug_am).slice(0, 10) <= heute && status !== 'bezahlt' && status !== 'zurueckgebucht') {
+    const { status } = rechnung;
+    const ziel = isoTag(rechnung.zahlungsziel_datum);
+    const einzug = isoTag(rechnung.einzug_am);
+    if (rechnung.zahlweg === 'lastschrift' && rechnung.sepa_datei_id != null && einzug
+        && einzug <= heute && status !== 'bezahlt' && status !== 'zurueckgebucht') {
         return 'eingezogen';
     }
-    if (status === 'versandt' && ziel && String(ziel).slice(0, 10) < heute) return 'ueberfaellig';
+    if (status === 'versandt' && ziel && ziel < heute) return 'ueberfaellig';
     return status;
 }
 

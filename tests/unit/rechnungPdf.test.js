@@ -66,6 +66,11 @@ test('Lastschrift: Vorabankündigung mit Betrag, Einzugsdatum, Maske, Mandatsref
     assert.ok(!alles(baueRechnungsZeilen(mitBank)).includes('DE89'));
     assert.equal(braucheGirocode(mitBank), false);
 });
+test('Lastschrift ohne vollständige Angaben wirft statt einen Satz ohne Datum zu drucken', () => {
+    for (const lastschrift of [undefined, null, { ...LASTSCHRIFT, einzugAm: null }, { ...LASTSCHRIFT, ibanMaske: '' }, { ...LASTSCHRIFT, glaeubigerId: undefined }, { ...LASTSCHRIFT, mandatsreferenz: null }]) {
+        assert.throws(() => baueRechnungsZeilen(basis({ zahlweg: 'lastschrift', zahlung: null, lastschrift })), /Lastschriftangaben/);
+    }
+});
 test('Lastschrift-PDF wird erzeugt', async () => {
     const bytes = await erzeugeRechnungPdf(basis({ zahlweg: 'lastschrift', zahlung: null, zahlungszielDatum: null, lastschrift: LASTSCHRIFT }));
     assert.equal((await PDFDocument.load(bytes)).getTitle(), 'Rechnung JCK-00001');

@@ -154,7 +154,11 @@
         if (!daten.stammdaten.vollstaendig) return 'Die Abrechnungsdaten des Ausrichters sind unvollständig.';
         if (daten.nichtZugeordnet.length > 0) return 'Es gibt Kämpfer unter „Nicht zugeordnet“. Bitte zuerst zuordnen oder Rechnungsdaten erfassen.';
         const ohneMandat = offeneVereine().filter((v) => v.zahlweg === 'lastschrift' && v.hinweis);
-        if (ohneMandat.length > 0) return ohneMandat.map((v) => `Verein ${v.vereinName} hat kein gültiges Mandat.`).join(' ');
+        if (ohneMandat.length > 0) {
+            return ohneMandat.map((v) => (v.hinweisCode === 'glaeubiger_id'
+                ? `Die Gläubiger-ID des Ausrichters hat sich seit dem Mandat von Verein ${v.vereinName} geändert.`
+                : `Verein ${v.vereinName} hat kein gültiges Mandat.`)).join(' ');
+        }
         if (offeneVereine().length === 0) return 'Es gibt keine Vereine, für die noch eine Rechnung zu erstellen ist.';
         return null;
     }
