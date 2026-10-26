@@ -62,7 +62,7 @@ export async function uebernehmeNeueZahlwege(trx, turnierId, zahlwege) {
         const geprueft = pruefeTransferZeile(z);
         if (!geprueft || bestehend.has(norm(geprueft.verein_name)) || ausrichter.has(norm(geprueft.verein_name))) continue;
         bestehend.add(norm(geprueft.verein_name));
-        zeilen.push({ turnier_id: turnierId, ...geprueft, zahlweg: 'bar', verein_id: null, geaendert_von: null });
+        zeilen.push({ turnier_id: turnierId, ...geprueft, zahlweg: 'bar', mandat_gueltig: false, verein_id: null, geaendert_von: null });
     }
     if (zeilen.length) await trx('turnier_zahlwege').insert(zeilen);
     return zeilen.length;

@@ -1813,7 +1813,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     return td;
                 };
                 zelle(e.vereinName);
-                zelle(e.zahlweg === 'ohneZahlweg' ? 'ohne Zahlweg' : 'Bar');
+                zelle(e.zahlweg === 'ohneZahlweg' ? 'ohne Zahlweg' : e.zahlweg === 'lastschriftOffen' ? 'Lastschrift nicht bestätigt (bar)' : 'Bar');
                 zelle(String(e.anzahlKaempfer), true);
                 zelle(String(e.anzahlOffen), true);
                 const aktion = document.createElement('td');

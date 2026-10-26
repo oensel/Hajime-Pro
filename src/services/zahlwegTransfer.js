@@ -1,4 +1,4 @@
-import { istGueltigeEmail } from '../shared/zahlweg.js';
+import { istGueltigeEmail, istZahlwegGesichert } from '../shared/zahlweg.js';
 
 // Zahlwege im Turnier-Export/-Import (Cloud <-> Hallen-Server). Exportiert werden nur Namen und Rechnungsdaten,
 // kein Benutzer- und kein Vereinsbezug (geaendert_von/verein_id). Das Flag startgeld_zahlweg_gesichert reist nicht mit,
@@ -9,13 +9,14 @@ export async function exportiereZahlwege(knex, turnierId) {
     return zeilen.map((z) => ({
         verein_name: z.verein_name,
         zahlweg: z.zahlweg,
+        gesichert: istZahlwegGesichert(z),
         rechnung_email: z.rechnung_email ?? null,
         rechnung_ansprechperson: z.rechnung_ansprechperson ?? null,
         rechnung_anschrift: z.rechnung_anschrift ?? null
     }));
 }
 
-const IMPORT_ZAHLWEGE = ['ueberweisung', 'bar'];
+const IMPORT_ZAHLWEGE = ['ueberweisung', 'bar', 'lastschrift'];
 const MAX = { verein_name: 1000, rechnung_email: 255, rechnung_ansprechperson: 255, rechnung_anschrift: 1000 };
 
 // Pflichtfeld bzw. optionales Textfeld aus einer Datei: getrimmter String (null bei fehlend), undefined = ungültig.
@@ -33,12 +34,14 @@ export function pruefeTransferZeile(z) {
     const name = textFeld(z.verein_name, MAX.verein_name, true);
     if (!name) return null;
     if (!IMPORT_ZAHLWEGE.includes(z.zahlweg)) return null;
+    // gesichert ist optional (ältere Dateien), muss aber ein Boolean sein; nur bei Lastschrift hat es Wirkung.
+    if (z.gesichert !== undefined && z.gesichert !== null && typeof z.gesichert !== 'boolean') return null;
     const email = textFeld(z.rechnung_email, MAX.rechnung_email, false);
     const person = textFeld(z.rechnung_ansprechperson, MAX.rechnung_ansprechperson, false);
     const anschrift = textFeld(z.rechnung_anschrift, MAX.rechnung_anschrift, false);
     if (email === undefined || person === undefined || anschrift === undefined) return null;
     if (email !== null && !istGueltigeEmail(email)) return null;
-    return { verein_name: name, zahlweg: z.zahlweg, rechnung_email: email, rechnung_ansprechperson: person, rechnung_anschrift: anschrift };
+    return { verein_name: name, zahlweg: z.zahlweg, mandat_gueltig: z.zahlweg === 'lastschrift' && z.gesichert === true, rechnung_email: email, rechnung_ansprechperson: person, rechnung_anschrift: anschrift };
 }
 
 // Namen des Ausrichters (Freitext `ausrichter` und Name des ausrichtenden Vereins): für ihn gibt es nie eine Zahlweg-Zeile.

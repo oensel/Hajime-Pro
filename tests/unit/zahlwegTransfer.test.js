@@ -44,7 +44,7 @@ test('Zahlwege im Turnier-Export und -Import', async () => {
         const export1 = await baueTurnierExport(knex, t.id);
         assert.equal(export1.zahlwege.length, 2);
         for (const z of export1.zahlwege) {
-            assert.deepEqual(Object.keys(z).sort(), ['rechnung_anschrift', 'rechnung_ansprechperson', 'rechnung_email', 'verein_name', 'zahlweg']);
+            assert.deepEqual(Object.keys(z).sort(), ['gesichert', 'rechnung_anschrift', 'rechnung_ansprechperson', 'rechnung_email', 'verein_name', 'zahlweg']);
         }
         assert.ok(!JSON.stringify(export1.zahlwege).includes('u1'));
 
@@ -95,7 +95,7 @@ test('Import verwirft ungültige Zahlweg-Zeilen und speist keine Vorbelegung', a
         const gut = { verein_name: '  JC Gut ', zahlweg: 'bar', ...MAIL };
         const n = await knex.transaction((trx) => ersetzeZahlwege(trx, t.id, [
             gut,
-            { verein_name: 'JC Lastschrift', zahlweg: 'lastschrift', ...MAIL },
+            { verein_name: 'JC Lastschrift', zahlweg: 'lastschrift', gesichert: 'ja', ...MAIL },
             { verein_name: 'JC X', zahlweg: 'x', ...MAIL },
             { verein_name: 'JC Zahl', zahlweg: 'bar', ...MAIL, rechnung_email: 5 },
             { verein_name: 'JC Obj', zahlweg: 'bar', ...MAIL, rechnung_anschrift: { a: 1 } },
@@ -215,7 +215,7 @@ test('Exportdatei: barzahlungen und anzahl, Import übernimmt Barzahlungen einma
         assert.equal(await knex.transaction((trx) => uebernehmeBarzahlungen(trx, turnierId, undefined)), 0);
         assert.deepEqual((await exportiereBarzahlungen(knex, turnierId)).map((b) => b.uid), ['22222222-2222-4222-8222-222222222222']);
 
-        assert.equal(pruefeTransferZeile({ verein_name: 'X', zahlweg: 'lastschrift' }), null);
+        assert.equal(pruefeTransferZeile({ verein_name: 'X', zahlweg: 'sepa' }), null);
         assert.equal(pruefeTransferZeile(null), null);
         assert.equal(pruefeTransferZeile({ verein_name: ' JC A ', zahlweg: 'bar', rechnung_email: 'a@b.de' }).verein_name, 'JC A');
     } finally {

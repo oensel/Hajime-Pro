@@ -165,7 +165,8 @@ export async function synchronisiereGesichert(knex, turnierId, { statusAbleiten 
     });
 }
 
-// Vereine, die ihr Startgeld an der Kasse bar zahlen: Zahlweg Bar oder keine Wahl getroffen (und nicht Ausrichter).
+// Vereine, die ihr Startgeld an der Kasse bar zahlen: Zahlweg Bar, keine Wahl getroffen oder Lastschrift ohne gültiges Mandat
+// (Anzeige 'lastschriftOffen'); nie der Ausrichter.
 export async function ladeKasse(knex, turnierId) {
     const turnier = await knex('turniere').where({ id: turnierId }).first();
     if (!turnier) return [];
@@ -179,11 +180,14 @@ export async function ladeKasse(knex, turnierId) {
     for (const t of teilnehmer) {
         if (ausrichter && t.verein === ausrichter) continue;
         const zeile = zahlwege.get(t.verein);
-        if (zeile && zeile.zahlweg !== 'bar') continue;
+        // Gesicherte Zahlwege (Überweisung, Lastschrift mit gültigem Mandat) sind nicht an der Kasse; eine Lastschrift ohne
+        // gültiges Mandat sichert nichts, dort kassiert die Kasse bar (z. B. am Hallen-Server, wo nur das Flag ankommt).
+        if (zeile && zeile.zahlweg !== 'bar' && istZahlwegGesichert(zeile)) continue;
+        if (zeile && zeile.zahlweg !== 'bar' && zeile.zahlweg !== 'lastschrift') continue;
         if (!nachVerein.has(t.verein)) {
             nachVerein.set(t.verein, {
                 vereinName: t.verein,
-                zahlweg: zeile ? 'bar' : 'ohneZahlweg',
+                zahlweg: !zeile ? 'ohneZahlweg' : zeile.zahlweg === 'lastschrift' ? 'lastschriftOffen' : 'bar',
                 anzahlKaempfer: 0,
                 anzahlOffen: 0,
                 rechnungEmail: zeile?.rechnung_email || null
