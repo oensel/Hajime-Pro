@@ -430,7 +430,9 @@ export function baueZeile(aufgabe, ctx, optionen) {
         titelZeile.append(el('span', 'og-titel', aufgabe.titel));
     }
     if (postenModus && aufgabe.menge != null) titelZeile.append(el('span', 'og-menge', `${aufgabe.menge}×`));
-    const url = !postenModus && aufgabe.link ? linkUrl(aufgabe.link, ctx.turnierId) : null;
+    // „Zum Helferplan“ nur bei „Helferbedarf festlegen“, bei den übrigen Aufgaben wäre er Rauschen
+    const linkErlaubt = aufgabe.link !== 'helferplan' || aufgabe.vorlage_key === 'helferbedarf';
+    const url = !postenModus && aufgabe.link && linkErlaubt ? linkUrl(aufgabe.link, ctx.turnierId) : null;
     if (url) {
         const a = el('a', 'og-link', LINK_TEXTE[aufgabe.link] || 'Öffnen');
         a.href = url;
