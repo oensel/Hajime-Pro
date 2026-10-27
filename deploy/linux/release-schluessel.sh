@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Wird von install.sh und install-cluster.sh eingelesen (source): übernimmt den Cloud-Zugang, den holen.sh im Quellordner
 # abgelegt hat. Der Geräteschlüssel (Updates ohne Handarbeit, Spec docs/specs/2026-10-24-downloads-ueber-cloud-design.md) kommt nach
 # <Installation>/data/release-schluessel, die Cloud-Adresse dient als CLOUD_URL.
