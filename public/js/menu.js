@@ -133,6 +133,18 @@ function merkeMenueStand() {
 }
 window.addEventListener('pagehide', merkeMenueStand);
 
+// Ein Sektionstitel (Vorbereitung, Ergebnisse …) steht nur, solange darunter mindestens ein Punkt sichtbar ist.
+function aktualisiereMenueSektionen() {
+    for (const titel of document.querySelectorAll('.app-sidebar:not(.menue-platzhalter) .menu-sektion-titel')) {
+        let sichtbar = false;
+        for (let el = titel.nextElementSibling; el && !el.classList.contains('menu-sektion-titel'); el = el.nextElementSibling) {
+            if (el.classList.contains('menu-trenner')) continue;
+            if (el.style.display !== 'none') { sichtbar = true; break; }
+        }
+        titel.classList.toggle('leer', !sichtbar);
+    }
+}
+
 // Alle Sperr-/Versteck-Entscheidungen sind getroffen: echtes Menü zeigen, Platzhalter entfernen.
 function gibMenueFrei() {
     const teile = Array.from(document.querySelectorAll('.app-sidebar, .top-header-bar'))
@@ -340,6 +352,7 @@ function baueMenueGeruest() {
                 </a>
             </nav>
             <nav class="sidebar-nav" id="sidebarNavPrimary" style="visibility: hidden;">
+                <div class="menu-sektion-titel" id="nav-sek-vorbereitung">Vorbereitung</div>
                 <a href="/turnier.html" class="menu-item" id="nav-turnier">
                     <span class="material-icons">emoji_events</span>
                     <span class="menu-text">Turnier</span>
@@ -352,8 +365,11 @@ function baueMenueGeruest() {
                     </button>
                     <ul class="menu-untermenue" id="nav-orga-liste">
                         <li><a href="/helfer-plan.html" class="menu-item menu-subitem" id="nav-helfer"><span class="menu-text">Helfer</span></a></li>
-                        <li>
-                            <a href="/orga.html" class="menu-item menu-subitem" id="nav-orga-uebersicht"><span class="menu-text">Aufgaben</span></a>
+                        <li class="menu-aufgaben" id="nav-orga-aufgaben">
+                            <a href="/orga.html" class="menu-item menu-subitem" id="nav-orga-uebersicht"><span class="menu-text">Aufgaben</span><span class="menu-item-badge" id="nav-orga-aufgaben-zaehler" style="display: none;"></span></a>
+                            <button type="button" class="menu-aufgaben-pfeil" id="nav-orga-aufgaben-pfeil" aria-expanded="true" aria-controls="nav-orga-kategorien" title="Aufgaben auf- oder zuklappen">
+                                <span class="material-icons" id="nav-orga-aufgaben-pfeil-icon" aria-hidden="true">expand_more</span>
+                            </button>
                             <ul class="menu-untermenue menu-kategorien" id="nav-orga-kategorien">
                                 <li><a href="#" class="menu-item menu-subitem" id="nav-orga-technik" data-ohne-turnier style="display: none;"><span class="menu-text">Technik</span><span class="menu-item-badge" style="display: none;"></span></a></li>
                                 <li><a href="#" class="menu-item menu-subitem" id="nav-orga-catering" data-ohne-turnier style="display: none;"><span class="menu-text">Catering</span><span class="menu-item-badge" style="display: none;"></span></a></li>
@@ -381,18 +397,20 @@ function baueMenueGeruest() {
                     <span class="material-icons">layers</span>
                     <span class="menu-text">Matten</span>
                 </a>
+                <div class="menu-sektion-titel" id="nav-sek-ergebnisse">Ergebnisse</div>
                 <a href="/kampf.html" class="menu-item" id="nav-kampf">
                     <span class="material-icons">sports_kabaddi</span>
                     <span class="menu-text">Kampf</span>
-                </a>
-                <a href="/siegerliste.html" class="menu-item" id="nav-siegerliste">
-                    <span class="material-icons">military_tech</span>
-                    <span class="menu-text">Siegerliste</span>
                 </a>
                 <a href="/urkunden.html" class="menu-item" id="nav-urkunden">
                     <span class="material-icons">workspace_premium</span>
                     <span class="menu-text">Urkunden</span>
                 </a>
+                <a href="/siegerliste.html" class="menu-item" id="nav-siegerliste">
+                    <span class="material-icons">military_tech</span>
+                    <span class="menu-text">Siegerliste</span>
+                </a>
+                <div class="menu-sektion-titel" id="nav-sek-ansichten">Ansichten</div>
                 <a href="/dashboard.html" class="menu-item" id="nav-dashboard">
                     <span class="material-icons">dashboard</span>
                     <span class="menu-text">Dashboard</span>
@@ -403,6 +421,7 @@ function baueMenueGeruest() {
                 </a>
             </nav>
             <nav class="sidebar-nav-unten" id="sidebarNavUnten">
+                <div class="menu-sektion-titel" id="nav-sek-verwaltung">Verwaltung</div>
                 <a href="/admin-nutzer.html" class="menu-item" id="nav-mitglieder" data-ohne-turnier style="display: none;">
                     <span class="material-icons">manage_accounts</span>
                     <span class="menu-text">Mitglieder<span class="menu-badge" id="nav-mitglieder-zaehler" style="display: none;"></span></span>
@@ -478,12 +497,9 @@ function baueMenueGeruest() {
                     <span class="menu-text">Konsole</span>
                 </a>
             </nav>
-            <div class="sidebar-footer">
-                <button type="button" class="menu-item sidebar-collapse-btn" id="sidebarCollapseBtn" title="Navigation einklappen">
-                    <span class="material-icons" id="sidebarCollapseIcon">keyboard_double_arrow_left</span>
-                    <span class="menu-text">Einklappen</span>
-                </button>
-            </div>
+            <button type="button" class="sidebar-collapse-btn" id="sidebarCollapseBtn" title="Navigation einklappen" aria-label="Navigation einklappen">
+                <span class="material-icons" id="sidebarCollapseIcon">keyboard_double_arrow_left</span>
+            </button>
         </div>
 
         <div class="top-header-bar">
@@ -1494,7 +1510,15 @@ async function initialisiereMenue() {
     // zugehörigkeit, Stufen-Voraussetzungen) getroffen — die Menüpunkte waren bis hierhin bewusst
     // unsichtbar (bzw. stand der gemerkte Stand als Platzhalter da), damit sie nicht kurz erscheinen
     // und sofort wieder verschwinden.
+    aktualisiereMenueSektionen();
     gibMenueFrei();
+
+    // Später ein-/ausgeblendete Punkte (Zähler, Rollen, Orga nach dem Laden) ziehen die Sektionstitel nach
+    const echteSidebar = document.querySelector('.app-sidebar:not(.menue-platzhalter)');
+    if (echteSidebar) {
+        new MutationObserver(aktualisiereMenueSektionen)
+            .observe(echteSidebar, { subtree: true, attributes: true, attributeFilter: ['style'] });
+    }
 
     initialisiereOrgaMenue();
 
@@ -1532,6 +1556,27 @@ async function initialisiereMenue() {
             try { localStorage.setItem(SPEICHER_KEY, String(neu)); } catch { /* ohne Speicher */ }
         });
 
+        // „Aufgaben“ lässt sich separat zuklappen; auf einer Kategorie-Seite bleibt sie offen, damit die aktive Zeile sichtbar ist
+        const aufgabenPfeil = document.getElementById('nav-orga-aufgaben-pfeil');
+        const aufgabenGruppe = document.getElementById('nav-orga-aufgaben');
+        if (aufgabenPfeil && aufgabenGruppe) {
+            const AUFGABEN_KEY = 'hajime-orga-aufgaben-offen';
+            let aufgabenOffen = true;
+            try { if (localStorage.getItem(AUFGABEN_KEY) === 'false') aufgabenOffen = false; } catch { /* ohne Speicher: offen */ }
+            if (aufgabeId) aufgabenOffen = true;
+            const zeigeAufgaben = (o) => {
+                aufgabenPfeil.setAttribute('aria-expanded', String(o));
+                aufgabenGruppe.classList.toggle('zugeklappt', !o);
+                document.getElementById('nav-orga-aufgaben-pfeil-icon').textContent = o ? 'expand_more' : 'chevron_right';
+            };
+            zeigeAufgaben(aufgabenOffen);
+            aufgabenPfeil.addEventListener('click', () => {
+                const neu = aufgabenPfeil.getAttribute('aria-expanded') !== 'true';
+                zeigeAufgaben(neu);
+                try { localStorage.setItem(AUFGABEN_KEY, String(neu)); } catch { /* ohne Speicher */ }
+            });
+        }
+
         // Aktiv-Markierung (Technik & Co. folgen nach dem Laden der Aufgaben)
         if (seiteIstOrga) kopf.classList.add('active');
         if (currentPath.includes('orga.html')) {
@@ -1553,6 +1598,8 @@ async function initialisiereMenue() {
             // Eigene Kategorien (neue Kategorie auf orga.html) hängen unter „Aufgaben“, neu aufgebaut bei jedem Laden
             const kategorien = document.getElementById('nav-orga-kategorien');
             kategorien.querySelectorAll('.nav-orga-eigene').forEach((li) => li.remove());
+            let summeErledigt = 0;
+            let summeGesamt = 0;
             for (const aufgabe of daten.phasen.flatMap((p) => p.aufgaben || []).filter((x) => x.art === 'kategorie')) {
                 const li = document.createElement('li');
                 li.className = 'nav-orga-eigene';
@@ -1569,7 +1616,11 @@ async function initialisiereMenue() {
                 li.appendChild(link);
                 kategorien.appendChild(li);
                 const st = aufgabe.status;
-                if (st && st.gesamt > 0 && (aufgabe.kinder || []).length) setzeZaehler(link, `${st.erledigt}/${st.gesamt}`);
+                if (st && st.gesamt > 0 && (aufgabe.kinder || []).length) {
+                    setzeZaehler(link, `${st.erledigt}/${st.gesamt}`);
+                    summeErledigt += st.erledigt;
+                    summeGesamt += st.gesamt;
+                }
                 if (aufgabeId && String(aufgabe.id) === String(aufgabeId)) link.classList.add('active');
             }
             for (const aufgabe of daten.phasen.flatMap((p) => p.aufgaben || [])) {
@@ -1578,9 +1629,15 @@ async function initialisiereMenue() {
                 a.setAttribute('href', `/orga-aufgabe.html?id=${aufgabe.id}&turnierId=${encodeURIComponent(turnierId)}`);
                 a.style.display = '';
                 const st = aufgabe.status;
-                if (st && st.gesamt > 0) setzeZaehler(a, `${st.erledigt}/${st.gesamt}`);
+                if (st && st.gesamt > 0) {
+                    setzeZaehler(a, `${st.erledigt}/${st.gesamt}`);
+                    summeErledigt += st.erledigt;
+                    summeGesamt += st.gesamt;
+                }
                 if (aufgabeId && String(aufgabe.id) === String(aufgabeId)) a.classList.add('active');
             }
+            // Summe aller Kategorien hinter „Aufgaben“, damit der Stand auch zugeklappt sichtbar bleibt
+            setzeZaehler(document.getElementById('nav-orga-uebersicht'), summeGesamt > 0 ? `${summeErledigt}/${summeGesamt}` : '');
             if (aufgabeId && !liste.querySelector('.menu-subitem.active')) {
                 document.getElementById('nav-orga-uebersicht').classList.add('active');
             }
@@ -1614,6 +1671,7 @@ async function initialisiereMenue() {
             document.body.classList.toggle('sidebar-collapsed', eingeklappt);
             sidebarCollapseIcon.innerText = eingeklappt ? 'keyboard_double_arrow_right' : 'keyboard_double_arrow_left';
             sidebarCollapseBtn.title = eingeklappt ? 'Navigation ausklappen' : 'Navigation einklappen';
+            sidebarCollapseBtn.setAttribute('aria-label', sidebarCollapseBtn.title);
         };
 
         const gespeichertEingeklappt = localStorage.getItem('hajime-sidebar-collapsed') === 'true';

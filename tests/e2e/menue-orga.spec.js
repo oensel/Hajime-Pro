@@ -29,7 +29,7 @@ test('Hauptleiste enthält Orga mit Untermenü in fester Reihenfolge, Turniere o
     await expect(page.locator('#nav-orga-liste a .menu-text')).toHaveText(
         ['Helfer', 'Aufgaben', 'Technik', 'Catering', 'Medaillen und Pokale']);
     // Technik, Catering und Medaillen hängen eingerückt unter „Aufgaben“
-    await expect(page.locator('#nav-orga-uebersicht + #nav-orga-kategorien #nav-orga-technik')).toHaveCount(1);
+    await expect(page.locator('#nav-orga-uebersicht ~ #nav-orga-kategorien #nav-orga-technik')).toHaveCount(1);
     // direkt nach „Turnier“
     const reihenfolge = await page.locator('#sidebarNavPrimary > *').evaluateAll((els) => els.map((e) => e.id));
     expect(reihenfolge.indexOf('nav-orga')).toBe(reihenfolge.indexOf('nav-turnier') + 1);
@@ -124,4 +124,52 @@ test('Telefonbreite: Orga-Symbol sichtbar, Untermenü ausgeblendet, Klick öffne
     await expect(page.locator('#nav-orga-liste')).toBeHidden();
     await kopf(page).click();
     await expect(page).toHaveURL(new RegExp(`/orga\\.html\\?turnierId=${turnierId}`));
+});
+
+test('Sektionstitel gliedern das Menü, Urkunden steht vor der Siegerliste, Matten bei der Vorbereitung', async ({ page }) => {
+    await page.goto(`/turnier.html?id=${turnierId}`);
+    await expect(page.locator('#nav-sek-vorbereitung')).toBeVisible();
+    const gewuenscht = ['nav-sek-vorbereitung', 'nav-turnier', 'nav-orga', 'nav-teilnehmer', 'nav-pools', 'nav-matten',
+        'nav-sek-ergebnisse', 'nav-kampf', 'nav-urkunden', 'nav-siegerliste', 'nav-sek-ansichten', 'nav-dashboard', 'nav-uebersicht'];
+    const ids = await page.locator('#sidebarNavPrimary > *').evaluateAll((els) => els.map((e) => e.id));
+    expect(ids.filter((id) => gewuenscht.includes(id))).toEqual(gewuenscht);
+    await expect(page.locator('#nav-sek-ergebnisse')).toHaveText('Ergebnisse');
+    await expect(page.locator('#sidebarNavUnten > #nav-sek-verwaltung')).toHaveText('Verwaltung');
+});
+
+test('Aufgaben lässt sich zuklappen, zeigt die Summe der Kategorien und merkt sich den Zustand', async ({ page }) => {
+    await page.goto(`/turnier.html?id=${turnierId}`);
+    const pfeil = page.locator('#nav-orga-aufgaben-pfeil');
+    const summe = page.locator('#nav-orga-aufgaben-zaehler');
+    await expect(pfeil).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.locator('#nav-orga-kategorien')).toBeVisible();
+    await expect(summe).toBeVisible();
+    const zaehler = await page.locator('#nav-orga-kategorien .menu-item-badge:visible').allTextContents();
+    const teile = zaehler.map((t) => t.split('/').map(Number));
+    const erledigt = teile.reduce((s, [e]) => s + e, 0);
+    const gesamt = teile.reduce((s, [, g]) => s + g, 0);
+    await expect(summe).toHaveText(`${erledigt}/${gesamt}`);
+
+    await pfeil.click();
+    await expect(pfeil).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.locator('#nav-orga-kategorien')).toBeHidden();
+    await expect(summe).toBeVisible();
+    await page.reload();
+    await expect(pfeil).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.locator('#nav-orga-kategorien')).toBeHidden();
+    await pfeil.click();
+    await expect(page.locator('#nav-orga-kategorien')).toBeVisible();
+});
+
+test('Einklappen ist kein Menüpunkt, sondern ein Kreis unten rechts in der Seitenleiste', async ({ page }) => {
+    await page.goto(`/turnier.html?id=${turnierId}`);
+    const knopf = page.locator('#sidebarCollapseBtn');
+    await expect(knopf).toBeVisible();
+    await expect(page.locator('#sidebarCollapseBtn .menu-text')).toHaveCount(0);
+    await expect(knopf).toHaveCSS('position', 'fixed');
+    const k = await knopf.boundingBox();
+    const s = await page.locator('.app-sidebar').boundingBox();
+    const hoehe = page.viewportSize().height;
+    expect(s.x + s.width - (k.x + k.width)).toBeLessThan(30);
+    expect(hoehe - (k.y + k.height)).toBeLessThan(30);
 });
