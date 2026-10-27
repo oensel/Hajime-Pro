@@ -4,6 +4,7 @@
 import { sendeMail } from '../utils/mailer.js';
 import { FachFehler } from '../utils/fachFehler.js';
 import { HINWEIS_FEHLENDE_BASIS_URL } from '../utils/basisUrl.js';
+import { helferAppLink } from '../utils/helferAppLink.js';
 import { erzeugeEinladung, legeMitgliedschaftAn, EINLADUNG_GUELTIG_TAGE } from './orgaEinladung.js';
 import { findeKontoPerEmail, normalisiereEmail, MAX_EMAIL_LAENGE } from './registrierung.js';
 import { istFreigegebenesMitglied } from '../utils/vereinHelper.js';
@@ -50,19 +51,22 @@ export function basis(basisUrl) {
 function zuordnungsMailText(vereinName, link) {
     return `Hallo,
 
-${vereinName} hat Sie in Hajime Pro als Helfer aufgenommen. Sie können sich mit Ihrem bestehenden Konto anmelden und ${vereinName} im Vereinswechsler wählen:
+${vereinName} hat Sie in Hajime Pro als Helfer aufgenommen. Melden Sie sich in der Helfer-App mit Ihrem bestehenden Konto an und wählen Sie ${vereinName} im Vereinswechsler:
 ${link}
 
 Falls Sie das nicht erwartet haben, wenden Sie sich bitte an den Verein.`;
 }
 
-function mailText(vereinName, link) {
+function mailText(vereinName, link, appLink) {
     return `Hallo,
 
 ${vereinName} lädt Sie als Helfer zu Hajime Pro ein.
 
 Über diesen Link legen Sie Ihr Konto an (Vor- und Nachname sowie ein Passwort festlegen, danach sind Sie sofort freigeschaltet; ${EINLADUNG_GUELTIG_TAGE} Tage gültig, nur einmal verwendbar):
 ${link}
+
+Danach finden Sie Ihre Dienste und Aufgaben in der Helfer-App:
+${appLink}
 
 Falls Sie die Einladung nicht erwartet haben, können Sie diese Mail ignorieren.`;
 }
@@ -107,7 +111,7 @@ export async function sendeHelferEinladungen(knex, { vereinId, eingabe, basisUrl
                 await sende({
                     to: email,
                     subject: `Hajime Pro: Sie gehören jetzt zu ${verein.name}`,
-                    text: zuordnungsMailText(verein.name, `${b}/login.html`)
+                    text: zuordnungsMailText(verein.name, helferAppLink(b))
                 });
             } catch (err) {
                 console.error('[Helfer-Einladung] Info-Mail fehlgeschlagen:', err.message);
@@ -119,7 +123,7 @@ export async function sendeHelferEinladungen(knex, { vereinId, eingabe, basisUrl
             await sende({
                 to: email,
                 subject: `Hajime Pro: Einladung von ${verein.name}`,
-                text: mailText(verein.name, `${b}/einladung.html?token=${encodeURIComponent(token)}`)
+                text: mailText(verein.name, `${b}/einladung.html?token=${encodeURIComponent(token)}`, helferAppLink(b))
             });
             ergebnisse.push({ email, status: 'gesendet' });
         } catch (err) {

@@ -9,6 +9,7 @@ import { normalisiereBasisUrl } from '../utils/basisUrl.js';
 import { datumAlsText, heuteBerlin } from './helferPlan.js';
 import { ladeZaehlung } from './orgaPlan.js';
 import { berechneStatus } from '../shared/orgaStatus.js';
+import { helferAppAbsatz } from '../utils/helferAppLink.js';
 
 const VORLAUF_TAGE = 3;
 
@@ -57,7 +58,7 @@ function baueMail(eintraege, basisUrl) {
         }
         bloecke.push(`Turnier ${t.text}:\n${zeilen.join('\n')}`);
     }
-    const link = konto && basisUrl ? `\n\nIhre Aufgaben sehen Sie in der Helfer-App:\n${basisUrl}/helfer.html#aufgaben` : '';
+    const link = konto ? helferAppAbsatz(basisUrl, 'aufgaben', 'Ihre Aufgaben sehen Sie in der Helfer-App:') : '';
     const einzeln = eintraege.length === 1 ? eintraege[0] : null;
     return {
         subject: einzeln

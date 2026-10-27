@@ -6,6 +6,8 @@ import { sendeMail } from '../utils/mailer.js';
 import { ermittleHelferplanTurnierId } from '../middleware/auth.js';
 import * as plan from '../services/helferPlan.js';
 import { erzeugeAusweisPdf } from '../services/helferAusweis.js';
+import { ermittleBasisUrl } from '../utils/basisUrl.js';
+import { helferAppAbsatz } from '../utils/helferAppLink.js';
 
 /** Antwort für Fehler aus Service-Funktionen: FachFehler mit Status, Meldung, code und daten; sonst 500. */
 export function sendeFehler(res, error, kontext) {
@@ -85,7 +87,7 @@ export function dienstTagText(datumIso, tagVersatz) {
 /**
  * Mail an die Konten, deren Dienstzeit sich geändert hat. Fehler beim Versand werden nur geloggt.
  */
-async function benachrichtigeUeberZeitaenderung(knex, slotId, benutzerIds, sende) {
+async function benachrichtigeUeberZeitaenderung(knex, slotId, benutzerIds, sende, basisUrl) {
     if (!benutzerIds.length) return;
     try {
         const info = await knex('helfer_slots as s')
@@ -105,7 +107,7 @@ async function benachrichtigeUeberZeitaenderung(knex, slotId, benutzerIds, sende
 
 Dein Dienst „${info.taetigkeit}“ beim Turnier „${info.turnier}“ am ${dienstTagText(plan.datumAlsText(info.datum), info.tag_versatz)} ist jetzt von ${uhrzeit(info.von_min)} bis ${uhrzeit(info.bis_min)} Uhr.
 
-Wenn du zu dieser Zeit nicht kannst, melde dich bitte bei der Turnierleitung.`
+Wenn du zu dieser Zeit nicht kannst, melde dich bitte bei der Turnierleitung.${helferAppAbsatz(basisUrl, 'dienste', 'Deine Dienste in der Helfer-App:')}`
                 });
             } catch (err) {
                 console.error('[Helferplan-Mail-Fehler]:', err.message);
@@ -192,7 +194,7 @@ export async function aendereSlotRoute(knex, req, res, { sende = sendeMail } = {
         const { betroffeneBenutzerIds } = await plan.aendereSlot(knex, slotId, {
             von_min, bis_min, bedarf, bestaetigt: istBestaetigt(req)
         });
-        await benachrichtigeUeberZeitaenderung(knex, slotId, betroffeneBenutzerIds, sende);
+        await benachrichtigeUeberZeitaenderung(knex, slotId, betroffeneBenutzerIds, sende, ermittleBasisUrl(req));
         res.json({ success: true, benachrichtigt: betroffeneBenutzerIds.length });
     } catch (error) {
         sendeFehler(res, error, 'Helferplan-Slot-Aendern');

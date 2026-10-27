@@ -8,6 +8,8 @@
 //                              ein Eingabefehler (400) lässt ihn gültig.
 // Danach bekommt der Antragsteller eine Ergebnis-Mail; ein Mailfehler ändert am Ergebnis nichts.
 import { sendeMail } from '../utils/mailer.js';
+import { ermittleBasisUrl } from '../utils/basisUrl.js';
+import { helferAppAbsatz } from '../utils/helferAppLink.js';
 import { pruefeToken, verbrauchePruefe, tokenBekannt } from '../services/einmalToken.js';
 import { entscheideAnfrage } from '../services/vereinsRollen.js';
 import { istGueltigeRolle } from '../shared/rollen.js';
@@ -72,7 +74,7 @@ export async function zeigeFreigabe(knex, req, res) {
     }
 }
 
-async function sendeErgebnisMail(sende, benutzer, vereinName, entscheidung, rolle) {
+async function sendeErgebnisMail(sende, benutzer, vereinName, entscheidung, rolle, basisUrl) {
     const freigegeben = entscheidung === 'freigeben';
     try {
         await sende({
@@ -83,7 +85,7 @@ async function sendeErgebnisMail(sende, benutzer, vereinName, entscheidung, roll
             text: freigegeben
                 ? `Hallo ${benutzer.vorname},
 
-Du bist als ${ROLLEN_NAMEN[rolle]} bei ${vereinName} freigeschaltet. Du kannst dich jetzt in Hajime Pro anmelden.`
+Du bist als ${ROLLEN_NAMEN[rolle]} bei ${vereinName} freigeschaltet. Du kannst dich jetzt in Hajime Pro anmelden.${rolle === 'helfer' ? helferAppAbsatz(basisUrl, '') : ''}`
                 : `Hallo ${benutzer.vorname},
 
 deine Anfrage beim Verein ${vereinName} wurde leider abgelehnt. Bei Fragen wende dich bitte direkt an den Verein.`
@@ -132,7 +134,7 @@ export async function entscheideFreigabe(knex, req, res, { sende = sendeMail } =
             return res.status(ergebnis.status).json({ success: false, error: ergebnis.error });
         }
 
-        await sendeErgebnisMail(sende, anfrage.benutzer, anfrage.verein.name, entscheidung, rolle);
+        await sendeErgebnisMail(sende, anfrage.benutzer, anfrage.verein.name, entscheidung, rolle, ermittleBasisUrl(req));
 
         const name = `${anfrage.benutzer.vorname} ${anfrage.benutzer.nachname}`;
         res.json({
