@@ -132,11 +132,12 @@ export function erzeugeVideoSpeicher({ wurzel }) {
             };
         },
 
-        // Liste der Clips, neueste zuerst; optional nach Matte gefiltert.
-        liste({ matteId } = {}) {
+        // Liste der Clips, neueste zuerst; optional nach Matte und Turnier gefiltert.
+        liste({ matteId, turnierId } = {}) {
             return indexPfade()
                 .map(liesIndex)
-                .filter(m => m && (matteId == null || String(m.matteId) === String(matteId)))
+                .filter(m => m && (matteId == null || String(m.matteId) === String(matteId))
+                    && (turnierId == null || String(m.turnierId) === String(turnierId)))
                 .sort((a, b) => String(b.beginn).localeCompare(String(a.beginn)));
         },
 
@@ -153,11 +154,12 @@ export function erzeugeVideoSpeicher({ wurzel }) {
             return true;
         },
 
-        loescheAlle() {
+        // Löscht alle Clips, mit turnierId nur die dieses Turniers.
+        loescheAlle({ turnierId } = {}) {
             let anzahl = 0;
             for (const indexPfad of indexPfade()) {
                 const meta = liesIndex(indexPfad);
-                if (meta && this.loesche(meta.id)) anzahl++;
+                if (meta && (turnierId == null || String(meta.turnierId) === String(turnierId)) && this.loesche(meta.id)) anzahl++;
             }
             return anzahl;
         },

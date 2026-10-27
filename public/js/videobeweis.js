@@ -9,6 +9,9 @@ const markenEl = document.getElementById('vbMarken');
 const titelEl = document.getElementById('vbTitel');
 const VORLAUF_S = 3; // beim Sprung zu einer Marke etwas früher beginnen
 const BILDRATE = 30;
+// Das Archiv gehört zum gewählten Turnier (?turnierId= wie bei den anderen Seiten); ohne Angabe zeigt es alle Clips.
+const gewaehltesTurnier = new URLSearchParams(location.search).get('turnierId') || new URLSearchParams(location.search).get('id');
+const turnierQuery = gewaehltesTurnier ? `?turnierId=${encodeURIComponent(gewaehltesTurnier)}` : '';
 
 let clips = [];
 let liveIds = new Set(); // Clips, die gerade live aufgenommen werden
@@ -181,14 +184,14 @@ async function oeffne(c) {
 
 async function lade() {
     try {
-        const [cr, sr] = await Promise.all([fetch('/api/video/clips', { cache: 'no-store' }), fetch('/api/video/status', { cache: 'no-store' })]);
+        const [cr, sr] = await Promise.all([fetch(`/api/video/clips${turnierQuery}`, { cache: 'no-store' }), fetch(`/api/video/status${turnierQuery}`, { cache: 'no-store' })]);
         if (!cr.ok) throw new Error(String(cr.status));
         clips = await cr.json();
         const status = sr.ok ? await sr.json() : null;
         liveIds = new Set(status && status.live ? status.live.map(l => l.clipId) : []);
         if (status && status.speicher) {
             const s = status.speicher;
-            speicherEl.textContent = `${s.clips} Clips, ${(s.belegt / 1e9).toFixed(2)} GB${s.frei != null ? ` · frei: ${(s.frei / 1e9).toFixed(1)} GB` : ''}`;
+            speicherEl.textContent = `${clips.length} Clips${gewaehltesTurnier ? ' in diesem Turnier' : ''} · Speicher belegt: ${(s.belegt / 1e9).toFixed(2)} GB${s.frei != null ? ` · frei: ${(s.frei / 1e9).toFixed(1)} GB` : ''}`;
         }
         const gewaehlt = matteSelect.value;
         const matten = new Map(clips.map(c => [String(c.matteId), c.matteName || `Matte ${c.matteId}`]));
@@ -206,8 +209,8 @@ document.getElementById('vbTempo').addEventListener('change', (e) => { video.pla
 document.getElementById('vbBildVor').addEventListener('click', () => { video.pause(); video.currentTime += 1 / BILDRATE; });
 document.getElementById('vbBildZurueck').addEventListener('click', () => { video.pause(); video.currentTime = Math.max(0, video.currentTime - 1 / BILDRATE); });
 document.getElementById('vbAlleLoeschen').addEventListener('click', async () => {
-    if (!confirm('ALLE gespeicherten Clips endgültig löschen?')) return;
-    await fetch('/api/video/clips/alle-loeschen', { method: 'POST' });
+    if (!confirm(gewaehltesTurnier ? 'ALLE Clips dieses Turniers endgültig löschen?' : 'ALLE gespeicherten Clips endgültig löschen?')) return;
+    await fetch(`/api/video/clips/alle-loeschen${turnierQuery}`, { method: 'POST' });
     schliesse();
     lade();
 });

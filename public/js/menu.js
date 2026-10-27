@@ -348,14 +348,14 @@ function baueMenueGeruest() {
             <nav class="sidebar-nav sidebar-nav-turniere" id="sidebarNavTurniere" style="visibility: hidden;">
                 <a href="/turniere.html" class="menu-item" id="nav-turniere">
                     <span class="material-icons">calendar_month</span>
-                    <span class="menu-text">Turniere</span>
+                    <span class="menu-text">Alle Turniere</span>
                 </a>
             </nav>
             <nav class="sidebar-nav" id="sidebarNavPrimary" style="visibility: hidden;">
                 <div class="menu-sektion-titel" id="nav-sek-vorbereitung">Vorbereitung</div>
                 <a href="/turnier.html" class="menu-item" id="nav-turnier">
                     <span class="material-icons">emoji_events</span>
-                    <span class="menu-text">Turnier</span>
+                    <span class="menu-text">Turnierdaten</span>
                 </a>
                 <div class="menu-gruppe" id="nav-orga">
                     <button type="button" class="menu-item menu-gruppe-kopf" id="nav-orga-kopf" aria-expanded="true" aria-controls="nav-orga-liste" title="Orga">
@@ -397,11 +397,20 @@ function baueMenueGeruest() {
                     <span class="material-icons">layers</span>
                     <span class="menu-text">Matten</span>
                 </a>
-                <div class="menu-sektion-titel" id="nav-sek-ergebnisse">Ergebnisse</div>
+                <div class="menu-sektion-titel" id="nav-sek-kontrolle">Kontrolle</div>
                 <a href="/kampf.html" class="menu-item" id="nav-kampf">
                     <span class="material-icons">sports_kabaddi</span>
-                    <span class="menu-text">Kampf</span>
+                    <span class="menu-text">Kämpfe</span>
                 </a>
+                <a href="/video-live.html" class="menu-item" id="nav-video-live" style="display: none;">
+                    <span class="material-icons">videocam</span>
+                    <span class="menu-text">Video live</span>
+                </a>
+                <a href="/videobeweis.html" class="menu-item" id="nav-videobeweis" style="display: none;">
+                    <span class="material-icons">video_library</span>
+                    <span class="menu-text">Video-Archiv</span>
+                </a>
+                <div class="menu-sektion-titel" id="nav-sek-ergebnisse">Ergebnisse</div>
                 <a href="/urkunden.html" class="menu-item" id="nav-urkunden">
                     <span class="material-icons">workspace_premium</span>
                     <span class="menu-text">Urkunden</span>
@@ -417,7 +426,7 @@ function baueMenueGeruest() {
                 </a>
                 <a href="/uebersicht.html" class="menu-item" id="nav-uebersicht">
                     <span class="material-icons">travel_explore</span>
-                    <span class="menu-text">Übersicht</span>
+                    <span class="menu-text">Wer kämpft wo</span>
                 </a>
             </nav>
             <nav class="sidebar-nav-unten" id="sidebarNavUnten">
@@ -449,14 +458,6 @@ function baueMenueGeruest() {
                 <a href="/protokoll.html" class="menu-item" id="nav-protokoll" data-ohne-turnier style="display: none;">
                     <span class="material-icons">history</span>
                     <span class="menu-text">Protokoll</span>
-                </a>
-                <a href="/video-live.html" class="menu-item" id="nav-video-live" style="display: none;">
-                    <span class="material-icons">videocam</span>
-                    <span class="menu-text">Video live</span>
-                </a>
-                <a href="/videobeweis.html" class="menu-item" id="nav-videobeweis" style="display: none;">
-                    <span class="material-icons">video_library</span>
-                    <span class="menu-text">Video-Archiv</span>
                 </a>
                 <a href="/sync-konflikte.html" class="menu-item" id="nav-sync-konflikte" style="display: none;">
                     <span class="material-icons">sync_problem</span>
@@ -1230,14 +1231,14 @@ async function initialisiereMenue() {
         // Kopplung neuer Client-Geräte (QR-Code + 6-stelliger Code) gibt es nur am Hallen-Server.
         const clientKonfigLink = document.getElementById('nav-client-konfig');
         if (clientKonfigLink) clientKonfigLink.style.display = '';
-        // Video live / Video-Archiv: nur sichtbar, wenn eine Kamera live aufnimmt bzw. Clips vorhanden sind
-        // (Clips liegen nur am Hallen-Server). Auf der eigenen Seite bleibt der Punkt immer stehen.
+        // Video live / Video-Archiv (Sektion Kontrolle): nur sichtbar, wenn im gewählten Turnier eine Kamera live aufnimmt
+        // bzw. Clips vorhanden sind (Clips liegen nur am Hallen-Server). Auf der eigenen Seite bleibt der Punkt immer stehen.
         const videoLiveLink = document.getElementById('nav-video-live');
         const videoLink = document.getElementById('nav-videobeweis');
         const aktualisiereVideoMenue = async () => {
             if (document.hidden) return; // versteckter Tab fragt nicht ab
             try {
-                const antwort = await fetch('/api/video/status', { cache: 'no-store' });
+                const antwort = await fetch(`/api/video/status${turnierId ? `?turnierId=${encodeURIComponent(turnierId)}` : ''}`, { cache: 'no-store' });
                 if (!antwort.ok) return;
                 const status = await antwort.json();
                 if (videoLiveLink) {

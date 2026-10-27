@@ -48,6 +48,24 @@ test('Speicher: Clip anlegen, schreiben, Marken, schließen, listen, löschen', 
     }
 });
 
+test('Speicher: liste und loescheAlle lassen sich auf ein Turnier beschränken', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'video-'));
+    try {
+        const speicher = erzeugeVideoSpeicher({ wurzel: dir });
+        speicher.oeffneClip(META).schliesse();
+        speicher.oeffneClip({ ...META, kampfId: 42 }).schliesse();
+        speicher.oeffneClip({ ...META, turnierId: 8, kampfId: 43 }).schliesse();
+        assert.equal(speicher.liste({ turnierId: 7 }).length, 2);
+        assert.equal(speicher.liste({ turnierId: '8' }).length, 1);
+        assert.equal(speicher.liste({ turnierId: 9 }).length, 0);
+        assert.equal(speicher.loescheAlle({ turnierId: 7 }), 2);
+        assert.equal(speicher.liste().length, 1);
+        assert.equal(speicher.liste()[0].turnierId, 8);
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
+});
+
 test('Speicher: mp4 bekommt die Endung .mp4, loescheAlle räumt auf', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'video-'));
     try {
