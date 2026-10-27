@@ -5,7 +5,8 @@ FROM node:22-slim
 ENV NODE_ENV=production \
     BETRIEBSMODUS=cloud \
     PORT=3000 \
-    SICHERUNG_VERZEICHNIS=/var/backups/hajime \n    RELEASE_VERZEICHNIS=/var/lib/hajime/releases
+    SICHERUNG_VERZEICHNIS=/var/backups/hajime \
+    RELEASE_VERZEICHNIS=/var/lib/hajime/releases
 
 WORKDIR /app
 
@@ -16,8 +17,9 @@ RUN npm ci --omit=dev && npm cache clean --force
 COPY . .
 
 # Sicherungsverzeichnis (automatische Sicherung, Seite „Sicherung“): gehört dem Benutzer node und wird in docker-compose.yml als Volume
-# eingebunden, damit die Sicherungen ein Update des Containers überleben.
-RUN mkdir -p /var/backups/hajime /var/lib/hajime/releases && chown node:node /var/backups/hajime /var/lib/hajime/releases
+# eingebunden, damit die Sicherungen ein Update des Containers überleben. /app/data (Cloud-Live-Dokument-DB, CLOUD_LIVE_DATENVERZEICHNIS)
+# braucht der Benutzer node ebenfalls schreibbar, sonst bricht der Start mit EACCES ab.
+RUN mkdir -p /var/backups/hajime /var/lib/hajime/releases /app/data && chown node:node /var/backups/hajime /var/lib/hajime/releases /app/data
 
 # Läuft nicht als root.
 USER node
