@@ -126,14 +126,18 @@ test('Telefonbreite: Orga-Symbol sichtbar, Untermenü ausgeblendet, Klick öffne
     await expect(page).toHaveURL(new RegExp(`/orga\\.html\\?turnierId=${turnierId}`));
 });
 
-test('Sektionstitel gliedern das Menü, Urkunden steht vor der Siegerliste, Matten bei der Vorbereitung', async ({ page }) => {
+test('Sektionstitel gliedern das Menü: Matten bei der Vorbereitung, Kämpfe und Video bei der Kontrolle, Urkunden vor der Siegerliste', async ({ page }) => {
     await page.goto(`/turnier.html?id=${turnierId}`);
     await expect(page.locator('#nav-sek-vorbereitung')).toBeVisible();
     const gewuenscht = ['nav-sek-vorbereitung', 'nav-turnier', 'nav-orga', 'nav-teilnehmer', 'nav-pools', 'nav-matten',
-        'nav-sek-ergebnisse', 'nav-kampf', 'nav-urkunden', 'nav-siegerliste', 'nav-sek-ansichten', 'nav-dashboard', 'nav-uebersicht'];
+        'nav-sek-kontrolle', 'nav-kampf', 'nav-video-live', 'nav-videobeweis',
+        'nav-sek-ergebnisse', 'nav-urkunden', 'nav-siegerliste', 'nav-sek-ansichten', 'nav-dashboard', 'nav-uebersicht'];
     const ids = await page.locator('#sidebarNavPrimary > *').evaluateAll((els) => els.map((e) => e.id));
     expect(ids.filter((id) => gewuenscht.includes(id))).toEqual(gewuenscht);
+    await expect(page.locator('#nav-sek-kontrolle')).toHaveText('Kontrolle');
     await expect(page.locator('#nav-sek-ergebnisse')).toHaveText('Ergebnisse');
+    // Video-Punkte stehen nicht mehr in der Verwaltung
+    await expect(page.locator('#sidebarNavUnten #nav-videobeweis, #sidebarNavUnten #nav-video-live')).toHaveCount(0);
     await expect(page.locator('#sidebarNavUnten > #nav-sek-verwaltung')).toHaveText('Verwaltung');
 });
 

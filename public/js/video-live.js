@@ -120,7 +120,8 @@ class Kachel {
 
 async function aktualisiere() {
     try {
-        const r = await fetch('/api/video/status', { cache: 'no-store' });
+        const turnier = new URLSearchParams(location.search).get('turnierId');
+        const r = await fetch(`/api/video/status${turnier ? `?turnierId=${encodeURIComponent(turnier)}` : ''}`, { cache: 'no-store' });
         if (!r.ok) throw new Error(String(r.status));
         const st = await r.json();
         const ids = new Set(st.live.map(l => String(l.matteId)));

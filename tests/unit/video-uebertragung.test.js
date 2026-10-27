@@ -249,6 +249,15 @@ test('Status: Anzahl gespeicherter Clips und live aufgenommene Clips (für die b
         const laufend = await (await fetch(`${s.http}/status`)).json();
         assert.equal(laufend.clips, 1);
         assert.equal(laufend.live.length, 1);
+        // Mit turnierId zählt der Status nur dieses Turnier (Menü und Archiv gehören zum gewählten Turnier)
+        const eigenes = await (await fetch(`${s.http}/status?turnierId=${META.turnierId}`)).json();
+        assert.equal(eigenes.clips, 1);
+        assert.equal(eigenes.live.length, 1);
+        const fremdes = await (await fetch(`${s.http}/status?turnierId=${META.turnierId + 1}`)).json();
+        assert.equal(fremdes.clips, 0);
+        assert.deepEqual(fremdes.live, []);
+        assert.equal((await (await fetch(`${s.http}/clips?turnierId=${META.turnierId + 1}`)).json()).length, 0);
+        assert.equal((await (await fetch(`${s.http}/clips?turnierId=${META.turnierId}`)).json()).length, 1);
         ws.close();
         await pause(100);
     } finally {

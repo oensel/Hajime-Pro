@@ -28,7 +28,7 @@ export function erzeugeVideoDienst({ speicher, darfSenden = () => true, maxBytes
 
     function beschreibung(clip) {
         const i = clip.index;
-        return { clipId: i.id, matteId: i.matteId, matteName: i.matteName, kampfId: i.kampfId, pool: i.pool, kaempfer1: i.kaempfer1, kaempfer2: i.kaempfer2, farbe2: i.farbe2, mime: i.mime };
+        return { clipId: i.id, turnierId: i.turnierId, matteId: i.matteId, matteName: i.matteName, kampfId: i.kampfId, pool: i.pool, kaempfer1: i.kaempfer1, kaempfer2: i.kaempfer2, farbe2: i.farbe2, mime: i.mime };
     }
 
     // Schickt dem Zuschauer den Clip von vorn: Beschreibung und alles, was bisher in der Datei liegt.
@@ -85,16 +85,20 @@ export function erzeugeVideoDienst({ speicher, darfSenden = () => true, maxBytes
     }
 
     return {
-        status() {
+        // turnierId: `clips` und `live` zählen nur dieses Turnier; der Speicher bleibt die Belegung des ganzen Laufwerks.
+        status({ turnierId } = {}) {
             const master = darfSenden();
             const belegung = speicher.speicher();
+            const nurTurnier = turnierId != null && turnierId !== '';
+            const live = [...aktive.values()].map(a => beschreibung(a.clip))
+                .filter(l => !nurTurnier || String(l.turnierId) === String(turnierId));
             return {
                 verfuegbar: master,
                 grund: master ? '' : 'Dieser Server ist nur Secondary.',
                 speicher: belegung,
                 verzeichnis: speicher.wurzel,
-                clips: belegung.clips,
-                live: [...aktive.values()].map(a => beschreibung(a.clip))
+                clips: nurTurnier ? speicher.liste({ turnierId }).length : belegung.clips,
+                live
             };
         },
 

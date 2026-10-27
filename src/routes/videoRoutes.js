@@ -5,10 +5,13 @@ import express from 'express';
 export function getVideoRoutes({ speicher, dienst }) {
     const router = express.Router();
 
-    router.get('/status', (req, res) => res.json(dienst.status()));
+    // Alle drei Abfragen nehmen optional ?turnierId= (Video-Archiv und Menü zeigen nur das gewählte Turnier).
+    const turnierFilter = (req) => (req.query.turnierId ? req.query.turnierId : undefined);
+
+    router.get('/status', (req, res) => res.json(dienst.status({ turnierId: turnierFilter(req) })));
 
     router.get('/clips', (req, res) => {
-        res.json(speicher.liste({ matteId: req.query.matteId }));
+        res.json(speicher.liste({ matteId: req.query.matteId, turnierId: turnierFilter(req) }));
     });
 
     router.get('/clips/:id/datei', (req, res) => {
@@ -24,7 +27,7 @@ export function getVideoRoutes({ speicher, dienst }) {
     });
 
     router.post('/clips/alle-loeschen', (req, res) => {
-        res.json({ success: true, geloescht: speicher.loescheAlle() });
+        res.json({ success: true, geloescht: speicher.loescheAlle({ turnierId: turnierFilter(req) }) });
     });
 
     return router;
