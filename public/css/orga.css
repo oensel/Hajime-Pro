@@ -32,7 +32,7 @@
 .og-rot { color: var(--og-rot); font-weight: 700; }
 .og-werkzeuge { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; flex-basis: 100%; }
 .og-werkzeuge .btn { padding: 4px 12px; min-height: 0; height: auto; font-size: 13px; }
-.og-werkzeuge .btn:last-child { margin-left: auto; }
+.og-werkzeuge #ogNeueKategorie { margin-left: auto; }
 .og-werkzeuge .btn .material-icons, .og-zurueck .material-icons { font-size: 18px; vertical-align: middle; }
 .og-zurueck { display: inline-block; margin-bottom: 12px; text-decoration: none; }
 .btn[aria-pressed="true"] { background: var(--og-akzent-bg); border-color: var(--og-akzent); color: var(--og-akzent); }

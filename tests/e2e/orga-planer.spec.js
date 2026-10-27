@@ -217,7 +217,7 @@ test('„Vorlage nachladen“ bringt eine gelöschte Vorlagen-Aufgabe zurück', 
 
 test('Neue Kategorie: anlegen, per Drag&Drop in eine andere Phase, im Menü unter „Aufgaben“, Aufgaben darin anlegen', async ({ page }) => {
     await page.goto(`/orga.html?turnierId=${turnierId}`);
-    await page.getByRole('button', { name: 'Neue Kategorie' }).click();
+    await page.getByRole('button', { name: 'Kategorie hinzufügen' }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByLabel('Titel').fill('Sanitätsdienst');
     await dialog.getByRole('button', { name: 'Hinzufügen' }).click();
