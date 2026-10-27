@@ -153,29 +153,58 @@ body {
     border-top: 2px solid var(--border);
 }
 
-/* Allgemeine Punkte (Stammdaten, Nachrichten, Super-Admin …) direkt über der Linie des Footers */
+/* Allgemeine Punkte (Stammdaten, Nachrichten, Super-Admin …); unten Platz für den schwebenden Einklapp-Knopf */
 .sidebar-nav-unten {
     display: flex;
     flex-direction: column;
     gap: 4px;
-    padding: 16px 12px 12px;
+    padding: 16px 12px 64px;
     flex-shrink: 0;
     border-top: 2px solid var(--border);
 }
 
-/* Umschalter ganz unten in der Sidebar, klappt die Navigation ein/aus */
-.sidebar-footer {
-    padding: 12px;
-    border-top: 2px solid var(--border);
-    flex-shrink: 0;
+/* Sektionstitel im Menü: kurzer Strich, Titel, langer Strich bis zum Rand */
+.menu-sektion-titel {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    padding: 0 8px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    user-select: none;
 }
+.menu-sektion-titel:first-child { margin-top: 0; }
+.menu-sektion-titel::before { content: ""; flex: none; width: 12px; border-top: 2px solid var(--border); }
+.menu-sektion-titel::after { content: ""; flex: 1; border-top: 2px solid var(--border); }
+.menu-sektion-titel.leer { display: none; }
 
+/* Einklapp-Knopf: kleiner Kreis, schwebt immer unten rechts in der Sidebar (kein Menüpunkt) */
 .sidebar-collapse-btn {
-    background: none;
-    border: none;
+    position: fixed;
+    left: 214px;
+    bottom: 14px;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid var(--border);
+    border-radius: 50%;
+    background: var(--bg-card);
+    color: var(--text-muted);
+    cursor: pointer;
     font-family: inherit;
-    text-align: left;
+    z-index: 101;
+    transition: left 0.3s, color 0.2s, border-color 0.2s;
 }
+.sidebar-collapse-btn .material-icons { font-size: 18px; }
+.sidebar-collapse-btn:hover { color: var(--text-main); border-color: var(--text-muted); }
+.sidebar-collapse-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 
 /* --- MENÜ BEIM SEITENWECHSEL (menu.js) ---
    Solange der gemerkte Menüstand als Platzhalter dasteht, rechnet das echte Menü unsichtbar im
@@ -435,7 +464,16 @@ body {
 .menu-kategorien { margin-top: 2px; }
 .menu-kategorien .menu-subitem { padding-left: 62px; font-weight: 500; }
 .menu-subitem .menu-item-badge { height: 16px; min-width: 16px; line-height: 16px; font-size: 10px; }
-.menu-gruppe-kopf:focus-visible, .menu-subitem:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+/* „Aufgaben“: eigener Auf-/Zuklapp-Pfeil rechts in der Zeile, die Zeile selbst bleibt ein Link */
+.menu-aufgaben { position: relative; }
+.menu-aufgaben > .menu-subitem { padding-right: 40px; }
+.menu-aufgaben-pfeil { position: absolute; top: 2px; right: 8px; width: 26px; height: 26px; padding: 0; display: flex; align-items: center; justify-content: center; background: none; border: 0; border-radius: 4px; color: var(--text-muted); cursor: pointer; }
+.menu-aufgaben-pfeil:hover { color: var(--text-main); background-color: rgba(0, 0, 0, 0.05); }
+[data-theme="dark"] .menu-aufgaben-pfeil:hover { background-color: rgba(255, 255, 255, 0.06); }
+.menu-aufgaben-pfeil .material-icons { font-size: 18px; }
+.menu-aufgaben > .menu-subitem[style*="display: none"] ~ .menu-aufgaben-pfeil { display: none; }
+.menu-aufgaben.zugeklappt .menu-kategorien { display: none; }
+.menu-aufgaben-pfeil:focus-visible, .menu-gruppe-kopf:focus-visible, .menu-subitem:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 
 /* --- STABILE KANJI WASSERZEICHEN --- */
 .kanji-left, .kanji-right {
@@ -873,6 +911,9 @@ input:focus, select:focus {
     .menu-text { display: none; }
     .menu-item { justify-content: center; padding: 10px 8px; gap: 0; }
     .menu-untermenue, .menu-gruppe-pfeil { display: none; }
+    .menu-sektion-titel { font-size: 0; gap: 0; padding: 0 6px; }
+    .menu-sektion-titel::before { display: none; }
+    .sidebar-collapse-btn { left: 20px; }
     .top-header-bar { left: 72px; }
     body { padding-left: calc(72px + 24px); }
 }
@@ -910,6 +951,21 @@ body.sidebar-collapsed .menu-item {
 body.sidebar-collapsed .menu-untermenue,
 body.sidebar-collapsed .menu-gruppe-pfeil {
     display: none;
+}
+
+/* Eingeklappt bleibt von jedem Sektionstitel nur die Trennlinie */
+body.sidebar-collapsed .menu-sektion-titel {
+    font-size: 0;
+    gap: 0;
+    padding: 0 6px;
+}
+
+body.sidebar-collapsed .menu-sektion-titel::before {
+    display: none;
+}
+
+body.sidebar-collapsed .sidebar-collapse-btn {
+    left: 20px;
 }
 
 body.sidebar-collapsed .top-header-bar {
