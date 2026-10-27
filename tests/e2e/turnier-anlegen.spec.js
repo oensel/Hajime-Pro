@@ -14,8 +14,9 @@ test('Turnier anlegen erscheint danach in der Turnierübersicht', async ({ page 
     await page.locator('#ort').fill('Senden');
     await page.locator('#plz').fill('48308');
     await page.locator('#ausrichter').fill('JC Senden');
-    await page.locator('#anzahl_kampfflaechen').fill('2');
     await page.locator('#bundesland').selectOption('Nordrhein-Westfalen');
+    await page.locator('[data-schritt="2"]').click();
+    await page.locator('#anzahl_kampfflaechen').fill('2');
 
     await page.locator('#submitBtn').click();
 
@@ -62,8 +63,9 @@ test('Alters- und Mannschaftsklassen auswählen und mit dem Turnier speichern', 
     await page.locator('#ort').fill('Senden');
     await page.locator('#plz').fill('48308');
     await page.locator('#ausrichter').fill('JC Senden');
-    await page.locator('#anzahl_kampfflaechen').fill('2');
     await page.locator('#bundesland').selectOption('Nordrhein-Westfalen');
+    await page.locator('[data-schritt="2"]').click();
+    await page.locator('#anzahl_kampfflaechen').fill('2');
 
     // --- Einzel: Männlich U11 und Weiblich U11 anhaken (Standard-DJB-Klassen aus
     // altersklassen.json) — der Modus bleibt auf "DJB" stehen, dem Default beim Anhaken. ---
@@ -114,6 +116,7 @@ test('Alters- und Mannschaftsklassen auswählen und mit dem Turnier speichern', 
 
     // --- Startgeld ohne Zahlungsdaten: clientseitige Validierung in turnier.js (gespiegelt vom
     // Server in validiereZahlungsdaten, turnierController.js) muss das Speichern verhindern. ---
+    await page.locator('[data-schritt="3"]').click();
     await page.locator('#startgeld').fill('10');
     await page.locator('#submitBtn').click();
     await expect(page.locator('#snackbarText')).toHaveText(

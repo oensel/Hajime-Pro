@@ -875,6 +875,24 @@ async function initialisiereMenue() {
         versteckeMenuePunkte(['nav-orga']);
     };
 
+    // Funktionen des Turniers (Assistent in turnier.html, src/shared/turnierFunktionen.js): ausgeschaltete Funktionen verlieren ihre
+    // Menüpunkte; Knöpfe auf den Seiten (data-funktion="…") und das Kopfzeilen-Symbol verbirgt die CSS-Klasse fkt-aus-<Schlüssel> am body.
+    const FUNKTION_MENUE = {
+        urkunden: ['nav-urkunden', 'nav-urkunden-designer'],
+        anzeige: ['nav-dashboard', 'nav-uebersicht'],
+        video: ['nav-videobeweis'],
+        streaming: ['nav-video-live']
+    };
+    const wendeTurnierFunktionenAn = async (roh) => {
+        const { normalisiereFunktionen, FUNKTIONEN } = await import('/js/shared/turnierFunktionen.js');
+        const funktionen = normalisiereFunktionen(roh);
+        window.hajimeFunktionen = funktionen;
+        for (const schluessel of FUNKTIONEN) document.body.classList.toggle(`fkt-aus-${schluessel}`, !funktionen[schluessel]);
+        for (const [schluessel, ids] of Object.entries(FUNKTION_MENUE)) {
+            if (!funktionen[schluessel]) versteckeMenuePunkte(ids);
+        }
+    };
+
     // --- BENUTZERSTATUS EINMALIG LADEN (für Freigabe- und Vereins-Prüfung) ---
     let currentUser = null;
     try {
@@ -1241,11 +1259,15 @@ async function initialisiereMenue() {
                 const antwort = await fetch(`/api/video/status${turnierId ? `?turnierId=${encodeURIComponent(turnierId)}` : ''}`, { cache: 'no-store' });
                 if (!antwort.ok) return;
                 const status = await antwort.json();
+                // Ausgeschaltete Funktionen des Turniers bleiben weg, auch wenn gerade aufgenommen wird oder Clips da sind.
+                const funktionen = window.hajimeFunktionen || {};
                 if (videoLiveLink) {
-                    videoLiveLink.style.display = (status.live || []).length > 0 || currentPath.includes('video-live.html') ? '' : 'none';
+                    const zeigen = (status.live || []).length > 0 || currentPath.includes('video-live.html');
+                    videoLiveLink.style.display = zeigen && funktionen.streaming !== false ? '' : 'none';
                 }
                 if (videoLink) {
-                    videoLink.style.display = (status.clips || 0) > 0 || currentPath.includes('videobeweis.html') ? '' : 'none';
+                    const zeigen = (status.clips || 0) > 0 || currentPath.includes('videobeweis.html');
+                    videoLink.style.display = zeigen && funktionen.video !== false ? '' : 'none';
                 }
             } catch (fehler) {
                 // Menü bleibt beim letzten Stand
@@ -1411,6 +1433,9 @@ async function initialisiereMenue() {
                     if (turnier.planungs_tools === false) {
                         versteckeOrgaPunkte();
                     }
+
+                    // --- FUNKTIONEN: Urkunden, Anzeigen, Video usw. nach den Schaltern im Turnier ---
+                    await wendeTurnierFunktionenAn(turnier.funktionen);
 
                     // --- VEREINS-SICHTBARKEIT: Nutzer außerhalb des ausrichtenden Vereins ---
                     // dürfen nur die Teilnehmer-Ansicht (gefiltert auf den eigenen Verein) sehen.

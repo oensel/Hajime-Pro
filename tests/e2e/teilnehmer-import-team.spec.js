@@ -226,8 +226,9 @@ test.describe.serial('Teilnehmer-Import und -Verwaltung, reines Mannschaftsturni
         await page.locator('#ort').fill('Senden');
         await page.locator('#plz').fill('48308');
         await page.locator('#ausrichter').fill('JC Senden');
-        await page.locator('#anzahl_kampfflaechen').fill('4');
         await page.locator('#bundesland').selectOption('Nordrhein-Westfalen');
+        await page.locator('[data-schritt="2"]').click();
+        await page.locator('#anzahl_kampfflaechen').fill('4');
 
         // Bewusst KEINE Einzelwettkampf-Altersklasse ankreuzen — dieses Turnier trägt
         // ausschließlich Mannschaftskämpfe aus.
@@ -235,6 +236,7 @@ test.describe.serial('Teilnehmer-Import und -Verwaltung, reines Mannschaftsturni
         await page.locator('input[name="mannschaft_altersklasse_cb"][value="weiblich_U15"]').check();
 
         // Mit Startgeld, damit Spalte, Bezahlt-Icons und die Regel "bereit nur mit bezahltem Startgeld" getestet werden.
+        await page.locator('[data-schritt="3"]').click();
         await page.locator('#startgeld').fill('8');
         await page.locator('#iban').fill('DE89370400440532013000');
         await page.locator('#kontoinhaber').fill('E2E Judoverein');

@@ -12,6 +12,7 @@ test.describe.serial('Turnierformular: Zahlweg-Felder', () => {
         await page.locator('#datum').fill('2027-07-10');
         await page.locator('#ort').fill('Senden');
         await page.locator('#ausrichter').fill('JC Zahlweg');
+        await page.locator('[data-schritt="3"]').click();
         await page.locator('#startgeld').fill('8');
         await page.locator('#kontoinhaber').fill('JC Zahlweg e.V.');
         await page.locator('#iban').fill('DE89370400440532013000');
@@ -26,6 +27,7 @@ test.describe.serial('Turnierformular: Zahlweg-Felder', () => {
 
         await page.reload();
         await expect(page.locator('#bezeichnung')).not.toHaveValue('');
+        await page.locator('[data-schritt="3"]').click();
         await expect(page.locator('#zahlwegUeberweisung')).not.toBeChecked();
         await expect(page.locator('#zahlwegBar')).toBeChecked();
         await expect(page.locator('#abrechnungsbasis')).toHaveValue('teilnahme_waage');
@@ -34,6 +36,7 @@ test.describe.serial('Turnierformular: Zahlweg-Felder', () => {
     test('Ohne angebotenen Zahlweg lässt sich ein Turnier mit Startgeld nicht speichern', async ({ page, request }) => {
         await page.goto(`/turnier.html?id=${turnierId}`);
         await expect(page.locator('#bezeichnung')).not.toHaveValue('');
+        await page.locator('[data-schritt="3"]').click();
         await page.locator('#zahlwegBar').uncheck();
         await page.locator('#submitBtn').click();
         await expect(page.locator('#snackbarText')).toContainText('mindestens ein Zahlweg');

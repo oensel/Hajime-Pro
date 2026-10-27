@@ -54,8 +54,9 @@ test.describe.serial('Import aus E-Mail (Drag & Drop)', () => {
         await page.locator('#ort').fill('Senden');
         await page.locator('#plz').fill('48308');
         await page.locator('#ausrichter').fill('JC Senden');
-        await page.locator('#anzahl_kampfflaechen').fill('2');
         await page.locator('#bundesland').selectOption('Nordrhein-Westfalen');
+        await page.locator('[data-schritt="2"]').click();
+        await page.locator('#anzahl_kampfflaechen').fill('2');
         await page.locator('input[name="altersklasse_cb"][value="männlich_U11"]').check();
         await page.locator('input[name="altersklasse_cb"][value="weiblich_U11"]').check();
         await page.locator('#submitBtn').click();

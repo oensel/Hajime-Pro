@@ -21,6 +21,8 @@ import { legeAusVorlageAn, berechneFaelligkeitenNeu, ladeOrga } from '../service
 import { datumAlsText } from '../services/helferPlan.js';
 import { stelleUnbestaetigteUm } from '../services/mandatJob.js';
 import { findeTerminKonflikt, ermittleAktivierbarkeit, kopiereTeilnehmerFuerNeuesTurnier, datumAlsIso } from '../shared/turnierAktivierung.js';
+import { normalisiereFunktionen } from '../shared/turnierFunktionen.js';
+import { bereinigeAntworten } from '../shared/ausstattung.js';
 const { istEinzelbenutzerBetrieb } = betriebsmodus;
 
 // Anmeldeschluss wird als reines Datum (ohne Uhrzeit) gespeichert; die Frist gilt bis
@@ -68,7 +70,7 @@ export const TURNIER_SPALTEN_OHNE_PDF = [
     'mannschafts_altersklassen', 'status', 'anmeldeschluss', 'startgeld', 'iban',
     'abrechnungsbasis', 'angebotene_zahlwege', 'zahlungsziel_tage', 'vorabankuendigung_tage', 'rechnung_hinweis',
     'kontoinhaber', 'verwendungszweck', 'ausschreibung_dateiname', 'farbe_kaempfer2',
-    'beginn_min', 'ende_min', 'waagen_anzahl', 'planungs_tools', 'sichtbarkeit', 'created_at', 'updated_at'
+    'beginn_min', 'ende_min', 'waagen_anzahl', 'planungs_tools', 'funktionen', 'ausstattung', 'sichtbarkeit', 'created_at', 'updated_at'
 ];
 
 const AUSSCHREIBUNG_MAX_MB = 10;
@@ -206,6 +208,15 @@ function leseTurnierzeit(body, bisher = null) {
 
 // Planungs-Tools (Helfer-Dienste/Vorbereitung): Standard beim Anlegen in der Cloud an, am Hallen-Server aus.
 // Update: nicht mitgesendet -> unverändert.
+// Antworten des Fragebogens „Ausstattung“: Objekt oder JSON-Text, nur gültige Antworten auf gestellte Fragen bleiben.
+function leseAusstattung(roh) {
+    let quelle = roh;
+    if (typeof quelle === 'string') {
+        try { quelle = JSON.parse(quelle); } catch { quelle = {}; }
+    }
+    return bereinigeAntworten(quelle && typeof quelle === 'object' && !Array.isArray(quelle) ? quelle : {});
+}
+
 function planungsToolsWert(wert, standard) {
     if (wert === undefined || wert === null || wert === '') return standard;
     return wert === true || wert === 1 || wert === '1' || wert === 'true';
@@ -306,6 +317,8 @@ export async function createTurnier(knex, req, res) {
             farbe_kaempfer2: gueltigeFarbe(farbe_kaempfer2) || 'blau',
             ...turnierzeit,
             planungs_tools: planungsToolsWert(req.body.planungs_tools, !istEinzelbenutzerBetrieb()),
+            funktionen: JSON.stringify(normalisiereFunktionen(req.body.funktionen)),
+            ausstattung: JSON.stringify(leseAusstattung(req.body.ausstattung)),
             sichtbarkeit: normalisiereSichtbarkeit(req.body.sichtbarkeit),
             ...ausschreibungFragment
         }).returning('id');
@@ -390,6 +403,8 @@ export async function updateTurnier(knex, req, res) {
             ...(gueltigeFarbe(farbe_kaempfer2) ? { farbe_kaempfer2 } : {}),
             ...turnierzeit,
             ...(req.body.planungs_tools !== undefined ? { planungs_tools: planungsToolsWert(req.body.planungs_tools, true) } : {}),
+            ...(req.body.funktionen !== undefined ? { funktionen: JSON.stringify(normalisiereFunktionen(req.body.funktionen)) } : {}),
+            ...(req.body.ausstattung !== undefined ? { ausstattung: JSON.stringify(leseAusstattung(req.body.ausstattung)) } : {}),
             ...(req.body.sichtbarkeit !== undefined ? { sichtbarkeit: normalisiereSichtbarkeit(req.body.sichtbarkeit, bestehendesTurnier.sichtbarkeit || 'alle') } : {}),
             ...ausschreibungFragment,
             updated_at: knex.fn.now()
@@ -466,6 +481,8 @@ export async function getTurnier(knex, req, res) {
             }
         }
         turnier.mannschafts_altersklassen = mak || [];
+        turnier.funktionen = normalisiereFunktionen(turnier.funktionen);
+        turnier.ausstattung = leseAusstattung(turnier.ausstattung);
 
         turnier.status_effektiv = statusEffektiv;
         if (istEinzelbenutzerBetrieb()) {
@@ -1063,6 +1080,8 @@ export async function importiereTurnierDaten(knex, sync, daten) {
                 // Turnierzeit und Waagenanzahl (Helferplan); ältere Dateien ohne diese Felder: leer bzw. 1
                 ...importTurnierzeit(t),
                 planungs_tools: planungsToolsWert(t.planungs_tools, !istEinzelbenutzerBetrieb()),
+                funktionen: JSON.stringify(normalisiereFunktionen(t.funktionen)),
+                ausstattung: JSON.stringify(leseAusstattung(t.ausstattung)),
                 // Teilnehmer-App: Token aus der Cloud und ein eigenes Geheimnis für die Teilnehmer-Schlüssel; ein geholtes
                 // Turnier startet immer mit ausgeschalteter Freigabe (Spalte live_freigabe bleibt auf ihrem Standard).
                 live_token: liveToken,
@@ -1434,6 +1453,8 @@ export async function dupliziereTurnier(knex, req, res) {
                 vorabankuendigung_tage: quelle.vorabankuendigung_tage,
                 rechnung_hinweis: quelle.rechnung_hinweis,
                 farbe_kaempfer2: quelle.farbe_kaempfer2,
+                funktionen: JSON.stringify(normalisiereFunktionen(quelle.funktionen)),
+                ausstattung: JSON.stringify(leseAusstattung(quelle.ausstattung)),
                 ausschreibung_pdf: quelle.ausschreibung_pdf,
                 ausschreibung_dateiname: quelle.ausschreibung_dateiname
             }).returning('id');

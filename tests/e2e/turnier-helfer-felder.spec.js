@@ -16,6 +16,7 @@ test('Beginn, Ende und Waagen werden gespeichert und nach dem Neuladen angezeigt
 
     await page.locator('#beginn').fill('09:00');
     await page.locator('#ende').fill('16:00');
+    await page.locator('[data-schritt="2"]').click();
     await page.locator('#waagen_anzahl').fill('2');
     const speichern = page.waitForResponse(r => r.url().includes(`/api/turniere/${turnierId}`) && r.request().method() === 'PUT');
     await page.locator('#submitBtn').click();
@@ -48,7 +49,7 @@ test('Ende vor Beginn zeigt eine Fehlermeldung und speichert nichts', async ({ p
     expect(geladen.ende_min).toBeNull();
 });
 
-test('Planungs-Tools: Haken blendet Beginn/Ende aus, ohne Haken kein Helferplan und keine Prozente', async ({ page, request }) => {
+test('Orga-Schalter: ohne Schalter kein Helferplan und keine Prozente, Beginn/Ende bleiben sichtbar', async ({ page, request }) => {
     const resp = await request.post('/api/turniere', {
         data: { bezeichnung: `Planung ${Date.now()}`, ort: 'Teststadt', datum: '2031-10-12', ausrichter: 'JC Planung', anzahl_kampfflaechen: 1 }
     });
@@ -60,11 +61,12 @@ test('Planungs-Tools: Haken blendet Beginn/Ende aus, ohne Haken kein Helferplan 
 
     await page.goto(`/turnier.html?id=${turnierId}`);
     await expect(page.locator('#bezeichnung')).not.toHaveValue('');
+    await expect(page.locator('#beginn')).toBeVisible();
+    await page.locator('[data-schritt="4"]').click();
     await expect(page.locator('#planungs_tools')).not.toBeChecked();
-    await expect(page.locator('#beginn')).toBeHidden();
 
     await page.locator('#planungs_tools').check();
-    await expect(page.locator('#beginn')).toBeVisible();
+    await page.locator('[data-schritt="1"]').click();
     await page.locator('#beginn').fill('09:00');
     await page.locator('#ende').fill('16:00');
     const speichern = page.waitForResponse(r => r.url().includes(`/api/turniere/${turnierId}`) && r.request().method() === 'PUT');
@@ -81,6 +83,7 @@ test('Planungs-Tools: Haken blendet Beginn/Ende aus, ohne Haken kein Helferplan 
     // Wieder ausschalten: keine Prozente mehr in der Liste, Daten bleiben
     await page.reload();
     await expect(page.locator('#bezeichnung')).not.toHaveValue('');
+    await page.locator('[data-schritt="4"]').click();
     await expect(page.locator('#planungs_tools')).toBeChecked(); // erst nach dem Laden ausschalten
     await page.locator('#planungs_tools').uncheck();
     const aus = page.waitForResponse(r => r.url().includes(`/api/turniere/${turnierId}`) && r.request().method() === 'PUT');

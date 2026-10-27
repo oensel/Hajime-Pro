@@ -217,8 +217,9 @@ test.describe.serial('Teilnehmer-Import und -Verwaltung (teilnehmer.html)', () =
         await page.locator('#ort').fill('Senden');
         await page.locator('#plz').fill('48308');
         await page.locator('#ausrichter').fill('JC Senden');
-        await page.locator('#anzahl_kampfflaechen').fill('4');
         await page.locator('#bundesland').selectOption('Nordrhein-Westfalen');
+        await page.locator('[data-schritt="2"]').click();
+        await page.locator('#anzahl_kampfflaechen').fill('4');
 
         await page.locator('input[name="altersklasse_cb"][value="männlich_U11"]').check();
         await page.locator('input[name="altersklasse_cb"][value="weiblich_U11"]').check();
@@ -238,6 +239,7 @@ test.describe.serial('Teilnehmer-Import und -Verwaltung (teilnehmer.html)', () =
         await expect(page.locator('input[name="altersklasse_cb"][value="mixed_U9"]')).toBeChecked();
 
         // Mit Startgeld, damit Spalte, Bezahlt-Icons und die Regel "bereit nur mit bezahltem Startgeld" getestet werden.
+        await page.locator('[data-schritt="3"]').click();
         await page.locator('#startgeld').fill('8');
         await page.locator('#iban').fill('DE89370400440532013000');
         await page.locator('#kontoinhaber').fill('E2E Judoverein');

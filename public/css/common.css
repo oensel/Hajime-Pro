@@ -1098,3 +1098,7 @@ body.sidebar-collapsed .top-header-bar {
 }
 .profil-menue { min-width: 180px; }
 .profil-menue .verein-switcher-item { text-decoration: none; color: var(--text-main); flex-direction: row; align-items: center; }
+
+/* Ausgeschaltete Funktionen des Turniers (menu.js setzt fkt-aus-<Schluessel> am body, siehe src/shared/turnierFunktionen.js) */
+body.fkt-aus-wettkampfplaene [data-funktion~="wettkampfplaene"],
+body.fkt-aus-teilnehmer_app #teilnehmerAppBtn { display: none !important; }
