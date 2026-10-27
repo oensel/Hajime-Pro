@@ -351,6 +351,7 @@ function baueMenueGeruest() {
                         <span class="material-icons menu-gruppe-pfeil" id="nav-orga-pfeil" aria-hidden="true">expand_more</span>
                     </button>
                     <ul class="menu-untermenue" id="nav-orga-liste">
+                        <li><a href="/helfer-plan.html" class="menu-item menu-subitem" id="nav-helfer"><span class="menu-text">Helfer</span></a></li>
                         <li>
                             <a href="/orga.html" class="menu-item menu-subitem" id="nav-orga-uebersicht"><span class="menu-text">Aufgaben</span></a>
                             <ul class="menu-untermenue menu-kategorien" id="nav-orga-kategorien">
@@ -359,7 +360,6 @@ function baueMenueGeruest() {
                                 <li><a href="#" class="menu-item menu-subitem" id="nav-orga-medaillen" data-ohne-turnier style="display: none;"><span class="menu-text">Medaillen und Pokale</span><span class="menu-item-badge" style="display: none;"></span></a></li>
                             </ul>
                         </li>
-                        <li><a href="/helfer-plan.html" class="menu-item menu-subitem" id="nav-helfer"><span class="menu-text">Helfer</span></a></li>
                     </ul>
                 </div>
                 <a href="/teilnehmer.html" class="menu-item" id="nav-teilnehmer">
