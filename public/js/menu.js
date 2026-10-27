@@ -139,7 +139,7 @@ function gibMenueFrei() {
         .filter(teil => !teil.classList.contains('menue-platzhalter'));
     teile.forEach(teil => teil.classList.add('menue-ohne-uebergang'));
     document.getElementById('sidebarNavPrimary')?.style.removeProperty('visibility');
-    document.getElementById('sidebarNavSecondary')?.style.removeProperty('visibility');
+    document.getElementById('sidebarNavTurniere')?.style.removeProperty('visibility');
     document.querySelectorAll('.menue-platzhalter').forEach(teil => teil.remove());
     teile.forEach(teil => teil.classList.remove('menue-verborgen'));
     // Endzustand ohne Übergänge berechnen lassen, erst danach die Übergänge (Hover usw.) wieder zulassen.
@@ -333,11 +333,13 @@ function baueMenueGeruest() {
             <div class="sidebar-brand" title="Hajime Pro">
                 <img src="hajime_pro.png" height="60">
             </div>
-            <nav class="sidebar-nav" id="sidebarNavPrimary" style="visibility: hidden;">
+            <nav class="sidebar-nav sidebar-nav-turniere" id="sidebarNavTurniere" style="visibility: hidden;">
                 <a href="/turniere.html" class="menu-item" id="nav-turniere">
                     <span class="material-icons">calendar_month</span>
                     <span class="menu-text">Turniere</span>
                 </a>
+            </nav>
+            <nav class="sidebar-nav" id="sidebarNavPrimary" style="visibility: hidden;">
                 <a href="/turnier.html" class="menu-item" id="nav-turnier">
                     <span class="material-icons">emoji_events</span>
                     <span class="menu-text">Turnier</span>
@@ -355,7 +357,6 @@ function baueMenueGeruest() {
                         <li><a href="#" class="menu-item menu-subitem" id="nav-orga-technik" data-ohne-turnier style="display: none;"><span class="menu-text">Technik</span><span class="menu-item-badge" style="display: none;"></span></a></li>
                         <li><a href="#" class="menu-item menu-subitem" id="nav-orga-catering" data-ohne-turnier style="display: none;"><span class="menu-text">Catering</span><span class="menu-item-badge" style="display: none;"></span></a></li>
                         <li><a href="#" class="menu-item menu-subitem" id="nav-orga-medaillen" data-ohne-turnier style="display: none;"><span class="menu-text">Medaillen und Pokale</span><span class="menu-item-badge" style="display: none;"></span></a></li>
-                        <li><a href="/urkunden-designer.html" class="menu-item menu-subitem" id="nav-urkunden-designer"><span class="menu-text">Urkunden-Designer</span></a></li>
                     </ul>
                 </div>
                 <a href="/teilnehmer.html" class="menu-item" id="nav-teilnehmer">
@@ -389,8 +390,6 @@ function baueMenueGeruest() {
                     <span class="material-icons">workspace_premium</span>
                     <span class="menu-text">Urkunden</span>
                 </a>
-            </nav>
-            <nav class="sidebar-nav" id="sidebarNavSecondary" style="visibility: hidden;">
                 <a href="/dashboard.html" class="menu-item" id="nav-dashboard">
                     <span class="material-icons">dashboard</span>
                     <span class="menu-text">Dashboard</span>
@@ -401,19 +400,6 @@ function baueMenueGeruest() {
                 </a>
             </nav>
             <nav class="sidebar-nav-unten" id="sidebarNavUnten">
-                <a href="/helfer.html" class="menu-item" id="nav-helfer-app" data-ohne-turnier style="display: none;">
-                    <span class="material-icons">handshake</span>
-                    <span class="menu-text">Helfer-App</span>
-                </a>
-                <a href="/nachrichten.html" class="menu-item" id="nav-nachrichten" data-ohne-turnier style="display: none;">
-                    <span class="material-icons">mail</span>
-                    <span class="menu-text">Nachrichten<span class="menu-badge" id="nav-nachrichten-zaehler" style="display: none;"></span></span>
-                </a>
-                <div class="menu-trenner" id="nav-super-trenner" role="separator" style="display: none;"></div>
-                <a href="/admin-nutzer.html" class="menu-item" id="nav-nutzer" data-ohne-turnier style="display: none;">
-                    <span class="material-icons">admin_panel_settings</span>
-                    <span class="menu-text">Benutzer</span>
-                </a>
                 <a href="/admin-nutzer.html" class="menu-item" id="nav-mitglieder" data-ohne-turnier style="display: none;">
                     <span class="material-icons">manage_accounts</span>
                     <span class="menu-text">Mitglieder<span class="menu-badge" id="nav-mitglieder-zaehler" style="display: none;"></span></span>
@@ -422,37 +408,25 @@ function baueMenueGeruest() {
                     <span class="material-icons">payments</span>
                     <span class="menu-text">Zahlungsdaten</span>
                 </a>
-                <a href="/admin-einladungen.html" class="menu-item" id="nav-einladungen" data-ohne-turnier style="display: none;">
-                    <span class="material-icons">forward_to_inbox</span>
-                    <span class="menu-text">Einladungen</span>
+                <a href="/urkunden-designer.html" class="menu-item" id="nav-urkunden-designer">
+                    <span class="material-icons">palette</span>
+                    <span class="menu-text">Urkunden-Designer</span>
                 </a>
-                <a href="/admin-erstregistrierungen.html" class="menu-item" id="nav-erstregistrierungen" data-ohne-turnier style="display: none;">
-                    <span class="material-icons">verified_user</span>
-                    <span class="menu-text">Erstregistrierungen<sup class="menu-sup" id="nav-erstregistrierungen-zaehler" style="display: none;"></sup></span>
+                <a href="/helfer.html" class="menu-item" id="nav-helfer-app" data-ohne-turnier style="display: none;">
+                    <span class="material-icons">handshake</span>
+                    <span class="menu-text">Helfer-App</span>
                 </a>
-                <a href="/admin-vereine.html" class="menu-item" id="nav-vereine" data-ohne-turnier style="display: none;">
-                    <span class="material-icons">groups</span>
-                    <span class="menu-text">Vereine</span>
-                </a>
-                <a href="/server-update.html" class="menu-item" id="nav-server-update" data-ohne-turnier style="display: none;">
-                    <span class="material-icons">system_update</span>
-                    <span class="menu-text">Server-Update</span>
+                <a href="/nachrichten.html" class="menu-item" id="nav-nachrichten" data-ohne-turnier style="display: none;">
+                    <span class="material-icons">mail</span>
+                    <span class="menu-text">Nachrichten<span class="menu-badge" id="nav-nachrichten-zaehler" style="display: none;"></span></span>
                 </a>
                 <a href="/downloads.html" class="menu-item" id="nav-downloads" data-ohne-turnier style="display: none;">
                     <span class="material-icons">download</span>
                     <span class="menu-text">Downloads</span>
                 </a>
-                <a href="/sicherung.html" class="menu-item" id="nav-sicherung" data-ohne-turnier style="display: none;">
-                    <span class="material-icons">backup</span>
-                    <span class="menu-text">Sicherung</span>
-                </a>
                 <a href="/protokoll.html" class="menu-item" id="nav-protokoll" data-ohne-turnier style="display: none;">
                     <span class="material-icons">history</span>
                     <span class="menu-text">Protokoll</span>
-                </a>
-                <a href="/konsole.html" class="menu-item" id="nav-konsole" data-ohne-turnier style="display: none;">
-                    <span class="material-icons">terminal</span>
-                    <span class="menu-text">Konsole</span>
                 </a>
                 <a href="/video-live.html" class="menu-item" id="nav-video-live" style="display: none;">
                     <span class="material-icons">videocam</span>
@@ -470,6 +444,35 @@ function baueMenueGeruest() {
                 <a href="/client-konfig.html" class="menu-item" id="nav-client-konfig" style="display: none;">
                     <span class="material-icons">settings</span>
                     <span class="menu-text">Client-Konfig</span>
+                </a>
+                <div class="menu-trenner" id="nav-super-trenner" role="separator" style="display: none;"></div>
+                <a href="/admin-nutzer.html" class="menu-item" id="nav-nutzer" data-ohne-turnier style="display: none;">
+                    <span class="material-icons">admin_panel_settings</span>
+                    <span class="menu-text">Benutzer</span>
+                </a>
+                <a href="/admin-einladungen.html" class="menu-item" id="nav-einladungen" data-ohne-turnier style="display: none;">
+                    <span class="material-icons">forward_to_inbox</span>
+                    <span class="menu-text">Einladungen</span>
+                </a>
+                <a href="/admin-erstregistrierungen.html" class="menu-item" id="nav-erstregistrierungen" data-ohne-turnier style="display: none;">
+                    <span class="material-icons">verified_user</span>
+                    <span class="menu-text">Erstregistrierungen<sup class="menu-sup" id="nav-erstregistrierungen-zaehler" style="display: none;"></sup></span>
+                </a>
+                <a href="/admin-vereine.html" class="menu-item" id="nav-vereine" data-ohne-turnier style="display: none;">
+                    <span class="material-icons">groups</span>
+                    <span class="menu-text">Vereine</span>
+                </a>
+                <a href="/server-update.html" class="menu-item" id="nav-server-update" data-ohne-turnier style="display: none;">
+                    <span class="material-icons">system_update</span>
+                    <span class="menu-text">Server-Update</span>
+                </a>
+                <a href="/sicherung.html" class="menu-item" id="nav-sicherung" data-ohne-turnier style="display: none;">
+                    <span class="material-icons">backup</span>
+                    <span class="menu-text">Sicherung</span>
+                </a>
+                <a href="/konsole.html" class="menu-item" id="nav-konsole" data-ohne-turnier style="display: none;">
+                    <span class="material-icons">terminal</span>
+                    <span class="menu-text">Konsole</span>
                 </a>
             </nav>
             <div class="sidebar-footer">
@@ -846,12 +849,10 @@ async function initialisiereMenue() {
         }
     };
 
-    // Orga und Helferplan ausblenden (Rolle ohne Admin-Recht bzw. Turnier ohne Planungs-Tools). Der Urkunden-Designer
-    // liegt in derselben Gruppe und bleibt für alle mit Verwaltungsrecht sichtbar; ohne ihn verschwindet die Gruppe.
+    // Orga und Helferplan ausblenden (Rolle ohne Admin-Recht bzw. Turnier ohne Planungs-Tools); die Gruppe verschwindet ganz.
     const versteckeOrgaPunkte = () => {
         versteckeMenuePunkte(['nav-helfer', 'nav-orga-uebersicht', 'nav-orga-meine', 'nav-orga-technik', 'nav-orga-catering', 'nav-orga-medaillen']);
-        const designer = document.getElementById('nav-urkunden-designer');
-        if (!designer || designer.style.display === 'none') versteckeMenuePunkte(['nav-orga']);
+        versteckeMenuePunkte(['nav-orga']);
     };
 
     // --- BENUTZERSTATUS EINMALIG LADEN (für Freigabe- und Vereins-Prüfung) ---
@@ -1479,13 +1480,9 @@ async function initialisiereMenue() {
     // Nachrichten (nur Cloud): Super-Admins mit eigenem Menüpunkt, alle anderen über das Profil-Icon
     const nachrichtenLink = document.getElementById('nav-nachrichten');
     if (nachrichtenLink && !einzelbenutzer && rechte.nutzer) nachrichtenLink.style.display = '';
-    if (rechte.nutzer) {
-        const oben = document.getElementById('sidebarNavPrimary');
-        // Ein Trenner grenzt die Super-Admin-Punkte von den Turnier-Punkten ab
-        const trenner = document.getElementById('nav-super-trenner');
-        if (oben && trenner) { trenner.style.display = ''; oben.appendChild(trenner); }
-        if (oben) for (const link of [nachrichtenLink, nutzerLink,einladungenLink, erstregistrierungenLink, vereineLink, serverUpdateLink, sicherungLink, protokollLink, konsoleLink]) if (link) oben.appendChild(link);
-    }
+    // Ein Trenner grenzt die Super-Admin-Punkte von den allgemeinen Punkten darüber ab
+    const superTrenner = document.getElementById('nav-super-trenner');
+    if (superTrenner && rechte.nutzer) superTrenner.style.display = '';
 
     // --- AKTIVEN REITER HERVORHEBEN ---
     markiereAktivenMenuepunkt(id => document.getElementById(id));
@@ -1509,7 +1506,7 @@ async function initialisiereMenue() {
         const ansichtMeine = suche.get('ansicht') === 'meine';
         const aufgabeId = currentPath.includes('orga-aufgabe.html') ? suche.get('id') : null;
         const seiteIstOrga = currentPath.includes('orga.html') || currentPath.includes('orga-aufgabe.html')
-            || currentPath.includes('helfer-plan.html') || currentPath.includes('urkunden-designer.html');
+            || currentPath.includes('helfer-plan.html');
 
         let offen = true;
         try { if (localStorage.getItem(SPEICHER_KEY) === 'false') offen = false; } catch { /* ohne Speicher: offen */ }
@@ -1524,7 +1521,7 @@ async function initialisiereMenue() {
             // Eingeklappte Seitenleiste (nur Icons): kein Untermenü, der Klick öffnet die Orga-Übersicht.
             if (document.body.classList.contains('sidebar-collapsed') || window.matchMedia('(max-width: 850px)').matches) {
                 const uebersicht = document.getElementById('nav-orga-uebersicht');
-                const ziel = uebersicht && uebersicht.style.display !== 'none' ? uebersicht : document.getElementById('nav-urkunden-designer');
+                const ziel = uebersicht && uebersicht.style.display !== 'none' ? uebersicht : document.getElementById('nav-helfer');
                 window.location.href = ziel.getAttribute('href');
                 return;
             }

@@ -147,13 +147,20 @@ body {
     border-top: 2px solid var(--border);
 }
 
-/* Menüpunkt(e) direkt über der Linie des Footers (z.B. "Client-Konfig") */
+/* Oben nur "Turniere" (Auswahl), darunter folgt die Gruppe für das gewählte Turnier */
+.sidebar-nav-turniere {
+    flex: none;
+    border-top: 2px solid var(--border);
+}
+
+/* Allgemeine Punkte (Stammdaten, Nachrichten, Super-Admin …) direkt über der Linie des Footers */
 .sidebar-nav-unten {
     display: flex;
     flex-direction: column;
     gap: 4px;
-    padding: 0 12px 12px;
+    padding: 16px 12px 12px;
     flex-shrink: 0;
+    border-top: 2px solid var(--border);
 }
 
 /* Umschalter ganz unten in der Sidebar, klappt die Navigation ein/aus */
@@ -860,7 +867,7 @@ input:focus, select:focus {
     .app-sidebar { width: 72px; }
     .sidebar-brand { justify-content: center; padding: 18px 8px; }
     .sidebar-brand .brand-text { display: none; }
-    .sidebar-nav { padding: 16px 8px; }
+    .sidebar-nav, .sidebar-nav-unten { padding: 16px 8px; }
     .menu-text { display: none; }
     .menu-item { justify-content: center; padding: 10px 8px; gap: 0; }
     .menu-untermenue, .menu-gruppe-pfeil { display: none; }
@@ -883,7 +890,8 @@ body.sidebar-collapsed .sidebar-brand {
     padding: 18px 8px;
 }
 
-body.sidebar-collapsed .sidebar-nav {
+body.sidebar-collapsed .sidebar-nav,
+body.sidebar-collapsed .sidebar-nav-unten {
     padding: 16px 8px;
 }
 
@@ -1005,7 +1013,7 @@ body.sidebar-collapsed .top-header-bar {
     line-height: 1;
 }
 
-/* Trenner zwischen Turnier-Menüpunkten und den Super-Admin-Punkten */
+/* Trenner zwischen den allgemeinen Menüpunkten und den Super-Admin-Punkten */
 .menu-trenner {
     height: 0;
     margin: 10px 14px;

@@ -22,19 +22,22 @@ test.beforeAll(async ({ request }) => {
 
 const kopf = (page) => page.locator('#nav-orga-kopf');
 
-test('Hauptleiste enthält Orga mit Untermenü in fester Reihenfolge, Helfer und Designer nicht mehr oben', async ({ page }) => {
+test('Hauptleiste enthält Orga mit Untermenü in fester Reihenfolge, Turniere oben, Urkunden-Designer bei den allgemeinen Punkten', async ({ page }) => {
     await page.goto(`/turnier.html?id=${turnierId}`);
     await expect(kopf(page)).toBeVisible();
     await expect(kopf(page)).toHaveAttribute('aria-expanded', 'true');
     await expect(kopf(page)).toHaveAttribute('aria-controls', 'nav-orga-liste');
     await expect(page.locator('#nav-orga-liste > li > a > .menu-text')).toHaveText(
-        ['Übersicht', 'Meine Aufgaben', 'Helfer', 'Technik', 'Catering', 'Medaillen und Pokale', 'Urkunden-Designer']);
+        ['Übersicht', 'Meine Aufgaben', 'Helfer', 'Technik', 'Catering', 'Medaillen und Pokale']);
     // direkt nach „Turnier“
     const reihenfolge = await page.locator('#sidebarNavPrimary > *').evaluateAll((els) => els.map((e) => e.id));
     expect(reihenfolge.indexOf('nav-orga')).toBe(reihenfolge.indexOf('nav-turnier') + 1);
-    // Helfer und Urkunden-Designer stehen nur im Untermenü
+    // „Turniere“ steht allein ganz oben, Helfer nur im Untermenü, der Urkunden-Designer bei den allgemeinen Punkten unten
+    await expect(page.locator('#sidebarNavTurniere > #nav-turniere')).toHaveCount(1);
+    await expect(page.locator('#sidebarNavPrimary > #nav-turniere')).toHaveCount(0);
     await expect(page.locator('#sidebarNavPrimary > #nav-helfer')).toHaveCount(0);
-    await expect(page.locator('#sidebarNavPrimary > #nav-urkunden-designer')).toHaveCount(0);
+    await expect(page.locator('#sidebarNavPrimary #nav-urkunden-designer')).toHaveCount(0);
+    await expect(page.locator('#sidebarNavUnten > #nav-urkunden-designer')).toHaveCount(1);
     await expect(page.locator('#nav-orga-liste #nav-helfer')).toHaveAttribute('href', `/helfer-plan.html?turnierId=${turnierId}`);
     await expect(page.locator('#nav-orga-meine')).toHaveAttribute('href', `/orga.html?ansicht=meine&turnierId=${turnierId}`);
     // Systempunkte unten unverändert vorhanden
@@ -80,13 +83,13 @@ test('Meine Aufgaben: Link aktiviert den Filter „Nur meine Aufgaben“ und ist
     await expect(page.locator('#nav-orga-meine-zaehler')).toBeHidden();
 });
 
-test('Aktiver Punkt auf helfer-plan.html und urkunden-designer.html (Eltern und Kind)', async ({ page }) => {
+test('Aktiver Punkt auf helfer-plan.html (Eltern und Kind) und urkunden-designer.html (eigener Punkt)', async ({ page }) => {
     await page.goto(`/helfer-plan.html?turnierId=${turnierId}`);
     await expect(page.locator('#nav-helfer')).toHaveClass(/active/);
     await expect(kopf(page)).toHaveClass(/active/);
     await page.goto(`/urkunden-designer.html?turnierId=${turnierId}`);
     await expect(page.locator('#nav-urkunden-designer')).toHaveClass(/active/);
-    await expect(kopf(page)).toHaveClass(/active/);
+    await expect(kopf(page)).not.toHaveClass(/active/);
     await expect(page.locator('#nav-helfer')).not.toHaveClass(/active/);
 });
 
