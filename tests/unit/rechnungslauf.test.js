@@ -475,10 +475,14 @@ test('Ohne SMTP (echter Mailer): Rechnung bleibt offen, PDF bleibt da', async ()
     await zw(t, 'JC A', 'ueberweisung', 's@jc-a.de');
     await tn(t, 'JC A', { gewogen: true });
     setzeTestVersand(null);
+    // Die ESM-Imports laufen vor dem delete oben; der Mailer lädt dabei eine vorhandene .env (SMTP_HOST) nach
+    const smtpHost = process.env.SMTP_HOST;
+    delete process.env.SMTP_HOST;
     let r;
     try {
         r = await aufruf(a.admin, 'POST', `/api/abrechnung/${t}/rechnungen`);
     } finally {
+        if (smtpHost !== undefined) process.env.SMTP_HOST = smtpHost;
         setzeTestVersand(testVersand);
     }
     assert.deepEqual([r.daten.erstellt, r.daten.versendet, r.daten.fehler.length], [1, 0, 1]);

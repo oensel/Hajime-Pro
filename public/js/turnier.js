@@ -346,19 +346,9 @@ document.addEventListener('DOMContentLoaded', () => {
         cb.checked = true;
     }
 
-    // --- PLANUNGS-TOOLS: Haken blendet Beginn/Ende (Helferplan) ein bzw. aus ---
-    const planungsHaken = document.getElementById('planungs_tools');
-    function zeigePlanungsFelder() {
-        document.querySelectorAll('.planungs-feld').forEach(el => { el.style.display = planungsHaken.checked ? '' : 'none'; });
-    }
-    planungsHaken.addEventListener('change', zeigePlanungsFelder);
-    // Neues Turnier: Standard in der Cloud an, am Hallen-Server aus (beim Bearbeiten setzt ladeTurnierDaten den Wert)
-    if (!turnierId) {
-        fetch('/api/config').then(r => (r.ok ? r.json() : {})).then(c => {
-            planungsHaken.checked = !c.isOffline;
-            zeigePlanungsFelder();
-        }).catch(() => zeigePlanungsFelder());
-    }
+    // --- FUNKTIONEN (Orga-Planer, Urkunden, Anzeigen, Teilnehmer-App, Video): Schalter und Fragen liegen im Assistenten (turnierAssistent.js) ---
+    const assistent = window.TurnierAssistent;
+    window.addEventListener('assistent:aenderung', () => { ungespeichert = true; });
 
     // --- SICHTBARKEIT: nur in der Cloud relevant (am Hallen-Server gibt es keine anderen Vereine) ---
     fetch('/api/config').then(r => (r.ok ? r.json() : {})).then(c => {
@@ -537,9 +527,8 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('beginn').value = Number.isInteger(turnier.beginn_min) ? formatiereMinuten(turnier.beginn_min) : '';
             document.getElementById('ende').value = Number.isInteger(turnier.ende_min) && turnier.ende_min < 1440 ? formatiereMinuten(turnier.ende_min) : '';
             document.getElementById('waagen_anzahl').value = turnier.waagen_anzahl || 1;
-            planungsHaken.checked = turnier.planungs_tools !== false;
+            assistent.setzeFunktionen(turnier);
             document.getElementById('sichtbarkeit').value = turnier.sichtbarkeit || 'alle';
-            zeigePlanungsFelder();
 
             // Anmeldeschluss befüllen (reines Datum ohne Uhrzeit; String-Slice statt Date-Objekt,
             // um Zeitzonen-bedingte Tagesverschiebung zu vermeiden)
@@ -809,7 +798,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 beginn_min: beginnMin,
                 ende_min: endeMin,
                 waagen_anzahl: document.getElementById('waagen_anzahl').value,
-                planungs_tools: planungsHaken.checked,
+                ...assistent.liesFunktionen(),
+                ausstattung: assistent.liesAusstattung(),
                 sichtbarkeit: document.getElementById('sichtbarkeit').value,
                 startgeld: document.getElementById('startgeld').value,
                 iban: document.getElementById('iban').value.trim(),
@@ -904,6 +894,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         ausschreibungNeueDatei = null;
                         ausschreibungPdfBase64 = undefined;
                         aktualisiereAusschreibungAnzeige();
+                    }
+
+                    // Funktionen geändert: das Menü (Urkunden, Anzeigen, Video, Orga usw.) wird beim Laden der Seite berechnet, also neu laden
+                    if (turnierId && assistent.funktionenGeaendert()) {
+                        assistent.merkeSeite();
+                        setTimeout(() => window.location.reload(), 800);
                     }
                 } else {
                     if (window.zeigeNotification) {

@@ -79,224 +79,316 @@
     <div id="importTurnierStatus" style="display: none; margin: 0 0 16px 0; font-size: 13px; font-weight: bold; color: var(--text-muted);"></div>
 
     <form id="turnierForm">
-        <div class="turnier-layout">
-            <!-- LINKE SPALTE: Stammdaten + Zahlungsinformationen -->
-            <div class="turnier-col-left">
-                <div class="mdc-card turnier-section-card">
-                    <div class="turnier-card-header">
-                        <span class="material-icons">badge</span>
-                        <h2>Grunddaten</h2>
-                    </div>
-                    <div class="turnier-card-body">
-                        <div class="form-group">
-                            <label for="bezeichnung">Veranstaltungs-Name</label>
-                            <input type="text" id="bezeichnung" required placeholder="z.B. Sommerturnier 2026">
-                        </div>
-                        <div class="form-group">
-                            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-                                <div style="flex: 0 0 115px;">
-                                    <label for="datum">Wettkampftag</label>
-                                    <input type="date" id="datum" required>
-                                </div>
-                                <div class="planungs-feld" style="flex: 0 0 90px; margin-left: auto;">
-                                    <label for="beginn">Beginn</label>
-                                    <input type="time" id="beginn">
-                                </div>
-                                <div class="planungs-feld" style="flex: 0 0 90px;">
-                                    <label for="ende">Ende</label>
-                                    <input type="time" id="ende">
-                                </div>
-                            </div>
-                        </div>
-                        <div class="form-group" style="display: grid; grid-template-columns: 90px 1fr; gap: 12px;">
-                            <div>
-                                <label for="plz">PLZ</label>
-                                <input type="text" id="plz" inputmode="numeric" maxlength="5" pattern="[0-9]{5}" placeholder="z.B. 48308">
-                            </div>
-                            <div>
-                                <label for="ort">Kampfstätte (Ort)</label>
-                                <input type="text" id="ort" required placeholder="z.B. Senden">
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label for="bundesland">Bundesland</label>
-                            <select id="bundesland">
-                                <option value="">Bitte wählen...</option>
-                                <option value="Baden-Württemberg">Baden-Württemberg</option>
-                                <option value="Bayern">Bayern</option>
-                                <option value="Berlin">Berlin</option>
-                                <option value="Brandenburg">Brandenburg</option>
-                                <option value="Bremen">Bremen</option>
-                                <option value="Hamburg">Hamburg</option>
-                                <option value="Hessen">Hessen</option>
-                                <option value="Mecklenburg-Vorpommern">Mecklenburg-Vorpommern</option>
-                                <option value="Niedersachsen">Niedersachsen</option>
-                                <option value="Nordrhein-Westfalen">Nordrhein-Westfalen</option>
-                                <option value="Rheinland-Pfalz">Rheinland-Pfalz</option>
-                                <option value="Saarland">Saarland</option>
-                                <option value="Sachsen">Sachsen</option>
-                                <option value="Sachsen-Anhalt">Sachsen-Anhalt</option>
-                                <option value="Schleswig-Holstein">Schleswig-Holstein</option>
-                                <option value="Thüringen">Thüringen</option>
-                            </select>
-                        </div>
-                        <div class="form-group" id="vereinWahlGruppe" style="display: none;">
-                            <label for="vereinWahl">Verein (Super-Admin)</label>
-                            <select id="vereinWahl"><option value="">Verein wählen …</option></select>
-                        </div>
-                        <div class="form-group">
-                            <label for="ausrichter">Ausrichter (Verein)</label>
-                            <input type="text" id="ausrichter" required placeholder="z.B. Judo Club Senden">
-                        </div>
-                        <div class="form-group">
-                            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
-                                <div>
-                                    <label for="anzahl_kampfflaechen">Matten</label>
-                                    <input type="number" id="anzahl_kampfflaechen" min="1" value="1" required>
-                                </div>
-                                <div>
-                                    <label for="waagen_anzahl">Waagen</label>
-                                    <input type="number" id="waagen_anzahl" min="1" max="10" value="1">
-                                </div>
-                                <div>
-                                    <label for="farbe_kaempfer2">Kämpfer 2</label>
-                                    <div class="farb-auswahl">
-                                        <i class="farb-auswahl-punkt" id="farbPunkt"></i>
-                                        <select id="farbe_kaempfer2">
-                                            <option value="blau">Blau</option>
-                                            <option value="rot">Rot</option>
-                                        </select>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="form-group" id="anmeldeschlussGroup" style="display: none;">
-                            <label for="anmeldeschluss">Anmeldeschluss (Frist)</label>
-                            <input type="date" id="anmeldeschluss">
-                        </div>
-                        <div class="form-group">
-                            <label for="ausschreibungInput">Ausschreibung (PDF)</label>
-                            <input type="file" id="ausschreibungInput" accept="application/pdf" style="display: none;">
-                            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                                <button type="button" class="btn btn-outlined" id="ausschreibungAuswaehlenBtn">
-                                    Datei auswählen
-                                </button>
-                                <span id="ausschreibungDateiname" style="font-size: 12px; color: var(--text-muted); font-weight: 700;"></span>
-                                <span class="material-icons" id="ausschreibungAnsehenBtn" title="Ausschreibung ansehen" style="display: none; cursor: pointer; color: var(--primary); font-size: 20px;">visibility</span>
-                                <span class="material-icons" id="ausschreibungEntfernenBtn" title="Ausschreibung entfernen" style="display: none; cursor: pointer; color: #c62828; font-size: 20px;">delete</span>
-                            </div>
-                        </div>
-                        <div class="form-group" id="sichtbarkeitGroup" style="display: none;">
-                            <label for="sichtbarkeit">Sichtbarkeit</label>
-                            <select id="sichtbarkeit">
-                                <option value="alle">Alle Vereine</option>
-                                <option value="bundesland">Selbes Bundesland</option>
-                                <option value="eingeladen">Nur eingeladene Vereine</option>
-                            </select>
-                        </div>
-                        <div class="form-group planungs-gruppe">
-                            <label class="planungs-haken" for="planungs_tools" title="Helfer-Dienste und Orga (Vorbereitung) für dieses Turnier">
-                                Planungs-Tools verwenden
-                                <input type="checkbox" id="planungs_tools">
-                            </label>
-                        </div>
-                    </div>
-                </div>
+        <nav class="assistent-schritte" id="assistentSchritte" aria-label="Schritte">
+            <button type="button" class="assistent-schritt" data-schritt="1"><span class="assistent-nr">1</span><span class="assistent-titel">Grunddaten</span></button>
+            <span class="assistent-linie"></span>
+            <button type="button" class="assistent-schritt" data-schritt="2"><span class="assistent-nr">2</span><span class="assistent-titel">Wettkampf</span></button>
+            <span class="assistent-linie"></span>
+            <button type="button" class="assistent-schritt" data-schritt="3"><span class="assistent-nr">3</span><span class="assistent-titel">Startgeld</span></button>
+            <span class="assistent-linie"></span>
+            <button type="button" class="assistent-schritt" data-schritt="4"><span class="assistent-nr">4</span><span class="assistent-titel">Ausstattung</span></button>
+        </nav>
 
-                <div class="mdc-card turnier-section-card">
-                    <div class="turnier-card-header">
-                        <span class="material-icons">payments</span>
-                        <h2>Zahlungsinformationen</h2>
+        <!-- Schritt 1: Grunddaten und Anmeldung -->
+        <section class="assistent-seite" data-seite="1">
+
+            <div class="mdc-card turnier-section-card">
+                <div class="turnier-card-header">
+                    <span class="material-icons">badge</span>
+                    <h2>Grunddaten</h2>
+                </div>
+                <div class="turnier-card-body">
+                    <div class="form-group">
+                        <label for="bezeichnung">Veranstaltungs-Name</label>
+                        <input type="text" id="bezeichnung" required placeholder="z.B. Sommerturnier 2026">
                     </div>
-                    <div class="turnier-card-body">
-                        <div class="form-group">
-                            <label for="startgeld">Startgeld</label>
-                            <input type="number" id="startgeld" min="0" max="999" step="1" placeholder="z.B. 8">
-                        </div>
-                        <!-- Weitere Zahlungsfelder erscheinen erst bei Startgeld > 0 (turnier.js) -->
-                        <div id="startgeldDetails" hidden>
-                        <!-- Konto: nur am Hallen-Server; in der Cloud kommt es aus den Zahlungsdaten des Vereins (turnier.js blendet aus) -->
-                        <div id="kontoGruppe">
-                        <div class="form-group">
-                            <label for="kontoinhaber">Kontoinhaber</label>
-                            <input type="text" id="kontoinhaber" placeholder="z.B. Judo Club Senden e.V.">
-                        </div>
-                        <div class="form-group">
-                            <label for="iban">IBAN</label>
-                            <input type="text" id="iban" maxlength="34" placeholder="z.B. DE12345678901234567890">
-                        </div>
-                        </div>
-                        <div class="form-group">
-                            <label for="verwendungszweck">Verwendungszweck</label>
-                            <input type="text" id="verwendungszweck" placeholder="z.B. Startgeld + Vereinsname">
-                        </div>
-                        <div class="form-group" id="zahlwegGruppe">
-                            <label for="abrechnungsbasis">Abrechnung nach</label>
-                            <select id="abrechnungsbasis">
-                                <option value="gemeldet">Gemeldete Kämpfer</option>
-                                <option value="teilnahme_waage">Teilnahme an der Waage</option>
-                            </select>
-                            <div style="margin-top:12px;font-weight:700;font-size:13px;">Angebotene Zahlwege für andere Vereine</div>
-                            <label class="planungs-haken" for="zahlwegUeberweisung">
-                                Überweisung
-                                <input type="checkbox" id="zahlwegUeberweisung" checked>
-                            </label>
-                            <label class="planungs-haken" for="zahlwegBar">
-                                Bar an der Waage
-                                <input type="checkbox" id="zahlwegBar" checked>
-                            </label>
-                            <label class="planungs-haken" for="zahlwegLastschrift" id="zahlwegLastschriftZeile" hidden>
-                                Lastschrift (SEPA)
-                                <input type="checkbox" id="zahlwegLastschrift">
-                            </label>
-                            <div id="zahlwegLastschriftGrund" hidden style="font-size:12px;margin:-4px 0 6px;"></div>
-                        </div>
-                        <!-- Rechnungen (nur Cloud, turnier.js blendet den Block ein) -->
-                        <div id="rechnungGruppe" hidden>
-                            <!-- Zahlungsziel und Vorabankündigung: nicht mehr einstellbar, die Werte (Standard 14 und 5 Tage) bleiben erhalten -->
-                            <input type="hidden" id="zahlungsziel_tage" value="14">
-                            <input type="hidden" id="vorabankuendigung_tage" value="5">
-                            <div class="form-group">
-                                <label for="rechnung_hinweis">Hinweistext auf der Rechnung</label>
-                                <textarea id="rechnung_hinweis" rows="3" maxlength="1000" style="width:100%;box-sizing:border-box;padding:6px;border:2px solid var(--border);border-radius:4px;font-size:14px;font-family:inherit;background:var(--bg-card);color:var(--text-main);"></textarea>
+                    <div class="form-group">
+                        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                            <div style="flex: 0 0 115px;">
+                                <label for="datum">Wettkampftag</label>
+                                <input type="date" id="datum" required>
                             </div>
-                            <div id="rechnungStammdatenKasten" hidden style="margin-top:10px;padding:10px 12px;border:2px solid #f59e0b;border-radius:4px;font-size:13px;">
-                                <div><strong>Für Rechnungen fehlt noch:</strong> <span id="rechnungStammdatenFehlt"></span></div>
-                                <a id="rechnungStammdatenLink" href="#" hidden style="margin-top:6px;font-weight:700;">Abrechnungsdaten des Vereins ergänzen</a>
-                                <div id="rechnungStammdatenBitte" hidden style="margin-top:6px;">Bitte einen Admin Ihres Vereins, die Abrechnungsdaten zu ergänzen.</div>
+                            <div class="planungs-feld" style="flex: 0 0 90px; margin-left: auto;">
+                                <label for="beginn">Beginn</label>
+                                <input type="time" id="beginn">
+                            </div>
+                            <div class="planungs-feld" style="flex: 0 0 90px;">
+                                <label for="ende">Ende</label>
+                                <input type="time" id="ende">
                             </div>
                         </div>
+                    </div>
+                    <div class="form-group" style="display: grid; grid-template-columns: 90px 1fr; gap: 12px;">
+                        <div>
+                            <label for="plz">PLZ</label>
+                            <input type="text" id="plz" inputmode="numeric" maxlength="5" pattern="[0-9]{5}" placeholder="z.B. 48308">
                         </div>
+                        <div>
+                            <label for="ort">Kampfstätte (Ort)</label>
+                            <input type="text" id="ort" required placeholder="z.B. Senden">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="bundesland">Bundesland</label>
+                        <select id="bundesland">
+                            <option value="">Bitte wählen...</option>
+                            <option value="Baden-Württemberg">Baden-Württemberg</option>
+                            <option value="Bayern">Bayern</option>
+                            <option value="Berlin">Berlin</option>
+                            <option value="Brandenburg">Brandenburg</option>
+                            <option value="Bremen">Bremen</option>
+                            <option value="Hamburg">Hamburg</option>
+                            <option value="Hessen">Hessen</option>
+                            <option value="Mecklenburg-Vorpommern">Mecklenburg-Vorpommern</option>
+                            <option value="Niedersachsen">Niedersachsen</option>
+                            <option value="Nordrhein-Westfalen">Nordrhein-Westfalen</option>
+                            <option value="Rheinland-Pfalz">Rheinland-Pfalz</option>
+                            <option value="Saarland">Saarland</option>
+                            <option value="Sachsen">Sachsen</option>
+                            <option value="Sachsen-Anhalt">Sachsen-Anhalt</option>
+                            <option value="Schleswig-Holstein">Schleswig-Holstein</option>
+                            <option value="Thüringen">Thüringen</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="vereinWahlGruppe" style="display: none;">
+                        <label for="vereinWahl">Verein (Super-Admin)</label>
+                        <select id="vereinWahl"><option value="">Verein wählen …</option></select>
+                    </div>
+                    <div class="form-group">
+                        <label for="ausrichter">Ausrichter (Verein)</label>
+                        <input type="text" id="ausrichter" required placeholder="z.B. Judo Club Senden">
                     </div>
                 </div>
             </div>
 
-            <!-- RECHTE SPALTE: Altersklassen je Wettkampfform -->
-            <div class="turnier-col-right">
-                <div class="mdc-card turnier-section-card">
-                    <div class="turnier-card-header">
-                        <span class="material-icons">person</span>
-                        <h2>Einzel</h2>
+            <div class="mdc-card turnier-section-card">
+                <div class="turnier-card-header">
+                    <span class="material-icons">how_to_reg</span>
+                    <h2>Anmeldung</h2>
+                </div>
+                <div class="turnier-card-body">
+                    <div class="form-group" id="anmeldeschlussGroup" style="display: none;">
+                        <label for="anmeldeschluss">Anmeldeschluss (Frist)</label>
+                        <input type="date" id="anmeldeschluss">
                     </div>
-                    <div class="turnier-card-body">
-                        <div id="altersklassenContainer">
-                            <!-- Je Geschlecht dynamisch befüllt (siehe turnier.js) -->
+                    <div class="form-group">
+                        <label for="ausschreibungInput">Ausschreibung (PDF)</label>
+                        <input type="file" id="ausschreibungInput" accept="application/pdf" style="display: none;">
+                        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                            <button type="button" class="btn btn-outlined" id="ausschreibungAuswaehlenBtn">
+                                Datei auswählen
+                            </button>
+                            <span id="ausschreibungDateiname" style="font-size: 12px; color: var(--text-muted); font-weight: 700;"></span>
+                            <span class="material-icons" id="ausschreibungAnsehenBtn" title="Ausschreibung ansehen" style="display: none; cursor: pointer; color: var(--primary); font-size: 20px;">visibility</span>
+                            <span class="material-icons" id="ausschreibungEntfernenBtn" title="Ausschreibung entfernen" style="display: none; cursor: pointer; color: #c62828; font-size: 20px;">delete</span>
                         </div>
                     </div>
-                </div>
-
-                <div class="mdc-card turnier-section-card">
-                    <div class="turnier-card-header">
-                        <span class="material-icons">groups_2</span>
-                        <h2>Mannschaft</h2>
+                    <div class="form-group" id="sichtbarkeitGroup" style="display: none;">
+                        <label for="sichtbarkeit">Sichtbarkeit</label>
+                        <select id="sichtbarkeit">
+                            <option value="alle">Alle Vereine</option>
+                            <option value="bundesland">Selbes Bundesland</option>
+                            <option value="eingeladen">Nur eingeladene Vereine</option>
+                        </select>
                     </div>
-                    <div class="turnier-card-body">
-                        <div id="mannschaftAltersklassenContainer">
-                            <!-- Je Geschlecht dynamisch befüllt (siehe turnier.js) -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Schritt 2: Matten, Waagen und Altersklassen -->
+        <section class="assistent-seite" data-seite="2" hidden>
+
+            <div class="mdc-card turnier-section-card">
+                <div class="turnier-card-header">
+                    <span class="material-icons">sports_kabaddi</span>
+                    <h2>Wettkampf</h2>
+                </div>
+                <div class="turnier-card-body">
+                    <div class="form-group">
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
+                            <div>
+                                <label for="anzahl_kampfflaechen">Matten</label>
+                                <input type="number" id="anzahl_kampfflaechen" min="1" value="1" required>
+                            </div>
+                            <div>
+                                <label for="waagen_anzahl">Waagen</label>
+                                <input type="number" id="waagen_anzahl" min="1" max="10" value="1">
+                            </div>
+                            <div>
+                                <label for="farbe_kaempfer2">Kämpfer 2</label>
+                                <div class="farb-auswahl">
+                                    <i class="farb-auswahl-punkt" id="farbPunkt"></i>
+                                    <select id="farbe_kaempfer2">
+                                        <option value="blau">Blau</option>
+                                        <option value="rot">Rot</option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
+            <div class="mdc-card turnier-section-card">
+                <div class="turnier-card-header">
+                    <span class="material-icons">person</span>
+                    <h2>Einzel</h2>
+                </div>
+                <div class="turnier-card-body">
+                    <div id="altersklassenContainer">
+                        <!-- Je Geschlecht dynamisch befüllt (siehe turnier.js) -->
+                    </div>
+                </div>
+            </div>
+            <div class="mdc-card turnier-section-card">
+                <div class="turnier-card-header">
+                    <span class="material-icons">groups_2</span>
+                    <h2>Mannschaft</h2>
+                </div>
+                <div class="turnier-card-body">
+                    <div id="mannschaftAltersklassenContainer">
+                        <!-- Je Geschlecht dynamisch befüllt (siehe turnier.js) -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Schritt 3: Startgeld und Zahlungswege -->
+        <section class="assistent-seite" data-seite="3" hidden>
+            <div class="mdc-card turnier-section-card">
+                <div class="turnier-card-header">
+                    <span class="material-icons">payments</span>
+                    <h2>Zahlungsinformationen</h2>
+                </div>
+                <div class="turnier-card-body">
+                    <div class="form-group">
+                        <label for="startgeld">Startgeld</label>
+                        <input type="number" id="startgeld" min="0" max="999" step="1" placeholder="z.B. 8">
+                    </div>
+                    <!-- Weitere Zahlungsfelder erscheinen erst bei Startgeld > 0 (turnier.js) -->
+                    <div id="startgeldDetails" hidden>
+                    <!-- Konto: nur am Hallen-Server; in der Cloud kommt es aus den Zahlungsdaten des Vereins (turnier.js blendet aus) -->
+                    <div id="kontoGruppe">
+                    <div class="form-group">
+                        <label for="kontoinhaber">Kontoinhaber</label>
+                        <input type="text" id="kontoinhaber" placeholder="z.B. Judo Club Senden e.V.">
+                    </div>
+                    <div class="form-group">
+                        <label for="iban">IBAN</label>
+                        <input type="text" id="iban" maxlength="34" placeholder="z.B. DE12345678901234567890">
+                    </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="verwendungszweck">Verwendungszweck</label>
+                        <input type="text" id="verwendungszweck" placeholder="z.B. Startgeld + Vereinsname">
+                    </div>
+                    <div class="form-group" id="zahlwegGruppe">
+                        <label for="abrechnungsbasis">Abrechnung nach</label>
+                        <select id="abrechnungsbasis">
+                            <option value="gemeldet">Gemeldete Kämpfer</option>
+                            <option value="teilnahme_waage">Teilnahme an der Waage</option>
+                        </select>
+                        <div style="margin-top:12px;font-weight:700;font-size:13px;">Angebotene Zahlwege für andere Vereine</div>
+                        <label class="planungs-haken" for="zahlwegUeberweisung">
+                            Überweisung
+                            <input type="checkbox" id="zahlwegUeberweisung" checked>
+                        </label>
+                        <label class="planungs-haken" for="zahlwegBar">
+                            Bar an der Waage
+                            <input type="checkbox" id="zahlwegBar" checked>
+                        </label>
+                        <label class="planungs-haken" for="zahlwegLastschrift" id="zahlwegLastschriftZeile" hidden>
+                            Lastschrift (SEPA)
+                            <input type="checkbox" id="zahlwegLastschrift">
+                        </label>
+                        <div id="zahlwegLastschriftGrund" hidden style="font-size:12px;margin:-4px 0 6px;"></div>
+                    </div>
+                    <!-- Rechnungen (nur Cloud, turnier.js blendet den Block ein) -->
+                    <div id="rechnungGruppe" hidden>
+                        <!-- Zahlungsziel und Vorabankündigung: nicht mehr einstellbar, die Werte (Standard 14 und 5 Tage) bleiben erhalten -->
+                        <input type="hidden" id="zahlungsziel_tage" value="14">
+                        <input type="hidden" id="vorabankuendigung_tage" value="5">
+                        <div class="form-group">
+                            <label for="rechnung_hinweis">Hinweistext auf der Rechnung</label>
+                            <textarea id="rechnung_hinweis" rows="3" maxlength="1000" style="width:100%;box-sizing:border-box;padding:6px;border:2px solid var(--border);border-radius:4px;font-size:14px;font-family:inherit;background:var(--bg-card);color:var(--text-main);"></textarea>
+                        </div>
+                        <div id="rechnungStammdatenKasten" hidden style="margin-top:10px;padding:10px 12px;border:2px solid #f59e0b;border-radius:4px;font-size:13px;">
+                            <div><strong>Für Rechnungen fehlt noch:</strong> <span id="rechnungStammdatenFehlt"></span></div>
+                            <a id="rechnungStammdatenLink" href="#" hidden style="margin-top:6px;font-weight:700;">Abrechnungsdaten des Vereins ergänzen</a>
+                            <div id="rechnungStammdatenBitte" hidden style="margin-top:6px;">Bitte einen Admin Ihres Vereins, die Abrechnungsdaten zu ergänzen.</div>
+                        </div>
+                    </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Schritt 4: Fragen zur Ausstattung (nur beim Anlegen) und Funktionen des Turniers -->
+        <section class="assistent-seite" data-seite="4" hidden>
+
+            <div class="mdc-card turnier-section-card" id="ausstattungKarte">
+                <div class="turnier-card-header">
+                    <span class="material-icons">checklist_rtl</span>
+                    <h2>Ausstattung</h2>
+                </div>
+                <div class="turnier-card-body">
+                    <div class="ausstattung-kopf">
+                        <span id="ausstattungZaehler"></span>
+                        <button type="button" class="btn btn-outlined" id="ausstattungZuruecksetzen">Zurücksetzen</button>
+                    </div>
+                    <div class="ausstattung-balken"><i id="ausstattungBalken"></i></div>
+                    <div id="ausstattungFragen"></div>
+                </div>
+            </div>
+            <div class="mdc-card turnier-section-card">
+                <div class="turnier-card-header">
+                    <span class="material-icons">toggle_on</span>
+                    <h2>Funktionen</h2>
+                </div>
+                <div class="turnier-card-body" id="funktionenListe">
+
+                    <div class="fkt-zeile" data-fkt="orga">
+                        <span class="material-icons">checklist</span>
+                        <span class="fkt-name">Orga-Planer und Helfer-App</span>
+                        <label class="schalter"><input type="checkbox" id="planungs_tools" aria-label="Orga-Planer und Helfer-App" disabled><span class="schalter-regler"></span></label>
+                    </div>
+                    <div class="fkt-zeile" data-fkt="urkunden">
+                        <span class="material-icons">workspace_premium</span>
+                        <span class="fkt-name">Urkunden-Druck</span>
+                        <label class="schalter"><input type="checkbox" id="fkt_urkunden" aria-label="Urkunden-Druck" disabled><span class="schalter-regler"></span></label>
+                    </div>
+                    <div class="fkt-zeile" data-fkt="wettkampfplaene">
+                        <span class="material-icons">print</span>
+                        <span class="fkt-name">Wettkampfpläne drucken</span>
+                        <label class="schalter"><input type="checkbox" id="fkt_wettkampfplaene" aria-label="Wettkampfpläne drucken" disabled><span class="schalter-regler"></span></label>
+                    </div>
+                    <div class="fkt-zeile" data-fkt="anzeige">
+                        <span class="material-icons">connected_tv</span>
+                        <span class="fkt-name">Wer kämpft wo und Dashboard</span>
+                        <label class="schalter"><input type="checkbox" id="fkt_anzeige" aria-label="Wer kämpft wo und Dashboard" disabled><span class="schalter-regler"></span></label>
+                    </div>
+                    <div class="fkt-zeile" data-fkt="teilnehmer_app">
+                        <span class="material-icons">smartphone</span>
+                        <span class="fkt-name">Teilnehmer-App</span>
+                        <label class="schalter"><input type="checkbox" id="fkt_teilnehmer_app" aria-label="Teilnehmer-App" disabled><span class="schalter-regler"></span></label>
+                    </div>
+                    <div class="fkt-zeile" data-fkt="video">
+                        <span class="material-icons">videocam</span>
+                        <span class="fkt-name">Videoaufnahme und Archiv</span>
+                        <label class="schalter"><input type="checkbox" id="fkt_video" aria-label="Videoaufnahme und Archiv" disabled><span class="schalter-regler"></span></label>
+                    </div>
+                    <div class="fkt-zeile" data-fkt="streaming">
+                        <span class="material-icons">podcasts</span>
+                        <span class="fkt-name">Live-Streaming</span>
+                        <label class="schalter"><input type="checkbox" id="fkt_streaming" aria-label="Live-Streaming" disabled><span class="schalter-regler"></span></label>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <div class="assistent-nav">
+            <button type="button" class="btn btn-outlined" id="assistentZurueck">Zurück</button>
+            <span class="assistent-hinweis" id="assistentHinweis">Unbeantwortete Fragen gelten als Nein.</span>
+            <button type="button" class="btn assistent-weiter" id="assistentWeiter">Weiter</button>
         </div>
     </form>
 </div>
@@ -304,6 +396,7 @@
 <!-- Externe JavaScript-Datei für die Logik einbinden -->
 <script src="/js/ausschreibung-viewer.js"></script>
 <script src="/js/turnierDuplizieren.js"></script>
+<script type="module" src="/js/turnierAssistent.js"></script>
 <script src="/js/turnier.js"></script>
 </body>
 </html>
