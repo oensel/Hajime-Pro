@@ -13,6 +13,9 @@ deploy
 desktop/*
 !desktop/updateLogik.js
 !desktop/update-schluessel.pub
+!desktop/server
+desktop/server/*
+!desktop/server/selbstUpdate.js
 tests
 *.md
 !README.md
