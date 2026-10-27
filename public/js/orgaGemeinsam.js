@@ -47,11 +47,11 @@ export const PHASEN = [
 ];
 
 const LINK_SEITEN = {
-    helferplan: 'helfer-plan.html', matten: 'matten.html', teilnehmer: 'teilnehmer.html', pools: 'pools.html',
+    helferplan: 'helfer-plan.html', teilnehmer: 'teilnehmer.html', pools: 'pools.html',
     turnier: 'turnier.html', waage: 'teilnehmer.html', siegerliste: 'siegerliste.html'
 };
 const LINK_TEXTE = {
-    helferplan: 'Zum Helferplan', matten: 'Zu den Matten', teilnehmer: 'Zu den Teilnehmern', pools: 'Zu den Pools',
+    helferplan: 'Zum Helferplan', teilnehmer: 'Zu den Teilnehmern', pools: 'Zu den Pools',
     turnier: 'Zum Turnier', waage: 'Zur Anmeldung und Waage', siegerliste: 'Zur Siegerliste'
 };
 
