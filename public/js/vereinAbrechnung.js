@@ -26,6 +26,23 @@
             : 'Noch keine IBAN hinterlegt.';
     }
 
+    // Vorschau mit Platzhaltern; der Text kommt aus demselben Modul wie auf dem Server (src/shared/mandatText.js).
+    let mandatText = null;
+    function zeigeMandatVorschau() {
+        if (!mandatText) return;
+        $('abrMandatVorschau').textContent = mandatText.baueMandatstext({
+            glaeubigerName: $('abrAbsender').value.trim() || $('abrKontoinhaber').value.trim() || '(Name des Ausrichters)',
+            glaeubigerId: $('abrGlaeubigerId').value.trim() || '(Gläubiger-ID)',
+            mandatsreferenz: '(wird bei Erteilung vergeben)',
+            vorabTage: 5,
+            turnierBezeichnung: '(Turnier)',
+            zahlenderVerein: '(zahlender Verein)',
+            zusatztext: $('abrMandatZusatz').value
+        });
+    }
+    import('/js/shared/mandatText.js').then((modul) => { mandatText = modul; zeigeMandatVorschau(); }).catch(() => { /* Vorschau ist optional */ });
+    for (const id of ['abrMandatZusatz', 'abrAbsender', 'abrKontoinhaber', 'abrGlaeubigerId']) $(id).addEventListener('input', zeigeMandatVorschau);
+
     function fuelle(stammdaten) {
         const s = stammdaten || {};
         $('abrAbsender').value = s.absender_name || '';
@@ -37,6 +54,8 @@
         $('abrKontoinhaber').value = s.kontoinhaber || '';
         $('abrPraefix').value = s.rechnungs_praefix || '';
         $('abrGlaeubigerId').value = s.glaeubiger_id || '';
+        $('abrMandatZusatz').value = s.mandat_zusatztext || '';
+        zeigeMandatVorschau();
         naechsteNummer = s.naechste_rechnungsnummer || 1;
         zeigeIban(s);
         zeigeNaechsteNummer();
@@ -93,7 +112,8 @@
             ust_hinweis: $('abrUstHinweis').value,
             kontoinhaber: $('abrKontoinhaber').value,
             rechnungs_praefix: $('abrPraefix').value,
-            glaeubiger_id: $('abrGlaeubigerId').value
+            glaeubiger_id: $('abrGlaeubigerId').value,
+            mandat_zusatztext: $('abrMandatZusatz').value
         };
         if (ibanLoeschen) body.iban_loeschen = true;
         else if ($('abrIban').value.trim()) body.iban = $('abrIban').value;
@@ -105,7 +125,7 @@
                 return;
             }
             fuelle(daten.stammdaten);
-            meldung('Abrechnungsdaten gespeichert.', 'success');
+            meldung('Zahlungsdaten gespeichert.', 'success');
         } catch {
             meldeFehler('Speichern fehlgeschlagen.');
         }

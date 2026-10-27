@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hajime Pro - Abrechnungsdaten</title>
+    <title>Hajime Pro - Zahlungsdaten</title>
     <link rel="stylesheet" href="/css/common.css">
     <script src="/js/menu.js"></script>
     <style>
@@ -15,6 +15,8 @@
         .abr-zeile input { flex: 1; }
         .abr-fehler { color: #ef4444; font-size: 13px; min-height: 18px; margin: 0 0 8px; }
         .abr-nummer { font-weight: 700; }
+        .abr-vorschau { margin-top: 8px; font-size: 13px; }
+        .abr-vorschau pre { white-space: pre-wrap; word-break: break-word; margin: 6px 0 0; padding: 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-card); color: var(--text-main); font-family: inherit; }
     </style>
 </head>
 <body>
@@ -25,7 +27,7 @@
 <div class="mdc-card" style="padding: 24px 28px; max-width: 640px;">
     <div class="form-title-area">
         <span class="material-icons">receipt_long</span>
-        <h1>Abrechnungsdaten</h1>
+        <h1>Zahlungsdaten</h1>
         <span class="material-icons">receipt_long</span>
     </div>
     <p id="abrVerein" style="text-align: center; font-weight: 700; margin-top: 0;"></p>
@@ -57,6 +59,11 @@
         <div class="abr-feld"><label for="abrGlaeubigerId">Gläubiger-ID (für Lastschriften)</label>
             <input type="text" id="abrGlaeubigerId" maxlength="40" autocomplete="off" placeholder="DE98ZZZ09999999999">
             <p class="abr-hilfe">Nur nötig, wenn Vereine das Startgeld per Lastschrift zahlen sollen. Die Gläubiger-Identifikationsnummer beantragen Sie bei der Deutschen Bundesbank.</p></div>
+        <div class="abr-feld"><label for="abrMandatZusatz">Zusatztext zum Lastschriftmandat</label>
+            <textarea id="abrMandatZusatz" rows="3" maxlength="500" placeholder="z.B. Bei Rückfragen erreichen Sie uns unter startgeld@verein.de."></textarea>
+            <p class="abr-hilfe">Optional. Wird unter den festen Mandatstext gesetzt (höchstens 500 Zeichen) und gilt nur für neu erteilte Mandate. Ermächtigung, Erstattungshinweis, Gläubiger-ID und Referenz sind fest vorgegeben und nicht änderbar.</p>
+            <details class="abr-vorschau"><summary>Vorschau des Mandatstexts</summary>
+                <pre id="abrMandatVorschau"></pre></details></div>
         <div class="abr-feld"><label for="abrPraefix">Rechnungsnummern-Präfix</label>
             <input type="text" id="abrPraefix" maxlength="12" placeholder="z.B. JCK-">
             <p class="abr-hilfe">Buchstaben, Ziffern und Bindestrich, höchstens 12 Zeichen.</p></div>

@@ -235,6 +235,8 @@
         }
         .abgeschlossen-zeile .material-icons { font-size: 16px; }
         .abgeschlossen-zeile .az-name { flex: 1; font-weight: 700; }
+        .abrechnung-warnung { display: inline-flex; align-items: center; gap: 3px; padding: 1px 8px; border: 2px solid #f59e0b; border-radius: 4px; font-size: 12px; font-weight: 700; color: #b45309; }
+        .abrechnung-warnung .material-icons { font-size: 15px; }
         .abgeschlossen-zeile .btn { padding: 2px 10px; font-size: 11px; margin: 0; }
         .abgeschlossen-zeile .btn.btn-icon-aktion { padding: 0; width: 30px; height: 30px; flex: 0 0 30px; }
         .abgeschlossen-zeile .btn.btn-icon-aktion .material-icons { font-size: 18px; }
@@ -396,7 +398,7 @@
 <div class="mdc-card">
     <div class="form-title-area titel-zentriert">
         <span class="material-icons">calendar_month</span>
-        <h1>anstehende Turniere</h1>
+        <h1>Turniere</h1>
         <div class="titel-icons">
             <button type="button" class="toolbar-btn" id="importTurnierBtn" aria-label="Turnier importieren" data-tooltip="Turnier importieren" style="display: none;">
                 <span class="material-icons">upload_file</span>
@@ -677,7 +679,7 @@
             const eingeladeneIds = new Set(einladungen.map(t => t.id));
             const turniere = alleTurniere.filter(t => !eingeladeneIds.has(t.id));
             if (turniere.length === 0 && einladungen.length === 0) {
-                container.innerHTML = `<div class="no-data-msg">Keine anstehenden Turniere vorhanden.</div>`;
+                container.innerHTML = `<div class="no-data-msg">Keine Turniere vorhanden.</div>`;
                 return;
             }
 
@@ -1046,11 +1048,25 @@
 
             // Section 1: Eigene Turniere (Only if exists)
             if (eigeneTurniere.length > 0) {
+                // Vergangene Turniere (Entwürfe ausgenommen) stehen klein und als archiviert unter den aktuellen.
+                const tagStart = new Date(); tagStart.setHours(0, 0, 0, 0);
+                const istVergangen = (t) => t.status !== 'entwurf' && t.datum && new Date(t.datum) < tagStart;
+                const eigeneAktuell = eigeneTurniere.filter(t => !istVergangen(t));
+                const eigeneArchiviert = eigeneTurniere.filter(istVergangen);
+                const datumKurzCloud = (d) => { const o = new Date(d); return `${String(o.getDate()).padStart(2, '0')}.${String(o.getMonth() + 1).padStart(2, '0')}.${o.getFullYear()}`; };
                 htmlContent += `
                     <h2 class="section-title"><span class="material-icons" style="font-size:20px;">star</span> Eigene Turniere</h2>
-                    <div class="tournaments-grid">
-                        ${eigeneTurniere.map(t => renderCard(t, true)).join('')}
-                    </div>
+                    ${eigeneAktuell.length ? `<div class="tournaments-grid">
+                        ${eigeneAktuell.map(t => renderCard(t, true)).join('')}
+                    </div>` : ''}
+                    ${eigeneArchiviert.length ? `<div class="abgeschlossen-liste">${eigeneArchiviert.map(t => `
+                        <div class="abgeschlossen-zeile" data-turnier-id="${t.id}" style="cursor:pointer;" onclick="window.location.href='/turnier.html?id=${encodeURIComponent(t.id)}'">
+                            <span class="material-icons">inventory_2</span>
+                            <span class="az-name">${escHtml(t.bezeichnung)}</span>
+                            <span>${escHtml(datumKurzCloud(t.datum))}</span>
+                            <span class="status-badge status-abgeschlossen">Archiviert</span>
+                            ${t.abrechnung_offen ? '<span class="abrechnung-warnung"><span class="material-icons">warning</span>Abrechnung offen</span>' : ''}
+                        </div>`).join('')}</div>` : ''}
                 `;
             }
 

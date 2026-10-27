@@ -11,7 +11,7 @@ import { FachFehler } from '../utils/fachFehler.js';
 import { verschluesseleFeld, entschluesseleFeld } from '../utils/feldVerschluesselung.js';
 import { sendeMail } from '../utils/mailer.js';
 import { pruefeIban, maskiereIban } from '../shared/iban.js';
-import { baueMandatstext, MANDATSTEXT_VERSION } from '../shared/mandatText.js';
+import { baueMandatstext, mandatstextVersion } from '../shared/mandatText.js';
 import { sepaKennung } from '../shared/sepaZeichen.js';
 import { heuteBerlin } from '../shared/abrechnung.js';
 import { ladeStammdaten } from './abrechnungStammdaten.js';
@@ -177,7 +177,8 @@ export async function erteileMandatInTrx(trx, { turnier, zahlwegZeile, daten, be
         mandatsreferenz,
         vorabTage: turnier.vorabankuendigung_tage ?? 5,
         turnierBezeichnung: turnier.bezeichnung,
-        zahlenderVerein: zahlwegZeile.verein_name
+        zahlenderVerein: zahlwegZeile.verein_name,
+        zusatztext: stammdaten.mandat_zusatztext
     });
     const sofort = benutzer?.istAdminDesVereins === true;
     const jetzt = trx.fn.now();
@@ -193,7 +194,7 @@ export async function erteileMandatInTrx(trx, { turnier, zahlwegZeile, daten, be
             daten_verschluesselt: verschluesseleFeld(JSON.stringify({ iban: daten.iban, kontoinhaber: daten.kontoinhaber, ip: ip ?? null })),
             iban_maske: maskiereIban(daten.iban),
             mandatstext,
-            textversion: MANDATSTEXT_VERSION,
+            textversion: mandatstextVersion(stammdaten.mandat_zusatztext),
             glaeubiger_id: stammdaten.glaeubiger_id,
             glaeubiger_name: glaeubigerName,
             status: sofort ? 'gueltig' : 'unbestaetigt',

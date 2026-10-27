@@ -7,6 +7,7 @@ import { pruefeIban, maskiereIban } from '../shared/iban.js';
 import { STAMMDATEN_FELDER, fehlendeStammdaten, pruefePraefix, lastschriftMoeglich } from '../shared/abrechnung.js';
 import { pruefeGlaeubigerId } from '../shared/glaeubigerId.js';
 import { istGueltigeEmail } from '../shared/zahlweg.js';
+import { normalisiereZusatztext, MANDAT_ZUSATZTEXT_MAX } from '../shared/mandatText.js';
 
 const TEXT_FELDER = [...STAMMDATEN_FELDER, 'steuernummer', 'ust_id', 'kontoinhaber'];
 const MAX_LAENGE = {
@@ -70,6 +71,16 @@ export async function speichereStammdaten(knex, vereinId, eingabe, benutzerId) {
     if ('rechnungs_praefix' in werte) {
         const fehler = pruefePraefix(werte.rechnungs_praefix);
         if (fehler) throw new FachFehler(400, fehler);
+    }
+    if ('mandat_zusatztext' in e) {
+        if (e.mandat_zusatztext != null && typeof e.mandat_zusatztext !== 'string') {
+            throw new FachFehler(400, 'Der Zusatztext zum Lastschriftmandat muss ein Text sein.');
+        }
+        const zusatz = normalisiereZusatztext(e.mandat_zusatztext);
+        if (zusatz && zusatz.length > MANDAT_ZUSATZTEXT_MAX) {
+            throw new FachFehler(400, `Der Zusatztext zum Lastschriftmandat darf höchstens ${MANDAT_ZUSATZTEXT_MAX} Zeichen lang sein.`);
+        }
+        werte.mandat_zusatztext = zusatz;
     }
     if ('glaeubiger_id' in e) {
         if (leer(e.glaeubiger_id)) {

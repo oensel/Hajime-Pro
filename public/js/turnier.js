@@ -365,6 +365,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!c.isOffline) document.getElementById('sichtbarkeitGroup').style.display = '';
     }).catch(() => {});
 
+    // Weitere Zahlungsfelder erst bei Startgeld > 0
+    function aktualisiereStartgeldDetails() {
+        document.getElementById('startgeldDetails').hidden = !(parseFloat(document.getElementById('startgeld').value) > 0);
+    }
+    document.getElementById('startgeld').addEventListener('input', aktualisiereStartgeldDetails);
+    aktualisiereStartgeldDetails();
+
     // --- RECHNUNGEN (nur Cloud): Zahlungsziel, Hinweistext und Kasten mit fehlenden Abrechnungsdaten ---
     let rechnungenAktiv = false;
     let turnierAusCloud = false; // Hallen-Server: Turnier aus der Cloud geholt (Konto kommt nicht mit)
@@ -383,6 +390,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!(await istCloud())) return;
         rechnungenAktiv = true;
         document.getElementById('rechnungGruppe').hidden = false;
+        document.getElementById('kontoGruppe').hidden = true; // Konto kommt in der Cloud aus den Zahlungsdaten des Vereins
         if (!turnierId) {
             zeigeLastschriftWahl(null);
             return;
@@ -500,6 +508,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('farbe_kaempfer2').value = turnier.farbe_kaempfer2 === 'rot' ? 'rot' : 'blau';
             zeigeFarbPunkt();
             document.getElementById('startgeld').value = turnier.startgeld !== null && turnier.startgeld !== undefined ? turnier.startgeld : '';
+            aktualisiereStartgeldDetails();
             document.getElementById('iban').value = turnier.iban || '';
             document.getElementById('kontoinhaber').value = turnier.kontoinhaber || '';
             document.getElementById('verwendungszweck').value = turnier.verwendungszweck || '';
@@ -975,6 +984,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (abrechnungBtn && !istOffline && (parseFloat(turnier.startgeld) || 0) > 0 && (istAusrichterAdmin || user.super_admin_aktiv)) {
                 abrechnungBtn.style.display = 'inline-flex';
                 abrechnungBtn.onclick = () => { window.location.href = `/abrechnung.html?turnierId=${encodeURIComponent(turnierId)}`; };
+                zeigeAbrechnungOffenHinweis();
             }
             if (importTurnierBtn && !istOffline && wettkampftagErreicht && ['anmeldung_geschlossen', 'in_durchfuehrung'].includes(statusEffektiv)) {
                 importTurnierBtn.style.display = 'inline-flex';
@@ -1008,6 +1018,31 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (err) {
             console.error('Fehler bei der Lebenszyklus-Berechtigungsprüfung:', err);
         }
+    }
+    // Banner, solange für mindestens einen Verein noch keine Rechnung gestellt wurde
+    async function zeigeAbrechnungOffenHinweis() {
+        try {
+            const resp = await fetch(`/api/abrechnung/${encodeURIComponent(turnierId)}`);
+            if (!resp.ok) return;
+            const abrechnung = await resp.json();
+            if (!abrechnung.bereit) return;
+            const offen = (abrechnung.vereine || []).filter(v => !v.rechnung && v.anzahl > 0);
+            if (offen.length === 0) return;
+            const hinweis = document.createElement('div');
+            hinweis.id = 'abrechnungOffenBanner';
+            hinweis.style.cssText = 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 14px;padding:10px 12px;border:2px solid #f59e0b;border-radius:4px;font-size:14px;';
+            const text = document.createElement('span');
+            text.style.flex = '1';
+            text.textContent = offen.length === 1
+                ? 'Die Abrechnung ist noch offen: Für 1 Verein wurde noch keine Rechnung gestellt.'
+                : `Die Abrechnung ist noch offen: Für ${offen.length} Vereine wurden noch keine Rechnungen gestellt.`;
+            const link = document.createElement('a');
+            link.href = `/abrechnung.html?turnierId=${encodeURIComponent(turnierId)}`;
+            link.textContent = 'Zur Abrechnung';
+            link.style.fontWeight = '700';
+            hinweis.append(text, link);
+            document.querySelector('.form-title-area').insertAdjacentElement('afterend', hinweis);
+        } catch { /* Hinweis ist optional */ }
     }
     pruefeUndZeigeLebenszyklusButtons();
 

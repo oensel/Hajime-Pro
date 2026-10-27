@@ -69,6 +69,7 @@ const MENUE_AKTIVE_SEITEN = [
     ['nav-nachrichten', ['nachrichten.html']],
     ['nav-nutzer', ['admin-nutzer.html']],
     ['nav-mitglieder', ['admin-nutzer.html']],
+    ['nav-zahlungsdaten', ['verein-abrechnung.html']],
     ['nav-einladungen', ['admin-einladungen.html']],
     ['nav-erstregistrierungen', ['admin-erstregistrierungen.html']],
     ['nav-vereine', ['admin-vereine.html', 'admin-turniere.html']],
@@ -335,7 +336,7 @@ function baueMenueGeruest() {
             <nav class="sidebar-nav" id="sidebarNavPrimary" style="visibility: hidden;">
                 <a href="/turniere.html" class="menu-item" id="nav-turniere">
                     <span class="material-icons">calendar_month</span>
-                    <span class="menu-text">anstehende Turniere</span>
+                    <span class="menu-text">Turniere</span>
                 </a>
                 <a href="/turnier.html" class="menu-item" id="nav-turnier">
                     <span class="material-icons">emoji_events</span>
@@ -416,6 +417,10 @@ function baueMenueGeruest() {
                 <a href="/admin-nutzer.html" class="menu-item" id="nav-mitglieder" data-ohne-turnier style="display: none;">
                     <span class="material-icons">manage_accounts</span>
                     <span class="menu-text">Mitglieder<span class="menu-badge" id="nav-mitglieder-zaehler" style="display: none;"></span></span>
+                </a>
+                <a href="/verein-abrechnung.html" class="menu-item" id="nav-zahlungsdaten" data-ohne-turnier style="display: none;">
+                    <span class="material-icons">payments</span>
+                    <span class="menu-text">Zahlungsdaten</span>
                 </a>
                 <a href="/admin-einladungen.html" class="menu-item" id="nav-einladungen" data-ohne-turnier style="display: none;">
                     <span class="material-icons">forward_to_inbox</span>
@@ -581,7 +586,7 @@ function baueMenueGeruest() {
     // existiert: Seiten-Skripte (z.B. pools.js beim ersten Laden) sperren Menüpunkte teils, während
     // diese Initialisierung noch auf Serverantworten wartet. Die Sperre sichert den Link als
     // Backup und stellt ihn beim Entsperren wieder her — ohne Turnier-ID landete man sonst z.B.
-    // auf matten.html ohne Parameter, wo das Menü nur noch "anstehende Turniere" zeigt.
+    // auf matten.html ohne Parameter, wo das Menü nur noch "Turniere" zeigt.
     if (turnierId) {
         document.querySelectorAll('.menu-item').forEach(link => {
             const href = link.getAttribute('href');
@@ -1438,6 +1443,12 @@ async function initialisiereMenue() {
     // Mitglieder (Beitrittsanfragen, Rollen): Admins des aktiven Vereins, nur Cloud; Super-Admins nutzen „Benutzer“
     const mitgliederLink = document.getElementById('nav-mitglieder');
     if (mitgliederLink && !einzelbenutzer && !rechte.nutzer && rechte.helferPlan) mitgliederLink.style.display = '';
+    // Zahlungsdaten (Stammdaten für Rechnungen und Lastschrift): nur Cloud, Admins des aktiven Vereins (und Super-Admins mit aktivem Verein)
+    const zahlungsLink = document.getElementById('nav-zahlungsdaten');
+    if (zahlungsLink && !einzelbenutzer && rechte.helferPlan && currentUser && currentUser.verein_id) {
+        zahlungsLink.href = `/verein-abrechnung.html?vereinId=${encodeURIComponent(currentUser.verein_id)}`;
+        zahlungsLink.style.display = '';
+    }
     const vereineLink = document.getElementById('nav-vereine');
     if (vereineLink && rechte.nutzer) {
         vereineLink.style.display = '';

@@ -60,7 +60,8 @@ export function erzeugeZahlwegController(knex) {
         return {
             mandatstext: baueMandatstext({
                 glaeubigerName, glaeubigerId: stammdaten.glaeubiger_id, mandatsreferenz: mandatsreferenzMuster,
-                vorabTage, turnierBezeichnung: turnier.bezeichnung, zahlenderVerein: vereinName
+                vorabTage, turnierBezeichnung: turnier.bezeichnung, zahlenderVerein: vereinName,
+                zusatztext: stammdaten.mandat_zusatztext
             }),
             glaeubigerId: stammdaten.glaeubiger_id,
             glaeubigerName,
