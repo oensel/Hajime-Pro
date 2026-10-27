@@ -95,8 +95,9 @@ export async function legeTurnierAn(page, baseUrl, { bezeichnung, datum, ort, pl
     await page.locator('#ort').fill(ort);
     await page.locator('#plz').fill(plz);
     await page.locator('#ausrichter').fill(ausrichter);
-    await page.locator('#anzahl_kampfflaechen').fill(String(anzahlKampfflaechen));
     await page.locator('#bundesland').selectOption(bundesland);
+    await page.locator('[data-schritt="2"]').click();
+    await page.locator('#anzahl_kampfflaechen').fill(String(anzahlKampfflaechen));
 
     for (const wert of einzelKlassenWerte) {
         await page.locator(`input[name="altersklasse_cb"][value="${wert}"]`).check();
