@@ -25,10 +25,14 @@
 .orga-card h1 { margin: 0; overflow-wrap: anywhere; }
 .orga-card h2 { margin: 0; font-size: 18px; }
 
-.og-kopf { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
-.og-untertitel { margin: 4px 0 0 0; color: var(--text-muted); font-size: 14px; }
+.og-kopf { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin-bottom: 10px; }
+.og-titelblock { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; }
+.og-kopf h1 { font-size: 22px; }
+.og-untertitel { color: var(--text-muted); font-size: 13px; }
 .og-rot { color: var(--og-rot); font-weight: 700; }
-.og-werkzeuge { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.og-werkzeuge { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; flex-basis: 100%; }
+.og-werkzeuge .btn { padding: 4px 12px; min-height: 0; height: auto; font-size: 13px; }
+.og-werkzeuge #ogNeueKategorie { margin-left: auto; }
 .og-werkzeuge .btn .material-icons, .og-zurueck .material-icons { font-size: 18px; vertical-align: middle; }
 .og-zurueck { display: inline-block; margin-bottom: 12px; text-decoration: none; }
 .btn[aria-pressed="true"] { background: var(--og-akzent-bg); border-color: var(--og-akzent); color: var(--og-akzent); }
@@ -42,44 +46,52 @@
 .og-meldung:empty { display: none; }
 .og-meldung { margin-bottom: 12px; padding: 10px 12px; border: 2px solid var(--border); border-radius: 4px; }
 
-/* Kennzahlen */
-.og-kennzahlen { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
-.og-karte { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border: 2px solid var(--border); border-radius: 4px; background: var(--bg-card); }
-.og-karte-zahl { font-size: 24px; font-weight: 700; color: var(--text-main); }
-.og-karte-text { font-size: 13px; color: var(--text-muted); }
-.og-karte-aktiv { border-color: var(--og-rot); }
-.og-karte-aktiv .og-karte-zahl { color: var(--og-rot); }
+/* Kennzahlen: eine Textzeile im Kopf */
+.og-kennzahlen { display: flex; flex-wrap: wrap; gap: 2px 14px; margin-left: auto; font-size: 13px; color: var(--text-muted); }
+.og-kennzahl b { color: var(--text-main); font-weight: 600; }
+.og-karte-aktiv b { color: var(--og-rot); }
 
-/* Phasenblöcke */
-.og-phase { margin-bottom: 20px; border: 2px solid var(--border); border-radius: 4px; background: var(--bg-card); }
-.og-phase-grundlage { border-left: 6px solid var(--og-akzent); }
-.og-phase-kopf { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 10px 14px; border-bottom: 1px solid var(--og-linie); }
+/* Phasenblöcke: einklappbar */
+.og-phase { margin-bottom: 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-card); overflow: hidden; }
+.og-phase-grundlage { border-left: 4px solid var(--og-akzent); }
+.og-phase-kopf { display: flex; align-items: center; gap: 6px; padding: 5px 10px; cursor: pointer; user-select: none; }
+.og-phase-kopf:hover { background: var(--og-akzent-bg); }
+.og-phase-kopf h2 { font-size: 15px; }
+.og-phase-pfeil { font-size: 20px; color: var(--text-muted); transition: transform 0.15s; }
+.og-phase-zu .og-phase-pfeil { transform: rotate(-90deg); }
+.og-phase-zu .og-liste { display: none; }
 .og-phase-grundlage .og-phase-kopf h2 { color: var(--og-akzent); }
-.og-phase-hinweis { color: var(--text-muted); font-size: 13px; flex: 1 1 200px; }
-.og-phase-zaehler { color: var(--text-muted); font-size: 13px; margin-left: auto; }
-.og-leer { margin: 0; padding: 12px 14px; color: var(--text-muted); font-size: 14px; }
+.og-phase-zaehler { color: var(--text-muted); font-size: 12px; margin-left: auto; }
+.og-leer { margin: 0; padding: 8px 12px; color: var(--text-muted); font-size: 13px; }
+
+/* Kategorien: ziehbar, Phasenblöcke als Ablageziel */
+.og-kategorie { cursor: grab; }
+.og-kategorie-icon { font-size: 18px; color: var(--og-akzent); align-self: center; margin-right: -4px; }
+.og-zieht { opacity: 0.4; }
+.og-phase.og-ziel { outline: 2px dashed var(--og-akzent); outline-offset: -2px; background: var(--og-akzent-bg); }
 
 /* Zeilen */
 .og-liste { display: flex; flex-direction: column; }
 .og-zeile {
-    display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 8px 12px;
-    padding: 10px 14px; border-bottom: 1px solid var(--og-linie);
+    display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 6px 10px;
+    padding: 3px 10px; min-height: 32px; border-top: 1px solid var(--og-linie);
 }
-.og-zeile:last-child { border-bottom: none; }
+.og-zeile:hover { background: var(--og-akzent-bg); }
 .og-mitbring-zeile { grid-template-columns: minmax(0, 1fr) auto auto; }
 .og-text { min-width: 0; }
-.og-titel-zeile { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
-.og-titel { font-weight: 600; overflow-wrap: anywhere; }
+.og-titel-zeile { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 10px; }
+.og-titel-link { color: inherit; text-decoration: none; }
+.og-titel-link:hover { color: var(--og-akzent); text-decoration: underline; }
+.og-titel { font-weight: 500; font-size: 14px; overflow-wrap: anywhere; }
 .og-status-erledigt .og-titel { color: var(--text-muted); text-decoration: line-through; font-weight: 400; }
 .og-menge { color: var(--text-muted); font-size: 13px; }
 .og-link { font-size: 13px; color: var(--og-blau); }
-.og-meta { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 2px; font-size: 12px; color: var(--text-muted); }
-.og-auto { color: var(--og-blau); }
+.og-meta { display: inline-flex; flex-wrap: wrap; gap: 0 10px; font-size: 11px; color: var(--text-muted); }
 .og-notiz { overflow-wrap: anywhere; }
 
 .og-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
 .og-chip {
-    display: inline-block; max-width: 180px; padding: 3px 10px; border: 1px solid var(--border); border-radius: 999px;
+    display: inline-block; max-width: 180px; padding: 1px 8px; border: 1px solid var(--border); border-radius: 999px;
     background: transparent; color: var(--text-main); font: inherit; font-size: 12px; line-height: 1.4;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
@@ -91,19 +103,20 @@ button.og-chip:hover { border-color: var(--og-akzent); }
 .og-chip-rot { border-color: var(--og-rot); color: var(--og-rot); background: var(--og-rot-bg); }
 .og-ueberfaellig .og-chip-leer { background: transparent; }
 
-.og-aktionen { display: flex; gap: 2px; }
+.og-aktionen { display: flex; gap: 0; opacity: 0.4; }
+.og-zeile:hover .og-aktionen, .og-aktionen:focus-within { opacity: 1; }
 .og-icon-knopf {
-    display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0;
     border: none; border-radius: 4px; background: transparent; color: var(--text-muted); cursor: pointer; text-decoration: none;
 }
 .og-icon-knopf:hover { background: var(--og-akzent-bg); color: var(--og-akzent); }
 .og-icon-gefahr:hover { background: var(--og-rot-bg); color: var(--og-rot); }
-.og-icon-knopf .material-icons { font-size: 20px; }
+.og-icon-knopf .material-icons { font-size: 18px; }
 .og-gefahr { color: var(--og-rot); border-color: var(--og-rot); }
 
 /* Statuspunkt: offen = leerer Kreis, angefangen = halb gefüllt, erledigt = grün gefüllt */
 .og-punkt {
-    position: relative; width: 24px; height: 24px; padding: 0; border: 2px solid var(--text-muted); border-radius: 50%;
+    position: relative; width: 18px; height: 18px; padding: 0; border: 2px solid var(--text-muted); border-radius: 50%;
     background: transparent; cursor: pointer; overflow: hidden; flex: none;
 }
 .og-punkt:focus-visible, .og-chip:focus-visible, .og-icon-knopf:focus-visible { outline: 2px solid var(--og-akzent); outline-offset: 2px; }
@@ -113,7 +126,7 @@ button.og-chip:hover { border-color: var(--og-akzent); }
 .og-punkt-erledigt { border-color: var(--og-ok); }
 .og-punkt-erledigt .og-punkt-fuellung { background: var(--og-ok); }
 .og-punkt-erledigt .og-punkt-fuellung::after {
-    content: ''; position: absolute; left: 6px; top: 2px; width: 5px; height: 10px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg);
+    content: ''; position: absolute; left: 4px; top: 0; width: 4px; height: 9px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg);
 }
 
 /* Aufgabenseite */
@@ -149,12 +162,10 @@ button.og-chip:hover { border-color: var(--og-akzent); }
 
 @media (max-width: 700px) {
     .orga-card { padding: 12px 10px; }
-    .og-kennzahlen { gap: 6px; }
-    .og-karte { padding: 8px; }
-    .og-karte-zahl { font-size: 18px; }
-    .og-zeile { grid-template-columns: auto minmax(0, 1fr); padding: 10px; }
+    .og-kennzahlen { margin-left: 0; flex-basis: 100%; }
+    .og-zeile { grid-template-columns: auto minmax(0, 1fr) auto; padding: 4px 8px; }
     .og-chips { grid-column: 2; grid-row: 2; justify-content: flex-start; }
-    .og-aktionen { grid-column: 2; grid-row: 3; justify-content: flex-start; }
+    .og-aktionen { grid-column: 3; grid-row: 1; opacity: 1; }
     .og-mitbring-zeile { grid-template-columns: minmax(0, 1fr); }
     .og-mitbring-zeile .og-chips { grid-column: 1; grid-row: 2; }
     .og-mitbring-zeile .og-aktionen { grid-column: 1; grid-row: 3; }

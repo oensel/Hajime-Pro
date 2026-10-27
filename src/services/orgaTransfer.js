@@ -7,7 +7,7 @@ import { datumAlsText } from './helferPlan.js';
 import { ORGA_PHASEN } from '../shared/orgaVorlage.js';
 import { MITBRINGLISTEN_KEYS } from './orgaPlan.js';
 
-const ARTEN = ['aufgabe', 'posten', 'mitbringen'];
+const ARTEN = ['aufgabe', 'kategorie', 'posten', 'mitbringen'];
 const ANKER = ['turnier', 'anmeldeschluss'];
 const idAus = (r) => (typeof r === 'object' ? r.id : r);
 const DATUM = /^\d{4}-\d{2}-\d{2}$/;
@@ -92,7 +92,7 @@ export async function ersetzeOrga(trx, turnierId, orga) {
                 if (a.art === 'mitbringen' && !MITBRINGLISTEN_KEYS.has(elternKey.get(a.eltern_ref))) continue;
             }
             const art = ARTEN.includes(a.art) ? a.art : (istKind ? 'posten' : 'aufgabe');
-            if ((art === 'aufgabe') === istKind) continue; // Aufgaben liegen oben, Posten/Mitbringen darunter
+            if ((art === 'aufgabe' || art === 'kategorie') === istKind) continue; // Aufgaben liegen oben, Posten/Mitbringen darunter
             const anker = ANKER.includes(a.frist_anker) ? a.frist_anker : null;
             const erledigt = a.erledigt_am ? new Date(a.erledigt_am) : null;
             const id = idAus((await trx('orga_aufgaben').insert({

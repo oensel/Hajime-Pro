@@ -111,7 +111,7 @@ export async function sendeFaelligeErinnerungen(knex, { jetzt = new Date(), send
 
     const kandidaten = [];
     for (const z of zeilen) {
-        const istHaupt = z.eltern_id == null && z.art === 'aufgabe';
+        const istHaupt = z.eltern_id == null && (z.art === 'aufgabe' || z.art === 'kategorie');
         const status = berechneStatus(z, istHaupt ? (kinderVon.get(z.id) ?? []) : [], istHaupt ? zaehlungen.get(z.turnier_id) : {});
         if (status.status === 'erledigt') continue;
         const istKonto = !!z.benutzer_id;

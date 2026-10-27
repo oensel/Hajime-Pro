@@ -153,3 +153,20 @@ test('Zuständige müssen freigegebene Mitglieder des Vereins sein', async () =>
         await assert.rejects(legeAufgabeAn(knex, tid, { titel: 'Y', phase: 'turniertag', benutzer_id: bid }), (e) => e.statusCode === 400);
     }
 });
+
+test('Kategorie: oberste Ebene mit Aufgaben darunter, Phasenwechsel nimmt die Aufgaben mit', async () => {
+    const tid = await neuesTurnier();
+    const { id: kat } = await legeAufgabeAn(knex, tid, { art: 'kategorie', titel: 'Sanitätsdienst', phase: 'vorbereitung' });
+    const { id: kind } = await legeAufgabeAn(knex, tid, { eltern_id: kat, titel: 'Arzt anfragen' });
+    let orga = await ladeOrga(knex, tid);
+    const k = alle(orga.phasen).find((a) => a.id === kat);
+    assert.equal(k.art, 'kategorie');
+    assert.equal(k.kinder.length, 1);
+    // Eine Kategorie liegt nur oben und enthält keine weitere Kategorie
+    await assert.rejects(legeAufgabeAn(knex, tid, { art: 'kategorie', eltern_id: kat, titel: 'Unter' }), (e) => e.statusCode === 400);
+    await aendereAufgabe(knex, kat, { phase: 'turniertag' });
+    orga = await ladeOrga(knex, tid);
+    const verschoben = orga.phasen.find((p) => p.phase === 'turniertag').aufgaben.find((a) => a.id === kat);
+    assert.equal(verschoben.kinder[0].phase, 'turniertag');
+    assert.equal((await knex('orga_aufgaben').where({ id: kind }).first()).phase, 'turniertag');
+});

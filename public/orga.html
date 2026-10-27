@@ -16,17 +16,21 @@
 
 <div class="mdc-card matten-management-card orga-card">
     <div class="og-kopf">
-        <div>
+        <div class="og-titelblock">
             <h1 id="ogTurnierName">Orga-Planer</h1>
-            <p class="og-untertitel" id="ogTurnierInfo"></p>
+            <span class="og-untertitel" id="ogTurnierInfo"></span>
+        </div>
+        <div class="og-kennzahlen" id="ogKennzahlen" hidden>
+            <span class="og-kennzahl"><b id="ogErledigt"></b> erledigt</span>
+            <span class="og-kennzahl" id="ogKarteUeberfaellig"><b id="ogUeberfaellig"></b> überfällig</span>
+            <span class="og-kennzahl"><b id="ogOhne"></b> ohne Zuständigen</span>
         </div>
         <div class="og-werkzeuge">
             <button type="button" class="btn btn-outlined" id="ogNurMeine" aria-pressed="false">Nur meine Aufgaben</button>
-            <div class="og-umschalter" role="group" aria-label="Gruppierung">
-                <button type="button" class="og-umschalter-knopf" id="ogNachPhase" aria-pressed="true">Nach Phase</button>
-                <button type="button" class="og-umschalter-knopf" id="ogNachPerson" aria-pressed="false">Nach Person</button>
-            </div>
             <button type="button" class="btn btn-outlined" id="ogVorlageNachladen" title="Fehlende Standardaufgaben der Vorlage ergänzen">Vorlage nachladen</button>
+            <button type="button" class="btn btn-raised" id="ogNeueKategorie" aria-label="Kategorie hinzufügen">
+                <span class="material-icons">add</span> Kategorie
+            </button>
             <button type="button" class="btn btn-raised" id="ogNeueAufgabe" aria-label="Aufgabe hinzufügen">
                 <span class="material-icons">add</span> Aufgabe
             </button>
@@ -34,12 +38,6 @@
     </div>
 
     <div id="ogMeldung" class="og-meldung" role="status"></div>
-
-    <div class="og-kennzahlen" id="ogKennzahlen" hidden>
-        <div class="og-karte"><span class="og-karte-zahl" id="ogErledigt"></span><span class="og-karte-text">Erledigt</span></div>
-        <div class="og-karte og-karte-rot" id="ogKarteUeberfaellig"><span class="og-karte-zahl" id="ogUeberfaellig"></span><span class="og-karte-text">Überfällig</span></div>
-        <div class="og-karte"><span class="og-karte-zahl" id="ogOhne"></span><span class="og-karte-text">Ohne Zuständigen</span></div>
-    </div>
 
     <div id="ogInhalt"></div>
 </div>

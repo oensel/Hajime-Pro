@@ -27,8 +27,7 @@ test('zeigt die Vorlage in fünf Phasen mit Kennzahlen und abgesetzter Grundlage
     await page.goto(`/orga.html?turnierId=${turnierId}`);
     await expect(page.locator('.og-phase')).toHaveCount(5);
     await expect(page.locator('.og-phase h2')).toHaveText(['Grundlage', 'Vorbereitung', 'Meldephase', 'Turniertag', 'Nachbereitung']);
-    await expect(page.locator('.og-phase-grundlage')).toContainText('6 bis 12 Monate vorher, vor allem anderen');
-    await expect(page.locator('.og-phase-grundlage')).toHaveCSS('border-left-width', '6px');
+    await expect(page.locator('.og-phase-grundlage')).toHaveCSS('border-left-width', '4px');
     await expect(zeile(page, 'Hallenzeiten reservieren')).toBeVisible();
     await expect(kennzahl(page, 'ogErledigt')).toHaveText(/^0 von \d+$/);
     await expect(page.locator('#ogTurnierInfo')).toContainText('12.03.2033');
@@ -151,19 +150,6 @@ test('Aufgabe anlegen, bearbeiten und mit Bestätigung löschen', async ({ page 
     await expect(page.locator('.og-zeile').filter({ hasText: 'Umbenannte Orga-Aufgabe' })).toHaveCount(0);
 });
 
-test('„Nach Person“ gruppiert nach Zuständigen mit „Ohne Zuständigen“', async ({ page }) => {
-    await page.goto(`/orga.html?turnierId=${turnierId}`);
-    await page.getByRole('button', { name: 'Nach Person' }).click();
-    await expect(page.getByRole('button', { name: 'Nach Person' })).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.locator('.og-person h2').filter({ hasText: 'Gast Frei' })).toBeVisible();
-    await expect(page.locator('.og-person h2').filter({ hasText: 'Ohne Zuständigen' })).toBeVisible();
-    const gast = page.locator('.og-person').filter({ has: page.locator('h2', { hasText: 'Gast Frei' }) });
-    await expect(gast.locator('.og-zeile')).toHaveCount(1);
-    await expect(gast).toContainText('Hallenzeiten reservieren');
-    await page.getByRole('button', { name: 'Nach Phase' }).click();
-    await expect(page.locator('.og-phase-grundlage')).toBeVisible();
-});
-
 test('Mitbringliste: Eintrag anlegen und löschen', async ({ page }) => {
     await page.goto(`/orga.html?turnierId=${turnierId}`);
     await zeile(page, 'Catering einkaufen').getByRole('link', { name: /Posten öffnen/ }).click();
@@ -227,4 +213,38 @@ test('„Vorlage nachladen“ bringt eine gelöschte Vorlagen-Aufgabe zurück', 
     // zweiter Klick: nichts mehr zu ergänzen
     await page.getByRole('button', { name: 'Vorlage nachladen' }).click();
     await expect(page.getByText('Alle Aufgaben der Vorlage sind bereits vorhanden.')).toBeVisible();
+});
+
+test('Neue Kategorie: anlegen, per Drag&Drop in eine andere Phase, im Menü unter „Aufgaben“, Aufgaben darin anlegen', async ({ page }) => {
+    await page.goto(`/orga.html?turnierId=${turnierId}`);
+    await page.getByRole('button', { name: 'Kategorie hinzufügen' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Titel').fill('Sanitätsdienst');
+    await dialog.getByRole('button', { name: 'Hinzufügen' }).click();
+    await expect(dialog).toBeHidden();
+    await expect(page.locator('.og-phase-vorbereitung .og-zeile').filter({ hasText: 'Sanitätsdienst' })).toBeVisible();
+
+    // Quelle und Ziel müssen gleichzeitig im Bild sein (kein Auto-Scroll beim Ziehen im Test)
+    await page.setViewportSize({ width: 1280, height: 1800 });
+    const quelle = await zeile(page, 'Sanitätsdienst').boundingBox();
+    const ziel = await page.locator('.og-phase-turniertag .og-phase-kopf').boundingBox();
+    await page.mouse.move(quelle.x + 200, quelle.y + quelle.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(quelle.x + 210, quelle.y + quelle.height / 2 + 10, { steps: 5 });
+    await page.mouse.move(ziel.x + 100, ziel.y + ziel.height / 2, { steps: 15 });
+    await page.mouse.up();
+    await expect(page.locator('.og-phase-turniertag .og-zeile').filter({ hasText: 'Sanitätsdienst' })).toBeVisible();
+    await expect(page.locator('.og-phase-vorbereitung .og-zeile').filter({ hasText: 'Sanitätsdienst' })).toHaveCount(0);
+
+    // Menü: eingerückt unter „Aufgaben“
+    await expect(page.locator('#nav-orga-kategorien .nav-orga-eigene .menu-text')).toHaveText('Sanitätsdienst');
+
+    await page.locator('#nav-orga-kategorien .nav-orga-eigene a').click();
+    await expect(page.locator('#ogPosten')).toContainText('Noch keine Aufgaben');
+    await page.getByRole('button', { name: 'Aufgabe hinzufügen' }).click();
+    await page.getByRole('dialog').getByLabel('Titel').fill('Arzt anfragen');
+    await page.getByRole('dialog').getByRole('button', { name: 'Hinzufügen' }).click();
+    await expect(page.locator('#ogFortschrittText')).toHaveText('0 von 1');
+    await page.locator('#ogPosten .og-punkt').click();
+    await expect(page.locator('#ogFortschrittText')).toHaveText('1 von 1');
 });

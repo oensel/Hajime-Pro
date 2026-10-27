@@ -47,11 +47,11 @@ export const PHASEN = [
 ];
 
 const LINK_SEITEN = {
-    helferplan: 'helfer-plan.html', matten: 'matten.html', teilnehmer: 'teilnehmer.html', pools: 'pools.html',
+    helferplan: 'helfer-plan.html', teilnehmer: 'teilnehmer.html', pools: 'pools.html',
     turnier: 'turnier.html', waage: 'teilnehmer.html', siegerliste: 'siegerliste.html'
 };
 const LINK_TEXTE = {
-    helferplan: 'Zum Helferplan', matten: 'Zu den Matten', teilnehmer: 'Zu den Teilnehmern', pools: 'Zu den Pools',
+    helferplan: 'Zum Helferplan', teilnehmer: 'Zu den Teilnehmern', pools: 'Zu den Pools',
     turnier: 'Zum Turnier', waage: 'Zur Anmeldung und Waage', siegerliste: 'Zur Siegerliste'
 };
 
@@ -263,10 +263,14 @@ export function meldeZuweisung(modus, name, ctx, ohneMail = false) {
  * Aufgabe/Posten/Mitbringeintrag anlegen oder bearbeiten.
  * optionen: { art, aufgabe? (Bearbeiten), elternId?, phase? }
  */
+// Kategorien: eigene (art 'kategorie') und die drei Vorlagen-Aufgaben mit eigener Posten-Seite
+const KATEGORIE_KEYS = new Set(['technik_bereitstellen', 'catering', 'medaillen']);
+export const istKategorie = (a) => a.art === 'kategorie' || KATEGORIE_KEYS.has(a.vorlage_key);
+
 export function oeffneAufgabeDialog(ctx, optionen, onFertig) {
     const { art = 'aufgabe', aufgabe = null, elternId = null } = optionen;
     const bearbeiten = !!aufgabe;
-    const nenner = { aufgabe: 'Aufgabe', posten: 'Posten', mitbringen: 'Eintrag' }[art];
+    const nenner = optionen.nenner || { aufgabe: 'Aufgabe', kategorie: 'Kategorie', posten: 'Posten', mitbringen: 'Eintrag' }[art];
     const { karte, schliesse } = oeffneModal(bearbeiten ? `${nenner} bearbeiten` : `${nenner} hinzufügen`);
     const form = el('form');
     form.noValidate = true;
@@ -295,9 +299,9 @@ export function oeffneAufgabeDialog(ctx, optionen, onFertig) {
     aktionen.append(abbrechen, ok);
 
     form.append(feld('ogAufTitel', 'Titel', titel));
-    if (art === 'aufgabe') {
-        form.append(feld('ogAufNotiz', 'Notiz (optional)', notiz), feld('ogAufPhase', 'Phase', phase),
-            feld('ogAufFaellig', 'Fälligkeit (optional)', faellig), faelligHinweis);
+    if (art === 'aufgabe' || art === 'kategorie') {
+        form.append(feld('ogAufNotiz', 'Notiz (optional)', notiz), feld('ogAufPhase', 'Phase', phase));
+        if (art === 'aufgabe') form.append(feld('ogAufFaellig', 'Fälligkeit (optional)', faellig), faelligHinweis);
     } else {
         form.append(feld('ogAufMenge', 'Menge (optional)', menge));
     }
@@ -309,10 +313,10 @@ export function oeffneAufgabeDialog(ctx, optionen, onFertig) {
         fehler.textContent = '';
         if (!titel.value.trim()) { fehler.textContent = 'Titel eingeben.'; titel.focus(); return; }
         const body = { titel: titel.value.trim() };
-        if (art === 'aufgabe') {
+        if (art === 'aufgabe' || art === 'kategorie') {
             body.notiz = notiz.value.trim() || null;
             body.phase = phase.value;
-            if (faellig.value) body.faellig_am = faellig.value;
+            if (art === 'kategorie') { /* keine eigene Fälligkeit */ } else if (faellig.value) body.faellig_am = faellig.value;
             else if (aufgabe?.faellig_manuell) body.faellig_am = null;
         } else {
             body.menge = menge.value === '' ? null : Number(menge.value);
@@ -389,7 +393,7 @@ export function baueFaelligkeitChip(aufgabe, turnierDatum) {
 
 function fortschrittText(aufgabe) {
     const posten = (aufgabe.kinder || []).filter((k) => k.art !== 'mitbringen');
-    if (posten.length) return `${posten.filter((k) => k.status.status === 'erledigt').length} von ${posten.length} Posten`;
+    if (posten.length) return `${posten.filter((k) => k.status.status === 'erledigt').length} von ${posten.length} ${aufgabe.art === 'kategorie' ? 'Aufgaben' : 'Posten'}`;
     if (aufgabe.status?.quelle === 'helferplan') return `${aufgabe.status.erledigt} von ${aufgabe.status.gesamt} Plätzen`;
     return '';
 }
@@ -413,9 +417,22 @@ export function baueZeile(aufgabe, ctx, optionen) {
 
     const text = el('div', 'og-text');
     const titelZeile = el('div', 'og-titel-zeile');
-    titelZeile.append(el('span', 'og-titel', aufgabe.titel));
+    if (istKategorie(aufgabe) && !postenModus) titelZeile.append(el('span', 'material-icons og-kategorie-icon', 'folder_open'));
+    if (mitDetails && !postenModus) {
+        // Der Titel öffnet die Posten der Aufgabe
+        const titelLink = el('a', 'og-titel og-titel-link', aufgabe.titel);
+        titelLink.href = `/orga-aufgabe.html?id=${encodeURIComponent(aufgabe.id)}&turnierId=${encodeURIComponent(ctx.turnierId)}`;
+        const oeffnenText = aufgabe.art === 'kategorie' ? 'Aufgaben öffnen' : 'Posten öffnen';
+        titelLink.setAttribute('aria-label', `${aufgabe.titel}: ${oeffnenText}`);
+        titelLink.title = oeffnenText;
+        titelZeile.append(titelLink);
+    } else {
+        titelZeile.append(el('span', 'og-titel', aufgabe.titel));
+    }
     if (postenModus && aufgabe.menge != null) titelZeile.append(el('span', 'og-menge', `${aufgabe.menge}×`));
-    const url = !postenModus && aufgabe.link ? linkUrl(aufgabe.link, ctx.turnierId) : null;
+    // „Zum Helferplan“ nur bei „Helferbedarf festlegen“, bei den übrigen Aufgaben wäre er Rauschen
+    const linkErlaubt = aufgabe.link !== 'helferplan' || aufgabe.vorlage_key === 'helferbedarf';
+    const url = !postenModus && aufgabe.link && linkErlaubt ? linkUrl(aufgabe.link, ctx.turnierId) : null;
     if (url) {
         const a = el('a', 'og-link', LINK_TEXTE[aufgabe.link] || 'Öffnen');
         a.href = url;
@@ -425,9 +442,6 @@ export function baueZeile(aufgabe, ctx, optionen) {
     const meta = el('div', 'og-meta');
     const fortschritt = postenModus ? '' : fortschrittText(aufgabe);
     if (fortschritt) meta.append(el('span', 'og-fortschritt', fortschritt));
-    if (!postenModus && aufgabe.status?.quelle === 'helferplan') {
-        meta.append(el('span', 'og-auto', 'automatisch: aus dem Helferplan'));
-    }
     if (aufgabe.notiz && !postenModus) meta.append(el('span', 'og-notiz', aufgabe.notiz));
     if (meta.childNodes.length) text.append(meta);
 
@@ -437,14 +451,6 @@ export function baueZeile(aufgabe, ctx, optionen) {
     if (faellig) chips.append(faellig);
 
     const aktionen = el('div', 'og-aktionen');
-    if (mitDetails && !postenModus) {
-        const oeffnen = el('a', 'og-icon-knopf og-oeffnen');
-        oeffnen.href = `/orga-aufgabe.html?id=${encodeURIComponent(aufgabe.id)}&turnierId=${encodeURIComponent(ctx.turnierId)}`;
-        oeffnen.setAttribute('aria-label', `${aufgabe.titel}: Posten öffnen`);
-        oeffnen.title = 'Posten öffnen';
-        oeffnen.append(el('span', 'material-icons', 'chevron_right'));
-        aktionen.append(oeffnen);
-    }
     if (mitAktionen) {
         const bearbeiten = el('button', 'og-icon-knopf');
         bearbeiten.type = 'button';
