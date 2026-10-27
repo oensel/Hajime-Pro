@@ -442,9 +442,6 @@ export function baueZeile(aufgabe, ctx, optionen) {
     const meta = el('div', 'og-meta');
     const fortschritt = postenModus ? '' : fortschrittText(aufgabe);
     if (fortschritt) meta.append(el('span', 'og-fortschritt', fortschritt));
-    if (!postenModus && aufgabe.status?.quelle === 'helferplan') {
-        meta.append(el('span', 'og-auto', 'automatisch: aus dem Helferplan'));
-    }
     if (aufgabe.notiz && !postenModus) meta.append(el('span', 'og-notiz', aufgabe.notiz));
     if (meta.childNodes.length) text.append(meta);
 

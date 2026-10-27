@@ -87,7 +87,6 @@
 .og-menge { color: var(--text-muted); font-size: 13px; }
 .og-link { font-size: 13px; color: var(--og-blau); }
 .og-meta { display: inline-flex; flex-wrap: wrap; gap: 0 10px; font-size: 11px; color: var(--text-muted); }
-.og-auto { color: var(--og-blau); }
 .og-notiz { overflow-wrap: anywhere; }
 
 .og-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
