@@ -87,7 +87,10 @@ test('Freischaltung per Mail-Link: anzeigen, entscheiden, einmalig, Ergebnis-Mai
 
         // --- freigeben als Helfer
         const resFrei = fakeRes();
+        const basisVorher = process.env.PUBLIC_BASE_URL;
+        process.env.PUBLIC_BASE_URL = 'https://hajime.example.de';
         await entscheideFreigabe(knex, anfrage(tErika, { entscheidung: 'freigeben', rolle: 'helfer' }), resFrei, { sende });
+        if (basisVorher === undefined) delete process.env.PUBLIC_BASE_URL; else process.env.PUBLIC_BASE_URL = basisVorher;
         assert.equal(resFrei.statusCode, 200);
         assert.equal(resFrei.body.success, true);
         const m = await knex('benutzer_vereine').where({ benutzer_id: 'u-erika', verein_id: verein }).first();
@@ -96,6 +99,7 @@ test('Freischaltung per Mail-Link: anzeigen, entscheiden, einmalig, Ergebnis-Mai
         assert.equal(gesendet.length, 1);
         assert.equal(gesendet[0].to, 'erika@test.de');
         assert.match(gesendet[0].text, /Du bist als Helfer bei JC Freigabe freigeschaltet/);
+        assert.ok(gesendet[0].text.includes('https://hajime.example.de/helfer.html'), 'Helfer-Mail enthält den Link zur Helfer-App');
 
         // --- zweites POST mit demselben Token → 410, GET → 410; weiterer Token derselben Anfrage ist verbraucht
         for (const t of [tErika, tErika2]) {

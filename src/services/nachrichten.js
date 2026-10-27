@@ -10,6 +10,7 @@ import { ladeBenutzerMitAktivemVerein } from '../utils/vereinHelper.js';
 import { rolleReicht } from '../shared/rollen.js';
 import { normalisiereEmail, MAX_EMAIL_LAENGE } from './registrierung.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
+import { helferAppLink } from '../utils/helferAppLink.js';
 
 export const MAX_BETREFF = 150;
 export const MAX_TEXT = 5000;
@@ -131,10 +132,11 @@ async function benachrichtige(knex, { thread, absenderId, absenderIstSuperAdmin,
         ergaenze(await knex('benutzer').where({ ist_super_admin: true }).select('id', 'email', 'vorname', 'nachname', 'gesperrt'));
     }
     const link = basisUrl ? `${basisUrl}/nachrichten.html?id=${thread.id}` : null;
+    const appLink = helferAppLink(basisUrl, 'nachrichten');
     const mails = [...empfaenger.values()].map((k) => ({
         to: k.email,
         subject: `Neue Nachricht in Hajime Pro: ${thread.betreff}`,
-        text: `Hallo ${k.vorname || ''},\n\nDu hast eine neue Nachricht in Hajime Pro (Betreff: ${thread.betreff}).\n\n${link ? `Lesen und antworten:\n${link}\n` : 'Melde dich an und öffne über das Profil-Icon deine Nachrichten.\n'}`
+        text: `Hallo ${k.vorname || ''},\n\nDu hast eine neue Nachricht in Hajime Pro (Betreff: ${thread.betreff}).\n\n${link ? `Lesen und antworten:\n${link}\n${appLink ? `\nIn der Helfer-App:\n${appLink}\n` : ''}` : 'Melde dich an und öffne über das Profil-Icon deine Nachrichten.\n'}`
     }));
     await Promise.all(mails.map((m) => sende(m).catch((e) => console.error('[Nachrichten] Mail fehlgeschlagen:', e.message))));
 }

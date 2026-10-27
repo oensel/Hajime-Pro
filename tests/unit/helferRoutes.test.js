@@ -9,6 +9,7 @@ process.env.BETRIEBSMODUS = 'cloud';
 delete process.env.IS_OFFLINE;
 delete process.env.SYNC_ROLLE;
 process.env.SMTP_HOST = '';
+process.env.PUBLIC_BASE_URL = 'https://hajime.example.de';
 process.env.JWT_SECRET = 'helfer-routes-test-geheimnis';
 
 const jwt = (await import('jsonwebtoken')).default;
@@ -194,6 +195,7 @@ test('Helfer-API und Helferplan-API: Rechte, Eintragen, Frist, Fremdturniere, Ma
         assert.match(mailHelfer.text, /Dein Dienst „Kampfgericht Matte 1“/);
         assert.match(mailHelfer.text, /ist jetzt von 09:30 bis 11:00 Uhr/);
         assert.match(mailHelfer.text, /04\.05\.2030/);
+        assert.ok(mailHelfer.text.includes('https://hajime.example.de/helfer.html#dienste'), 'Mail enthält den Link zur Helfer-App');
         // Nur Bedarf geändert: keine Mail
         mails.length = 0;
         assert.equal((await put('u-admin', `/api/helfer-plan/slots/${slot1}`, { bedarf: 3 })).status, 200);

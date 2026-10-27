@@ -8,6 +8,7 @@ import { HINWEIS_FEHLENDE_BASIS_URL } from '../utils/basisUrl.js';
 import { findeKontoPerEmail, normalisiereEmail, MAX_EMAIL_LAENGE, MELDUNG_EMAIL_ZU_LANG } from './registrierung.js';
 import { erzeugeEinladung } from './orgaEinladung.js';
 import { istFreigegebenesMitglied } from '../utils/vereinHelper.js';
+import { helferAppLink } from '../utils/helferAppLink.js';
 
 const MAX_NAME = 255;
 
@@ -56,7 +57,7 @@ async function sendeKontoMail(sende, konto, aufgabe, turnier, vereinName, b) {
 ${vereinName} hat Ihnen beim Turnier ${turnierText(turnier)} die Aufgabe "${aufgabe.titel}" zugewiesen.
 
 Ihre Aufgaben sehen Sie in der Helfer-App:
-${b}/helfer.html#aufgaben`
+${helferAppLink(b, 'aufgaben')}`
     });
 }
 
@@ -71,6 +72,9 @@ ${vereinName} hat Ihnen beim Turnier ${turnierText(turnier)} die Aufgabe "${aufg
 
 Über diesen Link legen Sie Ihr Konto an (14 Tage gültig, nur einmal verwendbar):
 ${b}/einladung.html?token=${encodeURIComponent(token)}
+
+Danach sehen Sie Ihre Aufgaben in der Helfer-App:
+${helferAppLink(b, 'aufgaben')}
 
 Falls Sie die Einladung nicht erwartet haben, können Sie diese Mail ignorieren.`
     });

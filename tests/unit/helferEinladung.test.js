@@ -100,6 +100,7 @@ test('Helfer-Einladung: Admin lädt per Liste ein, Rechte, Einlösen mit soforti
         await aufruf('u-admin', 'POST', '/api/vereine/einladungen', { vereinId: vA, emails: 'neu@extern.de' });
         assert.equal((await aufruf(null, 'GET', `/api/einladung/${alterToken}`)).status, 404);
         const neuerToken = mails.at(-1).text.match(/token=([A-Za-z0-9_-]+)/)[1];
+        assert.ok(mails.at(-1).text.includes('https://hajime.example.de/helfer.html'), 'Einladung enthält den Link zur Helfer-App');
 
         // Link: Verein und E-Mail stehen fest, Name und Passwort werden vergeben, danach sofort freigeschaltet (Helfer)
         const info = await aufruf(null, 'GET', `/api/einladung/${neuerToken}`);
