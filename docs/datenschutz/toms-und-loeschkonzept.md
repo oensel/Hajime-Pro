@@ -87,7 +87,8 @@
 | Bestätigungs-Tokens (Mandate) | 7 Tage bzw. bis zur ersten Entscheidung | Ablauf/Verbrauch | Einträge werden mit dem Lauf bereinigt | Betreiber (automatisch) |
 | Stammdaten der Abrechnung (Anschrift, Steuernummer, verschlüsselte IBAN) | bis zur Löschung des Vereins | Vereinsende | Verein löschen (CASCADE), Rechnungen bleiben | Super-Admin |
 | Live-Daten der Teilnehmer-App | 7 Tage nach dem Turnier | Alter | **automatisch** (`LIVE_AUFBEWAHRUNG_TAGE`) | System |
-| Push-Anmeldungen und gesendete Mitteilungen | 3 Tage nach dem Turnier | Alter | **automatisch** | System |
+| Push-Anmeldungen und gesendete Mitteilungen | 3 Tage nach dem Turnier | Alter | **automatisch** (`LIVE_PUSH_AUFBEWAHRUNG_TAGE`) | System |
+| **Kontaktanfragen, Vereinsanfragen und Nachrichten** (`nachrichten_threads` samt Nachrichten, Teilnehmern, Gelesen-Ständen) | 365 Tage nach der letzten Nachricht | Alter (`aktualisiert_am`) | **automatisch** täglich (`NACHRICHTEN_AUFBEWAHRUNG_TAGE`, CASCADE) | System |
 | Aktionsprotokoll | 365 Tage | Alter | **automatisch** (`PROTOKOLL_AUFBEWAHRUNG_TAGE`); auf Verlangen früher anonymisieren (Abfrage im Prozessdokument) | System / Betreiber |
 | Fehlerprotokoll | 30 Tage | Alter | **automatisch** (`FEHLER_AUFBEWAHRUNG_TAGE`) | System |
 | Sicherungen auf dem Server | 14 (automatisch), 30 (von Hand), 10 (vor Wiederherstellung) | Anzahl je Typ | **automatisch** (`SICHERUNG_BEHALTEN`) | System |

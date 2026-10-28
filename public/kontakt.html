@@ -20,6 +20,8 @@
         .knopf:hover { background: #2563eb; }
         .meldung { margin-top: 14px; font-size: 13px; font-weight: 700; text-align: center; min-height: 18px; }
         .meldung.fehler { color: #ef4444; }
+        .kontakt-karte p.datenschutz-hinweis { margin: -4px 0 16px; font-size: 12px; text-align: left; }
+        .datenschutz-hinweis a { color: #93c5fd; }
         .zurueck { display: block; margin-top: 14px; text-align: center; font-size: 13px; color: #93c5fd; }
     </style>
 </head>
@@ -32,6 +34,7 @@
         <div class="form-group"><label for="kEmail">E-Mail-Adresse</label><input type="email" id="kEmail" required maxlength="254" autocomplete="email"></div>
         <div class="form-group"><label for="kBetreff">Betreff</label><input type="text" id="kBetreff" required maxlength="150"></div>
         <div class="form-group"><label for="kText">Nachricht</label><textarea id="kText" required maxlength="5000"></textarea></div>
+        <p class="datenschutz-hinweis">Wir speichern Name, E-Mail-Adresse und Nachricht, um deine Anfrage zu beantworten. Wie lange, steht in der <a href="/datenschutz.html#kontakt" target="_blank" rel="noopener">Datenschutzerklärung</a>.</p>
         <button type="submit" class="knopf" id="kSenden">Senden</button>
         <div id="kMeldung" class="meldung" role="status"></div>
     </form>
