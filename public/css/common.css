@@ -1181,4 +1181,7 @@ body.fkt-aus-teilnehmer_app #teilnehmerAppBtn { display: none !important; }
     .actions { flex-wrap: wrap; gap: 8px; }
     .actions > * { flex: 1 1 140px; }
     .title-icon-btn { min-width: 40px; min-height: 40px; }
+
+    /* Karten der Anmelde- und Mail-Link-Seiten (login, freigabe, bestaetigen, ...): weniger Innenabstand */
+    body .login-card { padding: 24px 18px; }
 }

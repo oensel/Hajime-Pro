@@ -1,6 +1,7 @@
 // End-to-End: Handy-Ansicht (375 x 812) — Menü als Schublade, kein horizontales Scrollen (public/css/common.css, public/js/menu.js).
 // Hallen-Server ohne Anmeldung (Einzelbenutzer).
 import { test, expect } from '@playwright/test';
+import { keinSeitwaertsScrollen } from './helpers/mobil.js';
 
 test.use({ viewport: { width: 375, height: 812 }, hasTouch: true });
 
@@ -20,19 +21,6 @@ test.beforeAll(async ({ request }) => {
     expect(alt.ok(), await alt.text()).toBeTruthy();
     await request.post(`/api/turniere/${(await alt.json()).turnierId}/absagen`);
 });
-
-// Listet die Elemente, die über den rechten Rand ragen (sichtbar in der Fehlermeldung); die Kanji-Wasserzeichen sind dekorativ.
-const keinSeitwaertsScrollen = async (page) => {
-    const zuBreit = await page.evaluate(() => {
-        const breite = document.documentElement.clientWidth;
-        if (document.documentElement.scrollWidth <= breite) return [];
-        return [...document.querySelectorAll('body *')]
-            .filter((e) => !e.closest('.app-sidebar') && !e.matches('.kanji-left, .kanji-right') && e.getBoundingClientRect().right > breite + 1)
-            .slice(0, 8)
-            .map((e) => `${e.tagName}.${e.className} ${e.textContent.trim().slice(0, 30)} -> ${Math.round(e.getBoundingClientRect().right)}`);
-    });
-    expect(zuBreit).toEqual([]);
-};
 
 test('Menü ist am Handy eine Schublade: zu, mit Knopf auf, Hintergrund und Link schließen', async ({ page }) => {
     await page.goto(`/turnier.html?id=${turnierId}`);
