@@ -1102,3 +1102,83 @@ body.sidebar-collapsed .top-header-bar {
 /* Ausgeschaltete Funktionen des Turniers (menu.js setzt fkt-aus-<Schluessel> am body, siehe src/shared/turnierFunktionen.js) */
 body.fkt-aus-wettkampfplaene [data-funktion~="wettkampfplaene"],
 body.fkt-aus-teilnehmer_app #teilnehmerAppBtn { display: none !important; }
+
+/* --- HANDY (bis 600 px) ---
+   Die Seitenleiste ist eine ausklappbare Schublade (Knopf links in der Kopfleiste, menu.js setzt
+   body.menue-offen), der Inhalt nutzt die volle Breite. Steht am Dateiende, damit es die Regeln für
+   die schmale Icon-Leiste (850 px) und den manuell eingeklappten Zustand überstimmt. */
+.menue-knopf { display: none; }
+.menue-hintergrund { display: none; }
+
+@media (max-width: 600px) {
+    :is(body, body.sidebar-collapsed) {
+        padding: 56px 12px 16px;
+    }
+
+    :is(body, body.sidebar-collapsed) .app-sidebar {
+        width: min(280px, 85vw);
+        transform: translateX(-100%);
+        transition: transform 0.25s;
+        z-index: 1001;
+    }
+
+    body.menue-offen .app-sidebar { transform: translateX(0); }
+
+    :is(body, body.sidebar-collapsed) .sidebar-brand { justify-content: flex-start; padding: 18px 20px; }
+    :is(body, body.sidebar-collapsed) .sidebar-brand .brand-text,
+    :is(body, body.sidebar-collapsed) .menu-text { display: initial; }
+    :is(body, body.sidebar-collapsed) .sidebar-nav,
+    :is(body, body.sidebar-collapsed) .sidebar-nav-unten { padding: 16px 12px; }
+    :is(body, body.sidebar-collapsed) .menu-item { justify-content: flex-start; padding: 12px 14px; gap: 12px; min-height: 44px; box-sizing: border-box; }
+    :is(body, body.sidebar-collapsed) .menu-untermenue { display: flex; }
+    :is(body, body.sidebar-collapsed) .menu-gruppe-pfeil { display: initial; }
+    :is(body, body.sidebar-collapsed) .menu-sektion-titel { font-size: 10px; gap: 8px; padding: 0 8px; }
+    :is(body, body.sidebar-collapsed) .menu-sektion-titel::before { display: block; }
+    .sidebar-collapse-btn { display: none; }
+
+    .menue-hintergrund {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        background: rgba(0, 0, 0, 0.45);
+    }
+    body.menue-offen .menue-hintergrund { display: block; }
+    body.menue-offen { overflow: hidden; }
+
+    :is(body, body.sidebar-collapsed) .top-header-bar { left: 0; padding: 0 8px; gap: 4px; z-index: 999; }
+    .menue-knopf {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex: none;
+        width: 40px;
+        height: 40px;
+        margin-left: -4px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: var(--text-main);
+        cursor: pointer;
+    }
+    .top-header-title { flex: 1; min-width: 0; font-size: 13px; }
+    .top-header-right { gap: 4px; min-width: 0; }
+    .top-header-actions { gap: 4px; }
+    .theme-toggle { width: 40px; height: 40px; }
+    #cloudAnzeige, #teilnehmerAppBtn, #hallenServerBtn { display: none !important; }
+    #vereinSwitcherName { display: inline-block; max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .mdc-card { padding: 16px; }
+    .form-title-area h1 { font-size: 18px; }
+
+    /* 16 px verhindert den automatischen Zoom von iOS beim Antippen eines Felds */
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+    select,
+    textarea {
+        font-size: 16px;
+        min-height: 44px;
+    }
+    .btn, .toolbar-btn { min-height: 44px; height: auto; }
+    .actions { flex-wrap: wrap; gap: 8px; }
+    .actions > * { flex: 1 1 140px; }
+    .title-icon-btn { min-width: 40px; min-height: 40px; }
+}

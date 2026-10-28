@@ -12,7 +12,7 @@
         }
         .tournaments-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(min(100%, 400px), 1fr));
             gap: 24px;
             margin-top: 16px;
         }
@@ -177,7 +177,7 @@
             border: 1px solid rgba(198, 40, 40, 0.3);
         }
         .lokal-grid {
-            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
             gap: 18px;
         }
         .tournament-card.kompakt {
@@ -386,6 +386,11 @@
         }
         @media (max-width: 640px) {
             .cloud-login { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 600px) {
+            .mdc-card { padding: 12px; }
+            .tournaments-grid { gap: 12px; }
+            .tournament-card, .tournament-card.kompakt { padding: 16px; }
         }
     </style>
     <script src="/js/menu.js"></script>
