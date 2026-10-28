@@ -306,7 +306,15 @@ function starte() {
             speichereChunk(c, c.chunks.length - 1, e.data);
             pumpe(c); // bei bestehender Verbindung geht der neue Block sofort zum Server (Live-Ansicht)
         };
-        recorder.onstart = () => { c.t0 = performance.now(); marke('geladen'); if (c.pendingStart) marke('start'); };
+        // onstart kommt asynchron: Marken, die vorher eintrafen (z. B. sofort gestartete Kampfzeit), gehören hinter
+        // "geladen" und auf den Anfang des Videos, sonst stimmen Reihenfolge und Zeitpunkte der Zeitleiste nicht.
+        recorder.onstart = () => {
+            const frueh = c.marken.splice(0);
+            c.t0 = performance.now();
+            c.marken.push({ typ: 'geladen', ms: 0 }, ...frueh.map(m => ({ ...m, ms: 0 })));
+            if (c.pendingStart) c.marken.push({ typ: 'start', ms: 0 });
+            speichereClip(c);
+        };
         recorder.start(500); // kurze Blöcke: gleichmäßigerer Strom zum Server und zur Live-Ansicht
         speichereClip(c);
         plane();

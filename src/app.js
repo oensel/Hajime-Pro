@@ -631,8 +631,10 @@ if (syncKonfig.istClient) {
 // Vorstellungsseite für Interessenten (öffentlich, ohne Anmeldung)
 app.get('/willkommen', (req, res) => res.sendFile(path.join(__dirname, '../public/willkommen.html')));
 
+// Cloud: Die Vorstellungsseite ist die Startseite (Login-Button oben rechts); Hallen-Server und Client öffnen direkt die Anwendung.
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, syncKonfig.istClient ? '../public/client.html' : '../public/turniere.html'));
+    const startseite = syncKonfig.istClient ? 'client.html' : bm.istCloud ? 'willkommen.html' : 'turniere.html';
+    res.sendFile(path.join(__dirname, '../public', startseite));
 });
 
 // Fehlerbehandlung am Ende der Routen: 5xx werden protokolliert und als JSON ohne Interna beantwortet

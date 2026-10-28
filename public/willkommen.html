@@ -37,6 +37,8 @@
         .kopf nav { display: flex; gap: 22px; align-items: center; font-size: 15px; font-weight: 500; }
         .kopf nav a { text-decoration: none; opacity: .85; }
         .kopf nav a:hover { opacity: 1; text-decoration: underline; }
+        .kopf nav a.kopf-login { opacity: 1; padding: 8px 20px; font-size: 15px; }
+        .kopf nav a.kopf-login:hover { text-decoration: none; }
 
         .knopf {
             display: inline-block; padding: 13px 26px; border-radius: 6px; font-weight: 700; text-decoration: none;
@@ -90,12 +92,11 @@
         .merkmal .kern { font-size: 1.12rem; }
 
         /* Betriebsarten */
-        .betrieb { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; border: 2px solid var(--tinte); }
-        .betrieb > div { padding: 28px 26px 32px; border-left: 2px solid var(--tinte); }
-        .betrieb > div:first-child { border-left: 0; }
-        .betrieb h3 { font-size: 1.6rem; color: var(--tinte); margin-bottom: 10px; }
-        .betrieb p { margin: 0; color: var(--text-leise); font-size: 16px; }
-        .betrieb .fuer { font-weight: 700; color: var(--text); margin-bottom: 10px; }
+        .betrieb { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; background: var(--tinte); border: 2px solid var(--tinte); margin: 20px 0 8px; }
+        .betrieb > div { padding: 20px 20px 22px; background: #fff; }
+        .betrieb h4 { font-family: 'Outfit', system-ui, sans-serif; font-size: 1.3rem; line-height: 1.1; color: var(--tinte); margin: 0 0 6px; }
+        .merkmal .betrieb p { margin: 0; color: var(--text-leise); font-size: 15px; }
+        .merkmal .betrieb .fuer { font-weight: 700; color: var(--text); margin-bottom: 8px; }
 
         /* Schaufenster: App, Videobeweis, Urkunden */
         @font-face { font-family: 'Cinzel'; src: url('/fonts/urkunden/Cinzel-Regular.ttf') format('truetype'); font-display: swap; }
@@ -165,11 +166,11 @@
             .schau-block { grid-template-columns: 1fr; gap: 36px; padding: 40px 0; }
             .schau-block.umgekehrt .schau-text { order: 0; }
             .benachrichtigung { right: 0; top: auto; bottom: 150px; }
-            .betrieb { grid-template-columns: 1fr; }
-            .betrieb > div { border-left: 0; border-top: 2px solid var(--tinte); }
-            .betrieb > div:first-child { border-top: 0; }
             section { padding: 64px 0; }
             .kopf nav a.nav-text { display: none; }
+        }
+        @media (max-width: 560px) {
+            .betrieb { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -181,14 +182,14 @@
                 <nav aria-label="Hauptnavigation">
                     <a class="nav-text" href="#highlights">Highlights</a>
                     <a class="nav-text" href="#funktionen">Funktionen</a>
-                    <a class="nav-text" href="#betrieb">Betriebsarten</a>
-                    <a href="/login.html">Anmelden</a>
+                    <a class="nav-text" href="#betrieb">Betriebsmodi</a>
+                    <a class="knopf kopf-login" href="/login.html">Login</a>
                 </nav>
             </div>
             <div class="hero-raster">
                 <div>
-                    <h1>Vom ersten Hajime bis zur Siegerliste.</h1>
-                    <p class="lead">Hajime Pro organisiert Ihr Judo-Turnier nach den Regeln des DJB: Anmeldung, Waage, Auslosung, Matten und Ergebnisse. Auch dann, wenn in der Halle das Internet ausfällt.</p>
+                    <h1>Vom der ersten Planung bis zur Siegerehrung.</h1>
+                    <p class="lead">Hajime Pro organisiert Ihr Judo-Turnier nach den Regeln des DJB: Anmeldung, Waage, Auslosung, Mattenbetrieb und Ergebnisse.</p>
                     <div class="aktionen">
                         <a class="knopf" href="/login.html?registrieren=1">Kostenlos registrieren</a>
                         <a class="knopf leise" href="#funktionen">Was Hajime Pro kann</a>
@@ -203,15 +204,15 @@
         <div class="innen">
             <div class="abschnittskopf">
                 <h2>Ein Turniertag, eine Software</h2>
-                <p>Alles, was Sie von der Einladung bis zur Siegerehrung brauchen, hängt zusammen. Gewogene Daten fließen in die Auslosung, die Auslosung in die Mattenpläne, die Ergebnisse in die Siegerliste.</p>
+                <p>Von der Ausschreibung bis zur Siegerehrung greift alles ineinander: Die Waage liefert an die Auslosung, die Auslosung an die Mattenpläne, die Matten an die Siegerliste.</p>
             </div>
             <ol class="ablauf">
-                <li><b>Anmelden</b><span>Vereine melden online, oder Sie importieren Listen und E-Mails.</span></li>
-                <li><b>Wiegen</b><span>Judopass-QR scannen, Gewicht eintragen, fertig.</span></li>
-                <li><b>Auslosen</b><span>Pools nach Alters- und Gewichtsklasse, je nach Wiegefortschritt.</span></li>
-                <li><b>Kämpfen</b><span>Die Matten bekommen ihre Kämpfe, die Bäume füllen sich selbst.</span></li>
-                <li><b>Informieren</b><span>Anzeigetafeln und Teilnehmer-App zeigen, wann wer dran ist.</span></li>
-                <li><b>Ehren</b><span>Siegerliste und Urkunden auf Knopfdruck.</span></li>
+                <li><b>Anmeldung</b><span>Vereine melden online an, oder Sie importieren Listen und E-Mails.</span></li>
+                <li><b>Waage</b><span>Judopass-QR scannen, Gewicht eintragen, fertig.</span></li>
+                <li><b>Auslosung</b><span>Pools je Alters- und Gewichtsklasse, sobald die Klasse gewogen ist.</span></li>
+                <li><b>Kämpfe</b><span>Jede Matte bekommt ihre Kämpfe, die Turnierbäume füllen sich von selbst.</span></li>
+                <li><b>Live-Infos</b><span>Anzeigetafeln und Teilnehmer-App zeigen, wer wann dran ist.</span></li>
+                <li><b>Siegerehrung</b><span>Siegerliste und Urkunden auf Knopfdruck.</span></li>
             </ol>
         </div>
     </section>
@@ -220,13 +221,13 @@
         <div class="innen">
             <div class="schau-block">
                 <div class="schau-text">
-                    <h2>Der Helferplan zeigt auf einen Blick, wo noch jemand fehlt</h2>
-                    <p>Für jede Matte, jede Waage und den Aufbau legen Sie Dienste mit Zeitfenstern an. Helfer tragen sich selbst ein, und die Farben sagen sofort, wo es noch hakt.</p>
+                    <h2>Der Helferplan zeigt, wo noch jemand fehlt</h2>
+                    <p>Für jede Matte, jede Waage und den Aufbau legen Sie Dienste mit Zeitfenstern an. Helfer tragen sich selbst ein, und an den Farben sehen Sie sofort, wo es noch hakt.</p>
                     <ul>
-                        <li>Grün ist voll besetzt, Gelb teilweise, Rot noch leer</li>
-                        <li>Zeitfenster per Maus verschieben und in der Länge ändern</li>
-                        <li>Helferausweise mit den Diensten als PDF zum Ausdrucken</li>
-                        <li>Der Orga-Planer führt mit einer Vorlage durch alle Aufgaben vor dem Turnier, inklusive Mitbringliste für das Catering, und erinnert per E-Mail an Fristen</li>
+                        <li>Grün: voll besetzt, Gelb: teilweise besetzt, Rot: noch niemand eingetragen</li>
+                        <li>Zeitfenster mit der Maus verschieben und in der Länge ändern</li>
+                        <li>Helferausweise mit den eigenen Diensten als PDF zum Ausdrucken</li>
+                        <li>Der Orga-Planer führt anhand einer Vorlage durch die ganze Vorbereitung, samt Mitbringliste fürs Buffet, und erinnert per E-Mail an Fristen</li>
                     </ul>
                 </div>
                 <div class="schau-bild">
@@ -239,11 +240,11 @@
                     <h2>Wiegen mit dem Handy</h2>
                     <p>Die Waage läuft in der Android-App: Judopass-QR scannen, Gewicht eintragen, „Gewogen“ tippen. Die Liste zeigt sofort, wer schon gewogen ist und wer noch fehlt.</p>
                     <ul>
-                        <li>Scan des QR-Codes im Judopass füllt Name, Verein und Lizenz aus</li>
-                        <li>Abgelaufene oder fehlende Lizenz wird gemeldet, bevor gewogen wird</li>
-                        <li>Wer zu spät kommt, wird als Nachzügler vorgeschlagen und passt, wenn möglich, noch in einen laufenden Pool</li>
-                        <li>Jede Altersklasse wird ausgelost, sobald ihr Wiegen fertig ist</li>
-                        <li>Ohne WLAN geht es weiter, die Eingaben werden später abgeglichen</li>
+                        <li>Der QR-Code im Judopass füllt Name, Verein und Lizenz automatisch aus</li>
+                        <li>Fehlt die Lizenz oder ist sie abgelaufen, meldet die App das noch vor dem Wiegen</li>
+                        <li>Nachzügler bekommen einen passenden Pool vorgeschlagen, solange dort noch nicht gekämpft wird</li>
+                        <li>Jede Altersklasse kann ausgelost werden, sobald sie fertig gewogen ist</li>
+                        <li>Fällt das WLAN aus, wird einfach weitergewogen und später abgeglichen</li>
                     </ul>
                 </div>
                 <div class="schau-bild">
@@ -257,12 +258,12 @@
             <div class="schau-block">
                 <div class="schau-text">
                     <h2>Turnierbäume, die sich selbst füllen</h2>
-                    <p>Nach der Auslosung steht der ganze Baum fest. Jedes Ergebnis schiebt Sieger und Verlierer automatisch in den nächsten Kampf, bis dahin zeigen die Felder „Sieger T2“ oder „Verlierer HF1“.</p>
+                    <p>Nach der Auslosung steht der komplette Baum. Jedes Ergebnis trägt Sieger und Verlierer automatisch in ihren nächsten Kampf ein.</p>
                     <ul>
-                        <li>Doppel-KO mit 8, 16 oder 32 Kämpfern, mit Trostrunde und kleinen Finals um Platz 3</li>
-                        <li>Fehlt ein Kämpfer zur vollen Größe, entstehen Freilose von selbst</li>
-                        <li>Auch Jeder gegen jeden und Gruppen mit Überkreuzkämpfen</li>
-                        <li>Eltern sehen denselben Baum in der Teilnehmer-App</li>
+                        <li>Doppel-KO für 8, 16 oder 32 Kämpfer, mit Trostrunde und kleinen Finals um Platz 3</li>
+                        <li>Ist das Teilneherfeld nicht voll, werden Freilose automatisch gesetzt</li>
+                        <li>Außerdem: Jeder gegen jeden und Gruppen mit Überkreuzkämpfen</li>
+                        <li>Eltern, Teilnehmer und Trainer sehen denselben Baum in der Teilnehmer-App</li>
                     </ul>
                 </div>
                 <div class="schau-bild">
@@ -273,29 +274,29 @@
             <div class="schau-block umgekehrt">
                 <div class="schau-text">
                     <h2>Anzeigetafel und Steuerung für jede Matte</h2>
-                    <p>Am Mattentisch bedient ein Helfer die Steuerung, auf dem Bildschirm in der Halle läuft die Anzeigetafel. Zeit, Wertungen, Strafen und Haltegriff stehen groß und für alle lesbar da.</p>
+                    <p>Am Mattentisch bedient ein Helfer die Steuerung, auf dem Bildschirm in der Halle läuft die Anzeigetafel. Zeit, Wertungen, Strafen und Haltegriff sind groß und für alle gut lesbar.</p>
                     <ul>
-                        <li>Große Namen und Vereine, auch aus der letzten Reihe lesbar. Zu lange Namen kürzt die Tafel selbst auf „Lückmann, P.“</li>
-                        <li>Kampfzeit starten und stoppen mit einer Taste, Haltegriff getrennt für beide Kämpfer, die Haltezeit steht im Zeitbalken</li>
-                        <li>Bei Gleichstand startet der Golden Score von selbst, ein Signalton meldet das Ende der Zeit und einen Ippon durch Haltegriff</li>
-                        <li>Der Sieg ergibt sich aus Ippon, Haltegriff oder dem dritten Shido, ein Klick sendet das Ergebnis</li>
-                        <li>Danach zeigt die Tafel die nächsten Kämpfe, damit sich alle vorbereiten können</li>
+                        <li>Namen und Vereine in großer Schrift, auch aus der letzten Reihe lesbar. Lange Namen kürzt die Tafel automatisch.</li>
+                        <li>Kampfzeit per Tastendruck starten und stoppen, Haltegriff für jeden Kämpfer getrennt, die Haltezeit läuft als eigener Timer mit</li>
+                        <li>Bei Gleichstand startet automatisch der Golden Score. Ein Signalton meldet das Zeitende und den Ippon durch Haltegriff</li>
+                        <li>Den Sieger erkennt die Steuerung selbst, ob durch Ippon, Haltegriff oder dritten Shido. Ein Klick überträgt das Ergebnis</li>
+                        <li>Danach zeigt die Tafel die nächsten Paarungen, damit sich die Kämpfer bereitmachen können</li>
                     </ul>
                 </div>
                 <div class="schau-bild">
-                    <figure class="bildschirm"><img src="/bilder/scoreboard-tv.png" width="1300" height="840" loading="lazy" alt="Die Steuerung der Anzeigetafel am Mattentisch im Dunkelmodus, davor ein Fernseher mit der Anzeige desselben Kampfes: Kämpfer in Weiß und Blau mit Wertungen, Shido und der Kampfzeit 03:57"><figcaption>Die Steuerung am Mattentisch und davor der Fernseher in der Halle: dieselbe Anzeige, nur ohne Bedienknöpfe. Der Fernseher hängt gegenüber, deshalb sind die Seiten vertauscht.</figcaption></figure>
+                    <figure class="bildschirm"><img src="/bilder/scoreboard-tv.png" width="1300" height="840" loading="lazy" alt="Die Steuerung der Anzeigetafel am Mattentisch im Dunkelmodus, davor ein Fernseher mit der Anzeige desselben Kampfes: Kämpfer in Weiß und Blau mit Wertungen, Shido und der Kampfzeit 03:57"><figcaption>Hinten die Steuerung am Mattentisch, vorne der Fernseher in der Halle: dieselbe Anzeige, nur ohne Bedienknöpfe. Weil der Fernseher gegenüber hängt, sind die Seiten vertauscht.</figcaption></figure>
                 </div>
             </div>
 
             <div class="schau-block">
                 <div class="schau-text">
-                    <h2>Die Teilnehmer-App für Eltern und Trainer</h2>
-                    <p>Ein QR-Code im Aushang öffnet die App im Browser. Besucher suchen ihr Kind oder ihren Verein und sehen sofort, auf welcher Matte es kämpft und wie viele Kämpfe noch davor liegen.</p>
+                    <h2>Die Teilnehmer-App für Teilnehmer, Eltern und Trainer</h2>
+                    <p>Ein QR-Code im Aushang öffnet die App im Browser. Wer nach seinem Namen, dem eigenen Kind oder dem Verein sucht, sieht sofort, auf welcher Matte gekämpft wird und wie viele Kämpfe noch davor liegen.</p>
                     <ul>
-                        <li>Benachrichtigung aufs Handy, bevor der Pool beginnt oder der gefolgte Kämpfer dran ist</li>
+                        <li>Benachrichtigung aufs Handy, kurz bevor der Pool beginnt oder ein Kämpfer, dem Sie folgen, auf die Matte muss</li>
                         <li>Turnierbäume und Ergebnisse live, auch für Mannschaften</li>
-                        <li>Keine Installation aus dem App-Store, kein Konto nötig</li>
-                        <li>Der Zugang gilt nur mit dem Code aus dem Aushang und endet am Morgen nach dem Turnier</li>
+                        <li>Ohne Installation aus dem App-Store und ohne Konto</li>
+                        <li>Zugang nur mit dem Code aus dem Aushang, er läuft am Morgen nach dem Turnier ab</li>
                     </ul>
                 </div>
                 <div class="schau-bild">
@@ -309,30 +310,29 @@
             <div class="schau-block umgekehrt">
                 <div class="schau-text">
                     <h2>Videobeweis an jeder Matte</h2>
-                    <p>Eine USB-Kamera am Matten-Gerät nimmt jeden Kampf als eigenen Clip auf. Zeit, Wertungen, Strafen und Haltegriff werden direkt ins Bild eingeblendet. Bei einer Frage schaut die Turnierleitung nach, statt zu diskutieren.</p>
+                    <p>Eine USB-Kamera am Matten-Gerät nimmt jeden Kampf als eigenen Clip auf. Zeit, Wertungen, Strafen und Haltegriff werden direkt ins Bild eingeblendet. In strittigen Situationen schaut die Turnierleitung einfach nach, statt zu diskutieren.</p>
                     <ul>
-                        <li>Die Zeitleiste trägt Marken für Start, Wertungen, Strafen, Haltegriff, Stopp und Ergebnis, ein Klick springt dorthin</li>
+                        <li>Marken auf der Zeitleiste für Start, Wertungen, Strafen, Haltegriff, Stopp und Ergebnis, ein Klick springt direkt dorthin</li>
                         <li>Zeitlupe und Einzelbild für die genaue Prüfung</li>
-                        <li>Der Kampf läuft weiter, während Sie das bisherige Video ansehen</li>
-                        <li>Live-Wand mit allen Kameras der Halle</li>
-                        <li>Bricht das WLAN weg, wird der Clip später nachgeliefert</li>
+                        <li>Die Aufnahme läuft weiter, während Sie sich eine Szene noch einmal ansehen</li>
+                        <li>Live-View aller Kameras der Halle</li>
+                        <li>Fällt das WLAN aus, wird der Clip später nachgeliefert</li>
                     </ul>
                 </div>
                 <div class="schau-bild">
-                    <figure class="bildschirm"><img src="/bilder/videobeweis.png" width="717" height="653" loading="lazy" alt="Die Videoansicht in der Steuerung: zwei Kämpfer auf der Matte mit eingeblendeter Kampfzeit und Namen, darunter die Zeitleiste mit farbigen Marken für Start, Wertungen, Strafen, Haltegriff und Stopp"><figcaption>Die Videoansicht in der Steuerung. Die farbigen Striche auf der Zeitleiste sind Start, Wertung, Strafe, Haltegriff und Stopp.</figcaption></figure>
+                    <figure class="bildschirm"><img src="/bilder/videobeweis.png" width="717" height="653" loading="lazy" alt="Die Videoansicht in der Steuerung: zwei Kämpfer auf der Matte mit eingeblendeter Kampfzeit und Namen, darunter die Zeitleiste mit farbigen Marken für Start, Wertungen, Strafen, Haltegriff und Stopp"><figcaption>Die Videoansicht in der Steuerung. Die farbigen Striche auf der Zeitleiste markieren Start, Wertung, Strafe, Haltegriff und Stopp.</figcaption></figure>
                 </div>
             </div>
 
             <div class="schau-block">
                 <div class="schau-text">
                     <h2>Urkunden im eigenen Layout</h2>
-                    <p>Im Urkunden-Designer gestalten Sie die Urkunde einmal so, wie Ihr Verein sie haben möchte. Nach dem Abschluss eines Pools druckt Hajime Pro alle Urkunden in einem Rutsch, mit den richtigen Namen und Plätzen.</p>
+                    <p>Im Urkunden-Designer gestalten Sie die Urkunde einmal so, wie Ihr Verein sie haben möchte. Ist ein Pool abgeschlossen, druckt Hajime Pro alle Urkunden in einem Rutsch, mit den richtigen Namen und Plätzen.</p>
                     <ul>
                         <li>Eigenes PDF als Vorlage oder einer von fünf fertigen Rahmen</li>
-                        <li>Logos und Bilder, Linien und mitgelieferte Schriften</li>
-                        <li>Platzhalter für Name, Verein, Platz und Pool, zu lange Namen werden automatisch kleiner</li>
-                        <li>Reihenfolge wie bei der Siegerehrung: der letzte Platz zuerst</li>
-                        <li>Vorlagen lassen sich zwischen Vereinen austauschen</li>
+                        <li>Einfügen von Logos, Bildern, Linien und mitgelieferten Schriften</li>
+                        <li>Platzhalter für Name, Verein, Platz und Pool, lange Namen werden automatisch kleiner gesetzt</li>
+                        <li>Druckreihenfolge und auszudruckende Urkunden wählbar</li>
                     </ul>
                 </div>
                 <div class="schau-bild">
@@ -359,7 +359,7 @@
                             <path d="M210 117 l7 7 -7 7 -7 -7z" fill="#b08d3c"/>
                             <text x="210" y="158" text-anchor="middle" font-family="Cinzel, serif" font-size="13" letter-spacing="2.5" fill="#14264f">STADTMEISTERSCHAFT U15</text>
                             <text x="210" y="198" text-anchor="middle" font-family="'Noto Serif', serif" font-style="italic" font-size="13" fill="#566178">Diese Urkunde erhält</text>
-                            <text x="210" y="258" text-anchor="middle" font-family="'Great Vibes', cursive" font-size="58" fill="#14264f">Mia Schneider</text>
+                            <text x="210" y="258" text-anchor="middle" font-family="'Great Vibes', cursive" font-size="42" fill="#14264f">Mia Schneider</text>
                             <line x1="92" y1="274" x2="328" y2="274" stroke="#b08d3c" stroke-width="1"/>
                             <text x="210" y="298" text-anchor="middle" font-family="'Noto Serif', serif" font-size="14" fill="#1b2437">JC Musterstadt</text>
                             <text x="210" y="342" text-anchor="middle" font-family="'Noto Serif', serif" font-style="italic" font-size="13" fill="#566178">für ihren Erfolg in der Klasse</text>
@@ -381,29 +381,51 @@
     <section class="highlights" id="funktionen">
         <div class="innen">
             <div class="abschnittskopf">
-                <h2>Und das alles steckt noch drin</h2>
+                <h2>Was sonst noch drinsteckt</h2>
             </div>
 
             <div class="merkmal">
-                <h3>Regeln, die schon eingebaut sind</h3>
+                <h3>Die DJB-Regeln sind schon eingebaut</h3>
                 <div>
                     <p class="kern">Alters- und Gewichtsklassen, Kampfzeiten, Mindestpausen und Golden Score folgen der Wettkampfordnung des Deutschen Judo-Bundes. Sie müssen nichts nachschlagen und nichts von Hand rechnen.</p>
                     <ul>
-                        <li>Jeder gegen jeden, Doppel-KO mit 8, 16 oder 32 sowie Gruppen mit Überkreuzkämpfen</li>
+                        <li>Jeder gegen jeden, Doppel-KO für 8, 16 oder 32 Kämpfer und Gruppen mit Überkreuzkämpfen</li>
                         <li>Mannschaftskämpfe mit automatischem Stichkampf bei Gleichstand</li>
-                        <li>Mindestpausen zwischen den Kämpfen einer Person werden bei der Planung beachtet</li>
+                        <li>Die Kampfreihenfolge hält die Mindestpause jedes Kämpfers ein</li>
                     </ul>
                 </div>
             </div>
 
-            <div class="merkmal">
-                <h3>Gebaut für schwierige WLANs</h3>
+            <div class="merkmal" id="betrieb">
+                <h3>Verschiedene Betriebsmodi</h3>
                 <div>
-                    <p class="kern">Hallen-WLAN ist selten perfekt. Der Hallen-Server steht bei Ihnen vor Ort und braucht kein Internet. Matten und Waage speichern ihre Eingaben auch selbst: Fällt das Funknetz weg, arbeiten sie weiter und gleichen sich danach von selbst ab.</p>
+                    <p class="kern">Vorbereiten in der Cloud, kämpfen in der Cloud oder auf einem eigenen Server in der Halle: Sie entscheiden, wie viel Technik Sie vor Ort aufbauen.</p>
+                    <div class="betrieb">
+                        <div>
+                            <h4>Cloud</h4>
+                            <p class="fuer">Für die Vorbereitung</p>
+                            <p>Anmeldung, Vereinsverwaltung, Helferplan und Orga laufen online. Jeder Verein meldet seine Teilnehmer selbst.</p>
+                        </div>
+                        <div>
+                            <h4>Cloud-Live</h4>
+                            <p class="fuer">Für Hallen mit gutem Internet</p>
+                            <p>Das Turnier läuft direkt in der Cloud, ganz ohne eigenen Server. Matten, Waage und Android-App koppeln sich per Code.</p>
+                        </div>
+                        <div>
+                            <h4>Hallen-Server</h4>
+                            <p class="fuer">Für Hallen ohne Internet</p>
+                            <p>Ein Notebook vor Ort steuert das ganze Turnier. Es braucht kein Internet und bringt seine Datenbank gleich mit.</p>
+                        </div>
+                        <div>
+                            <h4>Client-Geräte</h4>
+                            <p class="fuer">Für Matte und Waage</p>
+                            <p>Notebooks, Tablets oder Android-Geräte speichern ihre Eingaben selbst. Fällt das Funknetz aus, arbeiten sie weiter und gleichen sich danach automatisch ab.</p>
+                        </div>
+                    </div>
                     <ul>
-                        <li>Videoclips werden bei Funkabbruch später nachgeliefert, nichts geht verloren</li>
-                        <li>Turnier vorbereiten in der Cloud, am Wettkampftag in die Halle holen</li>
-                        <li>Optional zwei Server im Verbund: fällt einer aus, übernimmt der andere</li>
+                        <li>Videoclips werden nach einem Funkabbruch nachgeliefert, nichts geht verloren</li>
+                        <li>Turnier in der Cloud vorbereiten und am Wettkampftag auf den Hallen-Server holen</li>
+                        <li>Optional zwei Server im Verbund: Fällt einer aus, übernimmt der andere</li>
                         <li>Installation auf einem normalen Notebook, ohne Datenbank-Kenntnisse</li>
                     </ul>
                 </div>
@@ -413,10 +435,10 @@
             <div class="merkmal">
                 <h3>Die Matte weiß, was als Nächstes kommt</h3>
                 <div>
-                    <p class="kern">Die Matten-Steuerung zeigt den aktuellen und die kommenden Kämpfe, prognostiziert Uhrzeiten und meldet, wenn eine Matte hinter dem Plan liegt. Folgekämpfe füllen sich, sobald beide Kämpfer feststehen.</p>
+                    <p class="kern">Die Matten-Steuerung zeigt den aktuellen und die kommenden Kämpfe, schätzt die Uhrzeiten und meldet, wenn eine Matte dem Zeitplan hinterherläuft. Folgekämpfe werden besetzt, sobald beide Kämpfer feststehen.</p>
                     <ul>
-                        <li>Zeitplan-Simulation vor dem Turnier: wann ist welcher Pool fertig?</li>
-                        <li>Hinweis zur Durchsage, wenn ein neuer Pool beginnt</li>
+                        <li>Zeitplan-Simulation vorab: Wann ist welcher Pool fertig?</li>
+                        <li>Erinnerung an die Durchsage, wenn ein neuer Pool beginnt</li>
                         <li>Live-Durchsage per Tastendruck direkt über die Hallenlautsprecher</li>
                     </ul>
                 </div>
@@ -425,36 +447,10 @@
         </div>
     </section>
 
-    <section id="betrieb">
-        <div class="innen">
-            <div class="abschnittskopf">
-                <h2>Drei Arten, Hajime Pro zu nutzen</h2>
-                <p>Sie suchen sich aus, wie viel Technik Sie vor Ort haben möchten. Ein Turnier lässt sich zwischen allen Varianten verschieben.</p>
-            </div>
-            <div class="betrieb">
-                <div>
-                    <h3>Cloud</h3>
-                    <p class="fuer">Für die Vorbereitung</p>
-                    <p>Anmeldung, Vereinsverwaltung, Helferplan und Orga laufen online. Jeder Verein meldet seine Teilnehmer selbst.</p>
-                </div>
-                <div>
-                    <h3>Hallen-Server</h3>
-                    <p class="fuer">Für den Wettkampftag</p>
-                    <p>Ein Notebook in der Halle führt das Turnier. Es braucht kein Internet und startet seine Datenbank selbst mit.</p>
-                </div>
-                <div>
-                    <h3>Client-Geräte</h3>
-                    <p class="fuer">Für Matte und Waage</p>
-                    <p>Notebook, Tablet oder Android-Gerät verbindet sich mit dem Server und arbeitet bei Funkabbrüchen weiter.</p>
-                </div>
-            </div>
-        </div>
-    </section>
-
     <section class="schluss">
         <div class="innen">
             <h2>Bereit für Ihr nächstes Turnier?</h2>
-            <p>Legen Sie ein Konto für Ihren Verein an und planen Sie Ihr erstes Turnier. Das Konto wird von Ihrem Vereinsadmin freigeschaltet.</p>
+            <p>Erstellen Sie ein Konto und wählen Sie Ihren Verein. Sobald ein Admin Ihres Vereins Sie freigeschaltet hat, können Sie Ihr erstes Turnier planen.</p>
             <div class="aktionen">
                 <a class="knopf" href="/login.html?registrieren=1">Kostenlos registrieren</a>
                 <a class="knopf leise" href="/login.html">Ich habe schon ein Konto</a>
