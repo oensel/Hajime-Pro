@@ -92,10 +92,11 @@ test('AV-Vertrag: Annahme durch Admins, Nachweis, Sperre für neue Turniere', as
         assert.equal(gesperrt.daten.code, 'av_vertrag_fehlt');
         assert.match(gesperrt.daten.error, /JC A hat den Vertrag/);
 
-        // Mitglied ohne Admin-Rolle: sieht den Text, darf nicht annehmen
+        // Mitglied ohne Admin-Rolle: kein Stand des Vereins (Nachweis enthält Name und E-Mail), darf nicht annehmen
         const mitglied = await aufruf('u-mitglied', 'GET', '/api/av-vertrag');
         assert.equal(mitglied.status, 200);
-        assert.equal(mitglied.daten.darfAnnehmen, false);
+        assert.equal(mitglied.daten.verein, null);
+        assert.equal(mitglied.daten.html, undefined);
         const annahmeMitglied = { name: 'Mia Mitglied', funktion: 'Kassenwartin', bestaetigt: true, fassung: AV_VERTRAG_FASSUNG };
         assert.equal((await aufruf('u-mitglied', 'POST', '/api/av-vertrag/annehmen', annahmeMitglied)).status, 403);
 
@@ -135,9 +136,17 @@ test('AV-Vertrag: Annahme durch Admins, Nachweis, Sperre für neue Turniere', as
         assert.match(z.text_html, /Angenommen für <strong>JC A<\/strong> am .* durch Anna Admin \(1\. Vorsitzende, admin@test\.de\)/);
         assert.equal(z.text_sha256, crypto.createHash('sha256').update(z.text_html, 'utf8').digest('hex'));
 
-        const stand = await aufruf('u-mitglied', 'GET', '/api/av-vertrag');
+        const stand = await aufruf('u-admin', 'GET', '/api/av-vertrag');
         assert.equal(stand.daten.angenommen.name, 'Anna Admin');
         assert.equal(stand.daten.html, z.text_html, 'nach der Annahme gilt der gespeicherte Text');
+
+        // wartender Beitritt mit aktivem Verein A (Rolle admin, aber nicht freigegeben): sieht den Nachweis nicht
+        await knex('benutzer').insert({ id: 'u-wartend', email: 'wartend@test.de', vorname: 'W', nachname: 'T', email_bestaetigt_am: knex.fn.now(), aktiver_verein_id: vA });
+        await knex('benutzer_vereine').insert({ benutzer_id: 'u-wartend', verein_id: vA, freigegeben: 0, rolle: 'admin' });
+        const wartend = await aufruf('u-wartend', 'GET', '/api/av-vertrag');
+        assert.equal(wartend.daten.verein, null);
+        assert.ok(!JSON.stringify(wartend.daten).includes('admin@test.de'));
+        assert.equal((await aufruf('u-wartend', 'POST', '/api/av-vertrag/annehmen', gueltig)).status, 403);
 
         // jetzt lässt sich ein Turnier anlegen
         const turnier = await aufruf('u-admin', 'POST', '/api/turniere', neuesTurnier);

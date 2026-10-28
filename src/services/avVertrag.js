@@ -155,12 +155,15 @@ export async function ladeAnnahmenJeVerein(knex) {
 
 /**
  * Stand für den aktiven Verein des Kontos: angenommen (mit dem gespeicherten Text) oder offen (mit dem aktuellen Text).
- * darfAnnehmen: nur Admins des Vereins; vollstaendig: false, solange Betreiberangaben fehlen.
+ * Nur für Admins des Vereins (freigegebene Mitgliedschaft): der Nachweis enthält Name und E-Mail-Adresse der annehmenden Person,
+ * und aktiver_verein_id kann auch auf einen noch nicht freigegebenen Beitritt zeigen. Alle anderen bekommen verein: null.
+ * vollstaendig: false, solange Betreiberangaben fehlen.
  */
 export async function ladeAvVertragStatus(knex, benutzerId, { rechtliches, env = process.env }) {
     const benutzer = await ladeBenutzerMitAktivemVerein(knex, benutzerId);
     if (!benutzer) throw new FachFehler(401, 'Nicht angemeldet.');
-    const verein = benutzer.verein_id ? await knex('vereine').where({ id: benutzer.verein_id }).first('id', 'name') : null;
+    const istAdmin = !!benutzer.verein_id && benutzer.verein_rolle === 'admin';
+    const verein = istAdmin ? await knex('vereine').where({ id: benutzer.verein_id }).first('id', 'name') : null;
     if (!verein) return { aktiv: true, fassung: AV_VERTRAG_FASSUNG, verein: null };
 
     const annahme = await letzteAnnahme(knex, verein.id);
@@ -174,7 +177,7 @@ export async function ladeAvVertragStatus(knex, benutzerId, { rechtliches, env =
         angenommen: aktuell ? { am: aktuell.angenommen_am, name: aktuell.name, funktion: aktuell.funktion, email: aktuell.email } : null,
         fruehereFassung: annahme && !aktuell ? { fassung: annahme.fassung, am: annahme.angenommen_am } : null,
         hatTurnier,
-        darfAnnehmen: benutzer.verein_rolle === 'admin',
+        darfAnnehmen: true,
         vollstaendig: !enthaeltLuecke(html),
         html
     };
