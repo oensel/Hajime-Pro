@@ -516,3 +516,62 @@ select.status-select:focus {
     border-color: #ed8906 !important;
     box-shadow: 0 0 0 3px rgba(237, 137, 6, 0.18);
 }
+
+/* --- HANDY IM BROWSER (bis 600 px): Teilnehmer als Karten statt Tabelle ---
+   Die Karten zeichnet renderHandyKarten() in teilnehmer.js (wie in der Android-App, dort zusätzlich css/handy.css).
+   Massenaktionen, Import und Kennzahlen bleiben dem Desktop vorbehalten. */
+@media (max-width: 600px) {
+    #teilnehmerHauptkarte {
+        width: 100%;
+        height: auto;
+        padding: 12px;
+        overflow: visible;
+    }
+
+    #teilnehmerHauptkarte .form-title-area {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+    }
+
+    #teilnehmerHauptkarte .form-title-area h1 { display: none; }
+    .teilnehmer-search { flex: none; max-width: none; }
+    .teilnehmer-search input { padding-left: 42px; border-radius: 10px; }
+
+    .teilnehmer-toolbar-buttons {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+    }
+
+    #addBtn { order: 1; }
+    #scanBtn { order: 2; }
+    #importBtn, #bulkMarkWeighedBtn, #bulkMarkLizenzBtn, #bulkMarkPaidBtn, #bulkDeleteBtn { display: none !important; }
+    .teilnehmer-toolbar-buttons .toolbar-btn { justify-content: center; min-height: 46px; width: 100%; }
+
+    #teilnehmerHauptkarte .table-responsive { display: none; }
+    .teilnehmer-stats-grid { grid-template-columns: 1fr 1fr; }
+
+    #handyKarten { display: flex; flex-direction: column; gap: 8px; }
+    .handy-karte {
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        cursor: pointer;
+    }
+    .handy-karte-gesperrt { opacity: 0.55; cursor: default; }
+    .handy-karte-text { flex: 1; min-width: 0; }
+    .handy-karte-name { font-size: 16px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .handy-karte-sub { margin-top: 2px; font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .handy-chip { flex-shrink: 0; font-size: 13px; font-weight: 700; padding: 5px 11px; border-radius: 14px; }
+    .handy-chip-gruen { background: #e3f4e6; color: #1b6b2c; }
+    .handy-chip-gelb { background: #fdf1d6; color: #8a5a00; }
+    .handy-chip-grau { background: #e8e8e8; color: #555; }
+    .handy-leer { text-align: center; color: var(--text-muted); padding: 24px 0; }
+}
