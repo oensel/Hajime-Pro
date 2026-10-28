@@ -13,6 +13,7 @@ process.env.PUBLIC_BASE_URL = 'https://hajime.example.de';
 
 const jwt = (await import('jsonwebtoken')).default;
 const { getNachrichtenRoutes, getKontaktRoutes } = await import('../../src/routes/nachrichtenRoutes.js');
+const { loescheAlteNachrichten } = await import('../../src/services/nachrichten.js');
 const id = (r) => (typeof r === 'object' ? r.id : r);
 
 test('Nachrichten: Kontakt, Vereinsanfrage, Admin-Nachrichten, Postfach', async () => {
@@ -100,6 +101,14 @@ test('Nachrichten: Kontakt, Vereinsanfrage, Admin-Nachrichten, Postfach', async 
         assert.equal(fremdeAdmins.length, 2);
         assert.equal((await aufruf('u-helferA', 'GET', '/api/nachrichten/empfaenger')).daten.darfAnKonten, false);
         assert.equal((await aufruf('u-adminB', 'GET', `/api/nachrichten/${training.daten.id}`)).status, 404);
+
+        // Löschfrist: Unterhaltungen ohne neue Nachricht seit mehr als N Tagen werden mitsamt Nachrichten gelöscht
+        const vorher = Number((await knex('nachrichten_threads').count({ n: '*' }).first()).n);
+        await knex('nachrichten_threads').where({ id: training.daten.id }).update({ aktualisiert_am: knex.raw("now() - interval '400 days'") });
+        assert.equal(await loescheAlteNachrichten(knex, 0), 0, 'ungültige Frist löscht nichts');
+        assert.equal(await loescheAlteNachrichten(knex), 1);
+        assert.equal(Number((await knex('nachrichten_threads').count({ n: '*' }).first()).n), vorher - 1);
+        assert.equal((await knex('nachrichten').where({ thread_id: training.daten.id })).length, 0);
     } finally {
         server.close();
         await db.stoppe();

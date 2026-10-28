@@ -19,6 +19,8 @@
 | A5 | **Datensicherung** | Wiederherstellbarkeit (Art. 32) | alle Betroffenen der Datenbank | gesamter Datenbestand, verschlüsselt (AES-256-GCM) | Art. 6 Abs. 1 lit. f, Art. 32 | Backup-Ziel `[Google Drive / HiDrive / …]` (nur verschlüsselte Dateien) | `[ja, falls USA-Anbieter]` | 14 Tage automatische Sicherungen, Kopie bis `[60]` Tage | siehe TOM |
 | A6 | **Server-Protokolle** (Reverse Proxy/Hoster) | Betrieb, Sicherheit | Besucher | IP-Adresse, Zeit, URL, Statuscode, Browserkennung | Art. 6 Abs. 1 lit. f | Hoster | – | `[7]` Tage (Log-Rotation einrichten) | siehe TOM |
 | A7 | **Rate-Limiting** (Missbrauchsschutz) | Schutz vor Massenanmeldungen | Besucher | IP-Adresse (im Arbeitsspeicher, SHA-256 bei Adressen aus dem Body) | Art. 6 Abs. 1 lit. f | – | – | wenige Minuten (nur im Speicher) | – |
+| A8 | **Kontaktformular, Vereinsanfrage und Nachrichten** | Anfragen beantworten, Vereine anlegen, Kommunikation zwischen Vereinen und mit den Super-Admins | Besucher ohne Konto, Benutzer, Vereins-Admins | Name, E-Mail (bei Absendern ohne Konto), Betreff, Text, gewünschter Vereinsname, Empfänger, Zeitpunkte, Gelesen-Stand | Art. 6 Abs. 1 lit. b, sonst lit. f | Super-Admins, angeschriebene Konten, Mail-Anbieter (Info-Mail ohne Inhalt; Antwort an Absender ohne Konto mit Inhalt), Hoster, Datenbank-Anbieter | `[abhängig vom Datenbank-Anbieter]` | 365 Tage nach der letzten Nachricht (automatisch, `NACHRICHTEN_AUFBEWAHRUNG_TAGE`) | siehe TOM |
+| A9 | **Turnier teilen** | Hinweis auf ein Turnier per E-Mail | vom Verwalter eingetragene Adressen, Admins ausgewählter Vereine | E-Mail-Adresse (nur für den Versand, nicht gespeichert), eingeladene Vereine | Art. 6 Abs. 1 lit. f | Mail-Anbieter | – | Adressen werden nicht gespeichert; Einladung des Vereins mit dem Turnier | siehe TOM |
 
 ## Teil B: Der Betreiber als Auftragsverarbeiter (Art. 30 Abs. 2)
 
@@ -39,3 +41,4 @@ Verantwortlich sind jeweils die **Veranstalter** (Vereine). Der Betreiber verarb
 | `[JJJJ-MM-TT]` | Erstanlage | `[Name]` |
 | 2026-10-25 | Verarbeitung B4 „Startgeld-Abrechnung“ ergänzt (Rechnungen, Quittungen, Barzahlungs-Journal, Bankverbindung des Ausrichters verschlüsselt) | `[Name]` |
 | 2026-10-26 | Verarbeitung B5 „SEPA-Lastschrift“ ergänzt (Mandate, Nachweisdaten, Sammeldatei) | `[Name]` |
+| 2026-10-28 | A8 „Kontaktformular, Vereinsanfrage und Nachrichten“ (mit Löschfrist) und A9 „Turnier teilen“ ergänzt | `[Name]` |

@@ -28,7 +28,7 @@ test('Rechtliches: Standardpfad, fehlende Datei und leere Angaben', () => {
     assert.equal(r.vollstaendig, false);
     assert.equal(r.fehlend[0].pfad, 'datei');
     assert.match(r.fehlend[0].beschreibung, /fehlt/);
-    for (const pfad of ['betreiber.name', 'betreiber.strasse', 'betreiber.plz', 'betreiber.ort', 'betreiber.email', 'betreiber.telefon', 'datenschutz.email', 'hosting.anbieter', 'mail.anbieter', 'datenbank.anbieter']) {
+    for (const pfad of ['betreiber.name', 'betreiber.strasse', 'betreiber.plz', 'betreiber.ort', 'betreiber.email', 'betreiber.telefon', 'datenschutz.email', 'datenschutz.aufsichtsbehoerde.name', 'hosting.anbieter', 'mail.anbieter', 'datenbank.anbieter']) {
         assert.ok(r.fehlend.some((f) => f.pfad === pfad), pfad);
     }
     const kaputt = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'hajime-recht-')), 'x.json');
@@ -75,6 +75,25 @@ test('Rechtliches: Pflichtangaben je Rechtsform', () => {
     b.betreiber.art = 'unfug';
     assert.equal(lade(b).daten.betreiber.art, 'privatperson');
     assert.ok(pruefeRechtliches(lade(beispiel()).daten).hinweise.some((h) => /Umsatzsteuer/.test(h)));
+    // keine voreingestellte Aufsichtsbehörde: ohne Angabe fehlt sie
+    b = beispiel();
+    delete b.datenschutz.aufsichtsbehoerde;
+    assert.deepEqual(lade(b).fehlend.map((f) => f.pfad), ['datenschutz.aufsichtsbehoerde.name']);
+    // Drittland verlangt die Garantie je Empfänger, die Sicherung nur, wenn sie aktiv ist
+    b = beispiel();
+    b.datenbank.garantie = '';
+    b.backup.garantie = '';
+    assert.deepEqual(lade(b).fehlend.map((f) => f.pfad), ['datenbank.garantie', 'backup.garantie']);
+    b.backup.aktiv = false;
+    b.datenbank.drittland = false;
+    assert.equal(lade(b).vollstaendig, true);
+    // Unternehmer ohne Angabe zur Verbraucherstreitbeilegung: Hinweis, keine Pflichtlücke
+    b = beispiel();
+    Object.assign(b.betreiber, { art: 'gmbh', vertretung: 'Geschäftsführer: A. B.', registergericht: 'AG X', registernummer: 'HRB 1' });
+    assert.equal(lade(b).vollstaendig, true);
+    assert.ok(lade(b).hinweise.some((h) => /§ 36 VSBG/.test(h)));
+    b.verbraucherstreit = 'nicht-bereit';
+    assert.equal(lade(b).hinweise.some((h) => /VSBG/.test(h)), false);
 });
 
 test('Impressum: Pflichtangaben, Maskierung, bedingte Abschnitte', () => {
@@ -160,6 +179,52 @@ test('Datenschutzerklärung: Inhalt, Fristen aus der Konfiguration, bedingte Abs
     html = rendereDatenschutz(ladeRechtliches({ RECHTLICHES_DATEI: path.join(os.tmpdir(), 'gibt-es-nicht-3.json') }), {});
     assert.match(html, /unvollständige Angaben/);
     assert.ok(html.includes('[ANGABE FEHLT: Hosting-Anbieter]'));
+});
+
+test('Datenschutzerklärung: Kontakt und Nachrichten, Widerspruch, Fristen aus der Umgebung, Querverweise', () => {
+    const verweiseStimmen = (html) => {
+        assert.equal(html.includes('{{abschnitt'), false, 'kein unaufgelöster Verweis');
+        const nummern = new Map([...html.matchAll(/<h2 id="([a-z-]+)">(\d+)\./g)].map((m) => [m[1], m[2]]));
+        const verweise = [...html.matchAll(/<a href="#([a-z-]+)">Abschnitt (\d+)<\/a>/g)];
+        assert.ok(verweise.length > 0);
+        for (const [, id, nr] of verweise) assert.equal(nummern.get(id), nr, `Verweis auf ${id}`);
+        assert.deepEqual([...nummern.values()].map(Number), [...nummern.keys()].map((_, i) => i + 1), 'fortlaufend nummeriert');
+    };
+    let html = rendereDatenschutz(ladeRechtliches({ RECHTLICHES_DATEI: BEISPIEL }), {});
+    assert.match(html, /<h2 id="kontakt">\d+\. Kontaktformular und Nachrichten<\/h2>/);
+    assert.match(html, /Unterhaltung wird 365 Tage nach der letzten Nachricht automatisch gelöscht/);
+    assert.match(html, /<td>Kontaktanfragen und Nachrichten<\/td><td>365 Tage/);
+    assert.match(html, /<div class="kasten">\s*<h2 id="widerspruch">\d+\. Widerspruchsrecht nach Art\. 21 DSGVO<\/h2>/);
+    assert.match(html, /Sitzungs-Token \(24 Stunden\)/);
+    assert.match(html, /Super-Admin-Modus/);
+    assert.match(html, /Turnier teilen/);
+    // Drittland: Garantie je Empfänger und die Push-Dienste
+    assert.match(html, /Standardvertragsklauseln der EU-Kommission/);
+    assert.match(html, /Data Privacy Framework/);
+    assert.match(html, /Push-Dienste der Browserhersteller<\/strong>/);
+    verweiseStimmen(html);
+
+    html = rendereDatenschutz(ladeRechtliches({ RECHTLICHES_DATEI: BEISPIEL }), { UNBESTAETIGT_TAGE: '14', JWT_EXPIRES_IN: '8h', LIVE_PUSH_AUFBEWAHRUNG_TAGE: '2', NACHRICHTEN_AUFBEWAHRUNG_TAGE: '180' });
+    assert.match(html, /nach 14 Tagen automatisch gelöscht/);
+    assert.match(html, /Sitzungs-Token \(8 Stunden\)/);
+    assert.match(html, /spätestens 2 Tage nach dem Turnier/);
+    assert.match(html, /180 Tage nach der letzten Nachricht/);
+
+    // ohne Teilnehmer-App: keine Verweise ins Leere, Nummern rücken auf
+    const b = beispiel();
+    b.teilnehmerApp = { aktiv: false };
+    html = rendereDatenschutz(lade(b), {});
+    assert.equal(html.includes('id="app"'), false);
+    assert.equal(html.includes('Push-Anmeldungen'), false);
+    assert.equal(html.includes('Push-Dienste der Browserhersteller'), false);
+    verweiseStimmen(html);
+
+    // Aufsichtsbehörde fehlt: rot statt einer falschen Voreinstellung
+    const c = beispiel();
+    delete c.datenschutz.aufsichtsbehoerde;
+    html = rendereDatenschutz(lade(c), {});
+    assert.ok(html.includes('[ANGABE FEHLT: zuständige Datenschutz-Aufsichtsbehörde]'));
+    assert.equal(html.includes('Nordrhein-Westfalen'), false);
 });
 
 test('Datenschutzerklärung: Abschnitt Startgeld-Abrechnung', () => {

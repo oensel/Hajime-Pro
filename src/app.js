@@ -50,7 +50,7 @@ import { getEinladungRoutes } from './routes/einladungRoutes.js';
 import { getHelferRoutes } from './routes/helferRoutes.js';
 import { getHelferPlanRoutes } from './routes/helferPlanRoutes.js';
 import { getNachrichtenRoutes, getKontaktRoutes } from './routes/nachrichtenRoutes.js';
-import { istNachrichtenAktiv } from './services/nachrichten.js';
+import { istNachrichtenAktiv, loescheAlteNachrichten, NACHRICHTEN_TAGE } from './services/nachrichten.js';
 import { starteAufbewahrung } from './liveCloud/aufbewahrung.js';
 import { liesPushKonfig } from './liveCloud/pushKonfig.js';
 import { erzeugeSender } from './liveCloud/pushSender.js';
@@ -492,6 +492,15 @@ if (syncKonfig.istClient) {
     if (istNachrichtenAktiv()) {
         app.use('/api/nachrichten', getNachrichtenRoutes(knex));
         app.use('/api/kontakt', getKontaktRoutes(knex));
+        if (process.env.NODE_ENV !== 'test') {
+            // Unterhaltungen ohne neue Nachricht seit NACHRICHTEN_AUFBEWAHRUNG_TAGE (365) werden gelöscht (Datenschutzerklärung)
+            const tage = Number(process.env.NACHRICHTEN_AUFBEWAHRUNG_TAGE) || NACHRICHTEN_TAGE;
+            const bereinigeNachrichten = () => loescheAlteNachrichten(knex, tage)
+                .then((n) => { if (n > 0) meldeInfo(`Aufräumen: ${n} Unterhaltungen älter als ${tage} Tage gelöscht`, { quelle: 'prozess' }); })
+                .catch((err) => console.error('[Nachrichten] Aufräumen fehlgeschlagen:', err.message));
+            setTimeout(bereinigeNachrichten, 90_000).unref();
+            setInterval(bereinigeNachrichten, 24 * 60 * 60 * 1000).unref();
+        }
     }
     // Orga-Planer: stündliche Erinnerungsmails; nur mit SMTP, nie in Testläufen (Mail-Rauschen).
     if ((bm.istCloud || process.env.HELFER_APP_AKTIV === 'true') && process.env.SMTP_HOST && process.env.NODE_ENV !== 'test') {

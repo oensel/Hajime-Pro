@@ -15,6 +15,9 @@ import { helferAppLink } from '../utils/helferAppLink.js';
 export const MAX_BETREFF = 150;
 export const MAX_TEXT = 5000;
 export const MAX_PERSONEN = 50;
+// Unterhaltungen ohne neue Nachricht seit so vielen Tagen löscht der tägliche Lauf in app.js (Datenschutzerklärung,
+// Abschnitt „Kontaktformular und Nachrichten“); NACHRICHTEN_AUFBEWAHRUNG_TAGE überschreibt den Wert.
+export const NACHRICHTEN_TAGE = 365;
 const EMAIL_MUSTER = /^[^\s@<>,;"]+@[^\s@<>,;"]+\.[^\s@<>,;".]+$/;
 
 /** Die Nachrichten gibt es nur in der Cloud (NACHRICHTEN_AKTIV=true schaltet sie für Tests ein). */
@@ -303,6 +306,13 @@ export async function ladeVereinsAdmins(knex, konto, vereinId) {
         .select('b.id', 'b.vorname', 'b.nachname', 'bv.rolle');
     return zeilen.filter((z) => rolleReicht(z.rolle, 'admin')).map((z) => ({ id: z.id, name: kontoName(z) }))
         .sort((a, b) => a.name.localeCompare(b.name, 'de'));
+}
+
+/** Löscht Unterhaltungen, deren letzte Nachricht älter als `tage` ist; Teilnehmer, Nachrichten und Gelesen-Stände folgen per CASCADE. */
+export async function loescheAlteNachrichten(knex, tage = NACHRICHTEN_TAGE) {
+    const n = Number(tage);
+    if (!Number.isInteger(n) || n < 1) return 0;
+    return knex('nachrichten_threads').whereRaw("aktualisiert_am < now() - (? * interval '1 day')", [n]).del();
 }
 
 export { ermittleBasisUrl };
