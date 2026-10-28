@@ -15,6 +15,9 @@
     const meldung = document.getElementById('vereineMeldung');
     const info = document.getElementById('vereineInfo');
     const filter = document.getElementById('vereineFilter');
+    // Spalte „AV-Vertrag“ nur in der Cloud (die API liefert av_vertrag_am nur dort)
+    const avSpalte = document.getElementById('avVertragSpalte');
+    let mitAvVertrag = false;
     let vereine = [];
 
     const zeigeMeldung = (text) => { meldung.textContent = text || ''; };
@@ -239,6 +242,19 @@
         return `${verein.name} ${verein.bundesland || ''}`.toLowerCase().includes(suche);
     }
 
+    function avVertragZelle(verein) {
+        const td = document.createElement('td');
+        if (verein.av_vertrag_am) {
+            td.textContent = new Date(verein.av_vertrag_am).toLocaleDateString('de-DE');
+            td.title = 'In der aktuellen Fassung angenommen';
+        } else {
+            td.textContent = 'fehlt';
+            td.className = 'av-vertrag-fehlt';
+            td.title = verein.turniere_anzahl > 0 ? 'Noch nicht angenommen; neue Turniere sind gesperrt' : 'Noch nicht angenommen';
+        }
+        return td;
+    }
+
     function zeichne() {
         const suche = filter.value.trim().toLowerCase();
         const sichtbar = vereine.filter(v => passt(v, suche));
@@ -247,7 +263,7 @@
         if (sichtbar.length === 0) {
             const tr = document.createElement('tr');
             const td = document.createElement('td');
-            td.colSpan = 5;
+            td.colSpan = mitAvVertrag ? 6 : 5;
             td.textContent = 'Keine Vereine gefunden.';
             tr.appendChild(td);
             liste.appendChild(tr);
@@ -262,6 +278,7 @@
             tr.appendChild(bundeslandZelle(v));
             tr.appendChild(zahlZelle(v.benutzer_anzahl, `/admin-nutzer.html?vereinId=${encodeURIComponent(v.id)}`, `Benutzer von ${v.name} anzeigen`));
             tr.appendChild(zahlZelle(v.turniere_anzahl, `/admin-turniere.html?vereinId=${encodeURIComponent(v.id)}`, `Turniere von ${v.name} anzeigen`));
+            if (mitAvVertrag) tr.appendChild(avVertragZelle(v));
             tr.appendChild(aktionsZelle(v));
             liste.appendChild(tr);
         }
@@ -273,6 +290,8 @@
             const data = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(data.error || 'Die Vereine konnten nicht geladen werden.');
             vereine = data;
+            mitAvVertrag = vereine.some(v => 'av_vertrag_am' in v);
+            avSpalte.hidden = !mitAvVertrag;
             zeichne();
         } catch (err) {
             liste.textContent = '';

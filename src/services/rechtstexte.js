@@ -6,23 +6,23 @@
 const ersetzt = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 export const e = (t) => String(t ?? '').replace(/[&<>"']/g, (z) => ersetzt[z]);
 
-const fehlt = (beschreibung) => `<span class="fehlt">[ANGABE FEHLT: ${e(beschreibung)}]</span>`;
-const feld = (wert, beschreibung) => (wert ? e(wert) : fehlt(beschreibung));
-const mailLink = (m) => (m ? `<a href="mailto:${e(m)}">${e(m)}</a>` : '');
+export const fehlt = (beschreibung) => `<span class="fehlt">[ANGABE FEHLT: ${e(beschreibung)}]</span>`;
+export const feld = (wert, beschreibung) => (wert ? e(wert) : fehlt(beschreibung));
+export const mailLink = (m) => (m ? `<a href="mailto:${e(m)}">${e(m)}</a>` : '');
 
-function datumDeutsch(iso) {
+export function datumDeutsch(iso) {
     const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || '');
     return m ? `${m[3]}.${m[2]}.${m[1]}` : new Date().toLocaleDateString('de-DE');
 }
 
 // Natürliche Personen mit Vor- und Nachnamen, alle anderen mit Name und Rechtsform (z. B. „JC Beispiel e. V.“)
-function anzeigeName(b) {
+export function anzeigeName(b) {
     return b.art === 'privatperson' || b.art === 'einzelunternehmen'
         ? [b.vorname, b.name].filter(Boolean).join(' ')
         : [b.name, b.rechtsform].filter(Boolean).join(' ');
 }
 
-function anschriftBlock(b) {
+export function anschriftBlock(b) {
     return [
         `<strong>${feld(anzeigeName(b), 'Name bzw. Firma')}</strong>`,
         b.zusatz ? e(b.zusatz) : '',
@@ -51,7 +51,7 @@ p, li { margin: 6px 0; } ul { padding-left: 22px; } a { color: var(--link); }
 table { width: 100%; border-collapse: collapse; font-size: 14px; margin: 8px 0; } th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--rand); vertical-align: top; } th { color: var(--muted); font-size: 12px; text-transform: uppercase; }
 `;
 
-function seite({ titel, aktiv, inhalt, rechtliches }) {
+export function seite({ titel, aktiv, inhalt, rechtliches }) {
     const unvollstaendig = !rechtliches.vollstaendig;
     return `<!DOCTYPE html>
 <html lang="de">
@@ -66,6 +66,7 @@ function seite({ titel, aktiv, inhalt, rechtliches }) {
 <nav aria-label="Rechtliches">
 <a href="/impressum.html"${aktiv === 'impressum' ? ' aria-current="page"' : ''}>Impressum</a>
 <a href="/datenschutz.html"${aktiv === 'datenschutz' ? ' aria-current="page"' : ''}>Datenschutzerklärung</a>
+${aktiv === 'av-vertrag' ? '<a href="/av-vertrag.html" aria-current="page">Auftragsverarbeitung</a>' : ''}
 <a href="/">Zur Anwendung</a>
 </nav>
 <main>
@@ -129,7 +130,7 @@ function dauerText(wert) {
 }
 
 // Fristen wie im Programm: ungültige oder fehlende Werte fallen auf den Standard zurück (gleiche Regel wie `Number(env.X) || standard`).
-const tageAus = (wert, standard) => (Number(wert) > 0 ? Number(wert) : standard);
+export const tageAus = (wert, standard) => (Number(wert) > 0 ? Number(wert) : standard);
 
 // Querverweise zwischen den Abschnitten: die Nummern ergeben sich erst, wenn feststeht, welche Abschnitte erscheinen.
 const verweis = (id) => `{{abschnitt:${id}}}`;
@@ -177,7 +178,8 @@ export function rendereDatenschutz(rechtliches, env = process.env) {
         { id: 'konto', titel: 'Registrierung und Benutzerkonto', html: `
 <p><strong>Daten:</strong> Vorname, Nachname, E-Mail-Adresse, Passwort (nur als nicht umkehrbarer Prüfwert gespeichert), gewählter Verein, Rolle im Verein (Admin, Benutzer, Helfer), Zeitpunkte von Registrierung und Bestätigung.</p>
 <p><strong>Zweck und Rechtsgrundlage:</strong> Bereitstellung des Kontos und der Funktionen der Plattform (Art. 6 Abs. 1 lit. b DSGVO). Zur Bestätigung Ihrer E-Mail-Adresse senden wir einen Link (Double-Opt-in); nach der Bestätigung erhalten die Administratoren des gewählten Vereins eine E-Mail mit Ihrem Namen und Ihrer Adresse, um Sie freizuschalten.</p>
-<p><strong>Speicherdauer:</strong> bis zur Löschung des Kontos. Konten, deren E-Mail-Adresse nicht bestätigt wird, werden nach ${e(unbestaetigtTage)} Tagen automatisch gelöscht.</p>` },
+<p><strong>Speicherdauer:</strong> bis zur Löschung des Kontos. Konten, deren E-Mail-Adresse nicht bestätigt wird, werden nach ${e(unbestaetigtTage)} Tagen automatisch gelöscht.</p>
+<p><strong>Vertrag zur Auftragsverarbeitung:</strong> Nimmt ein Admin für seinen Verein den Vertrag zur Auftragsverarbeitung an, speichern wir den angenommenen Text mit Name, Funktion und E-Mail-Adresse der annehmenden Person und dem Zeitpunkt. Zweck und Rechtsgrundlage: Nachweis des Vertragsschlusses (Art. 28 Abs. 9 und Art. 5 Abs. 2 DSGVO, Art. 6 Abs. 1 lit. c und f DSGVO). Speicherdauer: solange der Verein in Hajime Pro besteht; mit dem Löschen des Kontos bleibt der Nachweis erhalten.</p>` },
 
         { id: 'sicherheit', titel: 'Anmeldung, Sicherheit und Protokollierung', html: `
 <ul>
@@ -251,6 +253,7 @@ ${drittland.join('\n')}
 ${app ? `<tr><td>Live-Daten der Teilnehmer-App</td><td>${e(liveTage)} Tage nach dem Turnier</td></tr>` : ''}
 <tr><td>SEPA-Lastschriftmandate (IBAN, Kontoinhaber, Nachweis)</td><td>14 Monate nach dem letzten Einzug bzw. nach der Entscheidung, wenn nie eingezogen wurde; bei Widerruf, Ablehnung und Umstellung wird die IBAN sofort gelöscht</td></tr>
 <tr><td>Rechnungen und Quittungen</td><td>8 Jahre ab Ende des Kalenderjahres der Ausstellung (gesetzliche Aufbewahrungspflicht), unabhängig vom Turnier</td></tr>
+<tr><td>Annahme des Vertrags zur Auftragsverarbeitung (Text, Name, Funktion, E-Mail-Adresse)</td><td>solange der Verein in Hajime Pro besteht</td></tr>
 <tr><td>Kontaktanfragen und Nachrichten</td><td>${e(nachrichtenTage)} Tage nach der letzten Nachricht der Unterhaltung</td></tr>
 ${app ? `<tr><td>Push-Anmeldungen</td><td>spätestens ${e(pushTage)} Tage nach dem Turnier</td></tr>` : ''}
 <tr><td>Aktionsprotokoll</td><td>${e(protokollTage)} Tage</td></tr>

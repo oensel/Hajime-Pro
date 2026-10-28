@@ -44,7 +44,10 @@ export const onlineServerEnv = {
     // versenden. Sonst würde jede Registrierung/jeder Vereinsbeitritt in diesem Testlauf eine ECHTE
     // Mail über den in .env hinterlegten SMTP-Account verschicken.
     SMTP_HOST: '',
-    STEUERUNG_PASSWORD: ''
+    STEUERUNG_PASSWORD: '',
+    // Vertrag zur Auftragsverarbeitung (src/services/avVertrag.js) aus: der Lauf darf die echten Konten nichts annehmen lassen,
+    // und ohne Annahme würde das Anlegen der Turniere gesperrt
+    AV_VERTRAG_AKTIV: 'false'
 };
 
 export const offlineServerEnv = {

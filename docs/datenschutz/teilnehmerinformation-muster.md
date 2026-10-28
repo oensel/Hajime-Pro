@@ -62,7 +62,7 @@ Widerrufsmöglichkeit. Das Videoarchiv in Hajime Pro (nur im Hallen-Server) ist 
 
 ## Für den Veranstalter: Checkliste
 
-- [ ] AV-Vertrag mit dem Betreiber von Hajime Pro abgeschlossen ([`av-vertrag-muster.md`](av-vertrag-muster.md))
+- [ ] AV-Vertrag mit dem Betreiber von Hajime Pro abgeschlossen (in der Cloud: Profil → „Auftragsverarbeitung“, nur Admins; Muster: [`av-vertrag-muster.md`](av-vertrag-muster.md))
 - [ ] Datenschutzhinweis in Ausschreibung/Anmeldeformular aufgenommen
 - [ ] Einwilligungen für die Teilnehmer-App eingeholt, **bevor** die Live-Freigabe eingeschaltet wird (für Minderjährige von den Erziehungsberechtigten)
 - [ ] Teilnehmende ohne Einwilligung nicht in die Live-Freigabe aufgenommen `[oder Namenskürzung genutzt]`

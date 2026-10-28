@@ -23,6 +23,7 @@ import { stelleUnbestaetigteUm } from '../services/mandatJob.js';
 import { findeTerminKonflikt, ermittleAktivierbarkeit, kopiereTeilnehmerFuerNeuesTurnier, datumAlsIso } from '../shared/turnierAktivierung.js';
 import { normalisiereFunktionen } from '../shared/turnierFunktionen.js';
 import { bereinigeAntworten } from '../shared/ausstattung.js';
+import { pruefeAvVertragFuerTurnier } from '../services/avVertrag.js';
 const { istEinzelbenutzerBetrieb } = betriebsmodus;
 
 // Anmeldeschluss wird als reines Datum (ohne Uhrzeit) gespeichert; die Frist gilt bis
@@ -278,6 +279,11 @@ export async function createTurnier(knex, req, res) {
         }
         if (!vereinId) {
             return res.status(400).json({ success: false, error: 'Bitte zuerst einen aktiven Verein wählen.' });
+        }
+        // Cloud: ohne angenommenen Vertrag zur Auftragsverarbeitung keine neuen Turniere (src/services/avVertrag.js)
+        if (req.app.get('avVertragPflicht')) {
+            const avFehler = await pruefeAvVertragFuerTurnier(knex, vereinId);
+            if (avFehler) return res.status(avFehler.statusCode).json({ success: false, error: avFehler.message, code: avFehler.code });
         }
         const zahlungsFehler = await validiereZahlungsdaten(knex, { startgeld, iban, kontoinhaber, verwendungszweck, vereinId });
         if (zahlungsFehler) {

@@ -905,6 +905,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (window.zeigeNotification) {
                         window.zeigeNotification(result.error || 'Fehler beim Speichern des Turniers.', 'error');
                     }
+                    // Cloud: Vertrag zur Auftragsverarbeitung fehlt, Admins können ihn gleich hier annehmen (public/js/avVertrag.js)
+                    if (result.code === 'av_vertrag_fehlt') window.hajimeZeigeAvVertrag?.();
                 }
             } catch (error) {
                 if (window.zeigeNotification) {

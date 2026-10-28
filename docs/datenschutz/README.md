@@ -33,7 +33,7 @@
 1. `rechtliches.example.json` kopieren, alle Werte durch Ihre ersetzen und als `data/rechtliches.json` (oder `RECHTLICHES_DATEI`) ablegen. Im Docker-Container als Volume einbinden.
 2. `/impressum.html` und `/datenschutz.html` öffnen: **keine rote Stelle** darf übrig sein. Außerdem prüfen, dass jede Aussage in der Datenschutzerklärung für Ihren Betrieb stimmt (siehe Abschnitt „Ihre Verantwortung“).
 3. Mit **jedem Dienstleister** den Vertrag zur Auftragsverarbeitung abschließen (Liste in `unterauftragnehmer-und-dsfa.md`).
-4. Mit **jedem Verein**, der Hajime Pro nutzt, den AV-Vertrag abschließen (`av-vertrag-muster.md`) und ihm die Teilnehmerinformation (`teilnehmerinformation-muster.md`) geben.
+4. Mit **jedem Verein**, der Turniere ausrichtet, den AV-Vertrag abschließen und ihm die Teilnehmerinformation (`teilnehmerinformation-muster.md`) geben. In der Cloud geschieht der Abschluss online: Ein Admin des Vereins nimmt den Vertrag im Profil unter „Auftragsverarbeitung“ an (Name, Funktion, Bestätigung der Vertretungsbefugnis). Der angenommene Text wird mit SHA-256 als Nachweis gespeichert. Ohne Annahme legt der Verein keine neuen Turniere an. Die allgemeine Fassung steht öffentlich unter `/av-vertrag.html`, den Stand je Verein zeigt die Vereinsübersicht der Super-Admins. Den Text erzeugt `src/services/avVertrag.js` aus `rechtliches.json`; `av-vertrag-muster.md` erläutert die Klauseln. Wer den Text wesentlich ändert, erhöht dort `AV_VERTRAG_FASSUNG`: Dann muss jeder Verein neu annehmen.
 5. Den Rechtsanwalt oder Datenschutzbeauftragten drüberschauen lassen und die Unterlagen im Verarbeitungsverzeichnis ablegen.
 
 ## Ihre Verantwortung: was die Software nicht erledigen kann
@@ -61,7 +61,8 @@ Die Datenschutzerklärung beschreibt Dinge, die vom Betrieb abhängen. Prüfen S
 | **Teilnehmer-App zeigt Vor- und Nachnamen** (auch von Kindern) durchsuchbar, sobald der Veranstalter die Freigabe einschaltet; **Zugang nur mit dem ausgehängten QR-Code (Zugangscode je Turnier, bis Ende des Turniertags, erneuerbar/sperrbar, keine öffentliche Liste)**. Ein weitergegebenes Foto des Aushangs bleibt bis zum Ablauf nutzbar | Datenschutzrechtlich der heikelste Punkt, durch den Zugangscode deutlich entschärft. Empfehlung: Einwilligung der Erziehungsberechtigten über die Anmeldung einholen und eine Option einbauen, die Namen zu kürzen (z. B. „Anna M.“) |
 | **Keine Selbstbedienung für Betroffenenrechte** (Auskunft, Löschung, Export einer Person) | Abwicklung per Prozess und Abfragen (`prozesse-betroffenenrechte-datenpanne.md`) |
 | **Keine automatische Löschung abgeschlossener Turniere** | Das Löschen macht der Veranstalter oder Super-Admin; eine Frist-Automatik ließe sich ergänzen |
-| **AV-Vertrag wird nicht in der Software angenommen** (kein Häkchen bei Registrierung eines Vereins) | Abschluss außerhalb (Mail/Unterschrift); eine Online-Annahme ließe sich ergänzen |
+| **AV-Vertrag: Vertretungsbefugnis wird nicht geprüft** | Der annehmende Admin bestätigt sie selbst und gibt Name und Funktion an. Bei Zweifeln (z. B. kein Vorstandsmitglied) beim Verein nachfragen |
+| **Bestehende Turniere ohne AV-Vertrag** | Gesperrt wird nur das Anlegen neuer Turniere; Admins von Vereinen mit Turnieren sehen den Vertrag beim Aufruf, bis sie ihn annehmen (oder „Später“ wählen). Fehlende Annahmen zeigt die Vereinsübersicht |
 | **Keine automatische Löschung von Rechnungen** (Startgeld-Abrechnung) nach 8 Jahren | Löschung von Hand; Rechnungs-PDFs enthalten die Empfänger-IBAN im Klartext, Sicherungen daher verschlüsseln |
 | **Keine Einwilligungsverwaltung** für Fotos/Videos (Videoarchiv gibt es nur im Hallen-Server) | Einwilligung durch den Veranstalter, außerhalb der Software |
 

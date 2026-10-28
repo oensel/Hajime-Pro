@@ -16,6 +16,7 @@ import { legeVereinAn, benenneVereinUm, fuehreVereineZusammen, loescheLeerenVere
 import { ermittleBasisUrl, HINWEIS_FEHLENDE_BASIS_URL } from '../utils/basisUrl.js';
 import { vergesseSperrStand } from '../utils/kontoSperre.js';
 import { weiseMitgliedschaftZu, entferneMitglied } from '../services/vereinsRollen.js';
+import { ladeAnnahmenJeVerein } from '../services/avVertrag.js';
 
 /**
  * Darf der Aufrufer dieses Konto verwalten? Super-Admins (im Super-Admin-Modus) immer. Ein Vereins-Admin nur Konten, die
@@ -195,12 +196,16 @@ export async function listeVereine(knex, req, res) {
         const turniere = await knex('turniere').whereNotNull('verein_id').groupBy('verein_id').select('verein_id').count('* as anzahl');
         const benutzerJe = new Map(benutzer.map(z => [z.verein_id, parseInt(z.anzahl, 10)]));
         const turniereJe = new Map(turniere.map(z => [z.verein_id, parseInt(z.anzahl, 10)]));
+        // Vertrag zur Auftragsverarbeitung (nur Cloud): Datum der Annahme in der aktuellen Fassung, sonst null
+        const avAktiv = !!req.app.get('avVertragPflicht');
+        const avJe = avAktiv ? await ladeAnnahmenJeVerein(knex) : new Map();
         res.json(vereine.map(v => ({
             id: v.id,
             name: v.name,
             bundesland: v.bundesland || null,
             benutzer_anzahl: benutzerJe.get(v.id) || 0,
-            turniere_anzahl: turniereJe.get(v.id) || 0
+            turniere_anzahl: turniereJe.get(v.id) || 0,
+            ...(avAktiv ? { av_vertrag_am: avJe.get(v.id) || null } : {})
         })));
     } catch (error) {
         console.error('[Vereine-Liste-Fehler]:', error);
