@@ -57,7 +57,7 @@
 |---|---|
 | Verzeichnis der Verarbeitungstätigkeiten ([`verarbeitungsverzeichnis.md`](verarbeitungsverzeichnis.md)) | Betrieb: pflegen |
 | Verträge zur Auftragsverarbeitung mit allen Dienstleistern ([`unterauftragnehmer-und-dsfa.md`](unterauftragnehmer-und-dsfa.md)) | Betrieb: abschließen |
-| AV-Verträge mit allen Vereinen ([`av-vertrag-muster.md`](av-vertrag-muster.md)) | Betrieb: abschließen |
+| AV-Verträge mit allen ausrichtenden Vereinen ([`av-vertrag-muster.md`](av-vertrag-muster.md)) | Software: Online-Annahme durch Vereins-Admins mit gespeichertem Text; neue Turniere erst danach; Stand in der Vereinsübersicht |
 | Prozess für Betroffenenrechte und Datenpannen ([`prozesse-betroffenenrechte-datenpanne.md`](prozesse-betroffenenrechte-datenpanne.md)) | Betrieb: einüben |
 | Berechtigungskonzept: wer hat Super-Admin, wer Server-Zugang (mindestens zwei Super-Admins, kein gemeinsames Konto) | Betrieb |
 | Schulung/Belehrung der Vereins-Admins (Umgang mit Teilnehmerdaten, Freigabe der Live-Anzeige) | Betrieb |

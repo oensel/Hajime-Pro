@@ -25,6 +25,8 @@ import { sicherungsVerzeichnis } from './services/datensicherung.js';
 import { getProtokollRoutes } from './routes/protokollRoutes.js';
 import { getRechtlichesSeiten, getRechtlichesApi } from './routes/rechtlichesRoutes.js';
 import { ladeRechtliches } from './services/rechtliches.js';
+import { getAvVertragSeite, getAvVertragApi } from './routes/avVertragRoutes.js';
+import { istAvVertragAktiv } from './services/avVertrag.js';
 import { loescheUnbestaetigteKonten, UNBESTAETIGT_TAGE } from './services/kontenAufraeumen.js';
 import { getKonsoleRoutes, getFehlerMeldeRoutes } from './routes/konsoleRoutes.js';
 import { installiereFehlerErfassung, meldeInfo, fehlerBehandlung, bereinigeFehler, STANDARD_AUFBEWAHRUNG_TAGE as FEHLER_TAGE } from './services/fehlerProtokoll.js';
@@ -325,6 +327,13 @@ if (syncKonfig.istClient) {
             console.warn(`[Rechtliches] Impressum/Datenschutzerklärung unvollständig, es fehlen: ${rechtliches.fehlend.map((f) => f.pfad).join(', ')} (siehe docs/datenschutz/README.md)`);
         }
     }
+    // Vertrag zur Auftragsverarbeitung (src/services/avVertrag.js): öffentliche Fassung, Annahme durch Vereins-Admins, neue Turniere erst danach.
+    // Nur Cloud; AV_VERTRAG_AKTIV=true schaltet ihn außerhalb ein (Tests), =false ab (Vollablauf gegen echte Konten).
+    const avVertragAktiv = istAvVertragAktiv();
+    if (avVertragAktiv) {
+        app.use(getAvVertragSeite());
+        app.set('avVertragPflicht', true);
+    }
     app.use(express.static(path.join(__dirname, '../public')));
 
     if (kopplung) {
@@ -440,6 +449,8 @@ if (syncKonfig.istClient) {
     if (rechtlichesAktiv) app.use('/api/rechtliches', getRechtlichesApi(knex));
     // Ohne Impressumsseiten (Hallen-Server) meldet die Fußzeile „nicht aktiv“, statt einen 404 in der Konsole zu erzeugen.
     else app.get('/api/rechtliches/aktiv', (req, res) => res.json({ aktiv: false }));
+    if (avVertragAktiv) app.use('/api/av-vertrag', getAvVertragApi(knex));
+    else app.get('/api/av-vertrag', (req, res) => res.json({ aktiv: false }));
     if (bm.istCloud && process.env.NODE_ENV !== 'test') {
         // Konten ohne bestätigte E-Mail-Adresse werden nach 30 Tagen gelöscht (Datenschutzerklärung, Abschnitt 3)
         const bereinigeKonten = () => loescheUnbestaetigteKonten(knex, Number(process.env.UNBESTAETIGT_TAGE) || UNBESTAETIGT_TAGE)

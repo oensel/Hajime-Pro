@@ -12,7 +12,10 @@
         .vereine-table th:nth-child(2) { width: 24%; }
         .vereine-table th:nth-child(3) { width: 12%; }
         .vereine-table th:nth-child(4) { width: 12%; }
-        .vereine-table th:nth-child(5) { width: 20%; }
+        .vereine-table th:last-child { width: 20%; }
+        .vereine-table th#avVertragSpalte { width: 12%; }
+        .vereine-table:has(#avVertragSpalte:not([hidden])) th:nth-child(1) { width: 20%; }
+        .vereine-table .av-vertrag-fehlt { color: #c62828; font-weight: 600; }
         .vereine-table .aktion { width: 30px; height: 30px; padding: 0; border: 1px solid var(--border); border-radius: 4px; background: transparent; color: var(--text-main); cursor: pointer; }
         .vereine-table .aktion:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
         .vereine-table .aktion.gefahr:hover:not(:disabled) { border-color: #c62828; color: #c62828; }
@@ -70,7 +73,7 @@
     <div class="tabelle-scroll">
         <table class="vereine-table">
             <thead>
-                <tr><th>Verein</th><th>Bundesland</th><th>Benutzer</th><th>Turniere</th><th>Aktionen</th></tr>
+                <tr><th>Verein</th><th>Bundesland</th><th>Benutzer</th><th>Turniere</th><th id="avVertragSpalte" hidden title="Vertrag zur Auftragsverarbeitung (Art. 28 DSGVO)">AV-Vertrag</th><th>Aktionen</th></tr>
             </thead>
             <tbody id="vereineListe"><tr><td colspan="5">Wird geladen …</td></tr></tbody>
         </table>

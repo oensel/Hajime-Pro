@@ -2,6 +2,11 @@
 
 > **Muster, keine Rechtsberatung.** Vor dem Einsatz rechtlich prüfen lassen. Eckige Klammern `[…]` ausfüllen. Jeder Verein, der Hajime Pro nutzt, braucht diesen
 > Vertrag, solange der Betreiber Daten seiner Teilnehmenden und Helfenden verarbeitet.
+>
+> **In der Cloud wird der Vertrag online angenommen.** Den dort gültigen Text erzeugt `src/services/avVertrag.js` aus `rechtliches.json` (Betreiber, Anlage 2) und dem
+> Vereinsnamen; öffentlich unter `/av-vertrag.html`. Er folgt diesem Muster und füllt die Klammern fest aus (Weisungsberechtigte = Admins des Vereins, Meldung von
+> Datenpannen an deren E-Mail-Adressen, Prüfung mit 14 Tagen Vorlauf, Löschung 30 Tage nach Vertragsende). Dieses Dokument bleibt für Abschlüsse auf Papier und
+> als Erläuterung. Ändern Sie eines, ändern Sie das andere mit.
 
 zwischen
 

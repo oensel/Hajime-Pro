@@ -1360,6 +1360,13 @@ async function initialisiereMenue() {
         return;
     }
 
+    // Cloud: Vertrag zur Auftragsverarbeitung für Admins des aktiven Vereins (public/js/avVertrag.js fragt den Stand selbst ab)
+    if (configGeladen && !istOffline && currentUser && currentUser.verein_rolle === 'admin' && !currentUser.super_admin_aktiv) {
+        const s = document.createElement('script');
+        s.src = '/js/avVertrag.js';
+        document.head.appendChild(s);
+    }
+
     if (wartetAufFreigabe) {
         versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-orga', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
 
