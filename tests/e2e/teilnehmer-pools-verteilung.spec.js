@@ -270,6 +270,8 @@ test.describe.serial('Pool-Verteilung nach Alters-/Gewichtsklasse und Wettkampfs
         // (siehe istTeilnehmerStartberechtigt in poolController.js).
         await page.locator('input[name="altersklasse_cb"][value="männlich_U15"]').check();
 
+        // Die Karte "Mannschaft" ist beim Anlegen eingeklappt: erst aufklappen
+        await page.locator('#mannschaftKarte > summary').click();
         await page.locator('input[name="mannschaft_altersklasse_cb"][value="männlich_U15"]').check();
 
         await page.locator('#submitBtn').click();

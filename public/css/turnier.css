@@ -97,6 +97,13 @@
     padding: 20px;
 }
 
+/* Einklappbare Karte (<details>): der Kopf ist der Schalter, der Pfeil dreht sich beim Öffnen */
+.turnier-einklappbar > summary { cursor: pointer; list-style: none; border-bottom: 0; }
+.turnier-einklappbar > summary::-webkit-details-marker { display: none; }
+.turnier-einklappbar[open] > summary { border-bottom: 2px solid var(--border); }
+.turnier-einklappbar .turnier-einklappbar-pfeil { margin-left: auto; transition: transform 0.2s; }
+.turnier-einklappbar[open] .turnier-einklappbar-pfeil { transform: rotate(180deg); }
+
 .turnier-card-body .form-group { margin-bottom: 16px; }
 .turnier-card-body .form-group:last-child { margin-bottom: 0; }
 

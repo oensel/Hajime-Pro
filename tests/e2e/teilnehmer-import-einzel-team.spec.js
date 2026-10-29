@@ -296,6 +296,8 @@ test.describe.serial('Teilnehmer-Import und -Verwaltung (teilnehmer.html)', () =
         await expect(promptModal).toBeHidden();
         await expect(page.locator('input[name="altersklasse_cb"][value="mixed_U9"]')).toBeChecked();
 
+        // Die Karte "Mannschaft" ist beim Anlegen eingeklappt: erst aufklappen
+        await page.locator('#mannschaftKarte > summary').click();
         await page.locator('input[name="mannschaft_altersklasse_cb"][value="männlich_U15"]').check();
         await page.locator('input[name="mannschaft_altersklasse_cb"][value="weiblich_U15"]').check();
 

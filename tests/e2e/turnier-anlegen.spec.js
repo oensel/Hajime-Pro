@@ -81,7 +81,11 @@ test('Alters- und Mannschaftsklassen auswählen und mit dem Turnier speichern', 
     await fuegeFreieKlasseHinzu(page, geschlechtsBlock(einzelContainer, 'mixed'), 'U9');
     await expect(page.locator('input[name="altersklasse_cb"][value="mixed_U9"]')).toBeChecked();
 
-    // --- Mannschaft: Klassen U15 wählen
+    // --- Mannschaft: die Karte ist beim Anlegen eingeklappt (Einzel dagegen offen), erst aufklappen, dann Klassen U15 wählen
+    await expect(page.locator('#einzelKarte')).toHaveJSProperty('open', true);
+    await expect(page.locator('#mannschaftKarte')).toHaveJSProperty('open', false);
+    await page.locator('#mannschaftKarte > summary').click();
+    await expect(page.locator('#mannschaftKarte')).toHaveJSProperty('open', true);
     await page.locator('input[name="mannschaft_altersklasse_cb"][value="weiblich_U15"]').check();
     await expect(page.locator('input[name="mannschaft_altersklasse_cb"][value="weiblich_U15"]')).toBeChecked();
     await page.locator('input[name="mannschaft_altersklasse_cb"][value="männlich_U15"]').check();
