@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Spielt einen entpackten Quellstand auf diesen Cloud-Server (Docker Compose in /opt/hajime-pro, kein Git-Checkout).
 # Aufruf: aufspielen.sh <Commit> <Verzeichnis des entpackten Quellstands>   (durch annahme.sh, siehe README.md)
+# Läuft als root-eigene Kopie /usr/local/sbin/hajime-aufspielen, nicht aus dem hochgeladenen Archiv.
 #
 # Ablauf: Datenbank sichern -> neuen Stand an die Stelle von /opt/hajime-pro setzen (den alten als /opt/hajime-pro.alt behalten,
 # die Dateien nur dieses Servers ziehen um) -> Image bauen, App neu starten -> auf "healthy" und eine Antwort der API warten.
