@@ -239,17 +239,19 @@
                     </div>
                 </div>
             </div>
-            <div class="mdc-card turnier-section-card">
-                <div class="turnier-card-header">
+            <!-- Eingeklappt, bis Mannschaftsklassen gewählt sind (turnier.js öffnet sie beim Bearbeiten, wenn welche gespeichert sind) -->
+            <details class="mdc-card turnier-section-card turnier-einklappbar" id="mannschaftKarte">
+                <summary class="turnier-card-header">
                     <span class="material-icons">groups_2</span>
                     <h2>Mannschaft</h2>
-                </div>
+                    <span class="material-icons turnier-einklappbar-pfeil" aria-hidden="true">expand_more</span>
+                </summary>
                 <div class="turnier-card-body">
                     <div id="mannschaftAltersklassenContainer">
                         <!-- Je Geschlecht dynamisch befüllt (siehe turnier.js) -->
                     </div>
                 </div>
-            </div>
+            </details>
         </section>
 
         <!-- Schritt 3: Startgeld und Zahlungswege -->

@@ -619,6 +619,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     cb.checked = true;
                 });
+                // Die Karte "Mannschaft" ist beim Anlegen eingeklappt; sind schon Klassen gewählt, ist sie offen
+                if (turnier.mannschafts_altersklassen.length > 0) document.getElementById('mannschaftKarte').open = true;
             }
 
         } catch (err) {
