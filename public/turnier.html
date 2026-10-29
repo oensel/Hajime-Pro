@@ -228,17 +228,19 @@
                     </div>
                 </div>
             </div>
-            <div class="mdc-card turnier-section-card">
-                <div class="turnier-card-header">
+            <!-- Einklappbar, standardmäßig offen -->
+            <details class="mdc-card turnier-section-card turnier-einklappbar" id="einzelKarte" open>
+                <summary class="turnier-card-header">
                     <span class="material-icons">person</span>
                     <h2>Einzel</h2>
-                </div>
+                    <span class="material-icons turnier-einklappbar-pfeil" aria-hidden="true">expand_more</span>
+                </summary>
                 <div class="turnier-card-body">
                     <div id="altersklassenContainer">
                         <!-- Je Geschlecht dynamisch befüllt (siehe turnier.js) -->
                     </div>
                 </div>
-            </div>
+            </details>
             <!-- Eingeklappt, bis Mannschaftsklassen gewählt sind (turnier.js öffnet sie beim Bearbeiten, wenn welche gespeichert sind) -->
             <details class="mdc-card turnier-section-card turnier-einklappbar" id="mannschaftKarte">
                 <summary class="turnier-card-header">
