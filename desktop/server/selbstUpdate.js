@@ -100,14 +100,20 @@ export async function pruefeUndLade({
         }
 
         log.log(`[Selbst-Update] Lade Version ${version} (${eintrag.datei}) …`);
+        let summe;
         try {
-            await ladeInDatei({ asset, kopf, ziel: `${ziel}.teil`, fetchFn, beiFortschritt: (stand) => beiFortschritt({ version, ...stand }), leerlaufMs });
+            // Die Prüfsumme entsteht schon beim Laden: ein zweiter Durchgang über den über 600 MB großen Installer entfällt.
+            summe = await ladeInDatei({ asset, kopf, ziel: `${ziel}.teil`, fetchFn, beiFortschritt: (stand) => beiFortschritt({ version, ...stand }), leerlaufMs });
         } catch (err) {
             // Verbindung riss ab o. Ä.: die Teildatei bleibt, der nächste Versuch setzt dort fort. Kein Fehlversuch.
             return { status: 'keine-verbindung', version, grund: err.message };
         }
-        beiPhase(`Prüfe Update ${version} …`);
-        if ((await sha256Datei(`${ziel}.teil`)) !== eintrag.sha256) {
+        if (!summe) {
+            // Teildatei war schon vollständig (HTTP 416): hier gibt es keinen Datenstrom, also von der Platte lesen.
+            beiPhase(`Prüfe Update ${version} …`);
+            summe = await sha256Datei(`${ziel}.teil`);
+        }
+        if (summe !== eintrag.sha256) {
             rmSync(`${ziel}.teil`, { force: true });
             return { status: 'fehler', version, grund: `Installer ${eintrag.datei}: Prüfung fehlgeschlagen (sha256)` };
         }
@@ -118,16 +124,17 @@ export async function pruefeUndLade({
     }
 }
 
-export function sha256Datei(datei) {
+// `hash`: bestehender Hash, in den die Datei eingerechnet wird (Wiederaufnahme); Ergebnis ist dann dessen Zwischenstand.
+export function sha256Datei(datei, hash = createHash('sha256')) {
     return new Promise((resolve, reject) => {
-        const hash = createHash('sha256');
-        createReadStream(datei).on('data', d => hash.update(d)).on('error', reject).on('end', () => resolve(hash.digest('hex')));
+        createReadStream(datei).on('data', d => hash.update(d)).on('error', reject).on('end', () => resolve(hash.copy().digest('hex')));
     });
 }
 
 // Lädt asset.url in die Datei `ziel` (Teildatei): direkt auf die Platte statt in den Arbeitsspeicher (der Installer ist
 // über 600 MB groß), mit Fortschritt und Wiederaufnahme per Range, falls schon ein Stück da ist. Bricht erst ab, wenn
 // `leerlaufMs` lang gar keine Daten kommen (nicht nach fester Gesamtzeit: langsame Leitungen dürfen lange brauchen).
+// Liefert die SHA-256 der fertigen Datei (beim Laden mitgerechnet) oder undefined, wenn nichts geladen werden musste (416).
 export async function ladeInDatei({ asset, kopf, ziel, fetchFn, beiFortschritt = () => {}, leerlaufMs = 60000 }) {
     const vorhanden = existsSync(ziel) ? statSync(ziel).size : 0;
     const steuerung = new AbortController();
@@ -137,15 +144,18 @@ export async function ladeInDatei({ asset, kopf, ziel, fetchFn, beiFortschritt =
     try {
         const header = { ...kopf, Accept: 'application/octet-stream', ...(vorhanden ? { Range: `bytes=${vorhanden}-` } : {}) };
         const r = await fetchFn(asset.url, { headers: header, signal: steuerung.signal });
-        if (r.status === 416) return; // Teildatei ist schon vollständig; die Prüfsumme entscheidet
+        if (r.status === 416) return undefined; // Teildatei ist schon vollständig; die Prüfsumme entscheidet
         if (!r.ok) throw new Error(`${asset.name}: HTTP ${r.status}`);
         const fortsetzen = vorhanden > 0 && r.status === 206;
         const laenge = Number(r.headers && r.headers.get && r.headers.get('content-length')) || 0;
         const gesamt = laenge ? laenge + (fortsetzen ? vorhanden : 0) : (asset.size || 0);
         let geladen = fortsetzen ? vorhanden : 0;
+        const hash = createHash('sha256');
+        if (fortsetzen) await sha256Datei(ziel, hash); // schon geladenes Stück einrechnen
         fd = openSync(ziel, fortsetzen ? 'a' : 'w');
         const schreibe = (stueck) => {
             writeSync(fd, stueck);
+            hash.update(stueck);
             geladen += stueck.length;
             lebenszeichen();
             beiFortschritt({ geladen, gesamt });
@@ -160,6 +170,7 @@ export async function ladeInDatei({ asset, kopf, ziel, fetchFn, beiFortschritt =
         } else {
             schreibe(Buffer.from(await r.arrayBuffer()));
         }
+        return hash.digest('hex');
     } catch (err) {
         if (steuerung.signal.aborted) throw new Error(`Keine Daten mehr seit ${Math.round(leerlaufMs / 1000)} Sekunden`);
         throw err;
