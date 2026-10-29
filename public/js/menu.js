@@ -503,7 +503,12 @@ function baueMenueGeruest() {
             </button>
         </div>
 
+        <div class="menue-hintergrund" id="menueHintergrund"></div>
+
         <div class="top-header-bar">
+            <button type="button" class="menue-knopf" id="menueKnopf" aria-label="Menü öffnen" aria-expanded="false">
+                <span class="material-icons">menu</span>
+            </button>
             <h1 class="top-header-title" id="topHeaderTitle"></h1>
             <div class="top-header-right">
             <div class="verein-switcher" id="vereinSwitcher" style="display: none;">
@@ -1577,8 +1582,8 @@ async function initialisiereMenue() {
         };
         zeige(offen);
         kopf.addEventListener('click', () => {
-            // Eingeklappte Seitenleiste (nur Icons): kein Untermenü, der Klick öffnet die Orga-Übersicht.
-            if (document.body.classList.contains('sidebar-collapsed') || window.matchMedia('(max-width: 850px)').matches) {
+            // Eingeklappte Seitenleiste (nur Icons, auch die schmale Leiste bis 850 px; am Handy ist es eine Schublade mit Untermenü): kein Untermenü, der Klick öffnet die Orga-Übersicht.
+            if (document.body.classList.contains('sidebar-collapsed') || window.matchMedia('(min-width: 601px) and (max-width: 850px)').matches) {
                 const uebersicht = document.getElementById('nav-orga-uebersicht');
                 const ziel = uebersicht && uebersicht.style.display !== 'none' ? uebersicht : document.getElementById('nav-helfer');
                 window.location.href = ziel.getAttribute('href');
@@ -1716,6 +1721,23 @@ async function initialisiereMenue() {
             anwendenSidebarZustand(neuerZustand);
         });
         sidebarCollapseBtn.dataset.bereit = '1'; // Klick-Handler ist gebunden (Tests warten darauf)
+    }
+
+    // --- MENÜ-SCHUBLADE AM HANDY (CSS: common.css, bis 600 px) ---
+    const menueKnopf = document.getElementById('menueKnopf');
+    const menueHintergrund = document.getElementById('menueHintergrund');
+    if (menueKnopf && menueHintergrund) {
+        const setzeMenueOffen = (offen) => {
+            document.body.classList.toggle('menue-offen', offen);
+            menueKnopf.setAttribute('aria-expanded', String(offen));
+        };
+        menueKnopf.addEventListener('click', () => setzeMenueOffen(!document.body.classList.contains('menue-offen')));
+        menueHintergrund.addEventListener('click', () => setzeMenueOffen(false));
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setzeMenueOffen(false); });
+        document.querySelector('.app-sidebar')?.addEventListener('click', (e) => {
+            if (e.target.closest('a[href]')) setzeMenueOffen(false);
+        });
+        menueKnopf.dataset.bereit = '1';
     }
 
     // --- PROFIL HANDLER ---

@@ -117,13 +117,21 @@ test('Eingeklappte Seitenleiste: nur Icon, Klick auf Orga öffnet die Übersicht
     await page.evaluate(() => localStorage.removeItem('hajime-sidebar-collapsed'));
 });
 
-test('Telefonbreite: Orga-Symbol sichtbar, Untermenü ausgeblendet, Klick öffnet die Übersicht', async ({ page }) => {
-    await page.setViewportSize({ width: 375, height: 800 });
+test('Schmale Leiste (700 px): Orga-Symbol sichtbar, Untermenü ausgeblendet, Klick öffnet die Übersicht', async ({ page }) => {
+    await page.setViewportSize({ width: 700, height: 800 });
     await page.goto(`/turnier.html?id=${turnierId}`);
     await expect(kopf(page)).toBeVisible();
     await expect(page.locator('#nav-orga-liste')).toBeHidden();
     await kopf(page).click();
     await expect(page).toHaveURL(new RegExp(`/orga\\.html\\?turnierId=${turnierId}`));
+});
+
+test('Telefonbreite: Menü-Schublade zeigt das Orga-Untermenü', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 800 });
+    await page.goto(`/turnier.html?id=${turnierId}`);
+    await page.locator('#menueKnopf').click();
+    await expect(kopf(page)).toBeVisible();
+    await expect(page.locator('#nav-orga-liste')).toBeVisible();
 });
 
 test('Sektionstitel gliedern das Menü: Matten bei der Vorbereitung, Kämpfe und Video bei der Kontrolle, Urkunden vor der Siegerliste', async ({ page }) => {
