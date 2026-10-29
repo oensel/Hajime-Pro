@@ -504,6 +504,9 @@ body {
     box-sizing: border-box;
 }
 
+/* Eine Karte mit hidden bleibt weg, auch wenn eine Seite ihr display setzt (sonst bleibt z. B. auf dem Profil eine leere Kachel) */
+.mdc-card[hidden] { display: none !important; }
+
 /* --- STRUKTURIERTE TITELZEILE DER KARTEN --- */
 .form-title-area {
     display: flex;
