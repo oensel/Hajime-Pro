@@ -276,3 +276,46 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
           RELEASES_REPO: oensel/Hajime-Pro-Releases
+
+  # Cloud-Server (netcup, Docker Compose, kein Git-Checkout): spielt den getesteten Commit des Releases auf. Der Server nimmt ihn über
+  # einen erzwungenen SSH-Befehl an (deploy/cloud/annahme.sh, Einrichtung: deploy/cloud/README.md), sichert die Datenbank, baut,
+  # prüft die Gesundheit und rollt bei einem Fehler selbst zurück. Läuft nur, wenn die Variable CLOUD_SSH_HOST gesetzt ist;
+  # der Release ist zu diesem Zeitpunkt schon veröffentlicht, ein Fehler hier macht ihn nicht rückgängig.
+  cloud-ausrollen:
+    needs: [veroeffentlichen]
+    if: ${{ !cancelled() && needs.veroeffentlichen.result == 'success' && vars.CLOUD_SSH_HOST != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Der Deploy-Schlüssel ist ein Secret dieser Umgebung; sie erlaubt nur Läufe vom Branch main und von Tags v*.
+    environment: cloud-prod
+    concurrency: { group: cloud-ausrollen, cancel-in-progress: false }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Quellstand packen
+        run: git archive --format=tar.gz -o "$RUNNER_TEMP/hajime.tgz" "$GITHUB_SHA"
+      - name: SSH vorbereiten
+        run: |
+          test -n "$CLOUD_DEPLOY_SCHLUESSEL" || { echo "Secret CLOUD_DEPLOY_SCHLUESSEL fehlt, siehe deploy/cloud/README.md."; exit 1; }
+          test -n "$CLOUD_SSH_KNOWN_HOSTS" || { echo "Variable CLOUD_SSH_KNOWN_HOSTS fehlt, siehe deploy/cloud/README.md."; exit 1; }
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$CLOUD_DEPLOY_SCHLUESSEL" > ~/.ssh/cloud-deploy
+          chmod 600 ~/.ssh/cloud-deploy
+          printf '%s\n' "$CLOUD_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+        env:
+          CLOUD_DEPLOY_SCHLUESSEL: ${{ secrets.CLOUD_DEPLOY_SCHLUESSEL }}
+          CLOUD_SSH_KNOWN_HOSTS: ${{ vars.CLOUD_SSH_KNOWN_HOSTS }}
+      - name: Auf den Cloud-Server ausrollen
+        run: |
+          ssh -i ~/.ssh/cloud-deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 \
+            "root@$CLOUD_SSH_HOST" "$GITHUB_SHA" < "$RUNNER_TEMP/hajime.tgz"
+        env: { CLOUD_SSH_HOST: '${{ vars.CLOUD_SSH_HOST }}' }
+      - name: Öffentliche Adresse prüfen
+        if: ${{ vars.CLOUD_URL != '' }}
+        run: |
+          for versuch in 1 2 3 4 5 6; do
+            curl -fsS -m 10 "$CLOUD_URL/api/config" && exit 0
+            sleep 10
+          done
+          echo "Die Cloud antwortet unter $CLOUD_URL nicht."
+          exit 1
+        env: { CLOUD_URL: '${{ vars.CLOUD_URL }}' }
