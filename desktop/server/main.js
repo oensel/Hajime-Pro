@@ -173,6 +173,10 @@ async function starteServer() {
         // Im Installer mitgelieferte, signierte Client-Dateien (extraResources, siehe electron-builder.server.yml).
         CLIENT_DATEIEN_MITGELIEFERT: app.isPackaged ? path.join(process.resourcesPath, 'client-dateien') : ''
     });
+    // Turnierauswahl „Turniere aus der Cloud“ (src/services/cloudZugriff.js) liest nur CLOUD_URL; die Adresse aus update.json
+    // oder dem Paket (desktop/cloud-url.txt) kennt bisher nur das Update. Ohne sie bleibt die Anmeldemaske verborgen.
+    const cloudUrl = liesCloudUrl({ datenDir: basis, standardDatei: CLOUD_URL_DATEI });
+    if (cloudUrl) process.env.CLOUD_URL = cloudUrl;
     status('Starte Datenbank und Server …');
     const expressApp = await importiereServer();
     const { stoppeAlleEingebetteten } = await import(pathToFileURL(path.join(WURZEL, 'src/utils/eingebettetesPostgres.js')).href);
