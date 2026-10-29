@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hajime Pro – Turnierverwaltung für Judo</title>
-    <meta name="description" content="Hajime Pro organisiert Ihr Judo-Turnier nach den Regeln des DJB: von der Anmeldung über Auslosung, Waage und Matten bis zur Siegerliste. Auch ohne Internet in der Halle.">
+    <meta name="description" content="Hajime Pro organisiert Ihr Judo-Turnier nach den Regeln des DJB: von der Anmeldung über Waage, Auslosung und Matten bis zur Siegerliste. Auch ohne Internet in der Halle.">
     <link rel="icon" href="/hajime_zeichen.png">
     <link rel="stylesheet" href="/css/schriften.css">
     <style>
@@ -100,7 +100,8 @@
 
         /* Schaufenster: App, Videobeweis, Urkunden */
         @font-face { font-family: 'Cinzel'; src: url('/fonts/urkunden/Cinzel-Regular.ttf') format('truetype'); font-display: swap; }
-        .schau { padding: 40px 0 88px; }
+        /* clip: das gedrehte Blatt hinter der Urkunde ragt am Handy über den Rand und machte die Seite seitlich verschiebbar */
+        .schau { padding: 40px 0 88px; overflow-x: clip; }
         .schau-block { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 64px; align-items: center; padding: 56px 0; }
         .schau-block + .schau-block { border-top: 1px solid var(--linie); }
         .schau-block.umgekehrt .schau-text { order: 2; }
@@ -154,7 +155,7 @@
         .schluss h2 { font-size: clamp(2.2rem, 5vw, 3.6rem); font-weight: 800; max-width: 16ch; }
         .schluss p { color: #cfd8ee; max-width: 46ch; margin: 18px 0 30px; font-size: 1.15rem; }
         .schluss .aktionen { display: flex; gap: 14px; flex-wrap: wrap; }
-        footer.fuss { background: var(--tinte-tief); color: #8d9ac0; font-size: 14px; padding: 22px 0 56px; }
+        footer.fuss { background: var(--tinte-tief); color: #8d9ac0; font-size: 14px; padding: 22px 0; }
         footer.fuss .innen { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
         footer.fuss a { color: #b7c3e0; }
 
@@ -188,11 +189,11 @@
             </div>
             <div class="hero-raster">
                 <div>
-                    <h1>Vom der ersten Planung bis zur Siegerehrung.</h1>
+                    <h1>Von der ersten Planung bis zur Siegerehrung.</h1>
                     <p class="lead">Hajime Pro organisiert Ihr Judo-Turnier nach den Regeln des DJB: Anmeldung, Waage, Auslosung, Mattenbetrieb und Ergebnisse.</p>
                     <div class="aktionen">
                         <a class="knopf" href="/login.html?registrieren=1">Kostenlos registrieren</a>
-                        <a class="knopf leise" href="#funktionen">Was Hajime Pro kann</a>
+                        <a class="knopf leise" href="#ueberblick">Was Hajime Pro kann</a>
                     </div>
                 </div>
                 <svg class="baum" id="baum" viewBox="0 0 540 400" role="img" aria-label="Ein Turnierbaum mit acht Kämpfern, der Weg des Siegers ist hervorgehoben"></svg>
@@ -200,7 +201,7 @@
         </div>
     </header>
 
-    <section>
+    <section id="ueberblick">
         <div class="innen">
             <div class="abschnittskopf">
                 <h2>Ein Turniertag, eine Software</h2>
@@ -261,7 +262,7 @@
                     <p>Nach der Auslosung steht der komplette Baum. Jedes Ergebnis trägt Sieger und Verlierer automatisch in ihren nächsten Kampf ein.</p>
                     <ul>
                         <li>Doppel-KO für 8, 16 oder 32 Kämpfer, mit Trostrunde und kleinen Finals um Platz 3</li>
-                        <li>Ist das Teilneherfeld nicht voll, werden Freilose automatisch gesetzt</li>
+                        <li>Ist das Teilnehmerfeld nicht voll, werden Freilose automatisch gesetzt</li>
                         <li>Außerdem: Jeder gegen jeden und Gruppen mit Überkreuzkämpfen</li>
                         <li>Eltern, Teilnehmer und Trainer sehen denselben Baum in der Teilnehmer-App</li>
                     </ul>
@@ -290,7 +291,7 @@
 
             <div class="schau-block">
                 <div class="schau-text">
-                    <h2>Die Teilnehmer-App für Teilnehmer, Eltern und Trainer</h2>
+                    <h2>Die Teilnehmer-App für Kämpfer, Eltern und Trainer</h2>
                     <p>Ein QR-Code im Aushang öffnet die App im Browser. Wer nach seinem Namen, dem eigenen Kind oder dem Verein sucht, sieht sofort, auf welcher Matte gekämpft wird und wie viele Kämpfe noch davor liegen.</p>
                     <ul>
                         <li>Benachrichtigung aufs Handy, kurz bevor der Pool beginnt oder ein Kämpfer, dem Sie folgen, auf die Matte muss</li>
@@ -461,7 +462,7 @@
     <footer class="fuss">
         <div class="innen">
             <span>Hajime Pro – Turnierverwaltung für Judo</span>
-            <span><a href="/impressum.html">Impressum</a> · <a href="/datenschutz.html">Datenschutz</a></span>
+            <span><a href="/impressum.html">Impressum</a> · <a href="/datenschutz.html">Datenschutz</a> · <a href="/kontakt.html">Kontakt</a></span>
         </div>
     </footer>
 
@@ -517,6 +518,6 @@
         el('text', { x: spaltenX[4] - 20, y: endY - 16, 'text-anchor': 'end', class: 'gewinner' }, 'Brandt');
     })();
     </script>
-    <script src="/js/rechtsfuss.js"></script>
+    <!-- kein rechtsfuss.js: die eigene Fußzeile hat Impressum, Datenschutz und Kontakt schon -->
 </body>
 </html>
