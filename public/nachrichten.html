@@ -8,7 +8,14 @@
     <script src="/js/menu.js"></script>
     <style>
         .nachrichten-raster { display: grid; grid-template-columns: minmax(240px, 340px) 1fr; gap: 16px; align-items: start; }
-        @media (max-width: 800px) { .nachrichten-raster { grid-template-columns: 1fr; } }
+        .nachrichten-zurueck { display: none; }
+        @media (max-width: 800px) {
+            .nachrichten-raster { grid-template-columns: 1fr; }
+            /* Handy: Liste ODER Nachricht, mit Zurück-Knopf; ein Direktlink aus der Mail zeigt gleich die Nachricht */
+            .nachrichten-raster.rechts-offen .nachrichten-links { display: none; }
+            .nachrichten-raster.rechts-offen .nachrichten-zurueck { display: inline-flex; margin-bottom: 8px; }
+            .blase { max-width: 95%; }
+        }
         .nachrichten-liste { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
         .nachrichten-liste li { padding: 10px 12px; border-bottom: 1px solid var(--border); cursor: pointer; }
         .nachrichten-liste li:last-child { border-bottom: none; }
@@ -46,12 +53,13 @@
         <span class="material-icons">mail</span>
     </div>
     <p style="margin: 0 0 12px;"><button type="button" class="btn btn-raised" id="neuKnopf">Neue Nachricht</button></p>
-    <div class="nachrichten-raster">
-        <div>
+    <div class="nachrichten-raster" id="raster">
+        <div class="nachrichten-links">
             <ul class="nachrichten-liste" id="liste"></ul>
             <div class="nachrichten-leer" id="listeLeer" hidden>Noch keine Nachrichten.</div>
         </div>
         <div id="rechts">
+            <button type="button" class="btn btn-outlined nachrichten-zurueck" id="zurueckKnopf">&larr; Alle Nachrichten</button>
             <div class="nachrichten-leer" id="rechtsLeer">Wähle links eine Nachricht aus oder schreibe eine neue.</div>
 
             <div id="ansicht" hidden>

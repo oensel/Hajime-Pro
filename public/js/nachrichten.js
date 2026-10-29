@@ -23,8 +23,10 @@
         $('rechtsLeer').hidden = was !== 'leer';
         $('ansicht').hidden = was !== 'ansicht';
         $('neuForm').hidden = was !== 'neu';
+        $('raster').classList.toggle('rechts-offen', was !== 'leer');
         zeigeFehler('');
     }
+    $('zurueckKnopf').addEventListener('click', () => { aktuelleId = null; zeigeRechts('leer'); ladeListe().catch((e) => zeigeFehler(e.message)); });
 
     async function ladeListe() {
         const { threads } = await api('');
