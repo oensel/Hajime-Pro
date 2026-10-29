@@ -443,9 +443,9 @@ function baueMenueGeruest() {
                     <span class="material-icons">palette</span>
                     <span class="menu-text">Urkunden-Designer</span>
                 </a>
-                <a href="/helfer.html" class="menu-item" id="nav-helfer-app" data-ohne-turnier style="display: none;">
+                <a href="/helfer.html" class="menu-item" id="nav-helfer-app" data-ohne-turnier target="_blank" rel="noopener" title="Öffnet in neuem Tab" style="display: none;">
                     <span class="material-icons">handshake</span>
-                    <span class="menu-text">Helfer-App</span>
+                    <span class="menu-text">Helfer-App<span class="material-icons menu-extern" aria-label="Öffnet in neuem Tab">open_in_new</span></span>
                 </a>
                 <a href="/nachrichten.html" class="menu-item" id="nav-nachrichten" data-ohne-turnier style="display: none;">
                     <span class="material-icons">mail</span>
