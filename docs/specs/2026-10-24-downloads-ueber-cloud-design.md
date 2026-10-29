@@ -62,7 +62,7 @@ Ergebnis: Signaturprüfung, Wiederaufnahme, Versuchszähler und alle Tests der U
 |---|---|---|
 | `RELEASE_QUELLE_REPO` / `RELEASE_QUELLE_TOKEN` | Cloud | privates Repo + Lesetoken für die Spiegelung (Variante A) |
 | `RELEASE_VERZEICHNIS`, `RELEASE_BEHALTEN` | Cloud | Ablage, Anzahl Versionen |
-| `RELEASE_URL` | Hallen-Server/Dienst | Basis der Fassade, Standard: `CLOUD_URL` |
+| `RELEASE_URL` | nur `holen.sh` (Linux-Installationsbefehl) | Eingabe des Skripts; im Server gilt ausschließlich `CLOUD_URL` |
 | `RELEASE_SCHLUESSEL` | Hallen-Server/Dienst | Download-Schlüssel |
 
 `CLIENT_RELEASE_REPO` entfällt nach der Übergangszeit.

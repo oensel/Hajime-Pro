@@ -33,9 +33,9 @@ function liesJsonDatei(datei) {
     try { return JSON.parse(readFileSync(datei, 'utf8')) || {}; } catch { return {}; }
 }
 
-/** Adresse der Cloud: RELEASE_URL / CLOUD_URL, dann `cloudUrl` in <Datenverzeichnis>/update.json, dann die ins Paket gelegte Standarddatei. */
+/** Adresse der Cloud (die eine Quelle für alle Verbraucher): CLOUD_URL, dann `cloudUrl` in <Datenverzeichnis>/update.json, dann die ins Paket gelegte Standarddatei. */
 export function liesCloudUrl({ env = process.env, datenDir = '', standardDatei = '' } = {}) {
-    const ausEnv = normalisiereUrl(env.RELEASE_URL) || normalisiereUrl(env.CLOUD_URL);
+    const ausEnv = normalisiereUrl(env.CLOUD_URL);
     if (ausEnv) return ausEnv;
     if (datenDir) {
         const ausKonfig = normalisiereUrl(liesJsonDatei(path.join(datenDir, 'update.json')).cloudUrl);

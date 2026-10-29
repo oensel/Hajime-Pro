@@ -2,21 +2,15 @@
 // Die Adresse kommt ausschließlich aus CLOUD_URL, nie vom Client. Zugangsdaten und Token werden
 // nur durchgereicht, nicht gespeichert und nicht geloggt.
 import { FachFehler } from '../utils/fachFehler.js';
+import { liesCloudUrl as liesCloudUrlQuelle } from '../utils/releaseQuelle.js';
 
 const ERREICHBARKEIT_TIMEOUT_MS = 3000;
 const ANFRAGE_TIMEOUT_MS = 15000;
 const EXPORT_TIMEOUT_MS = 120000;
 
+// Nur CLOUD_URL; der Desktop-Server füllt sie beim Start aus update.json bzw. dem Paket (desktop/server/main.js).
 export function liesCloudUrl(env = process.env) {
-    const roh = String(env.CLOUD_URL || '').trim();
-    if (!roh) return null;
-    try {
-        const url = new URL(roh);
-        if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
-        return url.origin + url.pathname.replace(/\/+$/, '');
-    } catch {
-        return null;
-    }
+    return liesCloudUrlQuelle({ env });
 }
 
 export function erzeugeCloudZugriff({ fetchFn = globalThis.fetch, env = process.env } = {}) {
