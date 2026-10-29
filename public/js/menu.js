@@ -70,7 +70,7 @@ const MENUE_AKTIVE_SEITEN = [
     ['nav-nutzer', ['admin-nutzer.html']],
     ['nav-mitglieder', ['admin-nutzer.html']],
     ['nav-rechnungen', ['rechnungen.html']],
-    ['nav-zahlungsdaten', ['zahlungsdaten.html']],
+    ['nav-verein', ['verein.html']],
     ['nav-einladungen', ['admin-einladungen.html']],
     ['nav-erstregistrierungen', ['admin-erstregistrierungen.html']],
     ['nav-vereine', ['admin-vereine.html', 'admin-turniere.html']],
@@ -432,6 +432,10 @@ function baueMenueGeruest() {
             </nav>
             <nav class="sidebar-nav-unten" id="sidebarNavUnten">
                 <div class="menu-sektion-titel" id="nav-sek-verwaltung">Verwaltung</div>
+                <a href="/verein.html" class="menu-item" id="nav-verein" data-ohne-turnier style="display: none;">
+                    <span class="material-icons">domain</span>
+                    <span class="menu-text">Verein</span>
+                </a>
                 <a href="/admin-nutzer.html" class="menu-item" id="nav-mitglieder" data-ohne-turnier style="display: none;">
                     <span class="material-icons">manage_accounts</span>
                     <span class="menu-text">Mitglieder<span class="menu-badge" id="nav-mitglieder-zaehler" style="display: none;"></span></span>
@@ -439,10 +443,6 @@ function baueMenueGeruest() {
                 <a href="/rechnungen.html" class="menu-item" id="nav-rechnungen" data-ohne-turnier style="display: none;">
                     <span class="material-icons">receipt_long</span>
                     <span class="menu-text">Rechnungen</span>
-                </a>
-                <a href="/zahlungsdaten.html" class="menu-item" id="nav-zahlungsdaten" data-ohne-turnier style="display: none;">
-                    <span class="material-icons">payments</span>
-                    <span class="menu-text">Zahlungsdaten</span>
                 </a>
                 <a href="/urkunden-designer.html" class="menu-item" id="nav-urkunden-designer">
                     <span class="material-icons">palette</span>
@@ -1506,17 +1506,21 @@ async function initialisiereMenue() {
     // Mitglieder (Beitrittsanfragen, Rollen): Admins des aktiven Vereins, nur Cloud; Super-Admins nutzen „Benutzer“
     const mitgliederLink = document.getElementById('nav-mitglieder');
     if (mitgliederLink && !einzelbenutzer && !rechte.nutzer && rechte.helferPlan) mitgliederLink.style.display = '';
-    // Zahlungsdaten (Stammdaten für Rechnungen und Lastschrift): nur Cloud, Admins des aktiven Vereins (und Super-Admins mit aktivem Verein)
-    const zahlungsLink = document.getElementById('nav-zahlungsdaten');
-    if (zahlungsLink && !einzelbenutzer && rechte.helferPlan && currentUser && currentUser.verein_id) {
-        zahlungsLink.href = `/zahlungsdaten.html?vereinId=${encodeURIComponent(currentUser.verein_id)}`;
-        zahlungsLink.style.display = '';
+    // Verein (Stammdaten, Rechnungsangaben, Bankverbindung, Vertrag): nur Cloud, Admins des aktiven Vereins (und Super-Admins mit aktivem Verein)
+    const vereinLink = document.getElementById('nav-verein');
+    const vereinVerwaltbar = !einzelbenutzer && rechte.helferPlan && currentUser && currentUser.verein_id;
+    if (vereinLink && vereinVerwaltbar) {
+        vereinLink.href = `/verein.html?vereinId=${encodeURIComponent(currentUser.verein_id)}`;
+        vereinLink.style.display = '';
     }
-    // Rechnungen (alle Startgeld-Rechnungen des Vereins als Ausrichter): gleiche Voraussetzungen wie die Zahlungsdaten
+    // Rechnungen (Liste aller Startgeld-Rechnungen des Vereins als Ausrichter): nur, wenn es schon Rechnungen gibt
     const rechnungenLink = document.getElementById('nav-rechnungen');
-    if (rechnungenLink && !einzelbenutzer && rechte.helferPlan && currentUser && currentUser.verein_id) {
+    if (rechnungenLink && vereinVerwaltbar) {
         rechnungenLink.href = `/rechnungen.html?vereinId=${encodeURIComponent(currentUser.verein_id)}`;
-        rechnungenLink.style.display = '';
+        fetch(`/api/abrechnung/verein/${encodeURIComponent(currentUser.verein_id)}/rechnungen/anzahl`)
+            .then((resp) => (resp.ok ? resp.json() : null))
+            .then((daten) => { if (daten && daten.anzahl > 0) rechnungenLink.style.display = ''; })
+            .catch(() => { /* ohne Auskunft bleibt der Punkt weg */ });
     }
     const vereineLink = document.getElementById('nav-vereine');
     if (vereineLink && rechte.nutzer) {

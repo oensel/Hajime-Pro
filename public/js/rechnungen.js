@@ -108,54 +108,18 @@
             : 'Keine Rechnung passt zu den Filtern.';
     }
 
-    // --- Angaben auf den Rechnungen (Stammdaten, gleiche Daten wie auf der Seite "Zahlungsdaten"; Felder: rechnungsAngaben.js) ---
-    const stammdatenApi = `/api/abrechnung/stammdaten/${encodeURIComponent(vereinId || '')}`;
-    const angaben = window.RechnungsAngaben.baue($('rchAngabenFelder'));
-
-    function zeigeWarnung(fehlt) {
-        const fehlendeAngaben = window.RechnungsAngaben.fehlendeAngaben(fehlt);
-        $('rchWarnung').hidden = !fehlt || fehlt.length === 0;
-        $('rchWarnungFehlt').textContent = (fehlt || []).join(', ');
-        $('rchWarnungAngaben').hidden = fehlendeAngaben.length === 0;
-        $('rchWarnungLink').hidden = fehlendeAngaben.length === (fehlt || []).length;
-        $('rchWarnungLink').href = `/zahlungsdaten.html?vereinId=${encodeURIComponent(vereinId)}`;
-        // Offen, solange Angaben für die Rechnungen fehlen; sind sie vollständig, ist der Bereich zu
-        $('rchAngaben').open = fehlendeAngaben.length > 0;
-    }
-
-    async function ladeAngaben() {
+    // --- Hinweis, wenn Angaben des Vereins für Rechnungen fehlen (gepflegt wird auf verein.html) ---
+    async function ladeWarnung() {
         try {
-            const resp = await fetch(stammdatenApi);
+            const resp = await fetch(`/api/abrechnung/stammdaten/${encodeURIComponent(vereinId || '')}`);
             if (!resp.ok) return;
-            const { stammdaten, fehlt } = await resp.json();
-            angaben.fuelle(stammdaten);
-            zeigeWarnung(fehlt);
-        } catch { /* Angaben und Hinweis sind optional */ }
+            const { fehlt } = await resp.json();
+            if (!fehlt || fehlt.length === 0) return;
+            $('rchWarnungFehlt').textContent = fehlt.join(', ');
+            $('rchWarnungLink').href = `/verein.html?vereinId=${encodeURIComponent(vereinId)}`;
+            $('rchWarnung').hidden = false;
+        } catch { /* Hinweis ist optional */ }
     }
-
-    $('rchWarnungAngaben').addEventListener('click', () => { $('rchAngaben').open = true; });
-    $('rchAngabenForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const fehler = $('rchAngabenFehler');
-        fehler.hidden = true;
-        $('rchAngabenStatus').textContent = '';
-        try {
-            const resp = await fetch(stammdatenApi, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(angaben.werte()) });
-            const daten = await resp.json().catch(() => ({}));
-            if (!resp.ok) {
-                fehler.textContent = daten.error || 'Speichern fehlgeschlagen.';
-                fehler.hidden = false;
-                return;
-            }
-            angaben.fuelle(daten.stammdaten);
-            $('rchAngabenStatus').textContent = 'Gespeichert.';
-            const stand = await fetch(stammdatenApi);
-            if (stand.ok) zeigeWarnung((await stand.json()).fehlt);
-        } catch {
-            fehler.textContent = 'Speichern fehlgeschlagen.';
-            fehler.hidden = false;
-        }
-    });
 
     async function lade() {
         if (!/^\d+$/.test(String(vereinId || ''))) return zeigeFehler('Es wurde kein Verein angegeben.');
@@ -171,7 +135,7 @@
         fuelleFilter();
         zeichne();
         $('rchInhalt').hidden = false;
-        ladeAngaben();
+        ladeWarnung();
         try {
             const resp = await fetch('/api/auth/me');
             const me = resp.ok ? (await resp.json()).user : null;

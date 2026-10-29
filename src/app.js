@@ -138,10 +138,10 @@ if (clusterFehler) {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Die Seite "Zahlungsdaten" hieß früher verein-abrechnung.html (Lesezeichen, alte Links): mit den Abfrageparametern weiterleiten
-app.get('/verein-abrechnung.html', (req, res) => {
+// Die Seite "Verein" hieß früher zahlungsdaten.html bzw. verein-abrechnung.html (Lesezeichen, alte Links): mit den Abfrageparametern weiterleiten
+app.get(['/zahlungsdaten.html', '/verein-abrechnung.html'], (req, res) => {
     const abfrage = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
-    res.redirect(301, `/zahlungsdaten.html${abfrage}`);
+    res.redirect(301, `/verein.html${abfrage}`);
 });
 
 const __filename = fileURLToPath(import.meta.url);

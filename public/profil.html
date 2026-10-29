@@ -185,7 +185,6 @@
     <a href="/verein_auswahl.html" class="btn btn-outlined" style="width: 100%; box-sizing: border-box; text-align: center; display: block; text-decoration: none;">Weiterem Verein beitreten</a>
 </div>
 
-<div class="mdc-card" id="avVertragKarte" hidden style="margin-top: 16px;"></div>
 
 <div class="mdc-card" id="zweiFaktorKarte" hidden style="margin-top: 16px;"></div>
 
@@ -370,8 +369,8 @@
                 const istAdminHier = v.freigegeben && v.rolle === 'admin';
                 if (!einzelbenutzer && (istAdminHier || (aktuellerNutzer && aktuellerNutzer.super_admin_aktiv))) {
                     const abrechnungLink = el('a', {
-                        class: 'btn btn-outlined', text: 'Abrechnungsdaten',
-                        href: `/zahlungsdaten.html?vereinId=${encodeURIComponent(v.verein_id)}`,
+                        class: 'btn btn-outlined', text: 'Verein',
+                        href: `/verein.html?vereinId=${encodeURIComponent(v.verein_id)}`,
                         style: 'padding: 6px 12px; font-size: 11px; text-decoration: none;'
                     });
                     abrechnungLink.dataset.action = 'abrechnungsdaten';

@@ -13,3 +13,9 @@ export async function ladeRechnungenDesVereins(knex, vereinId, heute = heuteBerl
         .orderBy([{ column: 'rechnungsdatum', order: 'desc' }, { column: 'id', order: 'desc' }]);
     return zeilen.map((z) => ({ ...z, anzeigeStatus: rechnungsAnzeigeStatus(z, heute) }));
 }
+
+/** Anzahl der Rechnungen des Vereins als Ausrichter (Menüpunkt "Rechnungen" erscheint erst, wenn es welche gibt). */
+export async function zaehleRechnungenDesVereins(knex, vereinId) {
+    const zeile = await knex('rechnungen').where({ aussteller_verein_id: vereinId }).count({ anzahl: 'id' }).first();
+    return Number(zeile?.anzahl ?? 0);
+}

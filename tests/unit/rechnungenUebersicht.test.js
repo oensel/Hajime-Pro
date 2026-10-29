@@ -56,6 +56,17 @@ test('Rechnungen des Vereins: nur eigene, nur für Admins, ohne PDF, mit Anzeige
         assert.equal(ok.daten.rechnungen[1].rechnungsdatum, '2026-11-02');
         assert.ok(ok.daten.rechnungen.every((r) => !('pdf' in r)), 'kein PDF-Inhalt in der Liste');
 
+        // Anzahl für den Menüpunkt: nur Admins, zählt nur den eigenen Verein
+        const anzahl = await aufruf('u-admin', `/api/abrechnung/verein/${vA}/rechnungen/anzahl`);
+        assert.equal(anzahl.status, 200);
+        assert.equal(anzahl.daten.anzahl, 2);
+        assert.equal((await aufruf('u-fremd', `/api/abrechnung/verein/${vB}/rechnungen/anzahl`)).daten.anzahl, 1);
+        assert.equal((await aufruf('u-benutzer', `/api/abrechnung/verein/${vA}/rechnungen/anzahl`)).status, 403);
+        const vLeer = id((await knex('vereine').insert({ name: 'JC Leer' }).returning('id'))[0]);
+        await knex('benutzer').insert({ id: 'u-leer', email: 'leer@test.de', vorname: 'l', nachname: 'T', email_bestaetigt_am: knex.fn.now(), aktiver_verein_id: vLeer });
+        await knex('benutzer_vereine').insert({ benutzer_id: 'u-leer', verein_id: vLeer, freigegeben: 1, rolle: 'admin' });
+        assert.equal((await aufruf('u-leer', `/api/abrechnung/verein/${vLeer}/rechnungen/anzahl`)).daten.anzahl, 0, 'ohne Rechnungen null');
+
         assert.equal((await aufruf('u-benutzer', `/api/abrechnung/verein/${vA}/rechnungen`)).status, 403);
         assert.equal((await aufruf('u-fremd', `/api/abrechnung/verein/${vA}/rechnungen`)).status, 403);
         assert.equal((await aufruf(null, `/api/abrechnung/verein/${vA}/rechnungen`)).status, 401);
