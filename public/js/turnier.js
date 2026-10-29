@@ -436,7 +436,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const zahlungsDialog = document.getElementById('zahlungsDatenDialog');
     function oeffneZahlungsDaten() {
         if (!zahlungsStand.vereinId) return;
-        document.getElementById('zahlungsDatenRahmen').src = `/verein-abrechnung.html?vereinId=${encodeURIComponent(zahlungsStand.vereinId)}&eingebettet=1`;
+        document.getElementById('zahlungsDatenRahmen').src = `/zahlungsdaten.html?vereinId=${encodeURIComponent(zahlungsStand.vereinId)}&eingebettet=1`;
         zahlungsDialog.showModal();
     }
     function schliesseZahlungsDaten() {

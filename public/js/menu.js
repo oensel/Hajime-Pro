@@ -69,7 +69,7 @@ const MENUE_AKTIVE_SEITEN = [
     ['nav-nachrichten', ['nachrichten.html']],
     ['nav-nutzer', ['admin-nutzer.html']],
     ['nav-mitglieder', ['admin-nutzer.html']],
-    ['nav-zahlungsdaten', ['verein-abrechnung.html']],
+    ['nav-zahlungsdaten', ['zahlungsdaten.html']],
     ['nav-einladungen', ['admin-einladungen.html']],
     ['nav-erstregistrierungen', ['admin-erstregistrierungen.html']],
     ['nav-vereine', ['admin-vereine.html', 'admin-turniere.html']],
@@ -435,7 +435,7 @@ function baueMenueGeruest() {
                     <span class="material-icons">manage_accounts</span>
                     <span class="menu-text">Mitglieder<span class="menu-badge" id="nav-mitglieder-zaehler" style="display: none;"></span></span>
                 </a>
-                <a href="/verein-abrechnung.html" class="menu-item" id="nav-zahlungsdaten" data-ohne-turnier style="display: none;">
+                <a href="/zahlungsdaten.html" class="menu-item" id="nav-zahlungsdaten" data-ohne-turnier style="display: none;">
                     <span class="material-icons">payments</span>
                     <span class="menu-text">Zahlungsdaten</span>
                 </a>
@@ -1504,7 +1504,7 @@ async function initialisiereMenue() {
     // Zahlungsdaten (Stammdaten für Rechnungen und Lastschrift): nur Cloud, Admins des aktiven Vereins (und Super-Admins mit aktivem Verein)
     const zahlungsLink = document.getElementById('nav-zahlungsdaten');
     if (zahlungsLink && !einzelbenutzer && rechte.helferPlan && currentUser && currentUser.verein_id) {
-        zahlungsLink.href = `/verein-abrechnung.html?vereinId=${encodeURIComponent(currentUser.verein_id)}`;
+        zahlungsLink.href = `/zahlungsdaten.html?vereinId=${encodeURIComponent(currentUser.verein_id)}`;
         zahlungsLink.style.display = '';
     }
     const vereineLink = document.getElementById('nav-vereine');

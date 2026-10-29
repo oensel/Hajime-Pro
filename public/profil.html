@@ -371,7 +371,7 @@
                 if (!einzelbenutzer && (istAdminHier || (aktuellerNutzer && aktuellerNutzer.super_admin_aktiv))) {
                     const abrechnungLink = el('a', {
                         class: 'btn btn-outlined', text: 'Abrechnungsdaten',
-                        href: `/verein-abrechnung.html?vereinId=${encodeURIComponent(v.verein_id)}`,
+                        href: `/zahlungsdaten.html?vereinId=${encodeURIComponent(v.verein_id)}`,
                         style: 'padding: 6px 12px; font-size: 11px; text-decoration: none;'
                     });
                     abrechnungLink.dataset.action = 'abrechnungsdaten';

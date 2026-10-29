@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hajime Pro - Zahlungsdaten</title>
     <link rel="stylesheet" href="/css/common.css">
+    <link rel="stylesheet" href="/css/rechnungsAngaben.css">
     <script>
         // ?eingebettet=1: die Seite steckt als Popup im Turnierformular (turnier.html). Statt des Menüs (menu.js) nur die
         // Anmeldung an die Anfragen hängen, damit das Formular ohne Seitenwechsel bearbeitet werden kann.
@@ -35,19 +36,20 @@
         .abr-karte-text { color: var(--text-muted); font-size: 13px; margin: 0 0 16px; }
         .abr-feld { margin: 0 0 14px; }
         .abr-feld textarea { width: 100%; box-sizing: border-box; padding: 6px; border: 2px solid var(--border); border-radius: 4px; font-size: 14px; font-family: inherit; background: var(--bg-card); color: var(--text-main); }
-        .abr-feld input[type="email"] { width: 100%; height: 28px; padding: 2px 6px; border: 2px solid var(--border); border-radius: 4px; font-size: 14px; background: var(--bg-card); color: var(--text-main); box-sizing: border-box; }
         .abr-hilfe { font-size: 12px; color: var(--text-muted); margin: 3px 0 0; }
         .abr-zeile { display: flex; gap: 8px; align-items: center; }
         .abr-zeile input { flex: 1; }
-        .abr-paar { display: flex; gap: 12px; }
-        .abr-paar .abr-feld { flex: 1; min-width: 0; }
         .abr-abschnitt { font-size: 12px; font-weight: 700; letter-spacing: 0.04em; color: var(--text-muted); margin: 18px 0 10px; padding-top: 12px; border-top: 1px solid var(--border); }
         .abr-marke { display: inline-block; font-size: 11px; font-weight: 400; padding: 1px 8px; border-radius: 8px; margin-left: 6px; background: var(--bg-card); border: 1px solid var(--border); color: var(--text-muted); }
         .abr-fehler { color: #ef4444; font-size: 13px; min-height: 18px; margin: 0 0 8px; }
-        .abr-nummer { font-weight: 700; }
         .abr-vorschau { margin-top: 8px; font-size: 13px; }
         .abr-vorschau pre { white-space: pre-wrap; word-break: break-word; margin: 6px 0 0; padding: 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-card); color: var(--text-main); font-family: inherit; }
-        /* Popup im Turnierformular: ohne Menü-Platz und Zierde */
+        /* Zurück und Speichern: gleiche Höhe und Form (der Zurück-Link ist sonst ein Inline-Element mit eigener Höhe) */
+        .abr-fuss { display: flex; gap: 10px; justify-content: flex-end; }
+        .abr-fuss .btn { display: inline-flex; align-items: center; justify-content: center; height: 36px; padding: 0 20px; box-sizing: border-box; text-decoration: none; }
+        /* Popup im Turnierformular: ohne Menü-Platz und Zierde, zusätzlich mit den Rechnungsangaben */
+        .abr-nur-popup { display: none; }
+        .abr-eingebettet .abr-nur-popup { display: block; }
         .abr-eingebettet body { padding: 12px 16px 16px; background: var(--bg-card); }
         .abr-eingebettet .kanji-left, .abr-eingebettet .kanji-right, .abr-eingebettet .abr-nur-seite { display: none; }
         .abr-eingebettet .abr-karte { padding: 16px 18px; }
@@ -61,36 +63,17 @@
 
 <div class="mdc-card abr-spalte">
     <div class="form-title-area abr-nur-seite">
-        <span class="material-icons">receipt_long</span>
+        <span class="material-icons">account_balance</span>
         <h1>Zahlungsdaten</h1>
-        <span class="material-icons">receipt_long</span>
+        <span class="material-icons">account_balance</span>
     </div>
     <p id="abrVerein" style="text-align: center; font-weight: 700; margin-top: 0;"></p>
-    <p class="abr-nur-seite" style="color: var(--text-muted); font-size: 13px;">Diese Angaben gelten für alle Turniere des Vereins, den ihr als Ausrichter führt.</p>
+    <p class="abr-nur-seite" style="color: var(--text-muted); font-size: 13px;">Diese Angaben gelten für alle Turniere des Vereins, den ihr als Ausrichter führt. Die Angaben auf den Rechnungen (Anschrift, Steuernummer und mehr) pflegt ihr unter <a id="abrRechnungenLink" href="/rechnungen.html">Rechnungen</a>.</p>
     <div id="abrFehler" class="abr-fehler" role="alert"></div>
     <form id="abrForm" autocomplete="off" hidden>
-        <div class="mdc-card abr-karte">
+        <div class="mdc-card abr-karte abr-nur-popup">
             <div class="abr-karte-kopf"><span class="material-icons">receipt_long</span><h2>Rechnungen</h2></div>
-            <p class="abr-karte-text">Diese Angaben erscheinen auf jeder Startgeld-Rechnung.</p>
-            <div class="abr-feld"><label for="abrAbsender">Absendername</label>
-                <input type="text" id="abrAbsender" maxlength="200" placeholder="z.B. Judo-Club Köln e.V."></div>
-            <div class="abr-feld"><label for="abrAnschrift">Anschrift</label>
-                <textarea id="abrAnschrift" rows="3" maxlength="500" placeholder="Straße, PLZ Ort"></textarea></div>
-            <div class="abr-feld"><label for="abrEmail">Rechnungs-E-Mail</label>
-                <input type="email" id="abrEmail" maxlength="200" placeholder="rechnung@verein.de">
-                <p class="abr-hilfe">An diese Adresse gehen Rückfragen zu den Rechnungen.</p></div>
-            <div class="abr-paar">
-                <div class="abr-feld"><label for="abrSteuernummer">Steuernummer des Vereins</label>
-                    <input type="text" id="abrSteuernummer" maxlength="50" placeholder="z.B. 337/5710/1234"></div>
-                <div class="abr-feld"><label for="abrPraefix">Rechnungsnummern-Präfix</label>
-                    <input type="text" id="abrPraefix" maxlength="12" placeholder="z.B. JCK-"></div>
-            </div>
-            <p class="abr-hilfe" style="margin: -8px 0 14px;">Steuernummer: die Nummer vom Finanzamt, zum Beispiel vom Freistellungsbescheid. Eine USt-IdNr. ist nicht nötig. Präfix: Buchstaben, Ziffern und Bindestrich, höchstens 12 Zeichen.</p>
-            <div class="abr-feld"><label for="abrUstHinweis">Hinweis zur Umsatzsteuer <span class="abr-marke" id="abrUstVorschlag" hidden>Vorschlag</span></label>
-                <textarea id="abrUstHinweis" rows="2" maxlength="1000" placeholder="z.B. Steuerfrei nach § 4 Nr. 22 Buchst. b UStG."></textarea>
-                <p class="abr-hilfe">Steht unten auf jeder Rechnung. Gilt für gemeinnützige Sportvereine, deren Startgelder steuerfrei sind. In anderen Fällen, zum Beispiel bei Kleinunternehmern (§ 19 UStG), den Text anpassen. Bitte mit dem Steuerberater abstimmen.</p></div>
-            <div class="abr-feld"><label>Nächste Rechnungsnummer</label>
-                <div class="abr-nummer" id="abrNaechste">-</div></div>
+            <div id="abrAngaben"></div>
         </div>
 
         <div class="mdc-card abr-karte">
@@ -115,13 +98,14 @@
                     <pre id="abrMandatVorschau"></pre></details></div>
         </div>
 
-        <div style="display: flex; gap: 10px; justify-content: flex-end;">
-            <a class="btn btn-outlined" id="abrZurueck" href="/profil.html" style="text-decoration: none;">Zurück</a>
+        <div class="abr-fuss">
+            <a class="btn btn-outlined" id="abrZurueck" href="/profil.html">Zurück</a>
             <button type="submit" class="btn btn-raised" id="abrSpeichern">Speichern</button>
         </div>
     </form>
 </div>
 
-<script src="/js/vereinAbrechnung.js"></script>
+<script src="/js/rechnungsAngaben.js"></script>
+<script src="/js/zahlungsdaten.js"></script>
 </body>
 </html>
