@@ -199,6 +199,16 @@ test('schon geladener, geprüfter Installer wird nicht erneut heruntergeladen', 
     assert.equal(zweiter.anfragen.length, 0);
 });
 
+test('Prüfsumme: beim Laden mitgerechnet, nur die Prüfung einer schon geladenen Datei wird gemeldet', async () => {
+    const env = umgebung();
+    const phasen = [];
+    await pruefeUndLade({ ...basis, ...env, fetchFn: baueStromRelease().fetchFn, beiPhase: (t) => phasen.push(t) });
+    assert.deepEqual(phasen, []); // frischer Download: Prüfsumme entsteht beim Laden, kein zweiter Durchgang
+    phasen.length = 0;
+    await pruefeUndLade({ ...basis, ...env, fetchFn: baueStromRelease().fetchFn, beiPhase: (t) => phasen.push(t) });
+    assert.deepEqual(phasen, [`Prüfe bereits geladenes Update 1.2.0 …`]);
+});
+
 test('Leerlauf: keine Daten mehr -> Abbruch statt ewig warten', async () => {
     const env = umgebung();
     const { fetchFn: basisFetch } = baueStromRelease();
