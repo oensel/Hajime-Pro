@@ -1,18 +1,20 @@
-// Abrechnungsdaten eines Vereins (Startgeld-Rechnungen, Stufe 2). Server-Texte kommen nur über value/textContent in die Seite.
+// Zahlungsdaten eines Vereins: Konto, Lastschrift (Gläubiger-ID, Mandatstext). Die Angaben auf den Rechnungen stehen auf rechnungen.html;
+// nur im Popup des Turnierformulars (?eingebettet=1) erscheinen sie hier zusätzlich (public/js/rechnungsAngaben.js) und werden zusammen
+// gespeichert. Server-Texte kommen nur über value/textContent in die Seite.
 (function () {
     const $ = (id) => document.getElementById(id);
-    const vereinId = new URLSearchParams(window.location.search).get('vereinId');
+    const params = new URLSearchParams(window.location.search);
+    const vereinId = params.get('vereinId');
+    const eingebettet = params.get('eingebettet') === '1';
     const api = `/api/abrechnung/stammdaten/${encodeURIComponent(vereinId || '')}`;
     let ibanLoeschen = false;
-    let naechsteNummer = 1;
+    let absenderName = ''; // für die Vorschau des Mandatstexts (die Seite selbst hat kein Feld dafür, im Popup schon)
+    const angaben = eingebettet ? window.RechnungsAngaben.baue($('abrAngaben')) : null;
 
     const meldeFehler = (text) => { $('abrFehler').textContent = text || ''; };
     const meldung = (text, typ) => { if (window.zeigeNotification) window.zeigeNotification(text, typ); };
 
-    function zeigeNaechsteNummer() {
-        const praefix = $('abrPraefix').value.trim();
-        $('abrNaechste').textContent = praefix ? `${praefix}${String(naechsteNummer).padStart(5, '0')}` : '-';
-    }
+    if (!eingebettet) $('abrRechnungenLink').href = `/rechnungen.html?vereinId=${encodeURIComponent(vereinId || '')}`;
 
     function zeigeIban(stammdaten) {
         const vorhanden = !!(stammdaten && stammdaten.iban_vorhanden);
@@ -30,8 +32,9 @@
     let mandatText = null;
     function zeigeMandatVorschau() {
         if (!mandatText) return;
+        const absender = (angaben ? angaben.werte().absender_name : absenderName).trim();
         $('abrMandatVorschau').textContent = mandatText.baueMandatstext({
-            glaeubigerName: $('abrAbsender').value.trim() || $('abrKontoinhaber').value.trim() || '(Name des Ausrichters)',
+            glaeubigerName: absender || $('abrKontoinhaber').value.trim() || '(Name des Ausrichters)',
             glaeubigerId: $('abrGlaeubigerId').value.trim() || '(Gläubiger-ID)',
             mandatsreferenz: '(wird bei Erteilung vergeben)',
             vorabTage: 5,
@@ -41,24 +44,18 @@
         });
     }
     import('/js/shared/mandatText.js').then((modul) => { mandatText = modul; zeigeMandatVorschau(); }).catch(() => { /* Vorschau ist optional */ });
-    for (const id of ['abrMandatZusatz', 'abrAbsender', 'abrKontoinhaber', 'abrGlaeubigerId']) $(id).addEventListener('input', zeigeMandatVorschau);
+    for (const id of ['abrMandatZusatz', 'abrKontoinhaber', 'abrGlaeubigerId']) $(id).addEventListener('input', zeigeMandatVorschau);
+    if (angaben) angaben.beiAbsender(zeigeMandatVorschau);
 
     function fuelle(stammdaten) {
         const s = stammdaten || {};
-        $('abrAbsender').value = s.absender_name || '';
-        $('abrAnschrift').value = s.anschrift || '';
-        $('abrEmail').value = s.rechnung_email || '';
-        $('abrSteuernummer').value = s.steuernummer || '';
-        $('abrUstId').value = s.ust_id || '';
-        $('abrUstHinweis').value = s.ust_hinweis || '';
+        absenderName = s.absender_name || '';
+        if (angaben) angaben.fuelle(s);
         $('abrKontoinhaber').value = s.kontoinhaber || '';
-        $('abrPraefix').value = s.rechnungs_praefix || '';
         $('abrGlaeubigerId').value = s.glaeubiger_id || '';
         $('abrMandatZusatz').value = s.mandat_zusatztext || '';
         zeigeMandatVorschau();
-        naechsteNummer = s.naechste_rechnungsnummer || 1;
         zeigeIban(s);
-        zeigeNaechsteNummer();
     }
 
     async function lade() {
@@ -70,13 +67,13 @@
             const resp = await fetch(api);
             const daten = await resp.json().catch(() => ({}));
             if (!resp.ok) {
-                meldeFehler(daten.error || 'Die Abrechnungsdaten konnten nicht geladen werden.');
+                meldeFehler(daten.error || 'Die Zahlungsdaten konnten nicht geladen werden.');
                 return;
             }
             fuelle(daten.stammdaten);
             $('abrForm').hidden = false;
         } catch {
-            meldeFehler('Die Abrechnungsdaten konnten nicht geladen werden.');
+            meldeFehler('Die Zahlungsdaten konnten nicht geladen werden.');
         }
         try {
             const resp = await fetch('/api/auth/me');
@@ -98,20 +95,20 @@
         $('abrIbanHilfe').textContent = 'Die IBAN wird beim Speichern entfernt.';
     });
 
-    $('abrPraefix').addEventListener('input', zeigeNaechsteNummer);
+    if (eingebettet) {
+        const zurueck = $('abrZurueck');
+        zurueck.textContent = 'Abbrechen';
+        zurueck.removeAttribute('href');
+        zurueck.style.cursor = 'pointer';
+        zurueck.addEventListener('click', () => window.parent.postMessage({ typ: 'zahlungsdaten-schliessen' }, window.location.origin));
+    }
 
     $('abrForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         meldeFehler('');
         const body = {
-            absender_name: $('abrAbsender').value,
-            anschrift: $('abrAnschrift').value,
-            rechnung_email: $('abrEmail').value,
-            steuernummer: $('abrSteuernummer').value,
-            ust_id: $('abrUstId').value,
-            ust_hinweis: $('abrUstHinweis').value,
+            ...(angaben ? angaben.werte() : {}),
             kontoinhaber: $('abrKontoinhaber').value,
-            rechnungs_praefix: $('abrPraefix').value,
             glaeubiger_id: $('abrGlaeubigerId').value,
             mandat_zusatztext: $('abrMandatZusatz').value
         };
@@ -125,6 +122,10 @@
                 return;
             }
             fuelle(daten.stammdaten);
+            if (eingebettet) {
+                window.parent.postMessage({ typ: 'zahlungsdaten-gespeichert' }, window.location.origin);
+                return;
+            }
             meldung('Zahlungsdaten gespeichert.', 'success');
         } catch {
             meldeFehler('Speichern fehlgeschlagen.');

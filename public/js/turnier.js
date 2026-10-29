@@ -365,45 +365,111 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- RECHNUNGEN (nur Cloud): Zahlungsziel, Hinweistext und Kasten mit fehlenden Abrechnungsdaten ---
     let rechnungenAktiv = false;
     let turnierAusCloud = false; // Hallen-Server: Turnier aus der Cloud geholt (Konto kommt nicht mit)
-    // Lastschrift (nur Cloud): ankreuzbar erst, wenn der Ausrichter sie einziehen kann; sonst deaktiviert mit Grund.
-    function zeigeLastschriftWahl(lastschrift) {
-        document.getElementById('zahlwegLastschriftZeile').hidden = false;
-        const haken = document.getElementById('zahlwegLastschrift');
-        const grund = document.getElementById('zahlwegLastschriftGrund');
-        const moeglich = !!(lastschrift && lastschrift.moeglich);
-        haken.disabled = !moeglich;
-        grund.hidden = moeglich;
-        grund.textContent = moeglich ? '' : `Lastschrift derzeit nicht möglich: ${lastschrift ? lastschrift.grund : 'erst nach dem Anlegen des Turniers prüfbar'}.`;
+    // Lastschrift (nur Cloud): immer ankreuzbar. Fehlen Zahlungsdaten des Vereins, steht darunter ein Hinweis mit Knopf, der die
+    // Zahlungsdaten in einem Popup öffnet (das Formular bleibt unverändert). Gespeichert wird der Wunsch trotzdem; der Server
+    // bietet Lastschrift erst an, wenn alles vollständig ist (ermittleAngeboteneZahlwege).
+    const zahlungsStand = { geladen: false, fehlt: [], fehltLastschrift: [], vereinId: null, darfPflegen: false };
+
+    function zeigeZahlungsHinweis() {
+        const kasten = document.getElementById('zahlungsHinweis');
+        if (!kasten || !rechnungenAktiv) return;
+        const lastschrift = document.getElementById('zahlwegLastschrift').checked;
+        const fehlt = lastschrift ? zahlungsStand.fehltLastschrift : zahlungsStand.fehlt;
+        const unbekannt = !zahlungsStand.geladen;
+        kasten.hidden = !unbekannt && fehlt.length === 0;
+        if (kasten.hidden) return;
+        const kopf = document.getElementById('zahlungsHinweisKopf');
+        const text = document.getElementById('zahlungsHinweisText');
+        kopf.textContent = 'Zahlungsdaten unvollständig.';
+        if (unbekannt) {
+            text.textContent = 'Der Stand der Zahlungsdaten des Vereins konnte nicht geprüft werden. Lastschriften sind erst möglich, wenn der Verein seine Zahlungsdaten vollständig hinterlegt hat.';
+        } else {
+            text.textContent = `${lastschrift ? 'Für Lastschriften' : 'Für Rechnungen'} fehlen noch: ${fehlt.join(', ')}.`
+                + (lastschrift ? ' Das Turnier lässt sich speichern, Lastschriften sind aber erst mit diesen Angaben möglich.' : '');
+        }
+        const knopf = document.getElementById('zahlungsDatenOeffnen');
+        const bitte = document.getElementById('zahlungsDatenBitte');
+        const darf = zahlungsStand.darfPflegen && zahlungsStand.vereinId;
+        knopf.hidden = !darf;
+        bitte.hidden = !!darf;
     }
+
+    async function ladeZahlungsStand() {
+        if (!rechnungenAktiv) return;
+        try {
+            let daten = null;
+            let vereinId = zahlungsStand.vereinId;
+            if (turnierId) {
+                const resp = await fetch(`/api/abrechnung/stammdaten-pruefung/${encodeURIComponent(turnierId)}`);
+                if (resp.ok) daten = await resp.json();
+            } else {
+                vereinId = await ermittleVereinId();
+                if (vereinId) {
+                    const resp = await fetch(`/api/abrechnung/stammdaten/${encodeURIComponent(vereinId)}`);
+                    if (resp.ok) daten = { ...(await resp.json()), vereinId, darfPflegen: true };
+                    else if (resp.status === 403) daten = { fehlt: [], fehltLastschrift: [], vereinId, darfPflegen: false, nurAdmin: true };
+                }
+            }
+            if (daten && !daten.nurAdmin) {
+                Object.assign(zahlungsStand, { geladen: true, fehlt: daten.fehlt || [], fehltLastschrift: daten.fehltLastschrift || daten.fehlt || [], vereinId: daten.vereinId ?? vereinId, darfPflegen: !!daten.darfPflegen });
+            } else if (daten) {
+                Object.assign(zahlungsStand, { geladen: false, vereinId: daten.vereinId, darfPflegen: false });
+            }
+        } catch { /* Hinweis ist optional */ }
+        zeigeZahlungsHinweis();
+    }
+
+    // Verein, dessen Zahlungsdaten gelten: Auswahl des Super-Admins, sonst der aktive Verein des Nutzers
+    async function ermittleVereinId() {
+        const wahl = document.getElementById('vereinWahl');
+        if (wahl && wahl.value) return parseInt(wahl.value, 10);
+        try {
+            const resp = await fetch('/api/auth/me');
+            const me = resp.ok ? (await resp.json()).user : null;
+            return me && me.verein_id ? Number(me.verein_id) : null;
+        } catch {
+            return null;
+        }
+    }
+
+    // --- POPUP: Zahlungsdaten des Vereins bearbeiten, ohne das Turnierformular zu verlassen ---
+    const zahlungsDialog = document.getElementById('zahlungsDatenDialog');
+    function oeffneZahlungsDaten() {
+        if (!zahlungsStand.vereinId) return;
+        document.getElementById('zahlungsDatenRahmen').src = `/zahlungsdaten.html?vereinId=${encodeURIComponent(zahlungsStand.vereinId)}&eingebettet=1`;
+        zahlungsDialog.showModal();
+    }
+    function schliesseZahlungsDaten() {
+        if (zahlungsDialog.open) zahlungsDialog.close();
+    }
+    document.getElementById('zahlungsDatenOeffnen').addEventListener('click', oeffneZahlungsDaten);
+    document.getElementById('zahlungsDatenSchliessen').addEventListener('click', schliesseZahlungsDaten);
+    zahlungsDialog.addEventListener('close', () => { document.getElementById('zahlungsDatenRahmen').src = 'about:blank'; });
+    window.addEventListener('message', async (ereignis) => {
+        if (ereignis.origin !== window.location.origin || !ereignis.data) return;
+        if (ereignis.data.typ === 'zahlungsdaten-schliessen') schliesseZahlungsDaten();
+        if (ereignis.data.typ === 'zahlungsdaten-gespeichert') {
+            schliesseZahlungsDaten();
+            await ladeZahlungsStand();
+            if (window.zeigeNotification) window.zeigeNotification('Zahlungsdaten gespeichert.', 'success');
+        }
+    });
+
+    // Verwendungszweck gehört zur Überweisung: das Feld erscheint nur, solange sie angeboten wird
+    function aktualisiereVerwendungszweck() {
+        document.getElementById('verwendungszweckGruppe').hidden = !document.getElementById('zahlwegUeberweisung').checked;
+    }
+    document.getElementById('zahlwegUeberweisung').addEventListener('change', aktualisiereVerwendungszweck);
+    document.getElementById('zahlwegLastschrift').addEventListener('change', zeigeZahlungsHinweis);
+    aktualisiereVerwendungszweck();
 
     async function initialisiereRechnungsBlock() {
         if (!(await istCloud())) return;
         rechnungenAktiv = true;
         document.getElementById('rechnungGruppe').hidden = false;
         document.getElementById('kontoGruppe').hidden = true; // Konto kommt in der Cloud aus den Zahlungsdaten des Vereins
-        if (!turnierId) {
-            zeigeLastschriftWahl(null);
-            return;
-        }
-        try {
-            const resp = await fetch(`/api/abrechnung/stammdaten-pruefung/${encodeURIComponent(turnierId)}`);
-            if (!resp.ok) {
-                zeigeLastschriftWahl(null);
-                return;
-            }
-            const pruefung = await resp.json();
-            zeigeLastschriftWahl(pruefung.lastschrift);
-            if (pruefung.vollstaendig) return;
-            document.getElementById('rechnungStammdatenFehlt').textContent = (pruefung.fehlt || []).join(', ');
-            const link = document.getElementById('rechnungStammdatenLink');
-            if (pruefung.darfPflegen && pruefung.vereinId) {
-                link.href = `/verein-abrechnung.html?vereinId=${encodeURIComponent(pruefung.vereinId)}`;
-                link.hidden = false;
-            } else {
-                document.getElementById('rechnungStammdatenBitte').hidden = false;
-            }
-            document.getElementById('rechnungStammdatenKasten').hidden = false;
-        } catch { /* Hinweis ist optional */ }
+        document.getElementById('zahlwegLastschriftZeile').hidden = false;
+        await ladeZahlungsStand();
     }
 
     // --- NEUANLAGE: Verein des Users als austragenden Verein vorbelegen ---
@@ -511,6 +577,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('zahlwegUeberweisung').checked = angeboten.includes('ueberweisung');
                 document.getElementById('zahlwegBar').checked = angeboten.includes('bar');
                 document.getElementById('zahlwegLastschrift').checked = angeboten.includes('lastschrift');
+                aktualisiereVerwendungszweck();
+                zeigeZahlungsHinweis();
             }
 
             bestehendeAusschreibungVorhanden = !!turnier.hat_ausschreibung;

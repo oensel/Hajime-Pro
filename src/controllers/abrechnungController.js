@@ -2,7 +2,7 @@
 // Nur Cloud. `sende` (Mailversand) wird an den Rechnungslauf durchgereicht (Tests ersetzen ihn).
 import { FachFehler } from '../utils/fachFehler.js';
 import { darfVereinVerwalten } from '../services/vereinsRollen.js';
-import { fehlendeStammdaten } from '../shared/abrechnung.js';
+import { fehlendeStammdaten, fehlendeLastschriftDaten } from '../shared/abrechnung.js';
 import { ladeStammdaten, speichereStammdaten, pruefeStammdatenFuerTurnier, ladeLastschriftStatus } from '../services/abrechnungStammdaten.js';
 import { ladeAbrechnung, ordneVereinZu } from '../services/abrechnung.js';
 import { erfasseVorOrt } from '../services/zahlwege.js';
@@ -219,7 +219,7 @@ export function erzeugeAbrechnungController(knex, { sende } = {}) {
             try {
                 const vereinId = await pruefeVereinsRecht(req);
                 const stammdaten = await ladeStammdaten(knex, vereinId);
-                res.json({ stammdaten, fehlt: fehlendeStammdaten(stammdaten, null) });
+                res.json({ stammdaten, fehlt: fehlendeStammdaten(stammdaten, null), fehltLastschrift: fehlendeLastschriftDaten(stammdaten, null) });
             } catch (err) {
                 antworteFehler(res, err);
             }
@@ -243,7 +243,8 @@ export function erzeugeAbrechnungController(knex, { sende } = {}) {
                 const { vollstaendig, fehlt } = await pruefeStammdatenFuerTurnier(knex, turnier);
                 const darfPflegen = turnier.verein_id ? await darfVereinVerwalten(knex, req.user.id, turnier.verein_id) : false;
                 const lastschrift = await ladeLastschriftStatus(knex, turnier);
-                res.json({ vollstaendig, fehlt, vereinId: turnier.verein_id ?? null, darfPflegen, lastschrift });
+                const stammdaten = turnier.verein_id ? await ladeStammdaten(knex, turnier.verein_id) : null;
+                res.json({ vollstaendig, fehlt, fehltLastschrift: fehlendeLastschriftDaten(stammdaten, turnier), vereinId: turnier.verein_id ?? null, darfPflegen, lastschrift });
             } catch (err) {
                 antworteFehler(res, err);
             }

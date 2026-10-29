@@ -1,0 +1,8 @@
+/* Felder des Formulars "Angaben auf den Rechnungen" (public/js/rechnungsAngaben.js) */
+.ra-feld { margin: 0 0 14px; }
+.ra-feld textarea { width: 100%; box-sizing: border-box; padding: 6px; border: 2px solid var(--border); border-radius: 4px; font-size: 14px; font-family: inherit; background: var(--bg-card); color: var(--text-main); }
+.ra-feld input[type="email"] { width: 100%; height: 28px; padding: 2px 6px; border: 2px solid var(--border); border-radius: 4px; font-size: 14px; background: var(--bg-card); color: var(--text-main); box-sizing: border-box; }
+.ra-hilfe { font-size: 12px; color: var(--text-muted); margin: 3px 0 0; }
+.ra-paar { display: flex; gap: 12px; }
+.ra-paar .ra-feld { flex: 1; min-width: 0; }
+.ra-marke { display: inline-block; font-size: 11px; font-weight: 400; padding: 1px 8px; border-radius: 8px; margin-left: 6px; background: var(--bg-card); border: 1px solid var(--border); color: var(--text-muted); }
