@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hajime Pro - Rechnungen</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <link rel="stylesheet" href="/css/rechnungsAngaben.css">
+    <script src="/js/menu.js"></script>
+    <style>
+        .rch-seite { padding: 24px 28px; max-width: 1100px; box-sizing: border-box; }
+        .rch-hinweis { margin: 0 0 14px; padding: 10px 12px; border: 2px solid var(--border); border-radius: 4px; font-size: 13px; background: var(--bg-card); }
+        .rch-hinweis.warnung { border-color: #f59e0b; }
+        .rch-hinweis.fehler { border-color: #ef4444; color: #ef4444; font-weight: 700; }
+        .rch-kennzahlen { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 0 0 16px; }
+        .rch-kachel { border: 2px solid var(--border); border-radius: 4px; padding: 10px 12px; background: var(--bg-card); }
+        .rch-kachel .zahl { font-size: 20px; font-weight: 800; }
+        .rch-kachel .titel { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
+        .rch-filter { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+        .rch-filter select, .rch-filter input { height: 32px; border: 2px solid var(--border); border-radius: 4px; background: var(--bg-card); color: var(--text-main); font-size: 13px; padding: 0 8px; box-sizing: border-box; }
+        .rch-filter select { width: auto; flex: 0 1 190px; }
+        .rch-filter input { flex: 1 1 200px; width: auto; min-width: 160px; }
+        .rch-scroll { overflow-x: auto; }
+        .rch-tabelle td.nr { white-space: nowrap; }
+        .rch-tabelle { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .rch-tabelle th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); padding: 6px 8px; border-bottom: 2px solid var(--border); }
+        .rch-tabelle td { padding: 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+        .rch-tabelle .rechts { text-align: right; white-space: nowrap; }
+        .rch-klein { display: block; font-size: 12px; color: var(--text-muted); }
+        .rch-chip { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 700; border: 2px solid var(--border); white-space: nowrap; }
+        .rch-chip.offen { border-color: #9ca3af; }
+        .rch-chip.versandt { border-color: #3b82f6; color: #3b82f6; }
+        .rch-chip.bezahlt, .rch-chip.eingezogen { border-color: #2e7d32; color: #2e7d32; }
+        .rch-chip.ueberfaellig, .rch-chip.zurueckgebucht { border-color: #ef4444; color: #ef4444; }
+        .rch-aktionen { display: flex; flex-wrap: wrap; gap: 6px; }
+        .rch-aktionen .btn { padding: 2px 12px; font-size: 12px; white-space: nowrap; height: auto; min-height: 28px; line-height: 1.3; text-decoration: none; }
+        .rch-leer { font-size: 13px; color: var(--text-muted); }
+        .rch-angaben { border: 1px solid var(--border); border-radius: 4px; margin: 0 0 16px; background: var(--bg-card); }
+        .rch-angaben > summary { cursor: pointer; padding: 10px 14px; font-weight: 700; font-size: 14px; }
+        .rch-angaben form { padding: 4px 14px 14px; }
+        .rch-status { font-size: 12px; color: var(--text-muted); }
+        .rch-angaben-fuss { display: flex; justify-content: flex-end; align-items: center; gap: 12px; }
+        @media (max-width: 700px) {
+            .rch-seite { padding: 16px; }
+            .rch-tabelle thead { display: none; }
+            .rch-tabelle, .rch-tabelle tbody, .rch-tabelle tr, .rch-tabelle td { display: block; width: 100%; box-sizing: border-box; }
+            .rch-tabelle tr { border: 2px solid var(--border); border-radius: 4px; margin: 0 0 10px; padding: 4px 0; }
+            .rch-tabelle td { border: 0; padding: 4px 10px; display: flex; justify-content: space-between; gap: 10px; text-align: right; }
+            .rch-tabelle td::before { content: attr(data-label); font-size: 11px; text-transform: uppercase; color: var(--text-muted); text-align: left; flex: none; }
+            .rch-aktionen { justify-content: flex-end; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="kanji-left">柔</div>
+<div class="kanji-right">道</div>
+
+<div class="mdc-card rch-seite">
+    <div class="form-title-area">
+        <span class="material-icons">receipt_long</span>
+        <h1>Rechnungen</h1>
+        <span class="material-icons">receipt_long</span>
+    </div>
+    <p id="rchVerein" style="text-align: center; font-weight: 700; margin-top: 0;"></p>
+    <div id="rchFehler" class="rch-hinweis fehler" role="alert" hidden></div>
+    <div id="rchWarnung" class="rch-hinweis warnung" hidden>
+        Für Rechnungen fehlen noch: <span id="rchWarnungFehlt"></span>.
+        Rechnungen lassen sich erst mit diesen Angaben erstellen.
+        <a id="rchWarnungAngaben" href="#rchAngaben" hidden>Angaben ergänzen</a>
+        <a id="rchWarnungLink" href="/zahlungsdaten.html" hidden>Zahlungsdaten ergänzen</a>
+    </div>
+
+    <div id="rchInhalt" hidden>
+        <details class="rch-angaben" id="rchAngaben">
+            <summary>Angaben auf den Rechnungen</summary>
+            <form id="rchAngabenForm" autocomplete="off">
+                <div id="rchAngabenFelder"></div>
+                <div id="rchAngabenFehler" class="rch-hinweis fehler" role="alert" hidden></div>
+                <div class="rch-angaben-fuss">
+                    <span id="rchAngabenStatus" class="rch-status" role="status"></span>
+                    <button type="submit" class="btn btn-raised">Speichern</button>
+                </div>
+            </form>
+        </details>
+
+        <div class="rch-kennzahlen">
+            <div class="rch-kachel"><div class="zahl" id="rchOffen">-</div><div class="titel">Offen</div></div>
+            <div class="rch-kachel"><div class="zahl" id="rchBezahlt">-</div><div class="titel">Bezahlt</div></div>
+            <div class="rch-kachel"><div class="zahl" id="rchRueck">-</div><div class="titel">Rückbuchungen</div></div>
+        </div>
+
+        <div class="rch-filter">
+            <select id="rchTurnier" aria-label="Turnier"><option value="">Alle Turniere</option></select>
+            <select id="rchStatus" aria-label="Status"><option value="">Alle Status</option></select>
+            <select id="rchZahlweg" aria-label="Zahlweg">
+                <option value="">Alle Zahlwege</option>
+                <option value="bar">Bar</option>
+                <option value="ueberweisung">Überweisung</option>
+                <option value="lastschrift">Lastschrift</option>
+            </select>
+            <input type="search" id="rchSuche" placeholder="Nummer oder Verein suchen" aria-label="Nummer oder Verein suchen">
+        </div>
+
+        <div class="rch-scroll"><table class="rch-tabelle">
+            <thead><tr><th>Nummer</th><th>Datum</th><th>Turnier</th><th>Empfänger</th><th>Zahlweg</th><th class="rechts">Betrag</th><th>Status</th><th>Aktionen</th></tr></thead>
+            <tbody id="rchTabelle"></tbody>
+        </table></div>
+        <p id="rchLeer" class="rch-leer" hidden></p>
+    </div>
+</div>
+
+<script src="/js/rechnungsAngaben.js"></script>
+<script src="/js/rechnungen.js"></script>
+</body>
+</html>

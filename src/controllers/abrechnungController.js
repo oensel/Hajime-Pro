@@ -5,6 +5,7 @@ import { darfVereinVerwalten } from '../services/vereinsRollen.js';
 import { fehlendeStammdaten, fehlendeLastschriftDaten } from '../shared/abrechnung.js';
 import { ladeStammdaten, speichereStammdaten, pruefeStammdatenFuerTurnier, ladeLastschriftStatus } from '../services/abrechnungStammdaten.js';
 import { ladeAbrechnung, ordneVereinZu } from '../services/abrechnung.js';
+import { ladeRechnungenDesVereins } from '../services/rechnungenUebersicht.js';
 import { erfasseVorOrt } from '../services/zahlwege.js';
 import { erstelleRechnungen, sendeRechnungErneut, setzeBezahlt, ladeRechnungPdf, erfasseRuecklastschrift } from '../services/rechnungslauf.js';
 import { erzeugeSepaExport, listeSepaDateien, pruefeSepaVorab } from '../services/sepaExport.js';
@@ -220,6 +221,16 @@ export function erzeugeAbrechnungController(knex, { sende } = {}) {
                 const vereinId = await pruefeVereinsRecht(req);
                 const stammdaten = await ladeStammdaten(knex, vereinId);
                 res.json({ stammdaten, fehlt: fehlendeStammdaten(stammdaten, null), fehltLastschrift: fehlendeLastschriftDaten(stammdaten, null) });
+            } catch (err) {
+                antworteFehler(res, err);
+            }
+        },
+
+        // Alle Rechnungen des Vereins als Ausrichter (Seite rechnungen.html); nur Admins des Vereins (wie die Zahlungsdaten)
+        async listeRechnungenDesVereins(req, res) {
+            try {
+                const vereinId = await pruefeVereinsRecht(req);
+                res.json({ rechnungen: await ladeRechnungenDesVereins(knex, vereinId) });
             } catch (err) {
                 antworteFehler(res, err);
             }

@@ -69,6 +69,7 @@ const MENUE_AKTIVE_SEITEN = [
     ['nav-nachrichten', ['nachrichten.html']],
     ['nav-nutzer', ['admin-nutzer.html']],
     ['nav-mitglieder', ['admin-nutzer.html']],
+    ['nav-rechnungen', ['rechnungen.html']],
     ['nav-zahlungsdaten', ['zahlungsdaten.html']],
     ['nav-einladungen', ['admin-einladungen.html']],
     ['nav-erstregistrierungen', ['admin-erstregistrierungen.html']],
@@ -434,6 +435,10 @@ function baueMenueGeruest() {
                 <a href="/admin-nutzer.html" class="menu-item" id="nav-mitglieder" data-ohne-turnier style="display: none;">
                     <span class="material-icons">manage_accounts</span>
                     <span class="menu-text">Mitglieder<span class="menu-badge" id="nav-mitglieder-zaehler" style="display: none;"></span></span>
+                </a>
+                <a href="/rechnungen.html" class="menu-item" id="nav-rechnungen" data-ohne-turnier style="display: none;">
+                    <span class="material-icons">receipt_long</span>
+                    <span class="menu-text">Rechnungen</span>
                 </a>
                 <a href="/zahlungsdaten.html" class="menu-item" id="nav-zahlungsdaten" data-ohne-turnier style="display: none;">
                     <span class="material-icons">payments</span>
@@ -1506,6 +1511,12 @@ async function initialisiereMenue() {
     if (zahlungsLink && !einzelbenutzer && rechte.helferPlan && currentUser && currentUser.verein_id) {
         zahlungsLink.href = `/zahlungsdaten.html?vereinId=${encodeURIComponent(currentUser.verein_id)}`;
         zahlungsLink.style.display = '';
+    }
+    // Rechnungen (alle Startgeld-Rechnungen des Vereins als Ausrichter): gleiche Voraussetzungen wie die Zahlungsdaten
+    const rechnungenLink = document.getElementById('nav-rechnungen');
+    if (rechnungenLink && !einzelbenutzer && rechte.helferPlan && currentUser && currentUser.verein_id) {
+        rechnungenLink.href = `/rechnungen.html?vereinId=${encodeURIComponent(currentUser.verein_id)}`;
+        rechnungenLink.style.display = '';
     }
     const vereineLink = document.getElementById('nav-vereine');
     if (vereineLink && rechte.nutzer) {
