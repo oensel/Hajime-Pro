@@ -39,9 +39,11 @@ warte_auf_gesund() {
     return 1
 }
 
+# Die App ist auf diesem Server nicht an den Host gebunden (nur Caddy erreicht sie über das Docker-Netz), daher fragt die Prüfung
+# im Container.
 pruefe_antwort() {
     for _ in $(seq 1 12); do
-        curl -fsS -m 5 http://127.0.0.1:3000/api/config > /dev/null && return 0
+        docker exec "$APP" node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/config').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" && return 0
         sleep 5
     done
     echo "Keine Antwort von /api/config"
@@ -96,7 +98,7 @@ rueckrollen() {
 
 schritt "Neuen Stand einsetzen"
 docker tag "$IMAGE:latest" "$IMAGE:vorher" 2>/dev/null || true
-rm -rf "$ALT"
+rm -rf "$ALT" "$ZIEL.fehlgeschlagen"
 mv "$ZIEL" "$ALT"
 mv "$NEU" "$ZIEL"
 for datei in "${SERVER_DATEIEN[@]}"; do
