@@ -1,6 +1,6 @@
 # Cloud-Server ausrollen (Docker, netcup)
 
-Am Ende jedes Releases (`release.yml`, Job `cloud-ausrollen`) spielt die Pipeline den getesteten Commit auf den Cloud-Server. Der Server liegt in `/opt/hajime-pro` (Docker Compose, **kein Git-Checkout**); nur dort vorhanden sind `.env.cloud`, `.env.db`, `docker-compose.prod.yml`, `Caddyfile` und `.commit`.
+Am Ende jedes Releases (`release.yml`, Job `cloud-ausrollen`) spielt die Pipeline den getesteten Commit auf den Cloud-Server. Der Server liegt in `/opt/hajime-pro` (Docker Compose, **kein Git-Checkout**); nur dort vorhanden sind `.env.cloud`, `.env.db`, `docker-compose.prod.yml`, `Caddyfile`, `.commit` und die Bind-Mount-Ordner `sicherungen/` (automatische Sicherungen) und `releases/` (gespiegelte Releases, Besitzer 1000:1000). Diese ziehen beim Ausrollen mit um.
 
 ## Ablauf
 
