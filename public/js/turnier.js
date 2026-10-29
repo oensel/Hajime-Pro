@@ -39,6 +39,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- ANLEGEN IN DER CLOUD: "Als Entwurf speichern" oder "Speichern und veröffentlichen" ---
     const veroeffentlichenNachSpeichernBtn = document.getElementById('speichernVeroeffentlichenBtn');
     let veroeffentlichenNachSpeichern = false;
+    // Fehlt der Vertrag zur Auftragsverarbeitung, merkt sich das fehlgeschlagene Anlegen, dass es nach der Annahme wiederholt wird
+    // (public/js/avVertrag.js); danach geht es zu "Alle Turniere". So gehen die Eingaben beim Annehmen nicht verloren.
+    let nachVertragWiederholen = null;
+    let zurUebersichtNachAnlegen = false;
+    window.addEventListener('av-vertrag:angenommen', () => {
+        if (!nachVertragWiederholen) return;
+        veroeffentlichenNachSpeichern = nachVertragWiederholen.veroeffentlichen;
+        nachVertragWiederholen = null;
+        zurUebersichtNachAnlegen = true;
+        document.getElementById('turnierForm').requestSubmit();
+    });
     if (!turnierId && veroeffentlichenNachSpeichernBtn) {
         fetch('/api/config').then(r => (r.ok ? r.json() : {})).then((config) => {
             if (config.isOffline) return;
@@ -953,8 +964,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     // Bei einer Neuanlage zur URL mit ID weiterleiten, um Menüpunkte freizuschalten
                     if (!turnierId && result.turnierId) {
+                        // Nach der Vertragsannahme (Anlegen wurde wiederholt) geht es zu "Alle Turniere"
+                        const ziel = zurUebersichtNachAnlegen ? '/turniere.html' : `/turnier.html?id=${result.turnierId}`;
                         setTimeout(() => {
-                            window.location.href = `/turnier.html?id=${result.turnierId}`;
+                            window.location.href = ziel;
                         }, 1000);
                     } else if (turnierId && ausschreibungPdfBase64 !== undefined) {
                         // Update ohne Reload: lokalen Ausschreibungs-Status auf den gerade
@@ -976,6 +989,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         window.zeigeNotification(result.error || 'Fehler beim Speichern des Turniers.', 'error');
                     }
                     // Cloud: Vertrag zur Auftragsverarbeitung fehlt, Admins können ihn gleich hier annehmen (public/js/avVertrag.js)
+                    if (result.code === 'av_vertrag_fehlt' && !turnierId) nachVertragWiederholen = { veroeffentlichen: sofortVeroeffentlichen };
                     if (result.code === 'av_vertrag_fehlt') window.hajimeZeigeAvVertrag?.();
                 }
             } catch (error) {

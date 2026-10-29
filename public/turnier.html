@@ -396,7 +396,9 @@
 
         <div class="assistent-nav">
             <button type="button" class="btn btn-outlined" id="assistentZurueck">Zurück</button>
-            <span class="assistent-hinweis" id="assistentHinweis">Unbeantwortete Fragen gelten als Nein.</span>
+            <span class="assistent-hinweis" id="assistentHinweis"></span>
+            <!-- Nur auf der letzten Seite beim Anlegen in der Cloud (turnierAssistent.js); löst den Knopf in der Kopfleiste aus -->
+            <button type="button" class="btn assistent-weiter" id="assistentVeroeffentlichen" hidden>Speichern und veröffentlichen</button>
             <button type="button" class="btn assistent-weiter" id="assistentWeiter">Weiter</button>
         </div>
     </form>
