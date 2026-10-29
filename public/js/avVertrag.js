@@ -119,12 +119,9 @@
                     if (!resp.ok) throw new Error(daten.error || 'Der Vertrag konnte nicht angenommen werden.');
                     schliessen();
                     if (window.zeigeNotification) window.zeigeNotification('Vertrag zur Auftragsverarbeitung angenommen.', 'success');
-                    // Beim Anlegen eines Turniers (turnier.html ohne ID) geht es nach der Annahme zurück zu „Alle Turniere“
-                    const params = new URLSearchParams(window.location.search);
-                    if (window.location.pathname === '/turnier.html' && !params.get('id') && !params.get('turnierId')) {
-                        window.location.href = '/turniere.html';
-                        return;
-                    }
+                    // turnier.html: ein wegen des fehlenden Vertrags gescheitertes Anlegen wird jetzt wiederholt (public/js/turnier.js);
+                    // die Seite wird hier nicht verlassen, damit die Eingaben erhalten bleiben
+                    window.dispatchEvent(new CustomEvent('av-vertrag:angenommen'));
                     await ladeStand();
                     fuelleKarte();
                 } catch (err) {
