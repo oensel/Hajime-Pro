@@ -376,3 +376,21 @@
 @media (max-width: 560px) {
     .grid-drei { grid-template-columns: 1fr 1fr; }
 }
+
+/* Zahlwege: Verwendungszweck unter der Überweisung, Hinweis zu fehlenden Zahlungsdaten unter der Lastschrift */
+.zahlweg-unter { margin: 2px 0 8px 12px; padding: 8px 0 4px 12px; border-left: 2px solid var(--border); }
+.zahlweg-unter[hidden] { display: none; }
+.zahlweg-unter label { display: block; font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+.zahlweg-unter input { width: 100%; box-sizing: border-box; }
+.zahlweg-hilfe { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+.zahlungs-hinweis { margin: 4px 0 8px 12px; padding: 10px 12px; border: 2px solid #f59e0b; border-radius: 4px; font-size: 13px; }
+.zahlungs-hinweis[hidden], .zahlungs-hinweis [hidden] { display: none; }
+.zahlungs-hinweis-knoepfe { margin-top: 8px; }
+
+/* Popup mit den Zahlungsdaten des Vereins */
+.zahlungs-dialog { width: min(680px, 94vw); height: min(780px, 90vh); padding: 0; border: 2px solid var(--border); border-radius: 8px; background: var(--bg-card); color: var(--text-main); }
+.zahlungs-dialog[open] { display: flex; flex-direction: column; }
+.zahlungs-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
+.zahlungs-dialog-kopf { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; font-weight: 700; border-bottom: 1px solid var(--border); }
+.zahlungs-dialog-zu { background: none; border: 0; cursor: pointer; color: inherit; display: flex; }
+.zahlungs-dialog iframe { flex: 1; width: 100%; border: 0; background: var(--bg-card); }

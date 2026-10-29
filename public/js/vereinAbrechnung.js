@@ -5,6 +5,9 @@
     const api = `/api/abrechnung/stammdaten/${encodeURIComponent(vereinId || '')}`;
     let ibanLoeschen = false;
     let naechsteNummer = 1;
+    const eingebettet = new URLSearchParams(window.location.search).get('eingebettet') === '1';
+    // Vorschlag für den Umsatzsteuer-Hinweis: gemeinnützige Sportvereine (§ 4 Nr. 22 Buchst. b UStG). Nur bei leerem gespeichertem Feld.
+    const UST_VORSCHLAG = 'Steuerfrei nach § 4 Nr. 22 Buchst. b UStG.';
 
     const meldeFehler = (text) => { $('abrFehler').textContent = text || ''; };
     const meldung = (text, typ) => { if (window.zeigeNotification) window.zeigeNotification(text, typ); };
@@ -49,8 +52,8 @@
         $('abrAnschrift').value = s.anschrift || '';
         $('abrEmail').value = s.rechnung_email || '';
         $('abrSteuernummer').value = s.steuernummer || '';
-        $('abrUstId').value = s.ust_id || '';
-        $('abrUstHinweis').value = s.ust_hinweis || '';
+        $('abrUstHinweis').value = s.ust_hinweis || UST_VORSCHLAG;
+        $('abrUstVorschlag').hidden = !!s.ust_hinweis;
         $('abrKontoinhaber').value = s.kontoinhaber || '';
         $('abrPraefix').value = s.rechnungs_praefix || '';
         $('abrGlaeubigerId').value = s.glaeubiger_id || '';
@@ -100,6 +103,14 @@
 
     $('abrPraefix').addEventListener('input', zeigeNaechsteNummer);
 
+    if (eingebettet) {
+        const zurueck = $('abrZurueck');
+        zurueck.textContent = 'Abbrechen';
+        zurueck.removeAttribute('href');
+        zurueck.style.cursor = 'pointer';
+        zurueck.addEventListener('click', () => window.parent.postMessage({ typ: 'zahlungsdaten-schliessen' }, window.location.origin));
+    }
+
     $('abrForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         meldeFehler('');
@@ -108,7 +119,6 @@
             anschrift: $('abrAnschrift').value,
             rechnung_email: $('abrEmail').value,
             steuernummer: $('abrSteuernummer').value,
-            ust_id: $('abrUstId').value,
             ust_hinweis: $('abrUstHinweis').value,
             kontoinhaber: $('abrKontoinhaber').value,
             rechnungs_praefix: $('abrPraefix').value,
@@ -125,6 +135,10 @@
                 return;
             }
             fuelle(daten.stammdaten);
+            if (eingebettet) {
+                window.parent.postMessage({ typ: 'zahlungsdaten-gespeichert' }, window.location.origin);
+                return;
+            }
             meldung('Zahlungsdaten gespeichert.', 'success');
         } catch {
             meldeFehler('Speichern fehlgeschlagen.');

@@ -11,11 +11,18 @@ export function fehlendeStammdaten(stammdaten, turnier) {
     if (leer(s.anschrift)) fehlt.push('Anschrift');
     if (leer(s.rechnung_email)) fehlt.push('Rechnungs-E-Mail');
     if (leer(s.absender_name)) fehlt.push('Absendername');
-    if (leer(s.steuernummer) && leer(s.ust_id)) fehlt.push('Steuernummer oder USt-IdNr.');
+    if (leer(s.steuernummer)) fehlt.push('Steuernummer');
     if (leer(s.ust_hinweis)) fehlt.push('Umsatzsteuer-Hinweis');
     if (leer(s.rechnungs_praefix)) fehlt.push('Rechnungsnummern-Präfix');
     const turnierBank = !leer(tu.iban) && !leer(tu.kontoinhaber);
     if (!turnierBank && !s.iban_vorhanden) fehlt.push('Kontoinhaber und IBAN');
+    return fehlt;
+}
+
+// Was für Lastschrift insgesamt fehlt (Rechnungsangaben, Konto und Gläubiger-ID), für den Hinweis beim Turnier.
+export function fehlendeLastschriftDaten(stammdaten, turnier) {
+    const fehlt = fehlendeStammdaten(stammdaten, turnier);
+    if (leer(stammdaten?.glaeubiger_id)) fehlt.push('Gläubiger-ID');
     return fehlt;
 }
 

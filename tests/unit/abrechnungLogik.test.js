@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    STAMMDATEN_FELDER, fehlendeStammdaten, pruefePraefix, formatiereRechnungsnummer,
+    STAMMDATEN_FELDER, fehlendeStammdaten, fehlendeLastschriftDaten, pruefePraefix, formatiereRechnungsnummer,
     kaempferSchluessel, zaehleKaempferJeVerein, baueVerwendungszweck, addiereTage,
     heuteBerlin, rechnungsAnzeigeStatus, rechnungsArt, angerechneterBetragCent
 } from '../../src/shared/abrechnung.js';
@@ -46,7 +46,14 @@ test('fehlendeStammdaten', () => {
     assert.deepEqual(fehlendeStammdaten(voll, {}), ['Kontoinhaber und IBAN']);
     assert.deepEqual(fehlendeStammdaten(voll, { iban: 'DE1', kontoinhaber: 'K' }), []);
     assert.deepEqual(fehlendeStammdaten({ ...voll, iban_vorhanden: true }, {}), []);
-    assert.deepEqual(fehlendeStammdaten({ ...voll, steuernummer: '', ust_id: '' }, { iban: 'DE1', kontoinhaber: 'K' }), ['Steuernummer oder USt-IdNr.']);
+    assert.deepEqual(fehlendeStammdaten({ ...voll, steuernummer: '', ust_id: 'DE123' }, { iban: 'DE1', kontoinhaber: 'K' }), ['Steuernummer']);
+});
+
+test('fehlendeLastschriftDaten: Gläubiger-ID kommt hinzu', () => {
+    const voll = { anschrift: 'a', rechnung_email: 'e', absender_name: 'n', steuernummer: '1', ust_hinweis: 'h', rechnungs_praefix: 'JCK-', iban_vorhanden: true };
+    assert.deepEqual(fehlendeLastschriftDaten(voll, {}), ['Gläubiger-ID']);
+    assert.deepEqual(fehlendeLastschriftDaten({ ...voll, glaeubiger_id: 'DE98ZZZ09999999999' }, {}), []);
+    assert.deepEqual(fehlendeLastschriftDaten({ ...voll, steuernummer: '' }, {}), ['Steuernummer', 'Gläubiger-ID']);
 });
 
 test('Nummer und Präfix', () => {

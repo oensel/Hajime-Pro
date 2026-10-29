@@ -20,3 +20,8 @@ L1 `pain.008.001.08` (Konstante `PAIN008_VERSION`; Hausbank klären). L2 nur SEP
 
 ## Offene Punkte
 Rechtliche Prüfung von Mandatstext, Vorabankündigungsfrist und Online-Mandat; Hausbank-Test der pain.008-Version (nur ISO-Schema geprüft); keine Info-Mail an den Verein bei Rücklastschrift; Wiederholungsmandate, B2B und Bankdatei-Import sind nicht Teil von Stufe 3.
+
+## Zahlungsdaten-Seite und Zahlwege im Turnierformular
+- `verein-abrechnung.html` hat zwei Karten: „Rechnungen“ (Absender, Anschrift, E-Mail, Steuernummer, Präfix, Umsatzsteuer-Hinweis) und „Überweisung und Lastschrift“ (Kontoinhaber, IBAN; Gläubiger-ID und Mandats-Zusatztext nur für Lastschrift). Die USt-IdNr. wird nicht mehr erfasst (Spalte `ust_id` bleibt, `fehlendeStammdaten` verlangt nur die Steuernummer). Der Umsatzsteuer-Hinweis ist bei leerem Feld mit „Steuerfrei nach § 4 Nr. 22 Buchst. b UStG.“ vorbelegt (Marke „Vorschlag“, bis gespeichert).
+- Mit `?eingebettet=1` läuft die Seite als Popup (iframe in `turnier.html`) ohne `menu.js`: sie hängt die Anmeldung selbst an die Anfragen und meldet per `postMessage` `zahlungsdaten-gespeichert` bzw. `zahlungsdaten-schliessen`.
+- `turnier.html`: Zahlwege in der Reihenfolge Bar, Überweisung (Verwendungszweck nur bei angehakter Überweisung), Lastschrift. Lastschrift ist in der Cloud immer wählbar; fehlen Zahlungsdaten, steht darunter ein Hinweis mit Knopf „Zahlungsdaten ergänzen“ (Popup). `fehlendeLastschriftDaten` (`src/shared/abrechnung.js`) liefert die Liste, `GET /api/abrechnung/stammdaten/:vereinId` und `stammdaten-pruefung/:turnierId` geben sie als `fehltLastschrift` mit. Der Server bietet Lastschrift weiter erst an, wenn sie möglich ist (`ermittleAngeboteneZahlwege`).

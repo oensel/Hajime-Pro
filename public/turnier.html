@@ -277,10 +277,6 @@
                         <input type="text" id="iban" maxlength="34" placeholder="z.B. DE12345678901234567890">
                     </div>
                     </div>
-                    <div class="form-group">
-                        <label for="verwendungszweck">Verwendungszweck</label>
-                        <input type="text" id="verwendungszweck" placeholder="z.B. Startgeld + Vereinsname">
-                    </div>
                     <div class="form-group" id="zahlwegGruppe">
                         <label for="abrechnungsbasis">Abrechnung nach</label>
                         <select id="abrechnungsbasis">
@@ -288,19 +284,33 @@
                             <option value="teilnahme_waage">Teilnahme an der Waage</option>
                         </select>
                         <div style="margin-top:12px;font-weight:700;font-size:13px;">Angebotene Zahlwege für andere Vereine</div>
-                        <label class="planungs-haken" for="zahlwegUeberweisung">
-                            Überweisung
-                            <input type="checkbox" id="zahlwegUeberweisung" checked>
-                        </label>
                         <label class="planungs-haken" for="zahlwegBar">
                             Bar an der Waage
                             <input type="checkbox" id="zahlwegBar" checked>
                         </label>
+                        <label class="planungs-haken" for="zahlwegUeberweisung">
+                            Überweisung
+                            <input type="checkbox" id="zahlwegUeberweisung" checked>
+                        </label>
+                        <!-- Gehört zur Überweisung: erscheint nur, solange sie angeboten wird (turnier.js) -->
+                        <div class="zahlweg-unter" id="verwendungszweckGruppe">
+                            <label for="verwendungszweck">Verwendungszweck für die Überweisung</label>
+                            <input type="text" id="verwendungszweck" placeholder="z.B. Startgeld + Vereinsname">
+                            <div class="zahlweg-hilfe">Erscheint nur auf dem Überweisungsträger und in der Rechnung. Bei Bar und Lastschrift wird er nicht gebraucht.</div>
+                        </div>
                         <label class="planungs-haken" for="zahlwegLastschrift" id="zahlwegLastschriftZeile" hidden>
                             Lastschrift (SEPA)
                             <input type="checkbox" id="zahlwegLastschrift">
                         </label>
-                        <div id="zahlwegLastschriftGrund" hidden style="font-size:12px;margin:-4px 0 6px;"></div>
+                        <!-- Nur Cloud: Lastschrift ist immer wählbar, fehlende Zahlungsdaten des Vereins werden hier gemeldet (turnier.js) -->
+                        <div class="zahlungs-hinweis" id="zahlungsHinweis" hidden>
+                            <strong id="zahlungsHinweisKopf"></strong>
+                            <span id="zahlungsHinweisText"></span>
+                            <div class="zahlungs-hinweis-knoepfe">
+                                <button type="button" class="btn btn-outlined" id="zahlungsDatenOeffnen" hidden>Zahlungsdaten ergänzen</button>
+                                <span id="zahlungsDatenBitte" hidden>Bitte einen Admin Ihres Vereins, die Zahlungsdaten zu ergänzen.</span>
+                            </div>
+                        </div>
                     </div>
                     <!-- Rechnungen (nur Cloud, turnier.js blendet den Block ein) -->
                     <div id="rechnungGruppe" hidden>
@@ -310,11 +320,6 @@
                         <div class="form-group">
                             <label for="rechnung_hinweis">Hinweistext auf der Rechnung</label>
                             <textarea id="rechnung_hinweis" rows="3" maxlength="1000" style="width:100%;box-sizing:border-box;padding:6px;border:2px solid var(--border);border-radius:4px;font-size:14px;font-family:inherit;background:var(--bg-card);color:var(--text-main);"></textarea>
-                        </div>
-                        <div id="rechnungStammdatenKasten" hidden style="margin-top:10px;padding:10px 12px;border:2px solid #f59e0b;border-radius:4px;font-size:13px;">
-                            <div><strong>Für Rechnungen fehlt noch:</strong> <span id="rechnungStammdatenFehlt"></span></div>
-                            <a id="rechnungStammdatenLink" href="#" hidden style="margin-top:6px;font-weight:700;">Abrechnungsdaten des Vereins ergänzen</a>
-                            <div id="rechnungStammdatenBitte" hidden style="margin-top:6px;">Bitte einen Admin Ihres Vereins, die Abrechnungsdaten zu ergänzen.</div>
                         </div>
                     </div>
                     </div>
@@ -392,6 +397,15 @@
         </div>
     </form>
 </div>
+
+<!-- Popup: Zahlungsdaten des Vereins (Seite verein-abrechnung.html eingebettet), damit das Turnierformular erhalten bleibt -->
+<dialog id="zahlungsDatenDialog" class="zahlungs-dialog" aria-labelledby="zahlungsDatenTitel">
+    <div class="zahlungs-dialog-kopf">
+        <span id="zahlungsDatenTitel">Zahlungsdaten des Vereins</span>
+        <button type="button" class="zahlungs-dialog-zu" id="zahlungsDatenSchliessen" aria-label="Schließen"><span class="material-icons">close</span></button>
+    </div>
+    <iframe id="zahlungsDatenRahmen" title="Zahlungsdaten des Vereins" src="about:blank"></iframe>
+</dialog>
 
 <!-- Externe JavaScript-Datei für die Logik einbinden -->
 <script src="/js/ausschreibung-viewer.js"></script>
