@@ -333,6 +333,7 @@ async function pruefeSelbstUpdate({ manuell = false, beiStart = false } = {}) {
             ...(process.env.HAJIME_RELEASE_API ? { apiBasis: process.env.HAJIME_RELEASE_API } : {}), // nur für Tests gegen ein Release-Double
             zielVerzeichnis: path.join(datenverzeichnis(), 'updates'),
             versuchsDatei,
+            beiPhase: (text) => { console.log(`[Selbst-Update] ${text}`); if (beiStart) status(text, null); else setzeUpdateStatus(text); },
             beiFortschritt: ({ version, geladen, gesamt }) => {
                 if (!holeMeldung) { holeMeldung = true; console.log(`[Selbst-Update] ${MELDUNG.holeGit(version)}`); zeige(MELDUNG.holeGit(version), 0); }
                 if (Date.now() - letzteAnzeige < 500) return;
@@ -396,7 +397,8 @@ async function installiereUpdate() {
     const { version, datei } = updateStatus;
     if (!datei) return;
     merkeVersuch(path.join(datenverzeichnis(), 'selbstupdate.json'), version);
-    const hinweis = `Version ${version} wird installiert – ${MELDUNG.neustart(3)}`;
+    // Die Installation dauert einige Minuten; das Installationsfenster (PowerShell-Start) erscheint erst nach ein paar Sekunden.
+    const hinweis = `Version ${version} wird installiert – das dauert einige Minuten, der Server startet danach von selbst neu …`;
     setzeUpdateStatus(hinweis, { version });
     status(hinweis, null);
     await new Promise((r) => setTimeout(r, 3000));

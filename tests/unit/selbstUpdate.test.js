@@ -199,6 +199,16 @@ test('schon geladener, geprüfter Installer wird nicht erneut heruntergeladen', 
     assert.equal(zweiter.anfragen.length, 0);
 });
 
+test('Prüfsummen-Schritte werden gemeldet (sonst bleibt die Anzeige bei Installern über 600 MB minutenlang stumm)', async () => {
+    const env = umgebung();
+    const phasen = [];
+    await pruefeUndLade({ ...basis, ...env, fetchFn: baueStromRelease().fetchFn, beiPhase: (t) => phasen.push(t) });
+    assert.deepEqual(phasen, [`Prüfe Update 1.2.0 …`]);
+    phasen.length = 0;
+    await pruefeUndLade({ ...basis, ...env, fetchFn: baueStromRelease().fetchFn, beiPhase: (t) => phasen.push(t) });
+    assert.deepEqual(phasen, [`Prüfe bereits geladenes Update 1.2.0 …`]);
+});
+
 test('Leerlauf: keine Daten mehr -> Abbruch statt ewig warten', async () => {
     const env = umgebung();
     const { fetchFn: basisFetch } = baueStromRelease();

@@ -46,7 +46,8 @@ export async function pruefeUndLade({
     platform = process.platform, arch = process.arch, fetchFn = fetch, apiBasis = 'https://api.github.com',
     // Standard: Windows-Installer des Server-Pakets. Der Linux-Dienst (src/utils/dienstUpdate.js) übergibt seinen eigenen Schlüssel.
     plattformName = null, unterstuetzt = ['win32-x64', 'linux-x64'],
-    timeoutMs = 6000, leerlaufMs = 60000, beiFortschritt = () => {}, log = console
+    // beiPhase(text): Schritte ohne Datenstrom (Prüfsumme des über 600 MB großen Installers dauert Sekunden bis Minuten)
+    timeoutMs = 6000, leerlaufMs = 60000, beiFortschritt = () => {}, beiPhase = () => {}, log = console
 }) {
     const plattform = plattformName || plattformSchluessel(platform, arch);
     // Standard Windows (NSIS-Installer läuft still durch) und Linux (AppImage lässt sich ersetzen); macOS-Bundles nicht.
@@ -92,8 +93,11 @@ export async function pruefeUndLade({
         mkdirSync(zielVerzeichnis, { recursive: true });
         const ziel = path.join(zielVerzeichnis, eintrag.datei);
         // Schon vollständig und geprüft geladen (z.B. "Später" im letzten Lauf): nicht erneut herunterladen.
-        if (existsSync(ziel) && (await sha256Datei(ziel)) === eintrag.sha256) return { status: 'bereit', version, datei: ziel };
-        if (existsSync(ziel)) rmSync(ziel);
+        if (existsSync(ziel)) {
+            beiPhase(`Prüfe bereits geladenes Update ${version} …`);
+            if ((await sha256Datei(ziel)) === eintrag.sha256) return { status: 'bereit', version, datei: ziel };
+            rmSync(ziel);
+        }
 
         log.log(`[Selbst-Update] Lade Version ${version} (${eintrag.datei}) …`);
         try {
@@ -102,6 +106,7 @@ export async function pruefeUndLade({
             // Verbindung riss ab o. Ä.: die Teildatei bleibt, der nächste Versuch setzt dort fort. Kein Fehlversuch.
             return { status: 'keine-verbindung', version, grund: err.message };
         }
+        beiPhase(`Prüfe Update ${version} …`);
         if ((await sha256Datei(`${ziel}.teil`)) !== eintrag.sha256) {
             rmSync(`${ziel}.teil`, { force: true });
             return { status: 'fehler', version, grund: `Installer ${eintrag.datei}: Prüfung fehlgeschlagen (sha256)` };
