@@ -15,6 +15,10 @@ L1 `pain.008.001.08` (Konstante `PAIN008_VERSION`; Hausbank klären). L2 nur SEP
 ## Module
 `src/services/`: `mandate.js` (Erteilen/Bestätigen/Widerrufen, Löschlauf), `mandatJob.js` (Umstellung, Erinnerung), `sepaExport.js` + `sepaDatei.js` (Auswahl, Prüfungen, pain.008-Erzeugung), `rechnungslauf.js`, `rechnungPdf.js`, `zahlwege.js`, `zahlwegTransfer.js`, `zahlungsdatenSchluessel.js`. `src/shared/`: `mandatText.js`, `sepaZeichen.js`, `glaeubigerId.js`, `targetKalender.js`. Routen: `mandatRoutes.js` (öffentlich, Token), `abrechnungRoutes.js` (inkl. SEPA-Download nur für Turnier-Admins mit 2FA-Code und Rücklastschrift). Seiten: `abrechnung.html`, `zahlungsdaten.html`, `mandat-bestaetigen.html`.
 
+## Seite „Rechnungen“
+- Eigener Menüpunkt neben „Zahlungsdaten“ (`public/rechnungen.html`, `public/js/rechnungen.js`; gleiche Sichtbarkeit wie die Zahlungsdaten: Cloud, Admins des aktiven Vereins). Zeigt alle Rechnungen, die der Verein als Ausrichter gestellt hat (über alle Turniere), mit Kennzahlen, Filtern (Turnier, Status, Zahlweg, Suche) und PDF je Zeile; Warnung mit Link, wenn Zahlungsdaten fehlen. Erstellen, SEPA und Zahlstatus bleiben in der Turnier-Abrechnung (`abrechnung.html`).
+- Daten: `GET /api/abrechnung/verein/:vereinId/rechnungen` → `ladeRechnungenDesVereins` (`src/services/rechnungenUebersicht.js`, ohne PDF-Inhalt, mit `anzeigeStatus`); Rechte wie `stammdaten/:vereinId` (Admin des Vereins). Test: `tests/unit/rechnungenUebersicht.test.js`.
+
 ## Tests
 `tests/unit/`: `mandate`, `mandatJob`, `mandatRoutes`, `mandatAufbewahrung`, `lastschriftAngebot`, `sepaGrundlagen`, `sepaDatei`, `sepaExport`, `ruecklastschrift`, `rechnungslauf`, `rechnungPdf`, `zahlweg*`, `feldVerschluesselung`, `rechtliches`.
 
