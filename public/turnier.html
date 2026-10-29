@@ -307,7 +307,7 @@
                             <strong id="zahlungsHinweisKopf"></strong>
                             <span id="zahlungsHinweisText"></span>
                             <div class="zahlungs-hinweis-knoepfe">
-                                <button type="button" class="btn btn-outlined" id="zahlungsDatenOeffnen" hidden>Zahlungsdaten ergänzen</button>
+                                <button type="button" class="btn btn-outlined" id="zahlungsDatenOeffnen" hidden>Vereinsdaten ergänzen</button>
                                 <span id="zahlungsDatenBitte" hidden>Bitte einen Admin Ihres Vereins, die Zahlungsdaten zu ergänzen.</span>
                             </div>
                         </div>
@@ -398,13 +398,13 @@
     </form>
 </div>
 
-<!-- Popup: Zahlungsdaten des Vereins (Seite zahlungsdaten.html eingebettet), damit das Turnierformular erhalten bleibt -->
+<!-- Popup: Zahlungsdaten des Vereins (Seite verein.html eingebettet), damit das Turnierformular erhalten bleibt -->
 <dialog id="zahlungsDatenDialog" class="zahlungs-dialog" aria-labelledby="zahlungsDatenTitel">
     <div class="zahlungs-dialog-kopf">
-        <span id="zahlungsDatenTitel">Zahlungsdaten des Vereins</span>
+        <span id="zahlungsDatenTitel">Vereinsdaten</span>
         <button type="button" class="zahlungs-dialog-zu" id="zahlungsDatenSchliessen" aria-label="Schließen"><span class="material-icons">close</span></button>
     </div>
-    <iframe id="zahlungsDatenRahmen" title="Zahlungsdaten des Vereins" src="about:blank"></iframe>
+    <iframe id="zahlungsDatenRahmen" title="Vereinsdaten" src="about:blank"></iframe>
 </dialog>
 
 <!-- Externe JavaScript-Datei für die Logik einbinden -->

@@ -5,7 +5,7 @@ import { darfVereinVerwalten } from '../services/vereinsRollen.js';
 import { fehlendeStammdaten, fehlendeLastschriftDaten } from '../shared/abrechnung.js';
 import { ladeStammdaten, speichereStammdaten, pruefeStammdatenFuerTurnier, ladeLastschriftStatus } from '../services/abrechnungStammdaten.js';
 import { ladeAbrechnung, ordneVereinZu } from '../services/abrechnung.js';
-import { ladeRechnungenDesVereins } from '../services/rechnungenUebersicht.js';
+import { ladeRechnungenDesVereins, zaehleRechnungenDesVereins } from '../services/rechnungenUebersicht.js';
 import { erfasseVorOrt } from '../services/zahlwege.js';
 import { erstelleRechnungen, sendeRechnungErneut, setzeBezahlt, ladeRechnungPdf, erfasseRuecklastschrift } from '../services/rechnungslauf.js';
 import { erzeugeSepaExport, listeSepaDateien, pruefeSepaVorab } from '../services/sepaExport.js';
@@ -231,6 +231,16 @@ export function erzeugeAbrechnungController(knex, { sende } = {}) {
             try {
                 const vereinId = await pruefeVereinsRecht(req);
                 res.json({ rechnungen: await ladeRechnungenDesVereins(knex, vereinId) });
+            } catch (err) {
+                antworteFehler(res, err);
+            }
+        },
+
+        // Nur die Anzahl (für den Menüpunkt); gleiche Rechte wie die Liste
+        async zaehleRechnungenDesVereins(req, res) {
+            try {
+                const vereinId = await pruefeVereinsRecht(req);
+                res.json({ anzahl: await zaehleRechnungenDesVereins(knex, vereinId) });
             } catch (err) {
                 antworteFehler(res, err);
             }

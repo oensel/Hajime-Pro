@@ -353,7 +353,7 @@
             if (!resp.ok) return;
             const pruefung = await resp.json();
             if (pruefung.darfPflegen && pruefung.vereinId) {
-                $('abrStammdatenLink').href = `/zahlungsdaten.html?vereinId=${encodeURIComponent(pruefung.vereinId)}`;
+                $('abrStammdatenLink').href = `/verein.html?vereinId=${encodeURIComponent(pruefung.vereinId)}`;
                 $('abrStammdatenLink').hidden = false;
             } else {
                 $('abrStammdatenBitte').hidden = false;

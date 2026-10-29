@@ -15,6 +15,7 @@ export function getAbrechnungRoutes(knex, { sende = sendeMail } = {}) {
     router.get('/stammdaten/:vereinId', c.leseStammdaten);
     router.put('/stammdaten/:vereinId', c.speichereStammdaten);
     router.get('/verein/:vereinId/rechnungen', c.listeRechnungenDesVereins);
+    router.get('/verein/:vereinId/rechnungen/anzahl', c.zaehleRechnungenDesVereins);
 
     router.get('/:turnierId', requireTurnierAdmin(knex), c.lade);
     router.post('/:turnierId/zuordnen', requireTurnierAdmin(knex), c.ordneZu);

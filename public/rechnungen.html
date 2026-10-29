@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hajime Pro - Rechnungen</title>
     <link rel="stylesheet" href="/css/common.css">
-    <link rel="stylesheet" href="/css/rechnungsAngaben.css">
     <script src="/js/menu.js"></script>
     <style>
         .rch-seite { padding: 24px 28px; max-width: 1100px; box-sizing: border-box; }
@@ -35,11 +34,6 @@
         .rch-aktionen { display: flex; flex-wrap: wrap; gap: 6px; }
         .rch-aktionen .btn { padding: 2px 12px; font-size: 12px; white-space: nowrap; height: auto; min-height: 28px; line-height: 1.3; text-decoration: none; }
         .rch-leer { font-size: 13px; color: var(--text-muted); }
-        .rch-angaben { border: 1px solid var(--border); border-radius: 4px; margin: 0 0 16px; background: var(--bg-card); }
-        .rch-angaben > summary { cursor: pointer; padding: 10px 14px; font-weight: 700; font-size: 14px; }
-        .rch-angaben form { padding: 4px 14px 14px; }
-        .rch-status { font-size: 12px; color: var(--text-muted); }
-        .rch-angaben-fuss { display: flex; justify-content: flex-end; align-items: center; gap: 12px; }
         @media (max-width: 700px) {
             .rch-seite { padding: 16px; }
             .rch-tabelle thead { display: none; }
@@ -65,25 +59,11 @@
     <p id="rchVerein" style="text-align: center; font-weight: 700; margin-top: 0;"></p>
     <div id="rchFehler" class="rch-hinweis fehler" role="alert" hidden></div>
     <div id="rchWarnung" class="rch-hinweis warnung" hidden>
-        Für Rechnungen fehlen noch: <span id="rchWarnungFehlt"></span>.
-        Rechnungen lassen sich erst mit diesen Angaben erstellen.
-        <a id="rchWarnungAngaben" href="#rchAngaben" hidden>Angaben ergänzen</a>
-        <a id="rchWarnungLink" href="/zahlungsdaten.html" hidden>Zahlungsdaten ergänzen</a>
+        Für Rechnungen fehlen noch Angaben des Vereins: <span id="rchWarnungFehlt"></span>.
+        <a id="rchWarnungLink" href="/verein.html">Auf der Seite „Verein“ ergänzen</a>
     </div>
 
     <div id="rchInhalt" hidden>
-        <details class="rch-angaben" id="rchAngaben">
-            <summary>Angaben auf den Rechnungen</summary>
-            <form id="rchAngabenForm" autocomplete="off">
-                <div id="rchAngabenFelder"></div>
-                <div id="rchAngabenFehler" class="rch-hinweis fehler" role="alert" hidden></div>
-                <div class="rch-angaben-fuss">
-                    <span id="rchAngabenStatus" class="rch-status" role="status"></span>
-                    <button type="submit" class="btn btn-raised">Speichern</button>
-                </div>
-            </form>
-        </details>
-
         <div class="rch-kennzahlen">
             <div class="rch-kachel"><div class="zahl" id="rchOffen">-</div><div class="titel">Offen</div></div>
             <div class="rch-kachel"><div class="zahl" id="rchBezahlt">-</div><div class="titel">Bezahlt</div></div>
@@ -110,7 +90,6 @@
     </div>
 </div>
 
-<script src="/js/rechnungsAngaben.js"></script>
 <script src="/js/rechnungen.js"></script>
 </body>
 </html>

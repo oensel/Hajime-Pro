@@ -380,7 +380,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (kasten.hidden) return;
         const kopf = document.getElementById('zahlungsHinweisKopf');
         const text = document.getElementById('zahlungsHinweisText');
-        kopf.textContent = 'Zahlungsdaten unvollständig.';
+        kopf.textContent = 'Vereinsdaten unvollständig.';
         if (unbekannt) {
             text.textContent = 'Der Stand der Zahlungsdaten des Vereins konnte nicht geprüft werden. Lastschriften sind erst möglich, wenn der Verein seine Zahlungsdaten vollständig hinterlegt hat.';
         } else {
@@ -436,7 +436,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const zahlungsDialog = document.getElementById('zahlungsDatenDialog');
     function oeffneZahlungsDaten() {
         if (!zahlungsStand.vereinId) return;
-        document.getElementById('zahlungsDatenRahmen').src = `/zahlungsdaten.html?vereinId=${encodeURIComponent(zahlungsStand.vereinId)}&eingebettet=1`;
+        document.getElementById('zahlungsDatenRahmen').src = `/verein.html?vereinId=${encodeURIComponent(zahlungsStand.vereinId)}&eingebettet=1`;
         zahlungsDialog.showModal();
     }
     function schliesseZahlungsDaten() {
@@ -451,7 +451,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (ereignis.data.typ === 'zahlungsdaten-gespeichert') {
             schliesseZahlungsDaten();
             await ladeZahlungsStand();
-            if (window.zeigeNotification) window.zeigeNotification('Zahlungsdaten gespeichert.', 'success');
+            if (window.zeigeNotification) window.zeigeNotification('Vereinsdaten gespeichert.', 'success');
         }
     });
 
