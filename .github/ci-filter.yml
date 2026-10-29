@@ -48,6 +48,7 @@ plattform:
   - '.github/workflows/ci.yml'
 shell:
   - 'deploy/linux/**'
+  - 'deploy/cloud/**'
   - 'scripts/*.sh'
 android:
   - 'mobil/**'
