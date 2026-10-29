@@ -19,6 +19,9 @@ const zurueckBtn = document.getElementById('assistentZurueck');
 const weiterBtn = document.getElementById('assistentWeiter');
 const hinweisEl = document.getElementById('assistentHinweis');
 const speichernBtn = document.getElementById('submitBtn');
+const veroeffentlichenBtn = document.getElementById('assistentVeroeffentlichen');
+// Kopfleisten-Knopf, den turnier.js nur beim Anlegen in der Cloud einblendet (erst nach /api/config)
+const veroeffentlichenKopfBtn = document.getElementById('speichernVeroeffentlichenBtn');
 
 let aktuelleSeite = 1;
 let antworten = {};
@@ -58,7 +61,8 @@ function zeigeSeite(nummer) {
     const letzte = aktuelleSeite === anzahlSeiten;
     const entwurf = /entwurf/i.test(speichernBtn ? speichernBtn.textContent : '');
     weiterBtn.textContent = letzte ? (bearbeiten ? 'Speichern' : (entwurf ? 'Als Entwurf speichern' : 'Turnier anlegen')) : 'Weiter';
-    hinweisEl.textContent = letzte ? (bearbeiten ? 'Unbeantwortete Fragen ändern nichts.' : 'Unbeantwortete Fragen gelten als Nein.') : '';
+    hinweisEl.textContent = letzte && bearbeiten ? 'Unbeantwortete Fragen ändern nichts.' : '';
+    veroeffentlichenBtn.hidden = !(letzte && veroeffentlichenKopfBtn && veroeffentlichenKopfBtn.style.display !== 'none');
 }
 
 function geheZu(nummer) {
@@ -73,6 +77,13 @@ weiterBtn.addEventListener('click', () => {
     if (aktuelleSeite < anzahlSeiten) { geheZu(aktuelleSeite + 1); return; }
     speichernBtn.click();
 });
+
+veroeffentlichenBtn.addEventListener('click', () => veroeffentlichenKopfBtn.click());
+if (veroeffentlichenKopfBtn) {
+    // Der Knopf in der Kopfleiste (und der Text von submitBtn "Als Entwurf speichern") erscheint erst nach dem Laden der Konfiguration
+    new MutationObserver(() => zeigeSeite(aktuelleSeite)).observe(veroeffentlichenKopfBtn, { attributes: true, attributeFilter: ['style'] });
+    if (speichernBtn) new MutationObserver(() => zeigeSeite(aktuelleSeite)).observe(speichernBtn, { childList: true, subtree: true, characterData: true });
+}
 
 // Pflichtfelder liegen auf Seite 1, andere Felder können auf einer ausgeblendeten Seite ungültig sein: statt der
 // Browser-Prüfung (die dort nicht fokussieren kann) springt der Assistent selbst zum ersten fehlerhaften Feld.
