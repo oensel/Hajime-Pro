@@ -312,6 +312,10 @@
 @media (max-width: 560px) {
     .assistent-titel { display: none; }
     .assistent-schritt.aktiv .assistent-titel { display: inline; }
+    /* Schrittanzeige schrumpft, statt über den Rand zu ragen; die Knöpfe bleiben gut treffbar (44 px hoch) */
+    .assistent-schritte { gap: 2px; }
+    .assistent-schritt { min-height: 44px; padding: 4px; gap: 6px; min-width: 0; }
+    .assistent-linie { min-width: 4px; }
 }
 
 /* --- AUSSTATTUNG: Fragen mit Ja/Nein, Fortschritt --- */
@@ -366,3 +370,9 @@
 .schalter input:disabled + .schalter-regler { opacity: 0.4; }
 .schalter input:focus-visible + .schalter-regler { outline: 2px solid var(--primary); outline-offset: 2px; }
 .turnier-section-card[hidden] { display: none; }
+
+/* Matten / Waagen / Kämpfer 2 nebeneinander, am Handy zwei Spalten */
+.grid-drei { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+@media (max-width: 560px) {
+    .grid-drei { grid-template-columns: 1fr 1fr; }
+}
