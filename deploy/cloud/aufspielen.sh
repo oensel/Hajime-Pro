@@ -19,8 +19,9 @@ BEHALTE_SICHERUNGEN=10
 APP=hajime-pro-app-1
 DB=hajime-pro-db-1
 IMAGE=hajime-pro-app
-# Nur auf dem Server vorhandene Dateien (nicht im Repository): sie bleiben beim Austausch erhalten.
-SERVER_DATEIEN=(.env.cloud .env.db docker-compose.prod.yml Caddyfile .commit)
+# Nur auf dem Server vorhandene Dateien und Ordner (nicht im Repository): sie bleiben beim Austausch erhalten. sicherungen und
+# releases sind Bind-Mounts der App (automatische Sicherung, gespiegelte Releases): ohne Mitnehmen blieben sie im alten Stand zurück.
+SERVER_DATEIEN=(.env.cloud .env.db docker-compose.prod.yml Caddyfile .commit sicherungen releases)
 COMPOSE=(docker compose -f docker-compose.prod.yml)
 
 exec 9>/var/lock/hajime-deploy.lock
@@ -53,7 +54,7 @@ pruefe_antwort() {
 schritt "Vorprüfung"
 for datei in "${SERVER_DATEIEN[@]}"; do
     # .commit entsteht erst nach dem ersten erfolgreichen Ausrollen
-    if [ "$datei" != ".commit" ] && [ ! -f "$ZIEL/$datei" ]; then
+    if [ "$datei" != ".commit" ] && [ ! -e "$ZIEL/$datei" ]; then
         echo "Auf dem Server fehlt $ZIEL/$datei"
         exit 1
     fi
