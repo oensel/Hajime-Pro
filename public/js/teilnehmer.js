@@ -494,8 +494,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (karte) window.oeffneWaageModal(Number(karte.dataset.id));
     });
 
+    // Handy im Browser (bis 600 px, siehe css/teilnehmer.css): ebenfalls Karten statt Tabelle; bei Drehen oder Größenänderung neu zeichnen.
+    const handyBreite = window.matchMedia('(max-width: 600px)');
+    let letzteAthleten = [];
+    handyBreite.addEventListener('change', () => renderTabelle(letzteAthleten));
+
     function renderTabelle(athleten) {
-        if (document.documentElement.classList.contains('modus-app')) renderHandyKarten(athleten);
+        letzteAthleten = athleten;
+        if (document.documentElement.classList.contains('modus-app') || handyBreite.matches) renderHandyKarten(athleten);
         if (athleten.length === 0) {
             tableBody.innerHTML = `<tr><td colspan="12" class="no-data">Noch keine Kämpfer für dieses Turnier eingewogen.</td></tr>`;
             updateBulkActionsBar();
