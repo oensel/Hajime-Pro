@@ -24,13 +24,17 @@ import { ordneEinzelRangfolge } from './jgjRangfolge.js';
  * Berechnet die Rangliste einer Vorrunden-Gruppe aus deren beendeten Kämpfen: meiste Siege, dann höhere
  * Unterbewertung, dann der direkte Vergleich der Punktgleichen (jgjRangfolge.js, sinngemäß DJB-WO 4.1.7.2).
  * Bleibt auch danach ein Gleichstand (z. B. Dreierkreis), ist `gleichstand` gesetzt und die Reihenfolge
- * die der Kampfanlage; ein Stichkampf ist in der Vorrunde nicht vorgesehen.
+ * die der Kampfnummern (V_A_1, V_A_2, …), unabhängig von der Reihenfolge des übergebenen Arrays (die DB
+ * liefert sie ohne ORDER BY in beliebiger Reihenfolge, Server und Offline-Matte müssen gleich entscheiden);
+ * ein Stichkampf ist in der Vorrunde nicht vorgesehen.
  * @param {Array<Object>} kaempfe - alle Kämpfe des Pools
  * @param {string} praefix - 'V_A_' oder 'V_B_'
  * @returns {Array<{id: number, siege: number, unterbewertung: number, gleichstand: boolean}>} absteigend sortiert
  */
 export function berechneGruppenRangliste(kaempfe, praefix) {
-    const gruppenKaempfe = kaempfe.filter(k => k.status === 'beendet' && k.reihenfolge_nummer?.startsWith(praefix));
+    const gruppenKaempfe = kaempfe
+        .filter(k => k.status === 'beendet' && k.reihenfolge_nummer?.startsWith(praefix))
+        .sort((a, b) => String(a.reihenfolge_nummer).localeCompare(String(b.reihenfolge_nummer), 'de', { numeric: true }));
 
     const teilnehmerIds = new Set();
     gruppenKaempfe.forEach(k => {
