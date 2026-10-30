@@ -226,29 +226,44 @@
             background: rgba(46, 125, 50, 0.05);
             box-shadow: 0 4px 18px rgba(46, 125, 50, 0.25);
         }
-        .tournament-card.heute .btn-aktivieren {
-            flex: 2 1 220px;
-            font-size: 15px;
-            height: auto;
-            min-height: 48px;
-            padding-top: 0;
-            padding-bottom: 0;
-            animation: aktivieren-puls 2s ease-out infinite;
-        }
         .heute-banner {
             display: flex;
-            align-items: flex-start;
-            gap: 12px;
-            margin-top: 12px;
-            padding: 12px 14px;
+            align-items: center;
+            gap: 14px;
+            width: 100%;
+            margin-top: 14px;
+            padding: 14px 16px;
+            border: 1px solid #1b5e20;
             border-radius: 6px;
-            background: rgba(46, 125, 50, 0.12);
-            color: #1b5e20;
+            background: #2e7d32;
+            color: #fff;
+            font: inherit;
             font-size: 14px;
             line-height: 1.4;
+            text-align: left;
+            cursor: pointer;
+            animation: aktivieren-puls 2s ease-out infinite;
         }
-        .heute-banner .material-icons { font-size: 28px; color: #2e7d32; }
-        .heute-banner strong { display: block; font-size: 15px; margin-bottom: 2px; }
+        .heute-banner:hover { background: #276b2b; }
+        .heute-banner:focus-visible { outline: 3px solid #1b5e20; outline-offset: 2px; }
+        .heute-banner:disabled { opacity: 0.7; cursor: progress; animation: none; }
+        .heute-banner .material-icons { font-size: 30px; }
+        .heute-banner-text { flex: 1; }
+        .heute-banner strong { display: block; font-size: 16px; margin-bottom: 2px; }
+        .heute-banner-los {
+            display: inline-flex;
+            align-items: center;
+            padding: 8px 8px 8px 16px;
+            border-radius: 4px;
+            background: #fff;
+            color: #1b5e20;
+            font-weight: 700;
+            font-size: 15px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            white-space: nowrap;
+        }
+        .heute-banner-los .material-icons { font-size: 22px; }
         .status-badge.status-heute { background: #2e7d32; color: #fff; border: 1px solid #1b5e20; }
         @keyframes aktivieren-puls {
             0% { box-shadow: 0 0 0 0 rgba(46, 125, 50, 0.55); }
@@ -256,7 +271,7 @@
             100% { box-shadow: 0 0 0 0 rgba(46, 125, 50, 0); }
         }
         @media (prefers-reduced-motion: reduce) {
-            .tournament-card.heute .btn-aktivieren { animation: none; }
+            .heute-banner { animation: none; }
         }
         .abgeschlossen-liste { display: flex; flex-direction: column; gap: 5px; margin-top: 12px; }
         .abgeschlossen-zeile {
@@ -857,8 +872,8 @@
                 return `<button type="button" class="btn btn-outlined rueckspiel-knopf" style="display:none;" data-aktion="zurueckspielen" data-id="${escHtml(t.id)}" aria-label="In die Cloud zurückspielen" data-tooltip="Ergebnisse, Teilnehmer und Barzahlungen in die Cloud zurückspielen"><span class="material-icons" style="font-size:18px; vertical-align:middle;">cloud_upload</span> In die Cloud zurückspielen</button>`;
             }
 
-            function hallenAktionen(t) {
-                const aktivieren = t.aktivierbar
+            function hallenAktionen(t, { ohneAktivieren = false } = {}) {
+                const aktivieren = t.aktivierbar && !ohneAktivieren
                     ? `<button type="button" class="btn btn-aktivieren" data-aktion="aktivieren" data-id="${t.id}">Aktivieren</button>` : '';
                 const duplizieren = `<button type="button" class="btn btn-outlined btn-icon-aktion" data-aktion="duplizieren" data-id="${t.id}" aria-label="Duplizieren" data-tooltip="Duplizieren"><span class="material-icons">content_copy</span></button>`;
                 return aktivierHinweis(t) + aktivieren + rueckspielKnopf(t) + duplizieren;
@@ -1032,10 +1047,10 @@
                             ${chipZeilen(chipGruppen)}
                             ${planungsFortschritt(t).map(e => fortschrittHtml(e, true)).join('')}
                         </div>
-                        ${t.aktivierbar ? `<div class="heute-banner"><span class="material-icons">play_circle</span><div><strong>Heute ist Wettkampftag: Turnier jetzt aktivieren</strong>Erst nach dem Aktivieren können Matten, Waage, Anzeigetafel und Android-Geräte dieses Turnier nutzen.</div></div>` : ''}
+                        ${t.aktivierbar ? `<button type="button" class="heute-banner" data-aktion="aktivieren" data-id="${t.id}"><span class="material-icons">play_circle</span><span class="heute-banner-text"><strong>Heute ist Wettkampftag: Turnier jetzt aktivieren</strong>Erst nach dem Aktivieren können Matten, Waage, Anzeigetafel und Android-Geräte dieses Turnier nutzen.</span><span class="heute-banner-los">Aktivieren<span class="material-icons">chevron_right</span></span></button>` : ''}
                         <div class="card-actions">
                             ${waehlen}
-                            ${hallenAktionen(t)}
+                            ${hallenAktionen(t, { ohneAktivieren: true })}
                         </div>
                     </div>
                 `;

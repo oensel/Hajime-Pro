@@ -134,12 +134,12 @@ test('turniere.html: Aktivieren und Duplizieren erscheinen, abgeschlossene Turni
     await expect(dupKnopf).toHaveAttribute('data-tooltip', 'Duplizieren');
     await expect(dupKnopf.locator('.material-icons')).toHaveText('content_copy');
     await expect(dupKnopf).toHaveText('content_copy');
-    // Wettkampftag heute: Karte hervorgehoben, Hinweis zum Aktivieren, der Aktivieren-Knopf ist der größte der Karte
+    // Wettkampftag heute: Karte hervorgehoben, der Hinweis ist selbst der (pulsierende) Aktivieren-Knopf
     await expect(karte).toHaveClass(/heute/);
-    await expect(karte.locator('.heute-banner')).toContainText('Android');
-    const hoehen = await karte.locator('.card-actions .btn').evaluateAll(els => els.map(e => ({ name: e.textContent.trim(), h: Math.round(e.getBoundingClientRect().height) })));
-    const aktivierenH = hoehen.find(x => /Aktivieren/i.test(x.name)).h;
-    expect(aktivierenH).toBeGreaterThanOrEqual(Math.max(...hoehen.map(x => x.h)));
+    const hinweis = karte.locator('button.heute-banner[data-aktion="aktivieren"]');
+    await expect(hinweis).toContainText('Android');
+    await expect(karte.locator('.btn-aktivieren')).toHaveCount(0);
+    expect(await hinweis.evaluate(e => getComputedStyle(e).animationName)).toBe('aktivieren-puls');
     await expect(karte.locator('.status-badge:not(.status-heute)')).toHaveText('Entwurf');
 
     const zeile = page.locator('.abgeschlossen-zeile').filter({ hasText: fertigName });
