@@ -372,7 +372,9 @@ if (syncKonfig.istClient) {
             version: serverVersion,
             kopplung,
             vip: clusterKonfig.vip,
-            clientDateienStatus: () => clientDateien.status()
+            clientDateienStatus: () => clientDateien.status(),
+            // diese Route liegt vor dem Abgleich-Hook unten: der Passwort-Hash für die Client-Geräte (konfig:steuerung) muss selbst angestoßen werden
+            nachPasswortAenderung: () => sync.planeAbgleich()
         }));
     }
 

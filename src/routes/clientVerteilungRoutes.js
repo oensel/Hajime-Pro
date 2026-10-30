@@ -10,7 +10,7 @@ import * as steuerungPasswort from '../utils/steuerungPasswort.js';
 import { erneuereCode, erzeugeSperre, normalisiereCode } from '../sync/kopplung.js';
 import { lokaleIpv4Adressen, ordneServerAdressen } from '../sync/ankuendigung.js';
 
-export function getClientVerteilungRoutes({ datenverzeichnis, downloadsVerzeichnis, version, kopplung, vip = '', clientDateienStatus = () => null }) {
+export function getClientVerteilungRoutes({ datenverzeichnis, downloadsVerzeichnis, version, kopplung, vip = '', clientDateienStatus = () => null, nachPasswortAenderung = () => {} }) {
     const router = express.Router();
     const sperre = erzeugeSperre();
 
@@ -62,6 +62,7 @@ export function getClientVerteilungRoutes({ datenverzeichnis, downloadsVerzeichn
     router.post('/steuerung-passwort', erzeugeApiRatenbegrenzung(), async (req, res) => {
         try {
             await steuerungPasswort.aendere(req.body && req.body.neuesPasswort, { gleichErlaubt: true });
+            nachPasswortAenderung();
             console.log(`[Steuerungs-Passwort] Neu gesetzt von ${req.socket.remoteAddress || '?'} (Client-Konfig).`);
             res.json({ success: true });
         } catch (error) {

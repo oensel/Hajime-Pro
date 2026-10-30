@@ -19,7 +19,7 @@ export const SYNC_SHARDS = [
     },
     {
         name: 'verbindung',
-        specs: ['client-verteilung', 'verbindung-wechseln']
+        specs: ['client-verteilung', 'verbindung-wechseln', 'schreibpasswort-setzen']
     }
 ];
 
