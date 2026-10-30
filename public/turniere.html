@@ -822,6 +822,12 @@
                 return aktivieren + rueckspielKnopf(t) + duplizieren;
             }
 
+            // „Auswählen“: das aktive Turnier (Hallen-Server) führt in den Live-Betrieb an den Matten, alle anderen in die Vorbereitung (Teilnehmerliste)
+            function auswaehlenZiel(t) {
+                const seite = t.aktiv ? 'matten.html' : 'teilnehmer.html';
+                return `/${seite}?turnierId=${encodeURIComponent(t.id)}`;
+            }
+
             function renderCard(t, isEditable) {
                 let deadlineExpired = false;
                 let deadlineStr = 'Keine Frist';
@@ -940,7 +946,7 @@
                                  (Gastverein meldet nur eigene Athlet:innen an, serverseitig ohnehin auf den
                                  eigenen Verein beschränkt, siehe teilnehmerController.js) — nur das Verwalten
                                  des EIGENEN Turniers braucht die Freigabe. -->
-                            ${(istFreigegeben || !isEditable) ? `<button type="button" class="btn btn-raised" onclick="window.location.href='/teilnehmer.html?turnierId=${encodeURIComponent(t.id)}'">Auswählen</button>` : ''}
+                            ${(istFreigegeben || !isEditable) ? `<button type="button" class="btn btn-raised" onclick="window.location.href='${auswaehlenZiel(t)}'">Auswählen</button>` : ''}
                             ${isEditable && istFreigegeben ? `<button type="button" class="btn btn-outlined" onclick="window.location.href='/turnier.html?id=${t.id}'">Bearbeiten</button>` : ''}
                             ${(!istOffline && isEditable && istFreigegeben && ['veroeffentlicht', 'anmeldung_geschlossen', 'in_durchfuehrung', 'abgeschlossen'].includes(t.status_effektiv))
                                 ? `<button type="button" class="btn btn-outlined" data-aktion="teilen" data-id="${t.id}" aria-label="Vereine einladen" data-tooltip="Vereine zum Turnier einladen"><span class="material-icons" style="font-size:18px; vertical-align:middle;">group_add</span> Einladen</button>` : ''}
@@ -961,7 +967,7 @@
                 const einzelG = getAltersklassenGruppen(t.altersklassen), teamG = getAltersklassenGruppen(t.mannschafts_altersklassen);
                 const chipGruppen = einzelG.map((g, i) => [...g, ...teamG[i]]);
                 const waehlen = istFreigegeben
-                    ? `<button type="button" class="btn btn-raised" onclick="window.location.href='/teilnehmer.html?turnierId=${encodeURIComponent(t.id)}'">Auswählen</button>` : '';
+                    ? `<button type="button" class="btn btn-raised" onclick="window.location.href='${auswaehlenZiel(t)}'">Auswählen</button>` : '';
                 return `
                     <div class="tournament-card kompakt ${t.aktiv ? 'aktiv' : ''}">
                         <div>
