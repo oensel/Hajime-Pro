@@ -43,18 +43,34 @@ function direkterVergleich(ids, kaempfe) {
 /**
  * @param {Array<number>} ids - die Kämpfer, in der Reihenfolge, die bei verbleibendem Gleichstand gilt
  * @param {Array<Object>} kaempfe - kaempfer1_id/2_id, sieger_id, status, unterbewertung_kaempfer1/2
- * @returns {{ reihenfolge: Array<number>, gleichstand: Set<number>, wertung: Map<number, {siege: number, punkte: number}> }}
+ * @param {{ entscheidung?: Array<Array<number>> }} [optionen] - entscheidung: von der Turnierleitung entschiedene
+ *   Gleichstände, je Eintrag die Kämpfer eines Blocks in der entschiedenen Reihenfolge (siehe gleichstand.js);
+ *   sie gilt nur für einen Block, der genau diese Kämpfer umfasst und sonst unentschieden bliebe
+ * @returns {{ reihenfolge: Array<number>, gleichstand: Set<number>, offeneBloecke: Array<{ ids: Array<number>, start: number }>,
+ *   wertung: Map<number, {siege: number, punkte: number}> }} offeneBloecke: unentschiedene Blöcke mit ihrer 0-basierten Startposition
  */
-export function ordneEinzelRangfolge(ids, kaempfe) {
+export function ordneEinzelRangfolge(ids, kaempfe, optionen = {}) {
+    const entscheidungen = (optionen.entscheidung || []).filter(e => Array.isArray(e) && e.length > 1);
     const w = wertungDerKaempfe(kaempfe, ids);
     const vorsortiert = [...ids].sort((x, y) => (w.get(y).siege - w.get(x).siege) || (w.get(y).punkte - w.get(x).punkte));
     const reihenfolge = [];
     const gleichstand = new Set();
+    const offeneBloecke = [];
     blockeGleicherWertung(vorsortiert, w).forEach(block => {
         direkterVergleich(block, kaempfe).forEach(rest => {
+            const start = reihenfolge.length;
+            const entschieden = rest.length > 1
+                && entscheidungen.find(e => e.length === rest.length && rest.every(id => e.includes(id)));
+            if (entschieden) {
+                entschieden.forEach(id => reihenfolge.push(id));
+                return;
+            }
             rest.forEach(id => reihenfolge.push(id));
-            if (rest.length > 1) rest.forEach(id => gleichstand.add(id));
+            if (rest.length > 1) {
+                rest.forEach(id => gleichstand.add(id));
+                offeneBloecke.push({ ids: [...rest], start });
+            }
         });
     });
-    return { reihenfolge, gleichstand, wertung: w };
+    return { reihenfolge, gleichstand, offeneBloecke, wertung: w };
 }

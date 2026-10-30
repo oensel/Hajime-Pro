@@ -3,6 +3,7 @@
 // Ein Platz wird gesetzt, sobald der entscheidende Kampf fertig ist; offene Plätze bleiben null.
 import { berechneGruppenRangliste } from './gruppenUeberkreuzProgression.js';
 import { ordneEinzelRangfolge } from './jgjRangfolge.js';
+import { leseEntscheidung } from './gleichstand.js';
 
 const DK_SCHLUESSEL = {
     'Doppel-KO-8': { final: 'F', bronze: ['T3', 'T4'], trost: ['T1', 'T2'] },
@@ -70,10 +71,10 @@ function berechneJgj(objekte, kaempfe, sortiere) {
     return { plaetze, abgeschlossen, gleichstand };
 }
 
-function jgjEinzelSortierung(kaempfe) {
+function jgjEinzelSortierung(kaempfe, entscheidung) {
     return objekte => {
         const nachId = new Map(objekte.map(o => [o.id, o]));
-        const r = ordneEinzelRangfolge(objekte.map(o => o.id), kaempfe);
+        const r = ordneEinzelRangfolge(objekte.map(o => o.id), kaempfe, { entscheidung });
         return { reihenfolge: r.reihenfolge.map(id => nachId.get(id)), gleichstand: r.gleichstand };
     };
 }
@@ -107,7 +108,7 @@ function jgjMannschaftVergleich(begegnungen) {
 
 // F1 → 1/2, beide Halbfinal-Verlierer → 3, Gruppenplatz 3 → 5, Gruppenplatz 4 → 7 (sobald die
 // Gruppe fertig ist). Ältere Pools haben noch ein kleines Finale F2; dort gilt weiter F2 → 3/4.
-function berechneUeberkreuz(kaempfe) {
+function berechneUeberkreuz(kaempfe, entscheidung = {}) {
     const nachNr = new Map(kaempfe.map(k => [k.reihenfolge_nummer, k]));
     const plaetze = new Map();
     const f1 = nachNr.get('F1');
@@ -125,7 +126,7 @@ function berechneUeberkreuz(kaempfe) {
     for (const praefix of ['V_A_', 'V_B_']) {
         const gruppe = kaempfe.filter(k => k.reihenfolge_nummer?.startsWith(praefix));
         if (gruppe.length === 0 || !gruppe.every(fertig)) continue;
-        const rangliste = berechneGruppenRangliste(kaempfe, praefix);
+        const rangliste = berechneGruppenRangliste(kaempfe, praefix, { entscheidung: entscheidung[praefix === 'V_A_' ? 'A' : 'B'] });
         setze(plaetze, rangliste[2]?.id, 5);
         setze(plaetze, rangliste[3]?.id, 7);
     }
@@ -137,9 +138,9 @@ export function berechnePlatzierungen(pool, kaempfe, teilnehmer) {
     if (objekte.length === 1) return baueErgebnis(objekte, new Map([[objekte[0].id, 1]]), true, 'teilnehmer');
 
     let r = { plaetze: new Map(), abgeschlossen: false };
-    if (istJgj(pool.modus)) r = berechneJgj(objekte, kaempfe, jgjEinzelSortierung(kaempfe));
+    if (istJgj(pool.modus)) r = berechneJgj(objekte, kaempfe, jgjEinzelSortierung(kaempfe, leseEntscheidung(pool.gleichstand_entscheidung).pool));
     else if (DK_SCHLUESSEL[pool.modus]) r = berechneKo(kaempfe, DK_SCHLUESSEL[pool.modus], EINZEL);
-    else if (istUeberkreuz(pool.modus)) r = berechneUeberkreuz(kaempfe);
+    else if (istUeberkreuz(pool.modus)) r = berechneUeberkreuz(kaempfe, leseEntscheidung(pool.gleichstand_entscheidung));
     return baueErgebnis(objekte, r.plaetze, r.abgeschlossen, 'teilnehmer', r.gleichstand);
 }
 
