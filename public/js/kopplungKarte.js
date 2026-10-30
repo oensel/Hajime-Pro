@@ -15,6 +15,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Der Server liefert die Adressen nach Eignung sortiert (VIP, dann die Adresse dieser Seite, dann
         // der Rest), und zwar bei jedem Aufruf frisch — die erste gilt.
         const adresse = urls[0];
+        const ipLink = document.getElementById('kopplungDownloadIpLink');
+        if (ipLink) { // Rückfall, wenn turnier.local im Netz nicht aufgelöst wird
+            ipLink.href = `${adresse}/download`;
+            ipLink.firstChild.textContent = `${adresse.replace(/^https?:\/\//, '')}/download`;
+            document.getElementById('kopplungDownloadIp').style.display = '';
+        }
         const qr = window.qrcode(0, 'M');
         qr.addData(baueKopplungsUrl(adresse, code));
         qr.make();
