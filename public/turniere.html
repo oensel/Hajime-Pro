@@ -836,7 +836,7 @@
                     const heute = new Date(); const heuteIso = `${heute.getFullYear()}-${String(heute.getMonth() + 1).padStart(2, '0')}-${String(heute.getDate()).padStart(2, '0')}`;
                     if (tag > heuteIso) text = `Aktivierbar am ${tag.split('-').reverse().join('.')}`;
                 }
-                return text ? `<span class="aktivier-hinweis"><span class="material-icons">lock_clock</span>${escHtml(text)}</span>` : '';
+                return text ? `<span class="aktivier-hinweis"><span class="material-icons">schedule</span>${escHtml(text)}</span>` : '';
             }
 
             function renderCard(t, isEditable) {
