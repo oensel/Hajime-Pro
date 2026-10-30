@@ -397,7 +397,9 @@
             .abgeschlossen-zeile { flex-wrap: wrap; gap: 8px 10px; }
             .abgeschlossen-zeile .az-name { flex-basis: 100%; min-width: 0; overflow-wrap: anywhere; }
         }
-    </style>
+        .aktivier-hinweis { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--md-sys-color-on-surface-variant, #666); margin-right: 8px; }
+    .aktivier-hinweis .material-icons { font-size: 16px; }
+</style>
     <script src="/js/menu.js"></script>
 </head>
 <body>
@@ -819,7 +821,22 @@
                 const aktivieren = t.aktivierbar
                     ? `<button type="button" class="btn btn-aktivieren" data-aktion="aktivieren" data-id="${t.id}">Aktivieren</button>` : '';
                 const duplizieren = `<button type="button" class="btn btn-outlined btn-icon-aktion" data-aktion="duplizieren" data-id="${t.id}" aria-label="Duplizieren" data-tooltip="Duplizieren"><span class="material-icons">content_copy</span></button>`;
-                return aktivieren + rueckspielKnopf(t) + duplizieren;
+                return aktivierHinweis(t) + aktivieren + rueckspielKnopf(t) + duplizieren;
+            }
+
+            // Statt eines fehlenden Knopfs sagt die Karte, warum (noch) nicht aktiviert werden kann.
+            function aktivierHinweis(t) {
+                if (t.aktivierbar || t.aktiv || t.status === 'abgeschlossen' || t.status === 'abgesagt') return '';
+                const grund = String(t.aktivierbar_grund || '');
+                let text = '';
+                if (/noch aktiv/.test(grund)) {
+                    text = 'Erst nach Ende des aktiven Turniers';
+                } else if (/Wettkampftag/.test(grund)) {
+                    const tag = String(t.datum || '').slice(0, 10);
+                    const heute = new Date(); const heuteIso = `${heute.getFullYear()}-${String(heute.getMonth() + 1).padStart(2, '0')}-${String(heute.getDate()).padStart(2, '0')}`;
+                    if (tag > heuteIso) text = `Aktivierbar am ${tag.split('-').reverse().join('.')}`;
+                }
+                return text ? `<span class="aktivier-hinweis"><span class="material-icons">lock_clock</span>${escHtml(text)}</span>` : '';
             }
 
             function renderCard(t, isEditable) {
