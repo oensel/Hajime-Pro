@@ -31,6 +31,22 @@
     </div>
 </div>
 
+<!-- Schreibpasswort neu vergeben, ohne das bisherige zu kennen (nur Hallen-Server, siehe public/js/kopplungKarte.js) -->
+<div class="mdc-card" id="passwortKarte" style="display: none; padding: 20px 24px; margin-top: 16px;">
+    <div class="form-title-area">
+        <span class="material-icons">key</span>
+        <h1>Schreibpasswort setzen</h1>
+        <span class="material-icons">key</span>
+    </div>
+    <p style="color: var(--text-muted); font-size: 13px; margin-top: 0;">Vergibt das Passwort für den Schreibzugriff neu. Das bisherige Passwort wird dafür nicht gebraucht und ist danach ungültig. Alle Geräte, die Schreibzugriff brauchen, fragen beim nächsten Mal nach dem neuen.</p>
+    <form id="passwortForm" style="display: flex; flex-direction: column; gap: 12px; max-width: 360px;">
+        <input type="password" id="passwortNeu" placeholder="Neues Passwort (mindestens 8 Zeichen)" autocomplete="new-password" required minlength="8">
+        <input type="password" id="passwortWiederholung" placeholder="Neues Passwort wiederholen" autocomplete="new-password" required minlength="8">
+        <div><button type="submit" class="btn btn-raised">Passwort speichern</button></div>
+    </form>
+    <div id="passwortMeldung" style="margin-top: 8px; font-size: 13px; font-weight: 700; display: none;"></div>
+</div>
+
 <script src="/js/qrgen/qrcode.js"></script>
 <script src="/js/kopplungKarte.js"></script>
 </body>

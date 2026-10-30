@@ -5,6 +5,8 @@ import express from 'express';
 import { existsSync, readFileSync } from 'fs';
 import path from 'path';
 import { requireSteuerungPasswort } from '../middleware/auth.js';
+import { erzeugeApiRatenbegrenzung } from '../middleware/apiRatenbegrenzung.js';
+import * as steuerungPasswort from '../utils/steuerungPasswort.js';
 import { erneuereCode, erzeugeSperre, normalisiereCode } from '../sync/kopplung.js';
 import { lokaleIpv4Adressen, ordneServerAdressen } from '../sync/ankuendigung.js';
 
@@ -52,6 +54,21 @@ export function getClientVerteilungRoutes({ datenverzeichnis, downloadsVerzeichn
     router.post('/kopplungscode/erneuern', requireSteuerungPasswort, (req, res) => {
         kopplung.code = erneuereCode({ datenverzeichnis });
         res.json({ code: kopplung.code, urls: serverUrls(req) });
+    });
+
+    // Schreibpasswort jederzeit neu vergeben, ohne das bisherige zu kennen (Client-Konfig, nur Hallen-Server).
+    // Bewusst ohne Passwortprüfung: wer den Hallen-Server im Netz erreicht, darf es setzen (Zugriffsschutz = das WLAN der Halle).
+    // Der Cluster-Standby leitet an den Master weiter (nurMaster), die Änderung wird über die Tabelle repliziert.
+    router.post('/steuerung-passwort', erzeugeApiRatenbegrenzung(), async (req, res) => {
+        try {
+            await steuerungPasswort.aendere(req.body && req.body.neuesPasswort, { gleichErlaubt: true });
+            console.log(`[Steuerungs-Passwort] Neu gesetzt von ${req.socket.remoteAddress || '?'} (Client-Konfig).`);
+            res.json({ success: true });
+        } catch (error) {
+            if (error.status === 400) return res.status(400).json({ success: false, error: error.message });
+            console.error('[Steuerungs-Passwort-Fehler]:', error);
+            res.status(500).json({ success: false, error: 'Das Passwort konnte nicht gespeichert werden.' });
+        }
     });
 
     return router;

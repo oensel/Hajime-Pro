@@ -144,4 +144,29 @@ test.describe.serial('Client-Verteilung', () => {
         expect(neu).not.toBe(vorher);
         expect((await (await request.get('/api/client/kopplungscode')).json()).code).toBe(neu);
     });
+
+    test('Schreibpasswort lässt sich in der Client-Konfig ohne das bisherige setzen', async ({ page, request }) => {
+        await page.goto('/client-konfig.html');
+        await expect(page.locator('#passwortKarte')).toBeVisible();
+
+        const zuKurz = await request.post('/api/client/steuerung-passwort', { data: { neuesPasswort: 'kurz' } });
+        expect(zuKurz.status()).toBe(400);
+
+        await page.fill('#passwortNeu', 'neuesPasswort-1');
+        await page.fill('#passwortWiederholung', 'neuesPasswort-2');
+        await page.click('#passwortForm button[type=submit]');
+        await expect(page.locator('#passwortMeldung')).toContainText('nicht gleich');
+
+        await page.fill('#passwortWiederholung', 'neuesPasswort-1');
+        await page.click('#passwortForm button[type=submit]');
+        await expect(page.locator('#passwortMeldung')).toContainText('gilt jetzt');
+
+        const verify = (passwort) => request.post('/api/auth/verify', { data: { password: passwort } });
+        expect((await verify('neuesPasswort-1')).ok()).toBeTruthy();
+        // und noch einmal ohne das jetzt gültige Passwort überschreiben
+        const ueberschrieben = await request.post('/api/client/steuerung-passwort', { data: { neuesPasswort: 'nochmalAnders-3' } });
+        expect(ueberschrieben.ok()).toBeTruthy();
+        expect((await verify('neuesPasswort-1')).status()).toBe(401);
+        expect((await verify('nochmalAnders-3')).ok()).toBeTruthy();
+    });
 });
