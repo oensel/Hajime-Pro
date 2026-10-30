@@ -51,6 +51,9 @@ test('Aktivieren geht nur am Wettkampftag und nur für ein Turnier gleichzeitig'
     const belegt = await request.post(`/api/turniere/${zweites}/aktivieren`, { data: {} });
     expect(belegt.status()).toBe(409);
 
+    // ohne offene Kämpfe meldet das Turnier 0 (die Seite zeigt „Durchführung beenden“ nur dann)
+    expect((await (await request.get(`/api/turniere/${erstes}`)).json()).offene_kaempfe).toBe(0);
+
     // das aktive Turnier (in Durchführung) lässt sich nicht löschen; nach "Durchführung beenden" ist der Platz frei
     expect((await request.delete(`/api/turniere/${erstes}`)).status()).toBe(403);
     const beendet = await request.post(`/api/turniere/${erstes}/durchfuehrung-beenden`);

@@ -491,6 +491,13 @@ export async function getTurnier(knex, req, res) {
         turnier.ausstattung = leseAusstattung(turnier.ausstattung);
 
         turnier.status_effektiv = statusEffektiv;
+        // Noch nicht entschiedene Kämpfe (alles außer beendet/Freilos): „Durchführung beenden“ erscheint erst bei 0
+        const offene = await knex('kaempfe')
+            .join('pools', 'pools.id', 'kaempfe.pool_id')
+            .where('pools.turnier_id', turnier.id)
+            .whereNotIn('kaempfe.status', ['beendet', 'freilos'])
+            .count('* as anzahl').first();
+        turnier.offene_kaempfe = parseInt(offene.anzahl, 10);
         if (istEinzelbenutzerBetrieb()) {
             const aktives = (await knex('turniere').where({ aktiv: true }).first('id', 'bezeichnung')) || null;
             const a = ermittleAktivierbarkeit({ turnier, aktivesTurnier: aktives });
