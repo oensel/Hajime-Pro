@@ -26,8 +26,9 @@ function setze(plaetze, id, platz) {
     if (id && !plaetze.has(id)) plaetze.set(id, platz);
 }
 
-function baueErgebnis(objekte, plaetze, abgeschlossen, schluessel) {
-    const eintraege = objekte.map(o => ({ platz: plaetze.get(o.id) ?? null, [schluessel]: o }));
+// gleichstand: Ids, deren Rang auch nach allen Kriterien (inkl. direktem Vergleich) mit einem Nachbarn gleich bleibt.
+function baueErgebnis(objekte, plaetze, abgeschlossen, schluessel, gleichstand = new Set()) {
+    const eintraege = objekte.map(o => ({ platz: plaetze.get(o.id) ?? null, [schluessel]: o, gleichstand: gleichstand.has(o.id) }));
     eintraege.sort((x, y) => (x.platz ?? Infinity) - (y.platz ?? Infinity));
     return { abgeschlossen, eintraege };
 }
@@ -54,29 +55,84 @@ function berechneKo(kaempfe, schl, ad) {
 }
 
 // Fortlaufende Rangfolge; erst wenn alle Kämpfe fertig sind, stehen die Plätze fest.
-function berechneJgj(objekte, kaempfe, ranglisteVergleich) {
+// sortiere(objekte) liefert { reihenfolge, gleichstand }: die Objekte in Rangfolge und die Ids, die auch
+// nach allen Kriterien mit einem Nachbarn gleichauf bleiben (dort muss ein Stichkampf oder das Los entscheiden).
+function berechneJgj(objekte, kaempfe, sortiere) {
     const plaetze = new Map();
     const abgeschlossen = kaempfe.length > 0 && kaempfe.every(fertig);
+    let gleichstand = new Set();
     if (abgeschlossen) {
-        [...objekte].sort(ranglisteVergleich).forEach((o, i) => plaetze.set(o.id, i + 1));
+        const r = sortiere(objekte);
+        r.reihenfolge.forEach((o, i) => plaetze.set(o.id, i + 1));
+        gleichstand = r.gleichstand;
     }
-    return { plaetze, abgeschlossen };
+    return { plaetze, abgeschlossen, gleichstand };
 }
 
-function jgjEinzelVergleich(kaempfe) {
-    const wertung = new Map();
+// Einzel-Jeder-gegen-Jeden. Die DJB-Wettkampfordnung (Stand 17.12.2025) regelt den Gleichstand nur für die
+// Tabellen der DJB-Ligen (4.1.7.2): erst Siege/Punkte, dann der direkte Vergleich, danach Stichkampf bzw. Los.
+// Sinngemäß für Einzelkämpfer: Siege, dann Wertungspunkte der Siege (wie bisher), dann der direkte Vergleich
+// unter den Punktgleichen (Siege, dann Wertungspunkte aus den Kämpfen untereinander; bei einem Dreierkreis
+// bleibt der Gleichstand bestehen). Was danach gleich ist, wird als Gleichstand gemeldet (Stichkampf = Zusatzkampf).
+function wertungDerKaempfe(kaempfe, ids) {
+    const w = new Map(ids.map(id => [id, { siege: 0, punkte: 0 }]));
     kaempfe.forEach(k => {
-        if (k.status !== 'beendet' || !k.sieger_id) return;
-        const w = wertung.get(k.sieger_id) || { siege: 0, punkte: 0 };
-        w.siege += 1;
-        w.punkte += Number(k.sieger_id === k.kaempfer1_id ? k.unterbewertung_kaempfer1 : k.unterbewertung_kaempfer2) || 0;
-        wertung.set(k.sieger_id, w);
+        if (k.status !== 'beendet' || !k.sieger_id || !w.has(k.sieger_id)) return;
+        const e = w.get(k.sieger_id);
+        e.siege += 1;
+        e.punkte += Number(k.sieger_id === k.kaempfer1_id ? k.unterbewertung_kaempfer1 : k.unterbewertung_kaempfer2) || 0;
     });
-    const w = id => wertung.get(id) || { siege: 0, punkte: 0 };
-    return (a, b) => (w(b.id).siege - w(a.id).siege) || (w(b.id).punkte - w(a.id).punkte);
+    return w;
+}
+
+// Teilt die bereits nach Siegen/Punkten absteigend sortierte Liste in Blöcke gleicher Wertung.
+function blockeGleicherWertung(ids, w) {
+    const bloecke = [];
+    ids.forEach(id => {
+        const letzter = bloecke.at(-1);
+        const x = w.get(id), y = letzter && w.get(letzter[0]);
+        if (letzter && x.siege === y.siege && x.punkte === y.punkte) letzter.push(id);
+        else bloecke.push([id]);
+    });
+    return bloecke;
+}
+
+// Ordnet eine Gruppe punktgleicher Kämpfer über den direkten Vergleich; liefert Blöcke, die weiter gleichauf sind.
+function direkterVergleich(ids, kaempfe) {
+    if (ids.length < 2) return [ids];
+    const untereinander = kaempfe.filter(k => ids.includes(k.kaempfer1_id) && ids.includes(k.kaempfer2_id));
+    const w = wertungDerKaempfe(untereinander, ids);
+    const sortiert = [...ids].sort((x, y) => (w.get(y).siege - w.get(x).siege) || (w.get(y).punkte - w.get(x).punkte));
+    const bloecke = blockeGleicherWertung(sortiert, w);
+    // Ein einziger Block heißt: kein Unterschied gefunden (z. B. Dreierkreis). Sonst die kleineren Blöcke erneut vergleichen.
+    if (bloecke.length === 1) return bloecke;
+    return bloecke.flatMap(blk => direkterVergleich(blk, kaempfe));
+}
+
+function jgjEinzelSortierung(kaempfe) {
+    return objekte => {
+        const ids = objekte.map(o => o.id);
+        const w = wertungDerKaempfe(kaempfe, ids);
+        const vorsortiert = [...ids].sort((x, y) => (w.get(y).siege - w.get(x).siege) || (w.get(y).punkte - w.get(x).punkte));
+        const reihenfolgeIds = [];
+        const gleichstand = new Set();
+        blockeGleicherWertung(vorsortiert, w).forEach(block => {
+            direkterVergleich(block, kaempfe).forEach(rest => {
+                rest.forEach(id => reihenfolgeIds.push(id));
+                if (rest.length > 1) rest.forEach(id => gleichstand.add(id));
+            });
+        });
+        const nachId = new Map(objekte.map(o => [o.id, o]));
+        return { reihenfolge: reihenfolgeIds.map(id => nachId.get(id)), gleichstand };
+    };
 }
 
 // Mannschaften: Begegnungssiege, dann Einzelsiege, dann Wertungspunkte.
+function jgjMannschaftSortierung(begegnungen) {
+    const vergleich = jgjMannschaftVergleich(begegnungen);
+    return objekte => ({ reihenfolge: [...objekte].sort(vergleich), gleichstand: new Set() });
+}
+
 function jgjMannschaftVergleich(begegnungen) {
     const wertung = new Map();
     const w = id => {
@@ -130,17 +186,17 @@ export function berechnePlatzierungen(pool, kaempfe, teilnehmer) {
     if (objekte.length === 1) return baueErgebnis(objekte, new Map([[objekte[0].id, 1]]), true, 'teilnehmer');
 
     let r = { plaetze: new Map(), abgeschlossen: false };
-    if (istJgj(pool.modus)) r = berechneJgj(objekte, kaempfe, jgjEinzelVergleich(kaempfe));
+    if (istJgj(pool.modus)) r = berechneJgj(objekte, kaempfe, jgjEinzelSortierung(kaempfe));
     else if (DK_SCHLUESSEL[pool.modus]) r = berechneKo(kaempfe, DK_SCHLUESSEL[pool.modus], EINZEL);
     else if (istUeberkreuz(pool.modus)) r = berechneUeberkreuz(kaempfe);
-    return baueErgebnis(objekte, r.plaetze, r.abgeschlossen, 'teilnehmer');
+    return baueErgebnis(objekte, r.plaetze, r.abgeschlossen, 'teilnehmer', r.gleichstand);
 }
 
 export function berechneMannschaftsPlatzierungen(pool, begegnungen, mannschaften) {
     if (mannschaften.length === 1) return baueErgebnis(mannschaften, new Map([[mannschaften[0].id, 1]]), true, 'mannschaft');
 
     let r = { plaetze: new Map(), abgeschlossen: false };
-    if (istJgj(pool.modus)) r = berechneJgj(mannschaften, begegnungen, jgjMannschaftVergleich(begegnungen));
+    if (istJgj(pool.modus)) r = berechneJgj(mannschaften, begegnungen, jgjMannschaftSortierung(begegnungen));
     else if (DK_SCHLUESSEL[pool.modus]) r = berechneKo(begegnungen, DK_SCHLUESSEL[pool.modus], MANNSCHAFT);
     return baueErgebnis(mannschaften, r.plaetze, r.abgeschlossen, 'mannschaft');
 }
