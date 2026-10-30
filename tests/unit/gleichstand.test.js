@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { pruefeGleichstand, entscheideNachSiegzeit, siegzeiten, stichkampfPaarungen, leseEntscheidung } from '../../src/shared/gleichstand.js';
 import { berechneGruppenUeberkreuzHalbfinalPatches } from '../../src/shared/gruppenUeberkreuzProgression.js';
 import { berechnePlatzierungen } from '../../src/shared/platzierungen.js';
+import { ordneEinzelRangfolge, trenneStichkaempfe } from '../../src/shared/jgjRangfolge.js';
 
 // k(nr, k1, k2, sieger, Punkte des Siegers, Kampfzeit, Status)
 const k = (nr, k1, k2, sieger, punkte = 10, zeit = 60, status = 'beendet') => ({
@@ -115,6 +116,36 @@ test('Halbfinale: ein offener Stichkampf der Gruppe sperrt, danach wird neu gepr
 test('Halbfinale: Stichkämpfe mit erneutem Kreis bleiben gesperrt', () => {
     const wieder = [...vorrunde(), k('V_A_S1', 1, 2, 1), k('V_A_S2', 2, 3, 2), k('V_A_S3', 3, 1, 3)];
     assert.deepEqual(hf(wieder), []);
+});
+
+// 5er-Pool: 1 gewinnt alles knapp (je 1 Punkt), 2, 3 und 4 bilden einen Kreis mit Ippon, alle schlagen 5
+const fuenferPool = () => [
+    k('1', 1, 2, 1, 1), k('2', 1, 3, 1, 1), k('3', 1, 4, 1, 1), k('4', 1, 5, 1, 1),
+    k('5', 2, 3, 2), k('6', 3, 4, 3), k('7', 4, 2, 4), k('8', 2, 5, 2), k('9', 3, 5, 3), k('10', 4, 5, 4)
+];
+
+test('Stichkämpfe zählen nicht zur Wertung: wer gegen den Ersten verloren hat, zieht nicht an ihm vorbei', () => {
+    assert.deepEqual(pruefeGleichstand([1, 2, 3, 4, 5], fuenferPool(), { bis: 3 }).bloecke.map(b => b.ids), [[2, 3, 4]]);
+    // 2 gewinnt beide Stichkämpfe mit Ippon (zusammen mehr Siege und Punkte als 1), 3 schlägt 4
+    const mitStich = [...fuenferPool(), k('11', 2, 3, 2), k('12', 2, 4, 2), k('13', 3, 4, 3)];
+    const r = ordneEinzelRangfolge([1, 2, 3, 4, 5], mitStich);
+    assert.deepEqual(r.reihenfolge, [1, 2, 3, 4, 5]);
+    assert.equal(r.gleichstand.size, 0);
+    assert.deepEqual(r.wertung.get(2), { siege: 2, punkte: 20 }); // nur die regulären Kämpfe
+    assert.equal(pruefeGleichstand([1, 2, 3, 4, 5], mitStich, { bis: 3 }).offen, false);
+});
+
+test('Zusatzkampf zwischen Kämpfern ohne gemeinsamen Gleichstand ändert die Rangfolge nicht', () => {
+    // 5 schlägt 1 im Zusatzkampf: weder Siege noch Punkte zählen, 1 und 5 stehen in keinem Block
+    const r = ordneEinzelRangfolge([1, 2, 3, 4, 5], [...fuenferPool(), k('11', 1, 5, 5)]);
+    assert.deepEqual(r.reihenfolge, [1, 2, 3, 4, 5]);
+    assert.deepEqual(r.offeneBloecke, [{ ids: [2, 3, 4], start: 1 }]);
+});
+
+test('Stichkämpfe: Reihenfolge der Kampfnummern entscheidet, welcher Kampf regulär ist (unsortiert übergeben)', () => {
+    const { regulaer, stich } = trenneStichkaempfe([k('12', 2, 1, 2), k('2', 1, 2, 1), k('V_A_S1', 3, 4, 3), k('V_A_1', 4, 3, 4)]);
+    assert.deepEqual(regulaer.map(x => x.reihenfolge_nummer), ['2', 'V_A_1']);
+    assert.deepEqual(stich.map(x => x.reihenfolge_nummer), ['12', 'V_A_S1']);
 });
 
 test('Platzierungen: Entscheidung aus pools.gleichstand_entscheidung ordnet den Pool und beendet den Gleichstand', () => {

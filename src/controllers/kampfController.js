@@ -11,6 +11,7 @@ import { pruefeKorrekturErlaubt } from '../shared/korrekturRegel.js';
 import { verteilePositionen, fuegeEin } from '../shared/mattenReihenfolge.js';
 import { findeEinfuegeIndex } from '../shared/pausenEinsortierung.js';
 import { ermittlePausensekunden } from '../shared/pausenRegel.js';
+import { leseEntscheidung } from '../shared/gleichstand.js';
 import { aktualisiereMannschaftsPool, ermittleErsatzKandidaten, wechsleKaempfer } from '../services/mannschaftsBegegnungEngine.js';
 
 const jederGegenJeden = new JederGegenJedenManager();
@@ -216,6 +217,11 @@ export async function aktualisiereKampf(knex, id, felder) {
         console.log(`[Korrektur] Kampf ${currentKampf.id} (Pool ${currentKampf.pool_id}): Sieger geändert von ${currentKampf.sieger_id ?? 'keinem'} auf ${sieger_id ?? 'keinem'}.`);
     }
 
+    const zeitGeaendert = kampfzeit_in_sekunden !== undefined && parseInt(kampfzeit_in_sekunden) !== currentKampf.kampfzeit_in_sekunden;
+    if ((currentKampf.status === 'beendet' || currentKampf.status === 'freilos') && (ergebnisGeaendert || zeitGeaendert)) {
+        await verwerfeGleichstandEntscheidung(knex, currentKampf);
+    }
+
     for (const { id: abhaengigId, ohneQuelle, ...felderLeeren } of halbfinalZuLoesen) {
         await knex('kaempfe').where({ id: abhaengigId }).update({ ...felderLeeren, updated_at: knex.fn.now() });
     }
@@ -284,6 +290,21 @@ async function schreibePositionen(knex, zuweisungen) {
     });
 }
 
+// Ein korrigiertes oder zurückgesetztes Ergebnis kann einen Gleichstand verändern (Siege, Wertungspunkte, Siegzeit): Eine
+// schon getroffene Entscheidung (pools.gleichstand_entscheidung) gilt dann nicht mehr für den Pool bzw. die Vorrundengruppe
+// des Kampfes; bleibt der Gleichstand, entscheidet die Turnierleitung neu (gleichstandService.js).
+async function verwerfeGleichstandEntscheidung(knex, kampf) {
+    const pool = await knex('pools').where({ id: kampf.pool_id }).first();
+    if (!pool || !pool.gleichstand_entscheidung) return;
+    const schluessel = /^V_([AB])_/.exec(String(kampf.reihenfolge_nummer))?.[1] ?? 'pool';
+    const entscheidung = leseEntscheidung(pool.gleichstand_entscheidung);
+    if (!(schluessel in entscheidung)) return;
+    delete entscheidung[schluessel];
+    await knex('pools').where({ id: pool.id }).update({
+        gleichstand_entscheidung: Object.keys(entscheidung).length ? JSON.stringify(entscheidung) : null
+    });
+}
+
 // Setzt einen beendeten Kampf zurück auf "bereit" und reiht ihn an zweiter Stelle der kommenden
 // Kämpfe seiner Matte ein (Sync-Brücke und REST). Abhängige, noch nicht begonnene Folgekämpfe
 // werden wieder geleert; Regeln und Sperren: src/shared/korrekturRegel.js.
@@ -320,6 +341,7 @@ export async function setzeKampfZurueck(knex, kampfId) {
         if (pool && (pool.status === 'kaempfe_beendet' || pool.status === 'abgeschlossen')) {
             await trx('pools').where({ id: pool.id }).update({ status: 'gestartet' });
         }
+        await verwerfeGleichstandEntscheidung(trx, kampf);
     });
 
     await triggerPoolUpdate(knex, kampf.pool_id);

@@ -46,31 +46,40 @@ async function ladeOffenenKontext(knex, poolId, schluessel) {
 
 // Entscheidet den offenen Gleichstand nach der Gesamtzeit der Siege (nur, wenn die Zeit ihn auflöst).
 export async function entscheideNachSiegzeitAm(knex, poolId, schluessel) {
-    const { pool, pruefung, entscheidung } = await ladeOffenenKontext(knex, poolId, schluessel);
-    const blockOrdnungen = entscheideNachSiegzeit(pruefung);
-    if (!blockOrdnungen) throw new FachFehler(409, 'Die Siegzeit entscheidet hier nicht. Bitte Stichkämpfe ansetzen.');
-    // frühere Entscheidungen derselben Gruppe bleiben erhalten, solange sie andere Blöcke betreffen
-    const alt = (entscheidung[schluessel] || []).filter(e => !blockOrdnungen.some(n => n.length === e.length && n.every(id => e.includes(id))));
-    const neu = { ...entscheidung, [schluessel]: [...alt, ...blockOrdnungen] };
-    await knex('pools').where({ id: poolId }).update({ gleichstand_entscheidung: JSON.stringify(neu) });
+    await knex.transaction(async (trx) => {
+        // gesperrt wie legeStichkaempfeAn: ein gleichzeitiger Stichkampf-Antrag kommt erst danach und findet nichts Offenes
+        await trx('pools').where({ id: poolId }).forUpdate().first();
+        const { pruefung, entscheidung } = await ladeOffenenKontext(trx, poolId, schluessel);
+        const blockOrdnungen = entscheideNachSiegzeit(pruefung);
+        if (!blockOrdnungen) throw new FachFehler(409, 'Die Siegzeit entscheidet hier nicht. Bitte Stichkämpfe ansetzen.');
+        // frühere Entscheidungen derselben Gruppe bleiben erhalten, solange sie andere Blöcke betreffen
+        const alt = (entscheidung[schluessel] || []).filter(e => !blockOrdnungen.some(n => n.length === e.length && n.every(id => e.includes(id))));
+        const neu = { ...entscheidung, [schluessel]: [...alt, ...blockOrdnungen] };
+        await trx('pools').where({ id: poolId }).update({ gleichstand_entscheidung: JSON.stringify(neu) });
+    });
     await triggerPoolUpdate(knex, poolId);
-    return pool.id;
+    return poolId;
 }
 
 // Legt die Stichkämpfe aller offenen Blöcke an (jeder gegen jeden unter den Betroffenen) und sortiert sie pausenkonform ein.
 export async function legeStichkaempfeAn(knex, poolId, schluessel) {
-    const { pool, pruefung } = await ladeOffenenKontext(knex, poolId, schluessel);
-    if (pool.status === 'abgeschlossen') throw new FachFehler(409, 'Der Pool ist schon abgeschlossen.');
-    const paarungen = pruefung.bloecke.flatMap(b => b.paarungen);
-    const ueberkreuz = !istJgj(pool.modus);
-
-    const alleKaempfe = await knex('kaempfe').where({ pool_id: poolId });
-    let nummer = ueberkreuz
-        ? alleKaempfe.filter(k => k.reihenfolge_nummer?.startsWith(`V_${schluessel}_S`)).length
-        : alleKaempfe.reduce((m, k) => Math.max(m, parseInt(k.reihenfolge_nummer, 10) || 0), 0);
-
+    let pool;
     const neue = [];
     await knex.transaction(async (trx) => {
+        // Pool-Zeile sperren: zwei gleichzeitige Anträge (zwei Geräte, Doppelklick) legen die Stichkämpfe nur einmal an,
+        // der zweite findet danach offene Stichkämpfe und wird abgelehnt.
+        await trx('pools').where({ id: poolId }).forUpdate().first();
+        const kontext = await ladeOffenenKontext(trx, poolId, schluessel);
+        pool = kontext.pool;
+        if (pool.status === 'abgeschlossen') throw new FachFehler(409, 'Der Pool ist schon abgeschlossen.');
+        const paarungen = kontext.pruefung.bloecke.flatMap(b => b.paarungen);
+        const ueberkreuz = !istJgj(pool.modus);
+
+        const alleKaempfe = await trx('kaempfe').where({ pool_id: poolId });
+        let nummer = ueberkreuz
+            ? alleKaempfe.filter(k => k.reihenfolge_nummer?.startsWith(`V_${schluessel}_S`)).length
+            : alleKaempfe.reduce((m, k) => Math.max(m, parseInt(k.reihenfolge_nummer, 10) || 0), 0);
+
         for (const [id1, id2] of paarungen) {
             nummer += 1;
             const [zeile] = await trx('kaempfe').insert({
