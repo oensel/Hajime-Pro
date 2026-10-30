@@ -18,12 +18,16 @@
  * Keine Abhängigkeit von knex/DOM/localStorage — nutzbar sowohl server- (Node) als auch
  * client-seitig (Browser, ES-Modul).
  */
+import { ordneEinzelRangfolge } from './jgjRangfolge.js';
 
 /**
- * Berechnet die Rangliste einer Vorrunden-Gruppe aus deren beendeten Kämpfen.
+ * Berechnet die Rangliste einer Vorrunden-Gruppe aus deren beendeten Kämpfen: meiste Siege, dann höhere
+ * Unterbewertung, dann der direkte Vergleich der Punktgleichen (jgjRangfolge.js, sinngemäß DJB-WO 4.1.7.2).
+ * Bleibt auch danach ein Gleichstand (z. B. Dreierkreis), ist `gleichstand` gesetzt und die Reihenfolge
+ * die der Kampfanlage; ein Stichkampf ist in der Vorrunde nicht vorgesehen.
  * @param {Array<Object>} kaempfe - alle Kämpfe des Pools
  * @param {string} praefix - 'V_A_' oder 'V_B_'
- * @returns {Array<{id: number, siege: number, unterbewertung: number}>} absteigend sortiert
+ * @returns {Array<{id: number, siege: number, unterbewertung: number, gleichstand: boolean}>} absteigend sortiert
  */
 export function berechneGruppenRangliste(kaempfe, praefix) {
     const gruppenKaempfe = kaempfe.filter(k => k.status === 'beendet' && k.reihenfolge_nummer?.startsWith(praefix));
@@ -34,22 +38,8 @@ export function berechneGruppenRangliste(kaempfe, praefix) {
         if (k.kaempfer2_id) teilnehmerIds.add(k.kaempfer2_id);
     });
 
-    const tabelle = Array.from(teilnehmerIds).map(id => ({ id, siege: 0, unterbewertung: 0 }));
-
-    gruppenKaempfe.forEach(kampf => {
-        if (!kampf.sieger_id) return;
-
-        const eintrag = tabelle.find(e => e.id === kampf.sieger_id);
-        if (!eintrag) return;
-
-        eintrag.siege += 1;
-        const siegerIstKaempfer1 = kampf.sieger_id === kampf.kaempfer1_id;
-        eintrag.unterbewertung += siegerIstKaempfer1
-            ? kampf.unterbewertung_kaempfer1
-            : kampf.unterbewertung_kaempfer2;
-    });
-
-    return tabelle.sort((a, b) => (b.siege !== a.siege ? b.siege - a.siege : b.unterbewertung - a.unterbewertung));
+    const { reihenfolge, gleichstand, wertung } = ordneEinzelRangfolge(Array.from(teilnehmerIds), gruppenKaempfe);
+    return reihenfolge.map(id => ({ id, siege: wertung.get(id).siege, unterbewertung: wertung.get(id).punkte, gleichstand: gleichstand.has(id) }));
 }
 
 /**
