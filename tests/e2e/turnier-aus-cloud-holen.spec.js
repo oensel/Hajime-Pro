@@ -67,4 +67,27 @@ test.describe('Turnier aus der Cloud holen', () => {
         const vereine = (await (await page.request.get('/api/vereine')).json()).map(v => v.name);
         expect(vereine).toEqual(expect.arrayContaining(['Cloud-Verein Alpha', 'Cloud-Verein Beta']));
     });
+
+    test('Turnier am selben Tag: Rückfrage, mit ersetzen=true wird das vorhandene gelöscht und neu geholt', async ({ request }) => {
+        const login = await (await request.post('/api/cloud/turniere', {
+            data: { email: FAKE_CLOUD_EMAIL, password: FAKE_CLOUD_PASSWORT }
+        })).json();
+        const cloudId = login.turniere.find(t => t.bezeichnung === 'Cloud-Turnier geschlossen').id;
+        const vorhanden = (await (await request.get('/api/turniere')).json()).find(t => t.bezeichnung === 'Cloud-Turnier geschlossen');
+        expect(vorhanden).toBeTruthy();
+
+        const ohne = await request.post(`/api/cloud/turniere/${cloudId}/holen`, { data: { token: login.token } });
+        expect(ohne.status()).toBe(409);
+        const konflikt = await ohne.json();
+        expect(konflikt.terminKonflikt.id).toBe(vorhanden.id);
+        expect(konflikt.terminKonflikt.bezeichnung).toBe('Cloud-Turnier geschlossen');
+
+        const mit = await request.post(`/api/cloud/turniere/${cloudId}/holen`, { data: { token: login.token, ersetzen: true } });
+        expect(mit.status()).toBe(201);
+        const neu = await mit.json();
+        expect(neu.turnierId).not.toBe(vorhanden.id);
+
+        const liste = (await (await request.get('/api/turniere')).json()).filter(t => t.bezeichnung === 'Cloud-Turnier geschlossen');
+        expect(liste.map(t => t.id)).toEqual([neu.turnierId]);
+    });
 });

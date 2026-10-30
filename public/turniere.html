@@ -1221,16 +1221,25 @@
             }).join('') + '</div>';
         }
 
-        async function holen(id, name) {
+        async function holen(id, name, ersetzen = false) {
             zeigeFehler('');
             liste.querySelectorAll('.cloud-holen').forEach(b => { b.disabled = true; });
             try {
                 const resp = await fetch(`/api/cloud/turniere/${encodeURIComponent(id)}/holen`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token: cloudToken })
+                    body: JSON.stringify({ token: cloudToken, ersetzen })
                 });
                 const data = await resp.json().catch(() => ({}));
+                if (resp.status === 409 && data.terminKonflikt) {
+                    // Am selben Tag gibt es schon ein Turnier (vermutlich dasselbe): ersetzen nur nach Rückfrage
+                    liste.querySelectorAll('.cloud-holen').forEach(b => { b.disabled = false; });
+                    const k = data.terminKonflikt;
+                    if (window.confirm(`Am selben Tag gibt es hier bereits das Turnier „${k.bezeichnung}“.\n\nSoll es durch die Cloud-Version „${name}“ ersetzt werden?\nAlle lokal vorgenommenen Änderungen gehen dabei verloren und das vorhandene Turnier wird gelöscht.`)) {
+                        return holen(id, name, true);
+                    }
+                    return;
+                }
                 if (!resp.ok) throw new Error(data.error || 'Das Turnier konnte nicht geholt werden.');
                 meldung(`Turnier geholt: ${data.imported.teilnehmer} Teilnehmer, ${data.imported.pools} Pools, ${data.imported.kampfflaechen} Matten.`, 'success');
                 window.location.href = `/teilnehmer.html?turnierId=${data.turnierId}`;

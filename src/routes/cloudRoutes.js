@@ -27,6 +27,8 @@ export function getCloudRoutes(knex, { cloud, holeCluster = () => null, datenDir
             const status = e.statusCode === 401 ? 422 : e.statusCode;
             // Zwei-Faktor-Bedarf (Super-Admin): die Oberfläche fragt dann den Code ab und wiederholt
             if (e.code === 'zwei_faktor') return res.status(status).json({ success: false, zweiFaktor: true, code: e.code, error: e.message });
+            // Turnier am selben Tag vorhanden: die Oberfläche fragt, ob es ersetzt werden soll
+            if (e.code === 'termin_konflikt') return res.status(status).json({ success: false, terminKonflikt: e.daten, code: e.code, error: e.message });
             return res.status(status).json({ success: false, error: e.message });
         }
         console.error(`[Cloud-${kontext}-Fehler]:`, e.message);
@@ -91,14 +93,14 @@ export function getCloudRoutes(knex, { cloud, holeCluster = () => null, datenDir
     // Turnier holen: Export aus der Cloud laden und wie den Datei-Import einspielen.
     router.post('/turniere/:id/holen', async (req, res) => {
         try {
-            const { token } = req.body || {};
+            const { token, ersetzen } = req.body || {};
             if (!token) return res.status(400).json({ success: false, error: 'Cloud-Anmeldung fehlt.' });
             const turnierId = parseInt(req.params.id, 10);
             if (!Number.isInteger(turnierId) || turnierId <= 0) {
                 return res.status(400).json({ success: false, error: 'Ungültige Turnier-ID.' });
             }
             const daten = await cloud.ladeExport(String(token), turnierId, { liveToken: true });
-            const ergebnis = await importiereTurnierDaten(knex, req.app.get('sync'), daten);
+            const ergebnis = await importiereTurnierDaten(knex, req.app.get('sync'), daten, { ersetzen: ersetzen === true, terminAbfragen: true });
             return res.status(201).json({ success: true, ...ergebnis });
         } catch (e) {
             return fehler(res, e, 'Holen');
