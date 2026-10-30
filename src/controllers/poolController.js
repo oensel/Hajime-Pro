@@ -1,4 +1,5 @@
 import { readFileSync } from 'fs';
+import { pruefeGleichstand, leseEntscheidung, RELEVANT_BIS_POOL } from '../shared/gleichstand.js';
 import { bestimmeFarbeKaempfer2, gueltigeFarbe } from '../shared/kampfFarbe.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -1705,6 +1706,19 @@ export async function schliessePool(knex, id) {
     if (!pool) throw new FachFehler(404, 'Pool nicht gefunden.');
     if (pool.status !== 'kaempfe_beendet') {
         throw new FachFehler(400, 'Nur Pools mit beendeten Kämpfen können abgeschlossen werden.');
+    }
+    // Ein Gleichstand auf Platz 1 bis 3, den weder Siege, Wertungspunkte noch der direkte Vergleich auflösen, muss die
+    // Turnierleitung erst entscheiden (nach Siegzeit oder per Stichkampf, siehe gleichstandService.js).
+    if (/^Jeder[- ]gegen[- ]Jeden$/.test(pool.modus || '') && pool.typ !== 'mannschaft') {
+        const kaempfe = await knex('kaempfe').where({ pool_id: id });
+        const teilnehmer = await knex('turnier_teilnehmer').where({ pool_id: id }).orderBy('gewicht', 'asc').orderBy('id', 'asc');
+        const pruefung = pruefeGleichstand(teilnehmer.map(t => t.id), kaempfe, {
+            bis: RELEVANT_BIS_POOL, entscheidung: leseEntscheidung(pool.gleichstand_entscheidung).pool
+        });
+        if (pruefung.offen) {
+            const b = pruefung.bloecke[0];
+            throw new FachFehler(409, `Gleichstand auf Platz ${b.vonPlatz} bis ${b.bisPlatz}: bitte erst nach Siegzeit oder per Stichkampf entscheiden.`, { code: 'gleichstand' });
+        }
     }
     await knex('pools').where({ id }).update({ status: 'abgeschlossen' });
 }

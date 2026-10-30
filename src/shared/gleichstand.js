@@ -47,7 +47,7 @@ export function stichkampfPaarungen(ids) {
  * @param {Array<Object>} kaempfe - die Kämpfe dieser Gruppe bzw. dieses Pools
  * @param {{ bis?: number, entscheidung?: Array<Array<number>> }} [optionen]
  * @returns {{ bereit: boolean, offen: boolean, bloecke: Array<{ ids: Array<number>, vonPlatz: number, bisPlatz: number,
- *   zeiten: Object, siegzeitEindeutig: boolean, siegzeitReihenfolge: Array<number>, paarungen: Array<Array<number>> }> }}
+ *   zeiten: Object, wertung: Object, siegzeitEindeutig: boolean, siegzeitReihenfolge: Array<number>, paarungen: Array<Array<number>> }> }}
  */
 export function pruefeGleichstand(ids, kaempfe, optionen = {}) {
     const bis = optionen.bis ?? RELEVANT_BIS_POOL;
@@ -68,6 +68,7 @@ export function pruefeGleichstand(ids, kaempfe, optionen = {}) {
             vonPlatz: b.start + 1,
             bisPlatz: b.start + b.ids.length,
             zeiten: Object.fromEntries(b.ids.map(id => [id, z.get(id)])),
+            wertung: Object.fromEntries(b.ids.map(id => [id, r.wertung.get(id)])),
             siegzeitEindeutig: eindeutig,
             siegzeitReihenfolge: nachZeit,
             paarungen: stichkampfPaarungen(b.ids)

@@ -19,6 +19,7 @@ import { aktualisiereKampf, setzeMattenReihenfolge, setzeKampfZurueck, legeZusat
 import { FachFehler } from '../utils/fachFehler.js';
 import { pausiereMatte, setzeMatteFort } from '../controllers/kampfflaecheController.js';
 import { schliessePool } from '../controllers/poolController.js';
+import { fuehreGleichstandAntragAus } from '../services/gleichstandService.js';
 import {
     HALLEN_KONTEXT, legeTeilnehmerAn, aktualisiereTeilnehmerDaten, bestaetigeKampfbereitschaft, werteForfeit
 } from '../controllers/teilnehmerController.js';
@@ -136,7 +137,10 @@ async function wendePoolAn(knex, doc, basis) {
     const id = doc.sql_id;
     const zeile = await knex('pools').where({ id }).first();
     if (!zeile) return;
-    const absicht = absichtGegenueber(doc, basis, zeile, ['status']);
+    const absicht = absichtGegenueber(doc, basis, zeile, ['status', 'gleichstand_antrag']);
+    // Gleichstand entscheiden (steuerung.html): Antrag { schluessel, regel } nach Siegzeit oder Stichkampf. Entscheidung und
+    // neue Stichkämpfe entstehen am Server; der Abgleich ersetzt das Pool-Dokument danach durch den maßgeblichen Stand.
+    if (absicht.gleichstand_antrag) await fuehreGleichstandAntragAus(knex, id, absicht.gleichstand_antrag);
     if (absicht.status === 'abgeschlossen' && zeile.status !== 'abgeschlossen') await schliessePool(knex, id);
 }
 

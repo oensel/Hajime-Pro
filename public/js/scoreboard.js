@@ -1769,6 +1769,8 @@ async function naechstenKampfHolen() {
         zeigeNotification("Bitte wählen Sie zuerst eine Matte aus.", "error");
         return;
     }
+    // Zurückgestellte Gleichstände (Popup "Später entscheiden") erscheinen beim nächsten Versuch wieder
+    await zeigeGleichstandPopupSteuerung(true);
     if (state.pausiert) {
         zeigeNotification('Die Matte ist pausiert — bitte zuerst fortsetzen.', 'error');
         return;
@@ -1782,7 +1784,8 @@ async function naechstenKampfHolen() {
             naechster = kaempfe.find(k => k.status === 'bereit');
         }
         if (!naechster) {
-            naechster = kaempfe.find(k => k.status === 'angelegt');
+            // Ohne feststehende Kämpfer (z. B. Halbfinale, solange ein Gleichstand der Gruppe offen ist) gibt es keinen Kampf zu laden
+            naechster = kaempfe.find(k => k.status === 'angelegt' && k.kaempfer1_id && k.kaempfer2_id);
         }
 
         if (!naechster) {
@@ -2388,6 +2391,7 @@ function zeichnePoolAuswahl(pools, gewaehltId) {
 }
 
 async function schliessePoolAbSteuerung(pool) {
+    if (await oeffneGleichstandPopupFuerPoolSteuerung(pool.id)) return;
     if (!window.confirm('Ergebnisse von "' + pool.name + '" als final bestätigen? Damit ist der Pool abgeschlossen.')) return;
     try {
         const r = await window.Datenzugriff.schliessePoolAb(pool.id);
@@ -2465,7 +2469,13 @@ async function zeichnePlatzierungen(pool, kaempfe) {
         if (e.gleichstand && mitPlatz[i + 1]?.gleichstand && gleichstand(w, naechster) && modusMitRangliste) {
             const hinweis = document.createElement('div');
             hinweis.className = 'st-platz-gleich';
-            hinweis.textContent = 'Gleichstand bei Siegen, Wertungspunkten und im direkten Vergleich zum nächsten Platz – Stichkampf (Zusatzkampf) oder Los nötig';
+            hinweis.textContent = 'Gleichstand bei Siegen, Wertungspunkten und im direkten Vergleich zum nächsten Platz – nach Siegzeit oder per Stichkampf entscheiden ';
+            const entscheiden = document.createElement('button');
+            entscheiden.type = 'button';
+            entscheiden.className = 'btn-main st-pool-abschliessen';
+            entscheiden.textContent = 'Gleichstand entscheiden';
+            entscheiden.addEventListener('click', () => oeffneGleichstandPopupFuerPoolSteuerung(pool.id));
+            hinweis.appendChild(entscheiden);
             box.appendChild(hinweis);
         }
     });
@@ -2494,6 +2504,41 @@ async function renderePoolAnsichtSteuerung(kaempfe) {
     } catch (err) {
         console.error('Fehler bei der Pool-Ansicht:', err);
     }
+    await zeigeGleichstandPopupSteuerung(false).catch(err => console.error('Fehler bei der Gleichstands-Prüfung:', err));
+}
+
+// --- Gleichstand nach dem letzten Kampf eines Pools bzw. einer Überkreuz-Gruppe (Popup, js/gleichstandPopup.js) ---
+// Pool (Jeder-gegen-Jeden): Platz 1 bis 3 müssen eindeutig sein, bevor er abgeschlossen werden kann. Überkreuz-Gruppe:
+// Platz 1 und 2 müssen eindeutig sein, sonst bleiben HF1/HF2 unbefüllt und der Pool kann nicht weitergekämpft werden.
+let gleichstandModul = null;
+async function ladeGleichstandModul() {
+    gleichstandModul = gleichstandModul || await import('/js/gleichstandPopup.js');
+    return gleichstandModul;
+}
+function gleichstandHilfe() {
+    const namen = new Map();
+    poolAnsichtKaempfe.forEach(k => {
+        [[k.kaempfer1_id, k.kaempfer1_vorname, k.kaempfer1_nachname], [k.kaempfer2_id, k.kaempfer2_vorname, k.kaempfer2_nachname]].forEach(([id, vorname, nachname]) => {
+            if (id && !namen.has(id)) namen.set(id, formatFighterNameSteuerung(nachname, vorname));
+        });
+    });
+    return {
+        name: (id) => namen.get(id) || String(id),
+        entscheide: (poolId, schluessel, regel) => window.Datenzugriff.entscheideGleichstand(poolId, schluessel, regel),
+        danach: async (regel) => {
+            zeigeNotification(regel === 'stichkampf' ? 'Stichkämpfe angesetzt.' : 'Gleichstand nach Siegzeit entschieden.', 'success');
+            await ladeMattenUebersicht();
+        }
+    };
+}
+async function zeigeGleichstandPopupSteuerung(zurueckgestelltePruefen) {
+    const modul = await ladeGleichstandModul();
+    if (zurueckgestelltePruefen) modul.vergissGeschlossene();
+    modul.pruefeUndZeigeGleichstandPopup(poolAnsichtKaempfe, gleichstandHilfe());
+}
+async function oeffneGleichstandPopupFuerPoolSteuerung(poolId) {
+    const modul = await ladeGleichstandModul();
+    return modul.oeffneGleichstandPopupFuerPool(poolId, poolAnsichtKaempfe, gleichstandHilfe());
 }
 
 // --- Durchsage-Hinweis "Beginn eines neuen Pools" (Overlay #poolBeginnOverlay, nur Steuerung) ---

@@ -103,7 +103,10 @@ export class GruppenUeberKreuzManager {
         // 1:1-Link reduzieren, daher eigene, gemeinsam mit dem Offline-Scoreboard genutzte
         // Engine statt der Quelle-Kampf-basierten kampfProgression.js (siehe
         // gruppenUeberkreuzProgression.js).
-        const halbfinalPatches = berechneGruppenUeberkreuzHalbfinalPatches(kaempfe);
+        // Gleichstände in den Gruppen, die die Turnierleitung entschieden hat, stehen in pools.gleichstand_entscheidung;
+        // ohne Entscheidung (oder bei offenen Stichkämpfen) bleiben HF1/HF2 unbefüllt.
+        const poolZeile = await knex('pools').where({ id: poolId }).first('gleichstand_entscheidung');
+        const halbfinalPatches = berechneGruppenUeberkreuzHalbfinalPatches(kaempfe, { entscheidung: poolZeile?.gleichstand_entscheidung });
         for (const patch of halbfinalPatches) {
             const { id, ...updates } = patch;
             await knex('kaempfe').where({ id }).update(updates);

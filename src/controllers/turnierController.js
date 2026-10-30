@@ -852,6 +852,7 @@ export async function importWettkampfdaten(trx, turnierId, { kampfflaechen, pool
             mannschafts_gewichtsklassen: p.mannschafts_gewichtsklassen ?? null,
             golden_score_aktiv: p.golden_score_aktiv === undefined ? true : !!p.golden_score_aktiv,
             golden_score_max_sekunden: p.golden_score_max_sekunden ?? null,
+            gleichstand_entscheidung: p.gleichstand_entscheidung ?? null,
             farbe_kaempfer2: gueltigeFarbe(p.farbe_kaempfer2),
             // Sammelpool der Nachzügler ("Verspätet") muss den Marker behalten, sonst wird er nach
             // dem Import zu einem gewöhnlichen Pool (Siegerliste, Urkunden, Matten ...).
