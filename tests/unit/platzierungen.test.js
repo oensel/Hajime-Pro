@@ -95,3 +95,50 @@ test('Mannschaft DK8 und JGJ', () => {
         [b('1', 1, 2, 1, 3, 2), b('2', 1, 3, 3, 2, 3), b('3', 2, 3, 2, 4, 1)], m.slice(0, 3));
     assert.deepEqual(jgj.eintraege.map(e => e.mannschaft.id), [2, 1, 3]);
 });
+
+// Gleichstand im Einzel-Jeder-gegen-Jeden: Siege, Wertungspunkte, dann direkter Vergleich (sinngemäß DJB-WKO 4.1.7.2).
+const jgj = (n, kaempfe) => berechnePlatzierungen({ modus: 'Jeder-gegen-Jeden' }, kaempfe, tn(n));
+
+test('JGJ Gleichstand: Dreierkreis im Vierer-Pool bleibt Gleichstand, der Pool-Sieger steht fest', () => {
+    // 1 schlägt alle (30). 2 schlägt 4, 4 schlägt 3, 3 schlägt 2: je 1 Sieg/10 Punkte im Kreis 2 > 4 > 3 > 2
+    const kaempfe = [k('1', 1, 2, 1, 'beendet', 10), k('2', 1, 3, 1, 'beendet', 10), k('3', 1, 4, 1, 'beendet', 10),
+        k('4', 2, 3, 3, 'beendet', 0, 10), k('5', 2, 4, 2, 'beendet', 10), k('6', 3, 4, 4, 'beendet', 0, 10)];
+    const r = jgj(4, kaempfe);
+    assert.equal(plaetze(r)[1], 1);
+    assert.equal(r.eintraege.find(e => e.teilnehmer.id === 1).gleichstand, false);
+    assert.deepEqual(r.eintraege.filter(e => e.gleichstand).map(e => e.teilnehmer.id).sort(), [2, 3, 4]);
+});
+
+test('JGJ Gleichstand: zwei Punktgleiche werden über den direkten Vergleich geordnet', () => {
+    // 1 und 2 punktgleich (je 2 Siege/20), 2 hat 1 direkt geschlagen; 3 und 4 punktgleich (je 1 Sieg/10), 3 hat 4 geschlagen.
+    const kaempfe = [k('1', 2, 1, 2, 'beendet', 10), k('2', 1, 3, 1, 'beendet', 10), k('3', 1, 4, 1, 'beendet', 10),
+        k('4', 2, 3, 2, 'beendet', 10), k('5', 2, 4, 4, 'beendet', 0, 10), k('6', 3, 4, 3, 'beendet', 10)];
+    // 1: Siege gegen 3,4 (20); 2: Siege gegen 1,3 (20); 3: Sieg gegen 4 (10); 4: Sieg gegen 2 (10) → 3 und 4 punktgleich, 3 hat 4 geschlagen
+    const r = jgj(4, kaempfe);
+    assert.deepEqual([1, 2, 3, 4].map(i => plaetze(r)[i]), [2, 1, 3, 4]);
+    assert.equal(r.eintraege.some(e => e.gleichstand), false);
+});
+
+test('JGJ Gleichstand: Dreierkreis bleibt Gleichstand und wird markiert', () => {
+    // 1 schlägt 2, 2 schlägt 3, 3 schlägt 1, alle je 1 Sieg/10 Punkte
+    const kaempfe = [k('1', 1, 2, 1, 'beendet', 10), k('2', 2, 3, 2, 'beendet', 10), k('3', 3, 1, 3, 'beendet', 10)];
+    const r = jgj(3, kaempfe);
+    assert.equal(r.abgeschlossen, true);
+    assert.equal(r.eintraege.every(e => e.gleichstand), true);
+    assert.deepEqual(Object.values(plaetze(r)).sort(), [1, 2, 3]);
+});
+
+test('JGJ Gleichstand: unterschiedliche Wertungspunkte trennen vor dem direkten Vergleich', () => {
+    const kaempfe = [k('1', 1, 2, 1, 'beendet', 10), k('2', 2, 3, 2, 'beendet', 10), k('3', 1, 3, 1, 'beendet', 5),
+        k('4', 1, 4, 4, 'beendet', 0, 10), k('5', 2, 4, 2, 'beendet', 10), k('6', 3, 4, 3, 'beendet', 10)];
+    // Siege: 1:2 (15), 2:2 (20), 3:1 (10), 4:1 (10) -> 2 vor 1 per Punkte; 3 und 4 punktgleich, 3 hat 4 geschlagen
+    const r = jgj(4, kaempfe);
+    assert.deepEqual([1, 2, 3, 4].map(i => plaetze(r)[i]), [2, 1, 3, 4]);
+});
+
+test('JGJ ohne Gleichstand: Reihenfolge und Markierung unverändert', () => {
+    const kaempfe = [k('1', 1, 2, 1, 'beendet', 10), k('2', 1, 3, 1, 'beendet', 10), k('3', 2, 3, 2, 'beendet', 10)];
+    const r = jgj(3, kaempfe);
+    assert.deepEqual([1, 2, 3].map(i => plaetze(r)[i]), [1, 2, 3]);
+    assert.equal(r.eintraege.some(e => e.gleichstand), false);
+});

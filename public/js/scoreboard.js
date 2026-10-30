@@ -2459,12 +2459,13 @@ async function zeichnePlatzierungen(pool, kaempfe) {
             + (w.zeiten.length ? ' · Siegzeiten: ' + w.zeiten.map(mmss).join(' + ') + ' = ' + mmss(summe) : '');
         zeile.appendChild(detail);
         box.appendChild(zeile);
-        // Gleiche Siege und Wertungspunkte wie der nächste Platz: Hinweis, dass hier eine Entscheidung nötig sein kann
+        // Gleiche Siege und Wertungspunkte wie der nächste Platz UND auch der direkte Vergleich entscheidet nichts
+        // (platzierungen.js: e.gleichstand): Stichkampf (Zusatzkampf) oder Los nötig, sinngemäß DJB-WKO 4.1.7.2
         const naechster = mitPlatz[i + 1] && werte.get(mitPlatz[i + 1].teilnehmer.id);
-        if (gleichstand(w, naechster) && modusMitRangliste) {
+        if (e.gleichstand && mitPlatz[i + 1]?.gleichstand && gleichstand(w, naechster) && modusMitRangliste) {
             const hinweis = document.createElement('div');
             hinweis.className = 'st-platz-gleich';
-            hinweis.textContent = 'Gleichstand bei Siegen und Wertungspunkten zum nächsten Platz – ggf. nach Ausschreibung entscheiden';
+            hinweis.textContent = 'Gleichstand bei Siegen, Wertungspunkten und im direkten Vergleich zum nächsten Platz – Stichkampf (Zusatzkampf) oder Los nötig';
             box.appendChild(hinweis);
         }
     });
