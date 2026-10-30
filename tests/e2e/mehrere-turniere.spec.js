@@ -238,5 +238,12 @@ test('turniere.html: geplante Turniere zeigen „Aktivierbar am …“ statt ein
     await page.reload();
     await expect(spaetKarte.locator('.aktivier-hinweis')).toContainText('Erst nach Ende des aktiven Turniers');
 
+    // aktives Turnier: „Läuft am Hallen-Server“; die Teilnehmer-App-Zeile bleibt verborgen, solange sie nicht angeboten werden kann
+    // (dieses Turnier stammt nicht aus der Cloud, also gibt es keinen Teilnehmer-App-Zugang)
+    const aktivKarte = page.locator('.tournament-card').filter({ hasText: heuteName });
+    await expect(aktivKarte.locator('.laeuft-zeile')).toContainText('Läuft am Hallen-Server');
+    await expect(aktivKarte.locator('.heute-banner')).toHaveCount(0);
+    await expect(aktivKarte.locator(`[data-app-zeile="${heutiges}"]`)).toBeHidden();
+
     expect((await request.post(`/api/turniere/${heutiges}/durchfuehrung-beenden`)).ok()).toBeTruthy();
 });

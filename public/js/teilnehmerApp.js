@@ -241,5 +241,12 @@
         document.addEventListener('visibilitychange', () => { if (!document.hidden) aktualisiere(); });
     }
 
-    window.TeilnehmerApp = { init, oeffneDialog, letzterStatus: () => status, aktualisiere };
+    // Von der Turnierkarte (turniere.html): Dialog für genau dieses Turnier öffnen, auch wenn die Seite keine Turnier-ID im Pfad hat.
+    async function oeffneFuerTurnier(id, optionen) {
+        turnierId = String(id);
+        await aktualisiere();
+        oeffneDialog(optionen);
+    }
+
+    window.TeilnehmerApp = { init, oeffneDialog, oeffneFuerTurnier, letzterStatus: () => status, aktualisiere };
 })();
