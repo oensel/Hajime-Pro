@@ -215,9 +215,48 @@
             border: 1px solid rgba(239, 108, 0, 0.3);
         }
         .btn-aktivieren {
+            background: #2e7d32;
+            color: #fff;
+            border: 1px solid #1b5e20;
+        }
+        /* Turnier mit Wettkampftag heute: über die ganze Breite, grün hervorgehoben, Aktivieren-Knopf pulsiert */
+        .tournament-card.heute {
+            grid-column: 1 / -1;
+            border: 3px solid #2e7d32;
+            background: rgba(46, 125, 50, 0.05);
+            box-shadow: 0 4px 18px rgba(46, 125, 50, 0.25);
+        }
+        .tournament-card.heute .btn-aktivieren {
+            flex: 2 1 220px;
+            font-size: 15px;
+            height: auto;
+            min-height: 48px;
+            padding-top: 0;
+            padding-bottom: 0;
+            animation: aktivieren-puls 2s ease-out infinite;
+        }
+        .heute-banner {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            margin-top: 12px;
+            padding: 12px 14px;
+            border-radius: 6px;
             background: rgba(46, 125, 50, 0.12);
-            color: #2e7d32;
-            border: 1px solid rgba(46, 125, 50, 0.4);
+            color: #1b5e20;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        .heute-banner .material-icons { font-size: 28px; color: #2e7d32; }
+        .heute-banner strong { display: block; font-size: 15px; margin-bottom: 2px; }
+        .status-badge.status-heute { background: #2e7d32; color: #fff; border: 1px solid #1b5e20; }
+        @keyframes aktivieren-puls {
+            0% { box-shadow: 0 0 0 0 rgba(46, 125, 50, 0.55); }
+            70% { box-shadow: 0 0 0 12px rgba(46, 125, 50, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(46, 125, 50, 0); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .tournament-card.heute .btn-aktivieren { animation: none; }
         }
         .abgeschlossen-liste { display: flex; flex-direction: column; gap: 5px; margin-top: 12px; }
         .abgeschlossen-zeile {
@@ -981,9 +1020,9 @@
                 const waehlen = istFreigegeben
                     ? `<button type="button" class="btn btn-raised" onclick="window.location.href='/teilnehmer.html?turnierId=${encodeURIComponent(t.id)}'">Auswählen</button>` : '';
                 return `
-                    <div class="tournament-card kompakt ${t.aktiv ? 'aktiv' : ''}">
+                    <div class="tournament-card kompakt ${t.aktiv ? 'aktiv' : ''} ${t.aktivierbar ? 'heute' : ''}">
                         <div>
-                            <h2 class="tournament-name">${escHtml(t.bezeichnung)}<span class="status-badge status-${escHtml(hallen.klasse)}">${escHtml(hallen.label)}</span></h2>
+                            <h2 class="tournament-name">${escHtml(t.bezeichnung)}<span class="status-badge status-${escHtml(hallen.klasse)}">${escHtml(hallen.label)}</span>${t.aktivierbar ? '<span class="status-badge status-heute">Wettkampftag heute</span>' : ''}</h2>
                             <div class="kompakt-ort"><span class="material-icons">calendar_today</span><span>${escHtml(dateStr)} · ${t.plz ? `${escHtml(t.plz)} ` : ''}${escHtml(t.ort)}</span></div>
                             <div class="info-chips">
                                 <span class="info-chip">${escHtml(t.anzahl_kampfflaechen)} Matten</span>
@@ -993,6 +1032,7 @@
                             ${chipZeilen(chipGruppen)}
                             ${planungsFortschritt(t).map(e => fortschrittHtml(e, true)).join('')}
                         </div>
+                        ${t.aktivierbar ? `<div class="heute-banner"><span class="material-icons">play_circle</span><div><strong>Heute ist Wettkampftag: Turnier jetzt aktivieren</strong>Erst nach dem Aktivieren können Matten, Waage, Anzeigetafel und Android-Geräte dieses Turnier nutzen.</div></div>` : ''}
                         <div class="card-actions">
                             ${waehlen}
                             ${hallenAktionen(t)}
@@ -1006,7 +1046,7 @@
             if (istOffline) {
                 const aktives = turniere.filter(t => t.aktiv);
                 const geplant = turniere.filter(t => !t.aktiv && !['abgeschlossen', 'abgesagt'].includes(t.status))
-                    .sort((a, b) => String(a.datum).localeCompare(String(b.datum)));
+                    .sort((a, b) => (Number(!!b.aktivierbar) - Number(!!a.aktivierbar)) || String(a.datum).localeCompare(String(b.datum)));
                 const fertig = turniere.filter(t => !t.aktiv && ['abgeschlossen', 'abgesagt'].includes(t.status));
                 const datumKurz = (d) => { const o = new Date(d); return `${String(o.getDate()).padStart(2, '0')}.${String(o.getMonth() + 1).padStart(2, '0')}.${o.getFullYear()}`; };
 

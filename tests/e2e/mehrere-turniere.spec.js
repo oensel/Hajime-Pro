@@ -134,10 +134,13 @@ test('turniere.html: Aktivieren und Duplizieren erscheinen, abgeschlossene Turni
     await expect(dupKnopf).toHaveAttribute('data-tooltip', 'Duplizieren');
     await expect(dupKnopf.locator('.material-icons')).toHaveText('content_copy');
     await expect(dupKnopf).toHaveText('content_copy');
-    // gleiche Höhe wie die übrigen Knöpfe der Karte
-    const hoehen = await karte.locator('.card-actions .btn').evaluateAll(els => els.map(e => Math.round(e.getBoundingClientRect().height)));
-    expect(new Set(hoehen).size).toBe(1);
-    await expect(karte.locator('.status-badge')).toHaveText('Entwurf');
+    // Wettkampftag heute: Karte hervorgehoben, Hinweis zum Aktivieren, der Aktivieren-Knopf ist der größte der Karte
+    await expect(karte).toHaveClass(/heute/);
+    await expect(karte.locator('.heute-banner')).toContainText('Android');
+    const hoehen = await karte.locator('.card-actions .btn').evaluateAll(els => els.map(e => ({ name: e.textContent.trim(), h: Math.round(e.getBoundingClientRect().height) })));
+    const aktivierenH = hoehen.find(x => /Aktivieren/i.test(x.name)).h;
+    expect(aktivierenH).toBeGreaterThanOrEqual(Math.max(...hoehen.map(x => x.h)));
+    await expect(karte.locator('.status-badge:not(.status-heute)')).toHaveText('Entwurf');
 
     const zeile = page.locator('.abgeschlossen-zeile').filter({ hasText: fertigName });
     await expect(zeile).toBeVisible();
