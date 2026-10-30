@@ -243,6 +243,7 @@
         .card-actions {
             display: flex;
             gap: 10px;
+            flex-wrap: wrap;
             border-top: 1px solid var(--border);
             padding-top: 14px;
         }
@@ -397,7 +398,7 @@
             .abgeschlossen-zeile { flex-wrap: wrap; gap: 8px 10px; }
             .abgeschlossen-zeile .az-name { flex-basis: 100%; min-width: 0; overflow-wrap: anywhere; }
         }
-        .aktivier-hinweis { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--md-sys-color-on-surface-variant, #666); margin-right: 8px; }
+        .aktivier-hinweis { order: -1; flex: 0 0 100%; display: flex; align-items: center; gap: 4px; font-size: 13px; color: var(--md-sys-color-on-surface-variant, #666); }
     .aktivier-hinweis .material-icons { font-size: 16px; }
 </style>
     <script src="/js/menu.js"></script>
