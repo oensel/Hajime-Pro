@@ -34,6 +34,8 @@ export function erzeugeKaskadeLokal({ client }) {
 
     function beobachte(db) {
         if (feed) feed.cancel();
+        feed = null;
+        if (!db) return; // kein aktives Turnier am Server
         feed = db.changes({ since: 'now', live: true, include_docs: true });
         feed.on('change', (change) => {
             const doc = change.doc;
