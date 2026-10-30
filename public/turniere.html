@@ -811,6 +811,8 @@
             // Knopf „In die Cloud zurückspielen“: nur für Turniere aus der Cloud; sichtbar erst, wenn die Cloud erreichbar ist.
             function rueckspielKnopf(t) {
                 if (!istOffline || t.urspruengliche_id == null) return '';
+                // Zurückspielen erst nach dem Turnierende
+                if ((t.status_effektiv || t.status) !== 'abgeschlossen') return '';
                 if (juengsteJeCloudTurnier.get(String(t.urspruengliche_id)) !== Number(t.id)) return '';
                 return `<button type="button" class="btn btn-outlined rueckspiel-knopf" style="display:none;" data-aktion="zurueckspielen" data-id="${escHtml(t.id)}" aria-label="In die Cloud zurückspielen" data-tooltip="Ergebnisse, Teilnehmer und Barzahlungen in die Cloud zurückspielen"><span class="material-icons" style="font-size:18px; vertical-align:middle;">cloud_upload</span> In die Cloud zurückspielen</button>`;
             }
