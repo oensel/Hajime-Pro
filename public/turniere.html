@@ -894,6 +894,15 @@
                 return text ? `<span class="aktivier-hinweis"><span class="material-icons">schedule</span>${escHtml(text)}</span>` : '';
             }
 
+            // Cloud: Turnier mit Wettkampftag heute, das live geschaltet werden kann (gleiche Bedingungen wie der Knopf „Live“).
+            function liveHeute(t, isEditable) {
+                if (istOffline || !isEditable || !istFreigegeben) return false;
+                if (!['veroeffentlicht', 'anmeldung_geschlossen', 'in_durchfuehrung'].includes(t.status_effektiv)) return false;
+                const j = new Date();
+                const heuteIso = `${j.getFullYear()}-${String(j.getMonth() + 1).padStart(2, '0')}-${String(j.getDate()).padStart(2, '0')}`;
+                return String(t.datum || '').slice(0, 10) === heuteIso;
+            }
+
             function renderCard(t, isEditable) {
                 let deadlineExpired = false;
                 let deadlineStr = 'Keine Frist';
@@ -933,7 +942,7 @@
                 }
 
                 return `
-                    <div class="tournament-card ${!istOffline && deadlineExpired ? 'expired' : ''} ${t.aktiv ? 'aktiv' : ''}">
+                    <div class="tournament-card ${!istOffline && deadlineExpired ? 'expired' : ''} ${t.aktiv ? 'aktiv' : ''} ${liveHeute(t, isEditable) ? 'heute' : ''}">
                         <div>
                             <h2 class="tournament-name">${escHtml(t.bezeichnung)}<span class="status-badge status-${escHtml(statusKlasse)}">${escHtml(statusLabel)}</span></h2>
                             <div class="tournament-details">
@@ -1007,6 +1016,7 @@
                                 </div>
                             </div>
                         </div>
+                        ${liveHeute(t, isEditable) ? `<button type="button" class="heute-banner" onclick="window.location.href='/cloud-live.html?turnierId=${encodeURIComponent(t.id)}'" aria-label="Turnier jetzt live schalten"><span class="material-icons">cell_tower</span><span class="heute-banner-text"><strong>Heute ist Wettkampftag: Turnier jetzt live schalten</strong>Erst nach dem Live-Schalten können Notebooks, Waage und Android-Geräte an den Matten koppeln.</span><span class="heute-banner-los">Live schalten<span class="material-icons">chevron_right</span></span></button>` : ''}
                         <div class="card-actions">
                             <!-- "Auswählen" bleibt für fremde Turniere auch vor der eigenen Freigabe erreichbar
                                  (Gastverein meldet nur eigene Athlet:innen an, serverseitig ohnehin auf den
@@ -1134,7 +1144,7 @@
                 // Vergangene Turniere (Entwürfe ausgenommen) stehen klein und als archiviert unter den aktuellen.
                 const tagStart = new Date(); tagStart.setHours(0, 0, 0, 0);
                 const istVergangen = (t) => t.status !== 'entwurf' && t.datum && new Date(t.datum) < tagStart;
-                const eigeneAktuell = eigeneTurniere.filter(t => !istVergangen(t));
+                const eigeneAktuell = eigeneTurniere.filter(t => !istVergangen(t)).sort((a, b) => Number(liveHeute(b, true)) - Number(liveHeute(a, true)));
                 const eigeneArchiviert = eigeneTurniere.filter(istVergangen);
                 const datumKurzCloud = (d) => { const o = new Date(d); return `${String(o.getDate()).padStart(2, '0')}.${String(o.getMonth() + 1).padStart(2, '0')}.${o.getFullYear()}`; };
                 htmlContent += `
