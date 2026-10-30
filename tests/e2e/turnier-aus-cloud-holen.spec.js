@@ -55,13 +55,14 @@ test.describe('Turnier aus der Cloud holen', () => {
         const bestaetigen = page.getByRole('button', { name: /^(Fortfahren|Bestätigen|OK|Ja)/i });
         if (await bestaetigen.first().isVisible().catch(() => false)) await bestaetigen.first().click();
 
-        await page.waitForURL(/\/teilnehmer\.html\?turnierId=\d+/);
+        // Die Turnierauswahl lädt neu und zeigt das geholte Turnier in der Liste
+        await expect(page.locator('#tournamentsContainer .tournament-card').filter({ hasText: 'Cloud-Turnier geschlossen' })).toBeVisible();
+        expect(new URL(page.url()).pathname).toBe('/turniere.html');
 
         const liste = await (await page.request.get('/api/turniere')).json();
         const geholt = liste.find(t => t.bezeichnung === 'Cloud-Turnier geschlossen');
         expect(geholt).toBeTruthy();
         expect(geholt.aktiv).toBe(false); // aktiviert wird per Knopf am Wettkampftag
-        expect(new URL(page.url()).searchParams.get('turnierId')).toBe(String(geholt.id));
 
         // die Vereinsliste der Cloud steht danach auch in der lokalen Tabelle (Vorschläge im Feld "Verein")
         const vereine = (await (await page.request.get('/api/vereine')).json()).map(v => v.name);

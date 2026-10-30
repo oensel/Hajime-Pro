@@ -1165,6 +1165,15 @@
         // Token nur im Arbeitsspeicher dieser Seite, nie in Storage oder URL
         let cloudToken = null;
 
+        // Meldung des vorigen Holens (die Seite wurde danach neu geladen)
+        try {
+            const geholt = sessionStorage.getItem('turnierGeholtMeldung');
+            if (geholt) {
+                sessionStorage.removeItem('turnierGeholtMeldung');
+                setTimeout(() => (window.zeigeNotification ? window.zeigeNotification(geholt, 'success') : null), 400);
+            }
+        } catch { /* kein Storage: keine Meldung */ }
+
         const ERLAUBTE_STATUS = ['anmeldung_geschlossen', 'in_durchfuehrung', 'abgeschlossen'];
         const STATUS_TEXT = {
             entwurf: 'Entwurf', veroeffentlicht: 'Anmeldung läuft', anmeldung_geschlossen: 'Anmeldung geschlossen',
@@ -1241,8 +1250,9 @@
                     return;
                 }
                 if (!resp.ok) throw new Error(data.error || 'Das Turnier konnte nicht geholt werden.');
-                meldung(`Turnier geholt: ${data.imported.teilnehmer} Teilnehmer, ${data.imported.pools} Pools, ${data.imported.kampfflaechen} Matten.`, 'success');
-                window.location.href = `/teilnehmer.html?turnierId=${data.turnierId}`;
+                // Die Turnierauswahl lädt neu, damit das geholte Turnier in der Liste steht (samt Hinweis zum Starten); die Meldung folgt nach dem Neuladen
+                try { sessionStorage.setItem('turnierGeholtMeldung', `Turnier geholt: ${data.imported.teilnehmer} Teilnehmer, ${data.imported.pools} Pools, ${data.imported.kampfflaechen} Matten.`); } catch { /* ohne Meldung weiter */ }
+                window.location.reload();
             } catch (err) {
                 zeigeFehler(err.message);
                 liste.querySelectorAll('.cloud-holen').forEach(b => { b.disabled = false; });
