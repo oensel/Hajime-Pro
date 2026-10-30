@@ -271,8 +271,10 @@
         .laeuft-zeile .material-icons { font-size: 22px; color: #2e7d32; }
         .app-zeile {
             display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; margin-top: 8px; padding: 10px 14px;
-            border: 1px dashed rgba(46, 125, 50, 0.6); border-radius: 6px; font-size: 13px; color: var(--text-muted);
+            border: 2px solid #1e3a8a; border-radius: 6px; background: rgba(30, 58, 138, 0.07);
+            font-size: 13px; color: var(--text-secondary, #555);
         }
+        .app-zeile.aus .material-icons { color: #1e3a8a; font-size: 28px; }
         .app-zeile[hidden] { display: none; }
         .app-zeile .material-icons { font-size: 22px; }
         .app-zeile-text { flex: 1 1 160px; min-width: 0; }
@@ -1167,7 +1169,8 @@
                                <button type="button" class="btn btn-outlined" data-aktion="teilnehmer-app" data-id="${escHtml(id)}">Verwalten</button>`
                             : `<span class="material-icons">smartphone</span>
                                <span class="app-zeile-text"><strong>Teilnehmer-App für Eltern und Teilnehmende</strong>Zeigt Ergebnisse und Aufrufe live. Braucht Internet am Hallen-Server.</span>
-                               <button type="button" class="btn btn-outlined" data-aktion="teilnehmer-app" data-einschalten="1" data-id="${escHtml(id)}">Teilnehmer-App einschalten</button>`;
+                               <button type="button" class="btn btn-raised" data-aktion="teilnehmer-app" data-einschalten="1" data-id="${escHtml(id)}">Teilnehmer-App einschalten</button>`;
+                        appZeile.classList.toggle('aus', !status.aktiv);
                     };
                     aktualisiereAppZeile();
                     setInterval(aktualisiereAppZeile, 5000);
