@@ -212,7 +212,7 @@ test('turniere.html: Turniernamen werden maskiert (kein HTML aus Namen oder Orte
 });
 
 
-test('turniere.html: „Auswählen“ führt beim aktiven Turnier zu den Matten, sonst zur Teilnehmerliste', async ({ page, request }) => {
+test('turniere.html: „Auswählen“ öffnet beim aktiven Turnier die Teilnehmerliste, sonst turnier.html', async ({ page, request }) => {
     const aktivName = `Ziel Aktiv ${Date.now()}`;
     const geplantName = `Ziel Geplant ${Date.now()}`;
     const db = knexLib({ client: 'pg', connection: testDbVerbindung });
@@ -223,11 +223,11 @@ test('turniere.html: „Auswählen“ führt beim aktiven Turnier zu den Matten,
 
     await page.goto('/turniere.html');
     await page.locator('.tournament-card').filter({ hasText: aktivName }).getByRole('button', { name: 'Auswählen' }).click();
-    await expect(page).toHaveURL(u => u.pathname === '/matten.html' && u.searchParams.get('turnierId') === String(aktiv));
+    await expect(page).toHaveURL(u => u.pathname === '/teilnehmer.html' && u.searchParams.get('turnierId') === String(aktiv));
 
     await page.goto('/turniere.html');
     await page.locator('.tournament-card').filter({ hasText: geplantName }).getByRole('button', { name: 'Auswählen' }).click();
-    await expect(page).toHaveURL(u => u.pathname === '/teilnehmer.html' && u.searchParams.get('turnierId') === String(geplant));
+    await expect(page).toHaveURL(u => u.pathname === '/turnier.html' && u.searchParams.get('id') === String(geplant));
 
     expect((await request.post(`/api/turniere/${aktiv}/durchfuehrung-beenden`)).ok()).toBeTruthy();
 });

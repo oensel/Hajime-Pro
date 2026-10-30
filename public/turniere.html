@@ -822,10 +822,12 @@
                 return aktivieren + rueckspielKnopf(t) + duplizieren;
             }
 
-            // „Auswählen“: das aktive Turnier (Hallen-Server) führt in den Live-Betrieb an den Matten, alle anderen in die Vorbereitung (Teilnehmerliste)
+            // „Auswählen“ am Hallen-Server: das aktive Turnier öffnet die Teilnehmerliste, alle anderen die Turnierseite (turnier.html).
+            // In der Cloud bleibt es die Teilnehmerliste (Vereine melden dort ihre Athleten an).
             function auswaehlenZiel(t) {
-                const seite = t.aktiv ? 'matten.html' : 'teilnehmer.html';
-                return `/${seite}?turnierId=${encodeURIComponent(t.id)}`;
+                return !istOffline || t.aktiv
+                    ? `/teilnehmer.html?turnierId=${encodeURIComponent(t.id)}`
+                    : `/turnier.html?id=${encodeURIComponent(t.id)}`;
             }
 
             function renderCard(t, isEditable) {
