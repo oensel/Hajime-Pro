@@ -4,6 +4,7 @@
 // Alles über die HTTP-API (IS_OFFLINE), jede Gruppe von Tests mit eigenem Turnier.
 import { test, expect } from '@playwright/test';
 import { legeTurnierAn } from './helpers/turnier-aufbau.js';
+import { schliesseOverlayAutomatisch } from './helpers/pool-beginn-overlay.js';
 
 async function legePoolMitTeilnehmern(request, turnierId, name, anzahl) {
     const [{ id: matId }] = await (await request.get(`/api/kampfflaechen?turnierId=${turnierId}`)).json();
@@ -190,5 +191,46 @@ test.describe.serial('Gleichstand im Gruppen-Überkreuz: das Halbfinale bleibt g
         await beende(request, stich[2], gewinner(stich[2]), 40);
         const hf = await halbfinale(request, poolId);
         expect(hf.every(k => k.kaempfer1_id != null && k.kaempfer2_id != null)).toBeTruthy();
+    });
+});
+
+test.describe.serial('Gleichstand-Popup in der Steuerung', () => {
+    let turnierId, poolId, matId;
+
+    test('Nach dem letzten Kampf erscheint das Popup mit Siegzeit-Vorschau und Stichkampf-Paarungen', async ({ page, request }) => {
+        turnierId = await legeTurnierAn(request, { name: 'Gleichstand Popup' });
+        ({ poolId, matId } = await legePoolMitTeilnehmern(request, turnierId, 'Popup', 3));
+        await spieleKreis(request, await holeKaempfe(request, poolId), [30, 50, 70]);
+        await schliesseOverlayAutomatisch(page);
+
+        await page.goto(`/steuerung.html?turnierId=${turnierId}&matId=${matId}`);
+        const dialog = page.locator('#gleichstandOverlay .st-gleichstand-dialog');
+        await expect(dialog).toBeVisible();
+        await expect(dialog.locator('.st-gleichstand-titel')).toContainText('Gleichstand auf Platz 1 bis 3');
+        await expect(dialog.locator('.st-gleichstand-zeile')).toHaveCount(3);
+        await expect(dialog.getByRole('button', { name: 'Nach Siegzeit entscheiden' })).toBeVisible();
+        await expect(dialog.getByRole('button', { name: 'Stichkämpfe ansetzen' })).toBeVisible();
+        await page.screenshot({ path: 'test-results/gleichstand-popup.png' });
+    });
+
+    test('"Später entscheiden" schließt das Popup, "Nächsten Kampf holen" bringt es zurück', async ({ page }) => {
+        await schliesseOverlayAutomatisch(page);
+        await page.goto(`/steuerung.html?turnierId=${turnierId}&matId=${matId}`);
+        await expect(page.locator('#gleichstandOverlay')).toBeVisible();
+        await page.getByRole('button', { name: 'Später entscheiden' }).click();
+        await expect(page.locator('#gleichstandOverlay')).toHaveCount(0);
+        await page.locator('#btnNaechsterKampfLive').click();
+        await expect(page.locator('#gleichstandOverlay')).toBeVisible();
+    });
+
+    test('Nach Siegzeit entscheiden: Popup verschwindet, die Entscheidung ist gespeichert', async ({ page, request }) => {
+        await schliesseOverlayAutomatisch(page);
+        await page.goto(`/steuerung.html?turnierId=${turnierId}&matId=${matId}`);
+        await page.getByRole('button', { name: 'Nach Siegzeit entscheiden' }).click();
+        await expect(page.locator('#gleichstandOverlay')).toHaveCount(0);
+        const pool = await holePool(request, turnierId, poolId);
+        expect(JSON.parse(pool.gleichstand_entscheidung).pool[0]).toHaveLength(3);
+        const zu = await request.post(`/api/pools/${poolId}/abschliessen`);
+        expect(zu.ok(), await zu.text()).toBeTruthy();
     });
 });
