@@ -104,6 +104,14 @@ export const GRUPPEN_UEBERKREUZ_TOPOLOGIE = {
     F2: { k1: ['HF1', 'verlierer'], k2: ['HF2', 'verlierer'] }
 };
 
+// Gruppen-KO (4 Vorrundengruppen): VF1-VF4 kommen aus den Gruppenranglisten (ENDRUNDE_KO in
+// gruppenUeberkreuzProgression.js), ab dem Halbfinale einfaches KO ohne kleines Finale.
+export const GRUPPEN_KO_TOPOLOGIE = {
+    HF1: { k1: ['VF1', 'sieger'], k2: ['VF2', 'sieger'] },
+    HF2: { k1: ['VF3', 'sieger'], k2: ['VF4', 'sieger'] },
+    F1: { k1: ['HF1', 'sieger'], k2: ['HF2', 'sieger'] }
+};
+
 /**
  * Setzt kaempfer1/2_quelle_kampf_id + _typ für alle Kämpfe eines Pools, deren reihenfolge_nummer
  * in der übergebenen Topologie-Tabelle vorkommt. Rein additiv — ändert kaempfer1_id/kaempfer2_id/

@@ -138,8 +138,8 @@ test('Moduswahl: ab 33 automatisch KO-Repechage-64, ein KO-Repechage-Pool bleibt
     assert.equal(waehleWettkampfsystem(30, 'KO-Repechage-64'), 'KO-Repechage-32');
     assert.equal(waehleWettkampfsystem(8, 'KO-Repechage-16'), 'Doppel-KO-8');
     assert.equal(waehleWettkampfsystem(12, 'Doppel-KO-16'), 'Doppel-KO-16');
-    assert.deepEqual(wettkampfsystemAlternativen(12), ['Doppel-KO-16', 'KO-Repechage-16']);
-    assert.deepEqual(wettkampfsystemAlternativen(20), ['Doppel-KO-32', 'KO-Repechage-32']);
+    assert.deepEqual(wettkampfsystemAlternativen(11), ['Doppel-KO-16', 'KO-Repechage-16']);
+    assert.deepEqual(wettkampfsystemAlternativen(24), ['Doppel-KO-32', 'KO-Repechage-32']);
     assert.deepEqual(wettkampfsystemAlternativen(5), []);
     assert.deepEqual(wettkampfsystemAlternativen(40), []);
 });

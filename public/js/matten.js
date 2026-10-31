@@ -68,6 +68,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (modus === 'Gruppen-Überkreuz' || modus === 'Gruppen-ueberkreuz') {
             return 'Pool+Ko';
         }
+        if (modus === 'Gruppen-KO') {
+            return 'Gruppen+KO';
+        }
         if (modus === 'Doppel-KO-8') {
             return 'DKO-8';
         }

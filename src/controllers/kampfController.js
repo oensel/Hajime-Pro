@@ -3,7 +3,7 @@ import { DoppelKo8Manager } from '../services/DoppelKo8Manager.js';
 import { DoppelKo16Manager } from '../services/DoppelKo16Manager.js';
 import { DoppelKo32Manager } from '../services/DoppelKo32Manager.js';
 import { KO_REPECHAGE_MANAGER } from '../services/KoRepechageManager.js';
-import { GruppenUeberKreuzManager } from '../services/GruppenUeberKreuzManager.js';
+import { GruppenUeberKreuzManager, GRUPPEN_KO } from '../services/GruppenUeberKreuzManager.js';
 import { planeKaempfeFuerKampfflaeche, synchronisiereMattenStatus, ladeKaempfeDerMatte } from './poolController.js';
 import { kampfMatteId } from '../shared/kampfMatte.js';
 import { baueMattenAnsicht } from '../shared/mattenAnsicht.js';
@@ -20,6 +20,7 @@ const doppelKo8 = new DoppelKo8Manager();
 const doppelKo16 = new DoppelKo16Manager();
 const doppelKo32 = new DoppelKo32Manager();
 const ueberKreuz = new GruppenUeberKreuzManager();
+const gruppenKo = new GruppenUeberKreuzManager(GRUPPEN_KO);
 
 /**
  * Utility function to trigger pool-specific logic when matches are updated.
@@ -37,6 +38,8 @@ export async function triggerPoolUpdate(knex, poolId) {
 
     if (pool.modus === 'Gruppen-Überkreuz') {
         await ueberKreuz.aktualisiereTurnier(knex, poolId);
+    } else if (pool.modus === 'Gruppen-KO') {
+        await gruppenKo.aktualisiereTurnier(knex, poolId);
     } else if (pool.modus === 'Doppel-KO-8') {
         await doppelKo8.aktualisiereTurnier(knex, poolId);
     } else if (pool.modus === 'Doppel-KO-16') {

@@ -71,7 +71,7 @@ export function baueBaumModell(modus, kaempfe, defs) {
             rundenAbschnitt(String(modus).startsWith('KO-Repechage') ? 'Hoffnungsrunde' : 'Trostrunde', POOL_RUNDEN[modus].loser, nachNr)
         ] };
     }
-    if (/^Gruppen-(Ü|ue|Ue)berkreuz$/.test(modus)) {
+    if (/^Gruppen-((Ü|ue|Ue)berkreuz|KO)$/.test(modus)) {
         const abschnitte = [];
         for (const g of UEBERKREUZ_GRUPPEN) {
             const teil = kaempfe.filter(k => String(k.nr).startsWith(g.praefix));

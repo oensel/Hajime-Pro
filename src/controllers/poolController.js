@@ -11,7 +11,7 @@ import { DoppelKo16Manager } from '../services/DoppelKo16Manager.js';
 import { DoppelKo32Manager } from '../services/DoppelKo32Manager.js';
 import { KO_REPECHAGE_MANAGER } from '../services/KoRepechageManager.js';
 import { istKoRepechage, koRepechageModusFuer } from '../shared/koRepechage.js';
-import { GruppenUeberKreuzManager } from '../services/GruppenUeberKreuzManager.js';
+import { GruppenUeberKreuzManager, GRUPPEN_KO } from '../services/GruppenUeberKreuzManager.js';
 import { MannschaftJederGegenJedenManager } from '../services/MannschaftJederGegenJedenManager.js';
 import { MannschaftDoppelKo8Manager } from '../services/MannschaftDoppelKo8Manager.js';
 import { MannschaftDoppelKo16Manager } from '../services/MannschaftDoppelKo16Manager.js';
@@ -34,6 +34,7 @@ const doppelKo8 = new DoppelKo8Manager();
 const doppelKo16 = new DoppelKo16Manager();
 const doppelKo32 = new DoppelKo32Manager();
 const ueberKreuz = new GruppenUeberKreuzManager();
+const gruppenKo = new GruppenUeberKreuzManager(GRUPPEN_KO);
 const mannschaftJederGegenJeden = new MannschaftJederGegenJedenManager();
 const mannschaftDoppelKo8 = new MannschaftDoppelKo8Manager();
 const mannschaftDoppelKo16 = new MannschaftDoppelKo16Manager();
@@ -62,6 +63,7 @@ export function waehleWettkampfsystem(anzahl, bisherigerModus = null) {
     if (anzahl <= 5) return 'Jeder-gegen-Jeden';
     if (anzahl === 6) return 'Gruppen-Überkreuz';
     if (bisherigerModus === 'Gruppen-Überkreuz' && anzahl <= UEBERKREUZ_MAX) return 'Gruppen-Überkreuz';
+    if (bisherigerModus === 'Gruppen-KO' && anzahl >= GRUPPEN_KO.minTeilnehmer && anzahl <= GRUPPEN_KO.maxTeilnehmer) return 'Gruppen-KO';
     if (anzahl <= 8) return 'Doppel-KO-8';
     if (istKoRepechage(bisherigerModus) && anzahl <= 64) return koRepechageModusFuer(anzahl);
     if (anzahl <= 16) return 'Doppel-KO-16';
@@ -74,11 +76,12 @@ export function waehleWettkampfsystem(anzahl, bisherigerModus = null) {
 // Systeme, auf die ein noch nicht begonnener Pool mit dieser Teilnehmerzahl umgestellt werden darf.
 // Spiegelbild in public/js/pools.js (systemAlternativen) für die Auswahlliste der Pool-Übersicht.
 export function wettkampfsystemAlternativen(anzahl) {
+    const gruppenKo = anzahl >= GRUPPEN_KO.minTeilnehmer && anzahl <= GRUPPEN_KO.maxTeilnehmer ? ['Gruppen-KO'] : [];
     if (anzahl === 6) return [...SECHSER_ALTERNATIVEN];
     if (anzahl >= 7 && anzahl <= 8) return ['Doppel-KO-8', 'Gruppen-Überkreuz'];
     if (anzahl >= 9 && anzahl <= UEBERKREUZ_MAX) return ['Doppel-KO-16', 'KO-Repechage-16', 'Gruppen-Überkreuz'];
-    if (anzahl >= 9 && anzahl <= 16) return ['Doppel-KO-16', 'KO-Repechage-16'];
-    if (anzahl >= 17 && anzahl <= 32) return ['Doppel-KO-32', 'KO-Repechage-32'];
+    if (anzahl >= 9 && anzahl <= 16) return ['Doppel-KO-16', 'KO-Repechage-16', ...gruppenKo];
+    if (anzahl >= 17 && anzahl <= 32) return ['Doppel-KO-32', 'KO-Repechage-32', ...gruppenKo];
     return [];
 }
 
@@ -93,6 +96,13 @@ function schaetzeBruttoKaempfe(modus, anzahlTeilnehmer) {
             const a = Math.ceil(anzahlTeilnehmer / 2);
             const b = Math.floor(anzahlTeilnehmer / 2);
             return (a * (a - 1)) / 2 + (b * (b - 1)) / 2 + 3;
+        }
+        case 'Gruppen-KO': {
+            // jeder gegen jeden in vier Gruppen + Viertelfinale, Halbfinale, Finale
+            const basis = Math.floor(anzahlTeilnehmer / 4);
+            const rest = anzahlTeilnehmer % 4;
+            const groessen = [0, 1, 2, 3].map(i => basis + (i < rest ? 1 : 0));
+            return groessen.reduce((s, n) => s + (n * (n - 1)) / 2, 0) + 7;
         }
         case 'Doppel-KO-8':
             return 11;
@@ -312,6 +322,8 @@ async function initialisiereKaempfeFuerPool(knex, poolId, modus) {
 
     if (modus === 'Gruppen-Überkreuz') {
         await ueberKreuz.initialisierePool(knex, poolId);
+    } else if (modus === 'Gruppen-KO') {
+        await gruppenKo.initialisierePool(knex, poolId);
     } else if (modus === 'Doppel-KO-8') {
         await doppelKo8.initialisierePool(knex, poolId);
     } else if (modus === 'Doppel-KO-16') {
@@ -1193,6 +1205,7 @@ export async function generierePools(knex, req, res) {
                     await knex('turnier_teilnehmer').whereIn('id', teilnehmerIds).update({ pool_id: poolId });
 
                     if (gewaehlterModus === 'Gruppen-Überkreuz') await ueberKreuz.initialisierePool(knex, poolId);
+                    else if (gewaehlterModus === 'Gruppen-KO') await gruppenKo.initialisierePool(knex, poolId);
                     else if (gewaehlterModus === 'Doppel-KO-8') await doppelKo8.initialisierePool(knex, poolId);
                     else if (gewaehlterModus === 'Doppel-KO-16') await doppelKo16.initialisierePool(knex, poolId);
                     else if (gewaehlterModus === 'Doppel-KO-32') await doppelKo32.initialisierePool(knex, poolId);
