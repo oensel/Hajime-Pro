@@ -5,6 +5,7 @@
  * Client-Geräten; der Server rechnet unabhängig davon mit seinen Managern nach und ist maßgeblich.
  *
  * @param {Array<Object>} kaempfe - alle Kämpfe eines Pools
+ * @param {{ entscheidung?: Object|string }} [optionen] - pools.gleichstand_entscheidung (siehe gleichstand.js)
  * @returns {Map<number, Object>} Kampf-ID -> zusammengefasste Feldänderungen gegenüber der Eingabe
  */
 import { berechneKaempferPatches } from './kampfProgression.js';
@@ -13,13 +14,13 @@ import { berechneGruppenUeberkreuzHalbfinalPatches } from './gruppenUeberkreuzPr
 const PATCH_FELDER = ['kaempfer1_id', 'kaempfer2_id', 'status', 'sieger_id', 'unterbewertung_kaempfer1', 'unterbewertung_kaempfer2'];
 const MAX_RUNDEN = 50;
 
-export function berechneKaskadenPatches(kaempfe) {
+export function berechneKaskadenPatches(kaempfe, optionen = {}) {
     const arbeit = kaempfe.map(k => ({ ...k }));
     const byId = new Map(arbeit.map(k => [k.id, k]));
     const ergebnis = new Map();
 
     for (let runde = 0; runde < MAX_RUNDEN; runde++) {
-        const patches = [...berechneGruppenUeberkreuzHalbfinalPatches(arbeit), ...berechneKaempferPatches(arbeit)];
+        const patches = [...berechneGruppenUeberkreuzHalbfinalPatches(arbeit, optionen), ...berechneKaempferPatches(arbeit)];
         let geaendert = false;
         for (const patch of patches) {
             const kampf = byId.get(patch.id);

@@ -19,6 +19,10 @@
  * client-seitig (Browser, ES-Modul).
  */
 import { ordneEinzelRangfolge } from './jgjRangfolge.js';
+import { pruefeGleichstand, leseEntscheidung, RELEVANT_BIS_GRUPPE } from './gleichstand.js';
+
+// Stichkämpfe einer Vorrundengruppe tragen die Nummer V_A_S1, V_A_S2, … (gehören nicht zu den sechs Vorrundenkämpfen).
+const STICHKAMPF_NUMMER = /^V_[AB]_S/;
 
 /**
  * Berechnet die Rangliste einer Vorrunden-Gruppe aus deren beendeten Kämpfen: meiste Siege, dann höhere
@@ -29,20 +33,28 @@ import { ordneEinzelRangfolge } from './jgjRangfolge.js';
  * ein Stichkampf ist in der Vorrunde nicht vorgesehen.
  * @param {Array<Object>} kaempfe - alle Kämpfe des Pools
  * @param {string} praefix - 'V_A_' oder 'V_B_'
+ * @param {{ entscheidung?: Array<Array<number>> }} [optionen] - von der Turnierleitung entschiedene Gleichstände dieser Gruppe
  * @returns {Array<{id: number, siege: number, unterbewertung: number, gleichstand: boolean}>} absteigend sortiert
  */
-export function berechneGruppenRangliste(kaempfe, praefix) {
-    const gruppenKaempfe = kaempfe
-        .filter(k => k.status === 'beendet' && k.reihenfolge_nummer?.startsWith(praefix))
-        .sort((a, b) => String(a.reihenfolge_nummer).localeCompare(String(b.reihenfolge_nummer), 'de', { numeric: true }));
+function nachNummer(kaempfe) {
+    return [...kaempfe].sort((a, b) => String(a.reihenfolge_nummer).localeCompare(String(b.reihenfolge_nummer), 'de', { numeric: true }));
+}
 
-    const teilnehmerIds = new Set();
-    gruppenKaempfe.forEach(k => {
-        if (k.kaempfer1_id) teilnehmerIds.add(k.kaempfer1_id);
-        if (k.kaempfer2_id) teilnehmerIds.add(k.kaempfer2_id);
+// Kämpfer einer Gruppe in der Reihenfolge der Kampfnummern (gilt bei unentschiedenem Gleichstand).
+function gruppenTeilnehmerIds(gruppenKaempfe) {
+    const ids = new Set();
+    nachNummer(gruppenKaempfe).forEach(k => {
+        if (k.kaempfer1_id) ids.add(k.kaempfer1_id);
+        if (k.kaempfer2_id) ids.add(k.kaempfer2_id);
     });
+    return Array.from(ids);
+}
 
-    const { reihenfolge, gleichstand, wertung } = ordneEinzelRangfolge(Array.from(teilnehmerIds), gruppenKaempfe);
+export function berechneGruppenRangliste(kaempfe, praefix, optionen = {}) {
+    const gruppenKaempfe = nachNummer(kaempfe.filter(k => k.status === 'beendet' && k.reihenfolge_nummer?.startsWith(praefix)));
+    const teilnehmerIds = gruppenTeilnehmerIds(gruppenKaempfe);
+
+    const { reihenfolge, gleichstand, wertung } = ordneEinzelRangfolge(teilnehmerIds, gruppenKaempfe, { entscheidung: optionen.entscheidung });
     return reihenfolge.map(id => ({ id, siege: wertung.get(id).siege, unterbewertung: wertung.get(id).punkte, gleichstand: gleichstand.has(id) }));
 }
 
@@ -53,19 +65,30 @@ export function berechneGruppenRangliste(kaempfe, praefix) {
  * bereits befüllt wurde.
  * @param {Array<Object>} kaempfe - alle Kämpfe des Pools: reihenfolge_nummer, status,
  *   kaempfer1_id, kaempfer2_id, sieger_id, unterbewertung_kaempfer1/2
+ * Solange in einer Gruppe Stichkämpfe offen sind oder Platz 1 und 2 nach Siegen, Wertungspunkten und direktem Vergleich nicht
+ * eindeutig sind (und die Turnierleitung den Gleichstand nicht entschieden hat), bleiben HF1/HF2 unbefüllt.
+ * @param {{ entscheidung?: Object|string }} [optionen] - pools.gleichstand_entscheidung, Schlüssel 'A' und 'B'
  * @returns {Array<{id: number, kaempfer1_id: number, kaempfer2_id: number, status: string}>}
  */
-export function berechneGruppenUeberkreuzHalbfinalPatches(kaempfe) {
+export function berechneGruppenUeberkreuzHalbfinalPatches(kaempfe, optionen = {}) {
     const hf1 = kaempfe.find(k => k.reihenfolge_nummer === 'HF1');
     const hf2 = kaempfe.find(k => k.reihenfolge_nummer === 'HF2');
     if (!hf1 || !hf2 || hf1.kaempfer1_id || hf2.kaempfer1_id) return [];
 
     const vorrundenKaempfe = kaempfe.filter(k => k.reihenfolge_nummer?.startsWith('V_'));
-    const vorrundeFertig = vorrundenKaempfe.length === 6 && vorrundenKaempfe.every(k => k.status === 'beendet');
+    const regulaer = vorrundenKaempfe.filter(k => !STICHKAMPF_NUMMER.test(k.reihenfolge_nummer));
+    const vorrundeFertig = regulaer.length === 6 && vorrundenKaempfe.every(k => k.status === 'beendet');
     if (!vorrundeFertig) return [];
 
-    const ranglisteA = berechneGruppenRangliste(kaempfe, 'V_A_');
-    const ranglisteB = berechneGruppenRangliste(kaempfe, 'V_B_');
+    const entscheidung = leseEntscheidung(optionen.entscheidung);
+    for (const gruppe of ['A', 'B']) {
+        const gruppenKaempfe = vorrundenKaempfe.filter(k => k.reihenfolge_nummer.startsWith(`V_${gruppe}_`));
+        const ids = gruppenTeilnehmerIds(gruppenKaempfe);
+        if (pruefeGleichstand(ids, gruppenKaempfe, { bis: RELEVANT_BIS_GRUPPE, entscheidung: entscheidung[gruppe] }).offen) return [];
+    }
+
+    const ranglisteA = berechneGruppenRangliste(kaempfe, 'V_A_', { entscheidung: entscheidung.A });
+    const ranglisteB = berechneGruppenRangliste(kaempfe, 'V_B_', { entscheidung: entscheidung.B });
 
     const ersterA = ranglisteA[0]?.id;
     const zweiterA = ranglisteA[1]?.id;

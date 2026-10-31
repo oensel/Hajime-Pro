@@ -20,7 +20,7 @@ export function erzeugeKaskadeLokal({ client }) {
         if (!matteId || Number(pool.kampfflaeche_id) !== Number(matteId)) return;
 
         const kaempfe = docs.filter(d => d.dokumenttyp === 'kampf' && Number(d.pool_id) === Number(poolId));
-        const patches = berechneKaskadenPatches(kaempfe);
+        const patches = berechneKaskadenPatches(kaempfe, { entscheidung: pool.gleichstand_entscheidung });
         if (patches.size === 0) return;
         const schreiben = kaempfe
             .filter(k => patches.has(k.id))

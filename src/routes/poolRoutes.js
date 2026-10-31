@@ -28,6 +28,7 @@ import {
     verspaeteNachzuegler
 } from '../controllers/poolController.js';
 import { legeZusatzkampfAnRoute } from '../controllers/kampfController.js';
+import { gleichstandRoute } from '../services/gleichstandService.js';
 import { requireAuth, requireTournamentEditAccess, requireTurnierAktiv } from '../middleware/auth.js';
 
 export function getPoolRoutes(knex) {
@@ -73,6 +74,8 @@ export function getPoolRoutes(knex) {
     router.put('/:id', requireTournamentEditAccess(knex), aktiv, (req, res) => updatePoolStammdaten(knex, req, res));
     router.put('/:id/system', requireTournamentEditAccess(knex), aktiv, (req, res) => aendereWettkampfsystem(knex, req, res));
     router.post('/:id/zusatzkampf', requireTournamentEditAccess(knex), aktiv, (req, res) => legeZusatzkampfAnRoute(knex, req, res));
+    // Gleichstand auf relevanten Plätzen entscheiden: { schluessel: 'pool' | 'A' | 'B', regel: 'siegzeit' | 'stichkampf' }
+    router.post('/:id/gleichstand', requireTournamentEditAccess(knex), aktiv, (req, res) => gleichstandRoute(knex, req, res));
     router.post('/:id/abschliessen', requireTournamentEditAccess(knex), aktiv, (req, res) => schliessePoolAb(knex, req, res));
     router.delete('/:id', requireTournamentEditAccess(knex), aktiv, (req, res) => deletePool(knex, req, res));
 

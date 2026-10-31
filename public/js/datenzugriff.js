@@ -390,6 +390,19 @@
         return LOKAL_GESPEICHERT;
     }
 
+    // Gleichstand auf relevanten Plätzen entscheiden: regel 'siegzeit' | 'stichkampf', schluessel 'pool' | 'A' | 'B'. Am Server
+    // direkt; ein Client-Gerät schreibt einen Antrag ins Pool-Dokument, den die Sync-Brücke am Hallen-Server ausführt.
+    async function entscheideGleichstand(poolId, schluessel, regel) {
+        await init();
+        if (modus === 'rest') {
+            const r = await restJson(`/api/pools/${poolId}/gleichstand`, {
+                method: 'POST', headers: JSON_HEADER, body: JSON.stringify({ schluessel, regel })
+            });
+            return r.ok ? { ok: true } : { ok: false, fehler: r.fehler || 'Der Gleichstand konnte nicht entschieden werden.' };
+        }
+        return ohneDoc(await aendereDokument(`pool:${poolId}`, { gleichstand_antrag: { id: crypto.randomUUID(), schluessel, regel } }));
+    }
+
     // aktion wie die REST-Pfade: 'nicht-angetreten' | 'disqualifizieren'.
     async function werteForfeit(teilnehmerId, kampfId, aktion) {
         await init();
@@ -477,6 +490,7 @@
         setzeMatteFort,
         schliessePoolAb,
         legeZusatzkampfAn,
+        entscheideGleichstand,
         werteForfeit,
         speichereTeilnehmer,
         bestaetigeKampfbereit

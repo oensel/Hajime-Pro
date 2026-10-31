@@ -51,6 +51,7 @@ export function baueMattenAnsicht({ kaempfe, pools, teilnehmer, mannschaftskaemp
                 pool_altersklasse: pool.altersklasse,
                 pool_golden_score_aktiv: pool.golden_score_aktiv,
                 pool_golden_score_max_sekunden: pool.golden_score_max_sekunden,
+                pool_gleichstand_entscheidung: pool.gleichstand_entscheidung ?? null,
                 kaempfer1_vorname: t1 ? t1.vorname : null,
                 kaempfer1_nachname: t1 ? t1.nachname : null,
                 kaempfer1_verein: t1 ? t1.verein : null,

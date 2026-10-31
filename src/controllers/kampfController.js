@@ -9,6 +9,9 @@ import { baueMattenAnsicht } from '../shared/mattenAnsicht.js';
 import { FachFehler } from '../utils/fachFehler.js';
 import { pruefeKorrekturErlaubt } from '../shared/korrekturRegel.js';
 import { verteilePositionen, fuegeEin } from '../shared/mattenReihenfolge.js';
+import { findeEinfuegeIndex } from '../shared/pausenEinsortierung.js';
+import { ermittlePausensekunden } from '../shared/pausenRegel.js';
+import { leseEntscheidung } from '../shared/gleichstand.js';
 import { aktualisiereMannschaftsPool, ermittleErsatzKandidaten, wechsleKaempfer } from '../services/mannschaftsBegegnungEngine.js';
 
 const jederGegenJeden = new JederGegenJedenManager();
@@ -214,6 +217,11 @@ export async function aktualisiereKampf(knex, id, felder) {
         console.log(`[Korrektur] Kampf ${currentKampf.id} (Pool ${currentKampf.pool_id}): Sieger geändert von ${currentKampf.sieger_id ?? 'keinem'} auf ${sieger_id ?? 'keinem'}.`);
     }
 
+    const zeitGeaendert = kampfzeit_in_sekunden !== undefined && parseInt(kampfzeit_in_sekunden) !== currentKampf.kampfzeit_in_sekunden;
+    if ((currentKampf.status === 'beendet' || currentKampf.status === 'freilos') && (ergebnisGeaendert || zeitGeaendert)) {
+        await verwerfeGleichstandEntscheidung(knex, currentKampf);
+    }
+
     for (const { id: abhaengigId, ohneQuelle, ...felderLeeren } of halbfinalZuLoesen) {
         await knex('kaempfe').where({ id: abhaengigId }).update({ ...felderLeeren, updated_at: knex.fn.now() });
     }
@@ -282,6 +290,21 @@ async function schreibePositionen(knex, zuweisungen) {
     });
 }
 
+// Ein korrigiertes oder zurückgesetztes Ergebnis kann einen Gleichstand verändern (Siege, Wertungspunkte, Siegzeit): Eine
+// schon getroffene Entscheidung (pools.gleichstand_entscheidung) gilt dann nicht mehr für den Pool bzw. die Vorrundengruppe
+// des Kampfes; bleibt der Gleichstand, entscheidet die Turnierleitung neu (gleichstandService.js).
+async function verwerfeGleichstandEntscheidung(knex, kampf) {
+    const pool = await knex('pools').where({ id: kampf.pool_id }).first();
+    if (!pool || !pool.gleichstand_entscheidung) return;
+    const schluessel = /^V_([AB])_/.exec(String(kampf.reihenfolge_nummer))?.[1] ?? 'pool';
+    const entscheidung = leseEntscheidung(pool.gleichstand_entscheidung);
+    if (!(schluessel in entscheidung)) return;
+    delete entscheidung[schluessel];
+    await knex('pools').where({ id: pool.id }).update({
+        gleichstand_entscheidung: Object.keys(entscheidung).length ? JSON.stringify(entscheidung) : null
+    });
+}
+
 // Setzt einen beendeten Kampf zurück auf "bereit" und reiht ihn an zweiter Stelle der kommenden
 // Kämpfe seiner Matte ein (Sync-Brücke und REST). Abhängige, noch nicht begonnene Folgekämpfe
 // werden wieder geleert; Regeln und Sperren: src/shared/korrekturRegel.js.
@@ -318,6 +341,7 @@ export async function setzeKampfZurueck(knex, kampfId) {
         if (pool && (pool.status === 'kaempfe_beendet' || pool.status === 'abgeschlossen')) {
             await trx('pools').where({ id: pool.id }).update({ status: 'gestartet' });
         }
+        await verwerfeGleichstandEntscheidung(trx, kampf);
     });
 
     await triggerPoolUpdate(knex, kampf.pool_id);
@@ -339,6 +363,32 @@ async function reiheKampfAnZweiterStelleEin(knex, pool, kampf) {
         await schreibePositionen(knex, verteilePositionen(folge, nachId));
         await synchronisiereMattenStatus(knex, pool.kampfflaeche_id);
     }
+}
+
+// Ordnet einen nachträglich angelegten Kampf (Zusatzkampf, Stichkampf) so früh in die Warteschlange seiner Matte ein, wie
+// die Mindestpause seiner beiden Kämpfer es erlaubt (src/shared/pausenEinsortierung.js). Geht das nirgends, steht er an der
+// Stelle mit dem kleinsten Pausendefizit; die Steuerung warnt dann zur Kampfzeit (berechnePausenwarnung). Der Kampf gilt als
+// manuell einsortiert und bleibt für den Planer unangetastet.
+export async function reiheKampfPausenkonformEin(knex, pool, kampf) {
+    if (!pool || !pool.kampfflaeche_id) return;
+    await planeKaempfeFuerKampfflaeche(knex, pool.kampfflaeche_id);
+    const { kaempfe, pools } = await ladeKaempfeDerMatte(knex, pool.kampfflaeche_id);
+    const poolById = new Map(pools.map(p => [p.id, p]));
+    const dauer = (k) => (k.kampfzeit_in_sekunden > 0 ? k.kampfzeit_in_sekunden : (poolById.get(k.pool_id)?.kampfzeit_sekunden || 240));
+    const nachPosition = (a, b) => (a.matten_reihenfolge ?? Number.MAX_SAFE_INTEGER) - (b.matten_reihenfolge ?? Number.MAX_SAFE_INTEGER) || a.id - b.id;
+    const kurz = (k) => ({ id: k.id, kaempfer1_id: k.kaempfer1_id, kaempfer2_id: k.kaempfer2_id, dauer: dauer(k) });
+    const vorher = kaempfe.filter(k => k.status === 'gestartet' || k.status === 'beendet').sort(nachPosition).map(kurz);
+    const bereite = kaempfe.filter(k => k.status === 'bereit' && k.matten_reihenfolge != null && k.id !== kampf.id).sort(nachPosition);
+    const { index } = findeEinfuegeIndex({
+        neu: { ...kurz(kampf), dauer: pool.kampfzeit_sekunden || 240 },
+        vorher,
+        warteschlange: bereite.map(kurz),
+        pausenSekunden: ermittlePausensekunden(pool.altersklasse)
+    });
+    const folge = fuegeEin(bereite.map(k => k.id), kampf.id, index);
+    const nachId = new Map([...kaempfe, kampf].map(k => [k.id, k]));
+    await schreibePositionen(knex, verteilePositionen(folge, nachId));
+    await synchronisiereMattenStatus(knex, pool.kampfflaeche_id);
 }
 
 // Zusatzkampf in einem Pool in Prüfung (z.B. Entscheidung eines 3er-Kreises mit je einem Sieg): Die Turnierleitung
@@ -381,7 +431,7 @@ export async function legeZusatzkampfAn(knex, poolId, kaempfer1Id, kaempfer2Id) 
         neuerKampf = await trx('kaempfe').where({ id: typeof zeile === 'object' ? zeile.id : zeile }).first();
         await trx('pools').where({ id: poolId }).update({ status: 'gestartet' });
     });
-    await reiheKampfAnZweiterStelleEin(knex, pool, neuerKampf);
+    await reiheKampfPausenkonformEin(knex, pool, neuerKampf);
     return neuerKampf.id;
 }
 

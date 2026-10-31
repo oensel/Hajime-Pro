@@ -7,7 +7,7 @@ export const SYNC_SHARDS = [
         name: 'server',
         specs: [
             'sync-grundlagen', 'sync-abgleich', 'sync-bruecke', 'sync-konflikte', 'sync-datenzugriff',
-            'sync-scoreboard', 'sync-waage', 'sync-liste-nachladen'
+            'sync-scoreboard', 'sync-waage', 'sync-liste-nachladen', 'sync-gleichstand'
         ]
     },
     {
