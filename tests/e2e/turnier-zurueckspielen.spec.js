@@ -48,7 +48,8 @@ test.describe.serial('Turnier in die Cloud zurückspielen', () => {
 
     test('Turnier holen und einen Kämpfer anlegen', async ({ request }) => {
         const token = await cloudToken(request);
-        const geholt = await request.post(`/api/cloud/turniere/${CLOUD_TURNIER}/holen`, { data: { token } });
+        // ersetzen: ein früherer Lauf (z.B. die Helferplan-Specs) kann dasselbe Cloud-Turnier am selben Tag schon geholt haben
+        const geholt = await request.post(`/api/cloud/turniere/${CLOUD_TURNIER}/holen`, { data: { token, ersetzen: true } });
         expect(geholt.status(), await geholt.text()).toBe(201);
         turnierId = (await geholt.json()).turnierId;
 

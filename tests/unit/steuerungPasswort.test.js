@@ -47,6 +47,9 @@ test('neues Passwort: Regeln', () => {
     assert.match(sp.pruefeNeuesPasswort(' leerzeichen1 '), /mindestens 8 Zeichen/);
     assert.match(sp.pruefeNeuesPasswort('startpass1'), /unterscheiden/);
     assert.equal(sp.pruefeNeuesPasswort('einEigenes-Passwort'), null);
+    // ohne Kenntnis des bisherigen (Client-Konfig) darf es auch gleich bleiben, die Längenregel gilt weiter
+    assert.equal(sp.pruefeNeuesPasswort('startpass1', { gleichErlaubt: true }), null);
+    assert.match(sp.pruefeNeuesPasswort('kurz', { gleichErlaubt: true }), /mindestens 8 Zeichen/);
 });
 
 test('GET /mode und POST /verify melden die ausstehende Änderung; Änderung löst das Start-Passwort ab', async () => {

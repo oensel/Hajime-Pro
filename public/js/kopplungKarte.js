@@ -40,3 +40,38 @@ document.addEventListener('DOMContentLoaded', async () => {
         else if (window.zeigeNotification) window.zeigeNotification('Code konnte nicht erneuert werden.', 'error');
     });
 });
+
+// Karte "Schreibpasswort setzen": am Hallen-Server jederzeit möglich, ohne das bisherige Passwort (POST /api/client/steuerung-passwort).
+document.addEventListener('DOMContentLoaded', async () => {
+    const karte = document.getElementById('passwortKarte');
+    if (!karte) return;
+    const status = await fetch('/api/sync/status', { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).catch(() => null);
+    if (!status || status.rolle !== 'server') return;
+    karte.style.display = '';
+
+    const meldung = document.getElementById('passwortMeldung');
+    const zeigeMeldung = (text, gut) => {
+        meldung.textContent = text;
+        meldung.style.color = gut ? '#2e7d32' : '#c62828';
+        meldung.style.display = '';
+    };
+    document.getElementById('passwortForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const neu = document.getElementById('passwortNeu').value;
+        if (neu !== document.getElementById('passwortWiederholung').value) return zeigeMeldung('Die beiden Eingaben sind nicht gleich.', false);
+        try {
+            const r = await fetch('/api/client/steuerung-passwort', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ neuesPasswort: neu })
+            });
+            const daten = await r.json().catch(() => ({}));
+            if (!r.ok) return zeigeMeldung(daten.error || 'Das Passwort konnte nicht gespeichert werden.', false);
+            try { localStorage.setItem('steuerung_password', neu); } catch (err) { /* localStorage gesperrt */ }
+            e.target.reset();
+            zeigeMeldung('Das neue Schreibpasswort gilt jetzt.', true);
+        } catch (err) {
+            zeigeMeldung('Netzwerkfehler beim Speichern.', false);
+        }
+    });
+});

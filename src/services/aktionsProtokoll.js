@@ -26,6 +26,7 @@ const AKTIONEN = {
     'POST /api/turniere/:id/import-ergebnisse': ['turnier.zurueckspielen', 'Turnier in die Cloud zurückgespielt'],
     'PUT /api/auth/profile': ['profil.aendern', 'Profil geändert'],
     'POST /api/auth/steuerung-passwort': ['steuerung.passwort', 'Turnierleitungs-Passwort geändert'],
+    'POST /api/client/steuerung-passwort': ['steuerung.passwort', 'Turnierleitungs-Passwort in der Client-Konfig neu gesetzt'],
     'POST /api/auth/2fa/backup-codes': ['2fa.backupcodes', 'Neue Backup-Codes für die Zwei-Faktor-Anmeldung erzeugt'],
     'POST /api/vereine/rolle': ['verein.rolle', 'Rolle im Verein geändert'],
     'POST /api/vereine/einladungen': ['verein.einladung', 'Einladung verschickt'],
