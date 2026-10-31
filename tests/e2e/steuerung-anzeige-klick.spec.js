@@ -68,6 +68,17 @@ test('Klick auf Zahl, Shido-Karte und Behandlungs-Kreuz wirkt wie die Knöpfe; d
     await kreuz1.click();
     await expect(kreuz1).not.toHaveClass(/active/);
 
+    // Drittes (rotes) Kreuz: 3. Behandlung, Kiken-gachi mit Banner; erneuter Klick nimmt sie zurück
+    const kreuz3 = anzeige.locator('#behandlungW_3');
+    await expect(kreuz3).toBeVisible();
+    await kreuz3.click();
+    await expect(kreuz3).toHaveClass(/active/);
+    await expect(anzeige.locator('#bannerW')).toHaveText('AUFGABE');
+    await kreuz3.click();
+    await expect(kreuz3).not.toHaveClass(/active/);
+    await expect(anzeige.locator('#behandlungW_2')).toHaveClass(/active/);
+    await expect(anzeige.locator('#bannerW')).not.toHaveClass(/active/);
+
     // Fernseher: ohne controls keine Klick-Klasse, nicht vergebene Karten bleiben ausgeblendet
     const tv = await (await browser.newContext()).newPage();
     await tv.goto('/anzeige.html');
