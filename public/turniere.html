@@ -215,9 +215,79 @@
             border: 1px solid rgba(239, 108, 0, 0.3);
         }
         .btn-aktivieren {
-            background: rgba(46, 125, 50, 0.12);
-            color: #2e7d32;
-            border: 1px solid rgba(46, 125, 50, 0.4);
+            background: #2e7d32;
+            color: #fff;
+            border: 1px solid #1b5e20;
+        }
+        /* Turnier mit Wettkampftag heute: über die ganze Breite, grün hervorgehoben, Aktivieren-Knopf pulsiert */
+        .tournament-card.heute {
+            grid-column: 1 / -1;
+            border: 3px solid #2e7d32;
+            background: rgba(46, 125, 50, 0.05);
+            box-shadow: 0 4px 18px rgba(46, 125, 50, 0.25);
+        }
+        .heute-banner {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            width: 100%;
+            margin-top: 14px;
+            padding: 14px 16px;
+            border: 1px solid #1b5e20;
+            border-radius: 6px;
+            background: #2e7d32;
+            color: #fff;
+            font: inherit;
+            font-size: 14px;
+            line-height: 1.4;
+            text-align: left;
+            cursor: pointer;
+            animation: aktivieren-puls 2s ease-out infinite;
+        }
+        .heute-banner:hover { background: #276b2b; }
+        .heute-banner:focus-visible { outline: 3px solid #1b5e20; outline-offset: 2px; }
+        .heute-banner:disabled { opacity: 0.7; cursor: progress; animation: none; }
+        .heute-banner .material-icons { font-size: 30px; }
+        .heute-banner-text { flex: 1; }
+        .heute-banner strong { display: block; font-size: 16px; margin-bottom: 2px; }
+        .heute-banner-los {
+            display: inline-flex;
+            align-items: center;
+            padding: 8px 8px 8px 16px;
+            border-radius: 4px;
+            background: #fff;
+            color: #1b5e20;
+            font-weight: 700;
+            font-size: 15px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            white-space: nowrap;
+        }
+        .heute-banner-los .material-icons { font-size: 22px; }
+        .laeuft-zeile {
+            display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 10px 14px;
+            border-radius: 6px; background: rgba(46, 125, 50, 0.12); color: #1b5e20; font-size: 14px;
+        }
+        .laeuft-zeile .material-icons { font-size: 22px; color: #2e7d32; }
+        .app-zeile {
+            display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; margin-top: 8px; padding: 10px 14px;
+            border: 2px solid #1e3a8a; border-radius: 6px; background: rgba(30, 58, 138, 0.07);
+            font-size: 13px; color: var(--text-secondary, #555);
+        }
+        .app-zeile.aus .material-icons { color: #1e3a8a; font-size: 28px; }
+        .app-zeile[hidden] { display: none; }
+        .app-zeile .material-icons { font-size: 22px; }
+        .app-zeile-text { flex: 1 1 160px; min-width: 0; }
+        .app-zeile-text strong { display: block; font-size: 14px; color: var(--text-primary, #222); }
+        .app-zeile .btn { flex: 1 1 100%; width: 100%; margin: 0; }
+        .status-badge.status-heute { background: #2e7d32; color: #fff; border: 1px solid #1b5e20; }
+        @keyframes aktivieren-puls {
+            0% { box-shadow: 0 0 0 0 rgba(46, 125, 50, 0.55); }
+            70% { box-shadow: 0 0 0 12px rgba(46, 125, 50, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(46, 125, 50, 0); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .heute-banner { animation: none; }
         }
         .abgeschlossen-liste { display: flex; flex-direction: column; gap: 5px; margin-top: 12px; }
         .abgeschlossen-zeile {
@@ -244,6 +314,7 @@
             display: flex;
             flex-wrap: wrap;
             gap: 10px;
+            flex-wrap: wrap;
             border-top: 1px solid var(--border);
             padding-top: 14px;
         }
@@ -404,7 +475,9 @@
             .abgeschlossen-zeile { flex-wrap: wrap; gap: 8px 10px; }
             .abgeschlossen-zeile .az-name { flex-basis: 100%; min-width: 0; overflow-wrap: anywhere; }
         }
-    </style>
+        .aktivier-hinweis { order: -1; flex: 0 0 100%; display: flex; align-items: center; gap: 4px; font-size: 13px; color: var(--md-sys-color-on-surface-variant, #666); }
+    .aktivier-hinweis .material-icons { font-size: 16px; }
+</style>
     <script src="/js/menu.js"></script>
 </head>
 <body>
@@ -822,11 +895,35 @@
                 return `<button type="button" class="btn btn-outlined rueckspiel-knopf" style="display:none;" data-aktion="zurueckspielen" data-id="${escHtml(t.id)}" aria-label="In die Cloud zurückspielen" data-tooltip="Ergebnisse, Teilnehmer und Barzahlungen in die Cloud zurückspielen"><span class="material-icons" style="font-size:18px; vertical-align:middle;">cloud_upload</span> In die Cloud zurückspielen</button>`;
             }
 
-            function hallenAktionen(t) {
-                const aktivieren = t.aktivierbar
+            function hallenAktionen(t, { ohneAktivieren = false } = {}) {
+                const aktivieren = t.aktivierbar && !ohneAktivieren
                     ? `<button type="button" class="btn btn-aktivieren" data-aktion="aktivieren" data-id="${t.id}">Aktivieren</button>` : '';
                 const duplizieren = `<button type="button" class="btn btn-outlined btn-icon-aktion" data-aktion="duplizieren" data-id="${t.id}" aria-label="Duplizieren" data-tooltip="Duplizieren"><span class="material-icons">content_copy</span></button>`;
-                return aktivieren + rueckspielKnopf(t) + duplizieren;
+                return aktivierHinweis(t) + aktivieren + rueckspielKnopf(t) + duplizieren;
+            }
+
+            // Statt eines fehlenden Knopfs sagt die Karte, warum (noch) nicht aktiviert werden kann.
+            function aktivierHinweis(t) {
+                if (t.aktivierbar || t.aktiv || t.status === 'abgeschlossen' || t.status === 'abgesagt') return '';
+                const grund = String(t.aktivierbar_grund || '');
+                let text = '';
+                if (/noch aktiv/.test(grund)) {
+                    text = 'Erst nach Ende des aktiven Turniers';
+                } else if (/Wettkampftag/.test(grund)) {
+                    const tag = String(t.datum || '').slice(0, 10);
+                    const heute = new Date(); const heuteIso = `${heute.getFullYear()}-${String(heute.getMonth() + 1).padStart(2, '0')}-${String(heute.getDate()).padStart(2, '0')}`;
+                    if (tag > heuteIso) text = `Aktivierbar am ${tag.split('-').reverse().join('.')}`;
+                }
+                return text ? `<span class="aktivier-hinweis"><span class="material-icons">schedule</span>${escHtml(text)}</span>` : '';
+            }
+
+            // Cloud: Turnier mit Wettkampftag heute, das live geschaltet werden kann (gleiche Bedingungen wie der Knopf „Live“).
+            function liveHeute(t, isEditable) {
+                if (istOffline || !isEditable || !istFreigegeben) return false;
+                if (!['veroeffentlicht', 'anmeldung_geschlossen', 'in_durchfuehrung'].includes(t.status_effektiv)) return false;
+                const j = new Date();
+                const heuteIso = `${j.getFullYear()}-${String(j.getMonth() + 1).padStart(2, '0')}-${String(j.getDate()).padStart(2, '0')}`;
+                return String(t.datum || '').slice(0, 10) === heuteIso;
             }
 
             function renderCard(t, isEditable) {
@@ -868,7 +965,7 @@
                 }
 
                 return `
-                    <div class="tournament-card ${!istOffline && deadlineExpired ? 'expired' : ''} ${t.aktiv ? 'aktiv' : ''}">
+                    <div class="tournament-card ${!istOffline && deadlineExpired ? 'expired' : ''} ${t.aktiv ? 'aktiv' : ''} ${liveHeute(t, isEditable) ? 'heute' : ''}">
                         <div>
                             <h2 class="tournament-name">${escHtml(t.bezeichnung)}<span class="status-badge status-${escHtml(statusKlasse)}">${escHtml(statusLabel)}</span></h2>
                             <div class="tournament-details">
@@ -942,6 +1039,7 @@
                                 </div>
                             </div>
                         </div>
+                        ${liveHeute(t, isEditable) ? `<button type="button" class="heute-banner" onclick="window.location.href='/cloud-live.html?turnierId=${encodeURIComponent(t.id)}'" aria-label="Turnier jetzt in der Cloud starten (live schalten)"><span class="material-icons">cell_tower</span><span class="heute-banner-text"><strong>Heute ist Wettkampftag: Turnier jetzt in der Cloud starten</strong>Für den Betrieb ohne Hallen-Server. Alle Geräte an den Matten brauchen stabiles Internet.</span><span class="heute-banner-los">In der Cloud starten<span class="material-icons">chevron_right</span></span></button>` : ''}
                         <div class="card-actions">
                             <!-- "Auswählen" bleibt für fremde Turniere auch vor der eigenen Freigabe erreichbar
                                  (Gastverein meldet nur eigene Athlet:innen an, serverseitig ohnehin auf den
@@ -970,9 +1068,9 @@
                 const waehlen = istFreigegeben
                     ? `<button type="button" class="btn btn-raised" onclick="window.location.href='/teilnehmer.html?turnierId=${encodeURIComponent(t.id)}'">Auswählen</button>` : '';
                 return `
-                    <div class="tournament-card kompakt ${t.aktiv ? 'aktiv' : ''}">
+                    <div class="tournament-card kompakt ${t.aktiv ? 'aktiv' : ''} ${t.aktivierbar ? 'heute' : ''}">
                         <div>
-                            <h2 class="tournament-name">${escHtml(t.bezeichnung)}<span class="status-badge status-${escHtml(hallen.klasse)}">${escHtml(hallen.label)}</span></h2>
+                            <h2 class="tournament-name">${escHtml(t.bezeichnung)}<span class="status-badge status-${escHtml(hallen.klasse)}">${escHtml(hallen.label)}</span>${t.aktivierbar ? '<span class="status-badge status-heute">Wettkampftag heute</span>' : ''}</h2>
                             <div class="kompakt-ort"><span class="material-icons">calendar_today</span><span>${escHtml(dateStr)} · ${t.plz ? `${escHtml(t.plz)} ` : ''}${escHtml(t.ort)}</span></div>
                             <div class="info-chips">
                                 <span class="info-chip">${escHtml(t.anzahl_kampfflaechen)} Matten</span>
@@ -982,9 +1080,12 @@
                             ${chipZeilen(chipGruppen)}
                             ${planungsFortschritt(t).map(e => fortschrittHtml(e, true)).join('')}
                         </div>
+                        ${t.aktivierbar ? `<button type="button" class="heute-banner" data-aktion="aktivieren" data-id="${t.id}" aria-label="Turnier am Hallen-Server starten (aktivieren)"><span class="material-icons">play_circle</span><span class="heute-banner-text"><strong>Heute ist Wettkampftag: Turnier jetzt am Hallen-Server starten</strong>Erst dann können Matten, Waage und Android-Geräte darauf zugreifen. Läuft auch ohne Internet.</span><span class="heute-banner-los">Starten<span class="material-icons">chevron_right</span></span></button>` : ''}
+                        ${t.aktiv ? `<div class="laeuft-zeile"><span class="material-icons">check_circle</span><span><strong>Läuft am Hallen-Server.</strong> Matten, Waage und Android-Geräte können sich jetzt koppeln.</span></div>
+                        <div class="app-zeile" data-app-zeile="${t.id}" hidden></div>` : ''}
                         <div class="card-actions">
                             ${waehlen}
-                            ${hallenAktionen(t)}
+                            ${hallenAktionen(t, { ohneAktivieren: true })}
                         </div>
                     </div>
                 `;
@@ -995,7 +1096,7 @@
             if (istOffline) {
                 const aktives = turniere.filter(t => t.aktiv);
                 const geplant = turniere.filter(t => !t.aktiv && !['abgeschlossen', 'abgesagt'].includes(t.status))
-                    .sort((a, b) => String(a.datum).localeCompare(String(b.datum)));
+                    .sort((a, b) => (Number(!!b.aktivierbar) - Number(!!a.aktivierbar)) || String(a.datum).localeCompare(String(b.datum)));
                 const fertig = turniere.filter(t => !t.aktiv && ['abgeschlossen', 'abgesagt'].includes(t.status));
                 const datumKurz = (d) => { const o = new Date(d); return `${String(o.getDate()).padStart(2, '0')}.${String(o.getMonth() + 1).padStart(2, '0')}.${o.getFullYear()}`; };
 
@@ -1036,6 +1137,8 @@
                         window.TurnierDuplizieren.oeffne(turnier, () => window.location.reload());
                     } else if (knopf.dataset.aktion === 'zurueckspielen') {
                         window.RueckspielDialog.oeffne(turnier);
+                    } else if (knopf.dataset.aktion === 'teilnehmer-app') {
+                        if (window.TeilnehmerApp) window.TeilnehmerApp.oeffneFuerTurnier(knopf.dataset.id, { einschalten: knopf.dataset.einschalten === '1' });
                     } else if (knopf.dataset.aktion === 'aktivieren') {
                         knopf.disabled = true;
                         const resp = await fetch(`/api/turniere/${knopf.dataset.id}/aktivieren`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
@@ -1050,6 +1153,35 @@
                 };
                 container.addEventListener('click', behandleKlick);
                 abgeschlossenBereich.addEventListener('click', behandleKlick);
+
+                // Teilnehmer-App: die Zeile im aktiven Turnier erscheint nur, wenn die Cloud erreichbar ist (oder die App schon läuft)
+                const appZeile = container.querySelector('[data-app-zeile]');
+                if (appZeile) {
+                    const id = appZeile.dataset.appZeile;
+                    const aktualisiereAppZeile = async () => {
+                        if (document.hidden && appZeile.dataset.geladen) return;
+                        let status = null;
+                        try {
+                            const r = await fetch(`/api/live-app/status?turnierId=${encodeURIComponent(id)}`, { cache: 'no-store' });
+                            status = r.ok ? await r.json() : null;
+                        } catch { status = null; }
+                        appZeile.dataset.geladen = '1';
+                        const zeigen = !!status && (status.aktiv || (status.verfuegbar && status.cloudErreichbar));
+                        appZeile.hidden = !zeigen;
+                        if (!zeigen) return;
+                        const farbe = status.zustand === 'gruen' ? '#2e7d32' : status.zustand === 'rot' ? '#c62828' : '#f9a825';
+                        appZeile.innerHTML = status.aktiv
+                            ? `<span class="material-icons" style="color:${farbe};">smartphone</span>
+                               <span class="app-zeile-text"><strong>Teilnehmer-App läuft</strong>${escHtml(status.text || '')}</span>
+                               <button type="button" class="btn btn-outlined" data-aktion="teilnehmer-app" data-id="${escHtml(id)}">Verwalten</button>`
+                            : `<span class="material-icons">smartphone</span>
+                               <span class="app-zeile-text"><strong>Teilnehmer-App für Eltern und Teilnehmende</strong>Zeigt Ergebnisse und Aufrufe live. Braucht Internet am Hallen-Server.</span>
+                               <button type="button" class="btn btn-raised" data-aktion="teilnehmer-app" data-einschalten="1" data-id="${escHtml(id)}">Teilnehmer-App einschalten</button>`;
+                        appZeile.classList.toggle('aus', !status.aktiv);
+                    };
+                    aktualisiereAppZeile();
+                    setInterval(aktualisiereAppZeile, 5000);
+                }
                 return;
             }
 
@@ -1068,7 +1200,7 @@
                 // Vergangene Turniere (Entwürfe ausgenommen) stehen klein und als archiviert unter den aktuellen.
                 const tagStart = new Date(); tagStart.setHours(0, 0, 0, 0);
                 const istVergangen = (t) => t.status !== 'entwurf' && t.datum && new Date(t.datum) < tagStart;
-                const eigeneAktuell = eigeneTurniere.filter(t => !istVergangen(t));
+                const eigeneAktuell = eigeneTurniere.filter(t => !istVergangen(t)).sort((a, b) => Number(liveHeute(b, true)) - Number(liveHeute(a, true)));
                 const eigeneArchiviert = eigeneTurniere.filter(istVergangen);
                 const datumKurzCloud = (d) => { const o = new Date(d); return `${String(o.getDate()).padStart(2, '0')}.${String(o.getMonth() + 1).padStart(2, '0')}.${o.getFullYear()}`; };
                 htmlContent += `

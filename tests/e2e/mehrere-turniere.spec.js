@@ -134,10 +134,13 @@ test('turniere.html: Aktivieren und Duplizieren erscheinen, abgeschlossene Turni
     await expect(dupKnopf).toHaveAttribute('data-tooltip', 'Duplizieren');
     await expect(dupKnopf.locator('.material-icons')).toHaveText('content_copy');
     await expect(dupKnopf).toHaveText('content_copy');
-    // gleiche Höhe wie die übrigen Knöpfe der Karte
-    const hoehen = await karte.locator('.card-actions .btn').evaluateAll(els => els.map(e => Math.round(e.getBoundingClientRect().height)));
-    expect(new Set(hoehen).size).toBe(1);
-    await expect(karte.locator('.status-badge')).toHaveText('Entwurf');
+    // Wettkampftag heute: Karte hervorgehoben, der Hinweis ist selbst der (pulsierende) Aktivieren-Knopf
+    await expect(karte).toHaveClass(/heute/);
+    const hinweis = karte.locator('button.heute-banner[data-aktion="aktivieren"]');
+    await expect(hinweis).toContainText('Android');
+    await expect(karte.locator('.btn-aktivieren')).toHaveCount(0);
+    expect(await hinweis.evaluate(e => getComputedStyle(e).animationName)).toBe('aktivieren-puls');
+    await expect(karte.locator('.status-badge:not(.status-heute)')).toHaveText('Entwurf');
 
     const zeile = page.locator('.abgeschlossen-zeile').filter({ hasText: fertigName });
     await expect(zeile).toBeVisible();
@@ -211,3 +214,36 @@ test('turniere.html: Turniernamen werden maskiert (kein HTML aus Namen oder Orte
     expect(await page.evaluate(() => window.__xss)).toBeUndefined();
 });
 
+
+test('turniere.html: geplante Turniere zeigen „Aktivierbar am …“ statt eines Knopfs, das heutige den Knopf', async ({ page, request }) => {
+    // der Layout-Test davor lässt ein aktives Turnier zurück
+    const db = knexLib({ client: 'pg', connection: testDbVerbindung });
+    try { await db('turniere').update({ aktiv: false }); } finally { await db.destroy(); }
+    const heuteName = `Hinweis Heute ${Date.now()}`;
+    const spaetName = `Hinweis Spaeter ${Date.now()}`;
+    const heutiges = await legeTurnierAn(request, heuteName, heute());
+    await legeTurnierAn(request, spaetName, '2031-12-05');
+
+    await page.goto('/turniere.html');
+    const heuteKarte = page.locator('.tournament-card').filter({ hasText: heuteName });
+    await expect(heuteKarte.getByRole('button', { name: 'Aktivieren' })).toBeVisible();
+    await expect(heuteKarte.locator('.aktivier-hinweis')).toHaveCount(0);
+
+    const spaetKarte = page.locator('.tournament-card').filter({ hasText: spaetName });
+    await expect(spaetKarte.getByRole('button', { name: 'Aktivieren' })).toHaveCount(0);
+    await expect(spaetKarte.locator('.aktivier-hinweis')).toContainText('Aktivierbar am 05.12.2031');
+
+    // ist ein Turnier aktiv, sagen das die übrigen
+    expect((await request.post(`/api/turniere/${heutiges}/aktivieren`, { data: {} })).ok()).toBeTruthy();
+    await page.reload();
+    await expect(spaetKarte.locator('.aktivier-hinweis')).toContainText('Erst nach Ende des aktiven Turniers');
+
+    // aktives Turnier: „Läuft am Hallen-Server“; die Teilnehmer-App-Zeile bleibt verborgen, solange sie nicht angeboten werden kann
+    // (dieses Turnier stammt nicht aus der Cloud, also gibt es keinen Teilnehmer-App-Zugang)
+    const aktivKarte = page.locator('.tournament-card').filter({ hasText: heuteName });
+    await expect(aktivKarte.locator('.laeuft-zeile')).toContainText('Läuft am Hallen-Server');
+    await expect(aktivKarte.locator('.heute-banner')).toHaveCount(0);
+    await expect(aktivKarte.locator(`[data-app-zeile="${heutiges}"]`)).toBeHidden();
+
+    expect((await request.post(`/api/turniere/${heutiges}/durchfuehrung-beenden`)).ok()).toBeTruthy();
+});
