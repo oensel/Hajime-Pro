@@ -1451,12 +1451,18 @@ function injiziereBedienButtons() {
         }, 500);
     }
 
+    // Klickbare Anzeige (nur hier, nie auf dem Fernseher): die Klasse schaltet in scoreboard.css die blassen
+    // Platzhalter für nicht vergebene Shido/Behandlung und den Zeiger auf den Wertungszahlen ein.
+    document.body.classList.add('mit-steuerung');
+
     const scoreTypen = { ippon: 'Ippon', waza: 'Waza', yuko: 'Yuko' };
     Object.keys(scoreTypen).forEach(type => {
         ['W', 'B'].forEach(color => {
             const num = document.getElementById('out' + scoreTypen[type] + color);
             const box = num ? num.closest('.box') : null;
             if (!box) return;
+            // Klick auf die Zahl wirkt wie das "+" darunter
+            num.addEventListener('click', () => window.parent.changeScore(color, type, 1));
             const wrap = document.createElement('div');
             wrap.className = 'iframe-ctrl-scores';
             wrap.appendChild(knopf('+', () => window.parent.changeScore(color, type, 1)));
@@ -1480,10 +1486,27 @@ function injiziereBedienButtons() {
         return grp;
     }
 
+    // Karten/Kreuze einer Gruppe anklickbar: ein blasses Feld setzt den Wert bis dorthin, das letzte gefüllte nimmt
+    // eins zurück. Der aktuelle Stand steht in der Klasse "active" (setzt channel.onmessage aus dem Broadcast).
+    function machKlickbar(prefix, color, anzahl, aendere) {
+        const felder = [];
+        for (let i = 1; i <= anzahl; i++) {
+            const el = document.getElementById(prefix + color + '_' + i);
+            if (el) felder.push(el);
+        }
+        felder.forEach((el, i) => el.addEventListener('click', () => {
+            const aktuell = felder.filter(f => f.classList.contains('active')).length;
+            aendere(color, (i + 1 === aktuell) ? -1 : (i + 1) - aktuell);
+        }));
+    }
+
     ['W', 'B'].forEach(color => {
         const shidoCard = document.getElementById('shido' + color + '_1');
         const container = shidoCard ? shidoCard.closest('.shido-container') : null;
         if (!container) return;
+
+        machKlickbar('shido', color, 3, (c, d) => window.parent.changeShido(c, d));
+        machKlickbar('behandlung', color, 2, (c, d) => window.parent.changeBehandlung(c, d));
 
         const shidoGrp = beschrifteteGruppe('Shido', () => window.parent.changeShido(color, -1), () => window.parent.changeShido(color, 1));
         const behGrp = beschrifteteGruppe('Behandlung', () => window.parent.changeBehandlung(color, -1), () => window.parent.changeBehandlung(color, 1));
