@@ -68,7 +68,7 @@ export function baueBaumModell(modus, kaempfe, defs) {
     if (POOL_RUNDEN[modus]) {
         return { abschnitte: [
             rundenAbschnitt('Hauptrunde', POOL_RUNDEN[modus].winner, nachNr),
-            rundenAbschnitt('Trostrunde', POOL_RUNDEN[modus].loser, nachNr)
+            rundenAbschnitt(String(modus).startsWith('KO-Repechage') ? 'Hoffnungsrunde' : 'Trostrunde', POOL_RUNDEN[modus].loser, nachNr)
         ] };
     }
     if (/^Gruppen-(Ü|ue|Ue)berkreuz$/.test(modus)) {

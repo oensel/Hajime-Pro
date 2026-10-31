@@ -759,7 +759,8 @@
     /* Doppel-KO-16: Die Hauptrunde (8 Kämpfe in der ersten Runde) ist höher als eine A4-Querformat-
        Seite. Absolut positionierte Karten lassen sich nicht sauber umbrechen, daher wird die
        Hauptrunde im Druck verkleinert, bis sie samt Überschriften auf eine Seite passt. */
-    .bracket-wrapper.bracket-doppel-ko-16 .winner-bracket {
+    .bracket-wrapper.bracket-doppel-ko-16 .winner-bracket,
+    .bracket-wrapper.bracket-ko-repechage-16 .winner-bracket {
         zoom: 0.6;
         break-inside: avoid !important;
         page-break-inside: avoid !important;

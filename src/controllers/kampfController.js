@@ -2,6 +2,7 @@ import { JederGegenJedenManager } from '../services/JederGegenJedenManager.js';
 import { DoppelKo8Manager } from '../services/DoppelKo8Manager.js';
 import { DoppelKo16Manager } from '../services/DoppelKo16Manager.js';
 import { DoppelKo32Manager } from '../services/DoppelKo32Manager.js';
+import { KO_REPECHAGE_MANAGER } from '../services/KoRepechageManager.js';
 import { GruppenUeberKreuzManager } from '../services/GruppenUeberKreuzManager.js';
 import { planeKaempfeFuerKampfflaeche, synchronisiereMattenStatus, ladeKaempfeDerMatte } from './poolController.js';
 import { kampfMatteId } from '../shared/kampfMatte.js';
@@ -42,6 +43,8 @@ export async function triggerPoolUpdate(knex, poolId) {
         await doppelKo16.aktualisiereTurnier(knex, poolId);
     } else if (pool.modus === 'Doppel-KO-32') {
         await doppelKo32.aktualisiereTurnier(knex, poolId);
+    } else if (KO_REPECHAGE_MANAGER[pool.modus]) {
+        await KO_REPECHAGE_MANAGER[pool.modus].aktualisiereTurnier(knex, poolId);
     } else {
         await jederGegenJeden.aktualisiereTurnier(knex, poolId);
     }

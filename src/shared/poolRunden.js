@@ -5,6 +5,8 @@
  * Steuerung (public/js/poolAnsicht.js). Die Kampfnummern entsprechen den Topologien in
  * bracketTopologie.js.
  */
+import { koRepechageRunden } from './koRepechage.js';
+
 const nummern = (praefix, von, bis) => Array.from({ length: bis - von + 1 }, (_, i) => `${praefix}${von + i}`);
 
 export const POOL_RUNDEN = {
@@ -49,7 +51,10 @@ export const POOL_RUNDEN = {
             { title: 'Trostrunde R5', nummern: nummern('T', 25, 26) },
             { title: 'Bronze-Kämpfe', nummern: nummern('T', 27, 28) }
         ]
-    }
+    },
+    'KO-Repechage-16': koRepechageRunden(16),
+    'KO-Repechage-32': koRepechageRunden(32),
+    'KO-Repechage-64': koRepechageRunden(64)
 };
 
 // Gruppen-Überkreuz: Vorrunden-Gruppen A/B (Präfix der Kampfnummern) und die Finalrunde.
