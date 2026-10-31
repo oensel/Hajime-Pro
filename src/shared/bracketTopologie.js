@@ -90,6 +90,9 @@ export const DOPPEL_KO_32_TOPOLOGIE = {
     T28: { k1: ['T26', 'sieger'], k2: ['H29', 'verlierer'] }
 };
 
+// KO-System mit Hoffnungsrunde (IJF-Repechage): aus dem Raster erzeugt, siehe koRepechage.js.
+export { KO_REPECHAGE_16_TOPOLOGIE, KO_REPECHAGE_32_TOPOLOGIE, KO_REPECHAGE_64_TOPOLOGIE } from './koRepechage.js';
+
 // HF1/HF2 sind bewusst NICHT enthalten: ihre Kämpfer kommen aus einer Ranglisten-Berechnung
 // über je 3 Vorrundenkämpfe (siehe gruppenUeberkreuzProgression.js), nicht aus dem Ergebnis
 // eines einzelnen Kampfes — lässt sich nicht auf einen 1:1-Link reduzieren.
