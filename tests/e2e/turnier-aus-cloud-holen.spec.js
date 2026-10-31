@@ -55,16 +55,40 @@ test.describe('Turnier aus der Cloud holen', () => {
         const bestaetigen = page.getByRole('button', { name: /^(Fortfahren|Bestätigen|OK|Ja)/i });
         if (await bestaetigen.first().isVisible().catch(() => false)) await bestaetigen.first().click();
 
-        await page.waitForURL(/\/teilnehmer\.html\?turnierId=\d+/);
+        // Die Turnierauswahl lädt neu und zeigt das geholte Turnier in der Liste
+        await expect(page.locator('#tournamentsContainer .tournament-card').filter({ hasText: 'Cloud-Turnier geschlossen' })).toBeVisible();
+        expect(new URL(page.url()).pathname).toBe('/turniere.html');
 
         const liste = await (await page.request.get('/api/turniere')).json();
         const geholt = liste.find(t => t.bezeichnung === 'Cloud-Turnier geschlossen');
         expect(geholt).toBeTruthy();
         expect(geholt.aktiv).toBe(false); // aktiviert wird per Knopf am Wettkampftag
-        expect(new URL(page.url()).searchParams.get('turnierId')).toBe(String(geholt.id));
 
         // die Vereinsliste der Cloud steht danach auch in der lokalen Tabelle (Vorschläge im Feld "Verein")
         const vereine = (await (await page.request.get('/api/vereine')).json()).map(v => v.name);
         expect(vereine).toEqual(expect.arrayContaining(['Cloud-Verein Alpha', 'Cloud-Verein Beta']));
+    });
+
+    test('Turnier am selben Tag: Rückfrage, mit ersetzen=true wird das vorhandene gelöscht und neu geholt', async ({ request }) => {
+        const login = await (await request.post('/api/cloud/turniere', {
+            data: { email: FAKE_CLOUD_EMAIL, password: FAKE_CLOUD_PASSWORT }
+        })).json();
+        const cloudId = login.turniere.find(t => t.bezeichnung === 'Cloud-Turnier geschlossen').id;
+        const vorhanden = (await (await request.get('/api/turniere')).json()).find(t => t.bezeichnung === 'Cloud-Turnier geschlossen');
+        expect(vorhanden).toBeTruthy();
+
+        const ohne = await request.post(`/api/cloud/turniere/${cloudId}/holen`, { data: { token: login.token } });
+        expect(ohne.status()).toBe(409);
+        const konflikt = await ohne.json();
+        expect(konflikt.terminKonflikt.id).toBe(vorhanden.id);
+        expect(konflikt.terminKonflikt.bezeichnung).toBe('Cloud-Turnier geschlossen');
+
+        const mit = await request.post(`/api/cloud/turniere/${cloudId}/holen`, { data: { token: login.token, ersetzen: true } });
+        expect(mit.status()).toBe(201);
+        const neu = await mit.json();
+        expect(neu.turnierId).not.toBe(vorhanden.id);
+
+        const liste = (await (await request.get('/api/turniere')).json()).filter(t => t.bezeichnung === 'Cloud-Turnier geschlossen');
+        expect(liste.map(t => t.id)).toEqual([neu.turnierId]);
     });
 });
