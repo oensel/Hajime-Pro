@@ -266,6 +266,14 @@ input:checked + .slider:before { transform: translateX(30px); background-color: 
 .body-anzeige .iframe-ctrl-btn { width: 5.2vh; height: 4.2vh; font-size: 3vh; line-height: 1; font-weight: bold; border: 1px black solid; border-radius: 4px; background: rgba(255,255,255,0.9); color: #000; cursor: pointer; padding: 0; }
 .body-anzeige .iframe-ctrl-btn:active { background: #ffc107; }
 
+/* Klickbare Anzeige in der Steuerung (Klasse .mit-steuerung, siehe injiziereBedienButtons): Zahlen wirken wie "+", nicht
+   vergebene Shido-Karten und Behandlungs-Kreuze stehen an ihrem Platz blass da und lassen sich anklicken. */
+.mit-steuerung .box .num { cursor: pointer; user-select: none; }
+.mit-steuerung .box .num:active { transform: scale(0.96); }
+.mit-steuerung .card, .mit-steuerung .behandlung-cross { display: block; opacity: 0.14; cursor: pointer; transition: opacity 0.12s; }
+.mit-steuerung .card:hover, .mit-steuerung .behandlung-cross:hover { opacity: 0.4; }
+.mit-steuerung .card.active, .mit-steuerung .behandlung-cross.active { opacity: 1; }
+
 /* pointer-events:none auf der Reihe selbst, damit ihr leerer Randbereich (links/rechts von den
    zentrierten Buttons) keine Klicks abfängt, die eigentlich dem daneben/darunter liegenden
    Hansoku-make-Button gelten (beide Elemente teilen sich denselben Bereich unterhalb des
