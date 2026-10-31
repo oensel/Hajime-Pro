@@ -611,6 +611,20 @@ body.padding-steuerung .pa-matrix td.pa-aktuell { outline: 2px solid #ffc107; ou
 .pool-beginn-zeile { font-size: 16px; font-weight: 800; margin: 2px 0; white-space: nowrap; }
 .pool-beginn-karte .btn-main { flex: none; background-color: #fff; color: #1d4ed8; font-size: 16px; padding: 6px 20px; margin: 0; }
 .pool-beginn-hinweis { font-size: 13px; margin: 2px 0 0; opacity: 0.9; }
+/* Prüfungs-Sperre vor einem neuen Pool (pruefePoolPruefungSperre in scoreboard.js): gleiche Lage, Warnfarbe. Die Karte
+   wird nie breiter als die Bühne (Container-Einheit cqw, das Overlay hängt sonst am schmalen .holen-wrap); bei Platzmangel
+   bricht der Text um, die Knöpfe (untereinander, gleich breit) nie. Unten bündig mit dem Knopf, damit eine höhere Karte
+   nach oben (über die Uhr) wächst statt unten aus der Bühne zu ragen. */
+.steuerung-buehne { container-type: inline-size; }
+.pool-pruefung-overlay { max-width: calc(100cqw - 24px); top: auto; bottom: -6px; transform: translateX(-50%); }
+.pool-pruefung-overlay .pool-beginn-karte { background: #b45309; }
+.pool-pruefung-overlay .pool-beginn-text { flex: 1 1 auto; }
+.pool-pruefung-overlay .pool-beginn-zeile { white-space: normal; }
+.pool-pruefung-zeile { display: flex; align-items: center; gap: 12px; margin: 2px 0; }
+.pool-pruefung-plaetze { font-size: 13px; }
+.pool-pruefung-knoepfe { display: flex; flex-direction: column; gap: 6px; flex: none; }
+.pool-pruefung-overlay .pool-beginn-karte .btn-main { color: #b45309; font-size: 13px; padding: 4px 12px; white-space: nowrap; }
+.pool-pruefung-overlay .pool-beginn-karte .pool-pruefung-ansehen { background-color: transparent; color: #fff; border: 1px solid #fff; }
 
 /* "RESET ALL" in der Meta-Leiste der eingebetteten Anzeige (nur steuerung.html, ?controls=1), ganz rechts neben Klasse und Gewicht */
 .body-anzeige .top-meta-bar { position: relative; }

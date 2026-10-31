@@ -60,6 +60,17 @@
                                     <button type="button" id="poolBeginnErledigtBtn" class="btn-main">Erledigt</button>
                                 </div>
                             </div>
+                            <!-- Prüfungs-Sperre: ein Pool dieser Matte wartet auf die Ergebnisprüfung, der nächste Kampf gehört zu einem
+                                 neuen Pool. Liegt über "Nächsten Kampf holen", bis der Pool abgeschlossen ist (pruefePoolPruefungSperre()) -->
+                            <div id="poolPruefungOverlay" class="pool-beginn-overlay pool-pruefung-overlay" style="display: none;" role="alert">
+                                <div class="pool-beginn-karte">
+                                    <span class="material-icons" style="font-size: 32px;">fact_check</span>
+                                    <div class="pool-beginn-text">
+                                        <div id="poolPruefungListe"></div>
+                                        <div class="pool-beginn-hinweis">Der nächste Pool beginnt erst nach dem Abschluss.</div>
+                                    </div>
+                                </div>
+                            </div>
                         </span>
                     </div>
                     <div class="live-vorschau-btn-col">
