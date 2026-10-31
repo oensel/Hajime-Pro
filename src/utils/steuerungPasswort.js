@@ -90,16 +90,17 @@ export function sha256Aktuell() {
 }
 
 /** Fehlertext, wenn das neue Passwort nicht zulässig ist, sonst null. */
-export function pruefeNeuesPasswort(neu) {
+export function pruefeNeuesPasswort(neu, { gleichErlaubt = false } = {}) {
     if (typeof neu !== 'string' || neu.trim() !== neu || neu.length < MIN_LAENGE) {
         return `Das neue Passwort braucht mindestens ${MIN_LAENGE} Zeichen ohne Leerzeichen am Anfang oder Ende.`;
     }
-    if (pruefe(neu)) return 'Das neue Passwort muss sich vom bisherigen unterscheiden.';
+    if (!gleichErlaubt && pruefe(neu)) return 'Das neue Passwort muss sich vom bisherigen unterscheiden.';
     return null;
 }
 
-export async function aendere(neu) {
-    const fehler = pruefeNeuesPasswort(neu);
+/** gleichErlaubt: Passwort ohne Kenntnis des bisherigen setzen (Client-Konfig am Hallen-Server), dann darf es auch gleich bleiben. */
+export async function aendere(neu, optionen) {
+    const fehler = pruefeNeuesPasswort(neu, optionen);
     if (fehler) {
         const e = new Error(fehler);
         e.status = 400;
