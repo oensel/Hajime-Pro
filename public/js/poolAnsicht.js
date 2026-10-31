@@ -205,7 +205,7 @@ export function renderPoolAnsicht(container, kaempfe, aktuellerKampfId, poolId =
         container.appendChild(haupt);
 
         const trost = el('div', 'pa-abschnitt');
-        trost.appendChild(el('div', 'pa-abschnitt-titel', 'Trostrunde'));
+        trost.appendChild(el('div', 'pa-abschnitt-titel', modus.startsWith('KO-Repechage') ? 'Hoffnungsrunde' : 'Trostrunde'));
         const trostScroll = el('div', 'pa-scroll');
         trostScroll.appendChild(runden(POOL_RUNDEN[modus].loser, nachNummer, aktuell));
         trost.appendChild(trostScroll);

@@ -6,7 +6,11 @@ import { berechneGruppenRangliste } from './gruppenUeberkreuzProgression.js';
 const DK_SCHLUESSEL = {
     'Doppel-KO-8': { final: 'F', bronze: ['T3', 'T4'], trost: ['T1', 'T2'] },
     'Doppel-KO-16': { final: 'F1', bronze: ['T11', 'T12'], trost: ['T9', 'T10'] },
-    'Doppel-KO-32': { final: 'F1', bronze: ['T27', 'T28'], trost: ['T25', 'T26'] }
+    'Doppel-KO-32': { final: 'F1', bronze: ['T27', 'T28'], trost: ['T25', 'T26'] },
+    // KO-Repechage: Bronzekämpfe T3/T4, Hoffnungsrunde T1/T2 (src/shared/koRepechage.js)
+    'KO-Repechage-16': { final: 'F1', bronze: ['T3', 'T4'], trost: ['T1', 'T2'] },
+    'KO-Repechage-32': { final: 'F1', bronze: ['T3', 'T4'], trost: ['T1', 'T2'] },
+    'KO-Repechage-64': { final: 'F1', bronze: ['T3', 'T4'], trost: ['T1', 'T2'] }
 };
 
 const istJgj = m => m === 'Jeder-gegen-Jeden' || m === 'Jeder gegen Jeden';

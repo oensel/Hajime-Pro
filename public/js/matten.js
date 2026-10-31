@@ -74,6 +74,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (modus === 'Doppel-KO-16') {
             return 'DKO-16';
         }
+        if (modus === 'Doppel-KO-32') {
+            return 'DKO-32';
+        }
+        if (/^KO-Repechage-(16|32|64)$/.test(modus || '')) {
+            return `KOR-${modus.split('-').pop()}`;
+        }
         return modus || '?';
     };
 

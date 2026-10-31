@@ -8,6 +8,7 @@
 //  - Doppel-KO-8/16/32: er nimmt den nächsten freien Freilos-Platz des Rasters (feste DJB-Reihenfolge), solange
 //    die Kämpfe, die von diesem Platz abhängen, noch nicht begonnen haben.
 //  - Gruppen-Überkreuz (genau 6): nie, mit 7 wäre es Doppel-KO-8.
+import { KO_REPECHAGE_RASTER, KO_REPECHAGE_FREILOS } from './koRepechage.js';
 
 export const SYSTEM_JEDER_GEGEN_JEDEN = 'Jeder-gegen-Jeden';
 const OFFENE_STATI = new Set(['bereit', 'angelegt', 'vorbereiten']);
@@ -20,10 +21,12 @@ export function poolHatBegonnen(kaempfe) {
 
 // Raster und Reihenfolge der Freilos-Plätze je Doppel-KO-System (0-basierte Rasterplätze, identisch zu den
 // *Manager.js, die den Baum aufbauen: bei N Teilnehmern sind die ersten raster-N Einträge Freilose).
+// KO-Repechage nimmt Nachzügler genauso auf (Freilos-Reihenfolge in koRepechage.js).
 export const DOPPEL_KO_RASTER = {
     'Doppel-KO-8': { raster: 8, freilos: [7, 0, 4, 3] },
     'Doppel-KO-16': { raster: 16, freilos: [15, 0, 8, 7, 4, 11, 12, 3] },
-    'Doppel-KO-32': { raster: 32, freilos: [1, 31, 17, 15, 9, 23, 25, 7, 5, 27, 21, 11, 13, 19, 29, 3] }
+    'Doppel-KO-32': { raster: 32, freilos: [1, 31, 17, 15, 9, 23, 25, 7, 5, 27, 21, 11, 13, 19, 29, 3] },
+    ...Object.fromEntries(Object.entries(KO_REPECHAGE_RASTER).map(([modus, raster]) => [modus, { raster, freilos: KO_REPECHAGE_FREILOS[raster] }]))
 };
 
 // Status, die einen Folgekampf unveränderbar machen (läuft, vorbereitet oder ausgetragen).
