@@ -1,5 +1,5 @@
 // Schreibpasswort in der Client-Konfig ohne das bisherige setzen (POST /api/client/steuerung-passwort).
-// Das Passwort bleibt danach gesetzt (es lässt sich nicht entfernen): diese Spec steht darum zuletzt in ihrem Shard.
+// Das Passwort bleibt danach gesetzt (es lässt sich nicht entfernen): diese Spec muss als letzte ihres Shards laufen. Die Specs laufen in Dateinamen-Reihenfolge, darum beginnt der Dateiname mit "zuletzt-".
 import crypto from 'node:crypto';
 import { test, expect } from '@playwright/test';
 import { syncStatus, warteLeerlauf, richteDk8TurnierEin, ladeDokument } from './helpers.js';
