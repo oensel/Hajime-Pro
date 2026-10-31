@@ -2653,7 +2653,10 @@ async function zeichnePoolPruefungOverlay(kaempfe) {
             window.dispatchEvent(new CustomEvent('hajime:panel-oeffnen', { detail: { name: 'pool' } }));
         });
         knoepfe.append(abschliessen, ansehen);
-        zeile.append(titel, plaetze, knoepfe);
+        const text = document.createElement('div');
+        text.className = 'pool-beginn-text';
+        text.append(titel, plaetze);
+        zeile.append(text, knoepfe);
         zeilen.push(zeile);
     }
     // Erst nach dem (asynchronen) Aufbau aller Zeilen tauschen: ein überholter Aufruf überschreibt nichts Neueres
