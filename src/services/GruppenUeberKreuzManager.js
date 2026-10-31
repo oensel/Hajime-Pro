@@ -1,20 +1,34 @@
-import { GRUPPEN_UEBERKREUZ_TOPOLOGIE, verknuepfeQuellenFuerPool } from '../shared/bracketTopologie.js';
+import { GRUPPEN_UEBERKREUZ_TOPOLOGIE, GRUPPEN_KO_TOPOLOGIE, verknuepfeQuellenFuerPool } from '../shared/bracketTopologie.js';
 import { berechneKaempferPatches } from '../shared/kampfProgression.js';
 import { berechneGruppenUeberkreuzHalbfinalPatches } from '../shared/gruppenUeberkreuzProgression.js';
+import { jgjPaarungen } from '../shared/jgjPaarungen.js';
+
+// Gruppen-Überkreuz: 6 bis 10 Teilnehmer in 2 Gruppen à 3 bis 5, danach Halbfinale über Kreuz.
+const UEBERKREUZ = {
+    bezeichnung: 'Gruppensystem mit Überkreuz-Finale',
+    gruppen: ['A', 'B'], minTeilnehmer: 6, maxTeilnehmer: 10,
+    endrunde: ['HF1', 'HF2', 'F1'], topologie: GRUPPEN_UEBERKREUZ_TOPOLOGIE
+};
+// Gruppen-KO: 12 bis 20 Teilnehmer in 4 Gruppen à 3 bis 5, Erste und Zweite ins Viertelfinale, danach KO.
+export const GRUPPEN_KO = {
+    bezeichnung: 'Gruppen-Vorrunde mit KO-Endrunde',
+    gruppen: ['A', 'B', 'C', 'D'], minTeilnehmer: 12, maxTeilnehmer: 20,
+    endrunde: ['VF1', 'VF2', 'VF3', 'VF4', 'HF1', 'HF2', 'F1'], topologie: GRUPPEN_KO_TOPOLOGIE
+};
 
 export class GruppenUeberKreuzManager {
     /**
-     * Erstellt einen Turnier-Manager für das Gruppensystem mit Überkreuz-Finale.
-     * Dieses System ist auf genau 6 Teilnehmer ausgelegt:
-     * 2 Gruppen à 3 Personen, danach Halbfinale über Kreuz.
+     * Erstellt einen Turnier-Manager für ein Gruppensystem: jeder gegen jeden in der Gruppe, danach die Endrunde
+     * (Plätze aus den Gruppen siehe ENDRUNDE_* in gruppenUeberkreuzProgression.js). Kein kleines Finale: beide
+     * Halbfinal-Verlierer sind Dritte. Ohne Angabe das Gruppen-Überkreuz (bei ungerader Zahl ist Gruppe A größer).
+     * @param {Object} [system] - UEBERKREUZ oder GRUPPEN_KO
      */
-    constructor() {
-        this.bezeichnung = "Gruppensystem mit Überkreuz-Finale";
-        this.anzahlTeilnehmer = 6;
+    constructor(system = UEBERKREUZ) {
+        Object.assign(this, system);
     }
 
     /**
-     * Initialisiert die 6 Vorrunden-Kämpfe (Phase 1) direkt in der Datenbank.
+     * Initialisiert die Vorrunden-Kämpfe (Phase 1) und die leeren Endrunden-Hüllen direkt in der Datenbank.
      * @param {Object} knex - Die Knex-Instanz
      * @param {number} poolId - Die ID des Pools aus der Datenbank
      */
@@ -25,24 +39,22 @@ export class GruppenUeberKreuzManager {
         // Sortieren nach Gewicht aufsteigend
         teilnehmer.sort((a, b) => Number(a.gewicht) - Number(b.gewicht));
 
-        if (teilnehmer.length !== this.anzahlTeilnehmer) {
-            throw new Error(`Das Gruppensystem über Kreuz benötigt exakt ${this.anzahlTeilnehmer} Teilnehmer.`);
+        if (teilnehmer.length < this.minTeilnehmer || teilnehmer.length > this.maxTeilnehmer) {
+            throw new Error(`Das ${this.bezeichnung} benötigt ${this.minTeilnehmer} bis ${this.maxTeilnehmer} Teilnehmer.`);
         }
 
-        // 2. Teilnehmer fair nach Judo-Muster auf zwei Gruppen (Pool A und Pool B) aufteilen
-        const { poolA, poolB } = this._teileTeilnehmerAuf(teilnehmer);
+        // 2. Teilnehmer auf die Gruppen aufteilen
+        const gruppen = this._teileTeilnehmerAuf(teilnehmer);
 
-        // 3. Kampfplan für die Vorrunde (6 Kämpfe) vorbereiten
+        // 3. Kampfplan für die Vorrunde: jeder gegen jeden je Gruppe, die Gruppen im Wechsel (V_A_1, V_B_1, V_A_2, …).
         // Wir nutzen 'reihenfolge_nummer' als textuellen Match-Key (z.B. "V_A_1"),
         // um den Typ des Kampfes relational eindeutig identifizieren zu können.
-        const paarungen = [
-            { idKey: "V_A_1", gruppe: 'A', k1: poolA[0].id, k2: poolA[1].id },
-            { idKey: "V_B_1", gruppe: 'B', k1: poolB[0].id, k2: poolB[1].id },
-            { idKey: "V_A_2", gruppe: 'A', k1: poolA[0].id, k2: poolA[2].id },
-            { idKey: "V_B_2", gruppe: 'B', k1: poolB[0].id, k2: poolB[2].id },
-            { idKey: "V_A_3", gruppe: 'A', k1: poolA[1].id, k2: poolA[2].id },
-            { idKey: "V_B_3", gruppe: 'B', k1: poolB[1].id, k2: poolB[2].id }
-        ];
+        const jeGruppe = Object.entries(gruppen).map(([gruppe, mitglieder]) =>
+            jgjPaarungen(mitglieder.length).map(([i, j], n) => ({ idKey: `V_${gruppe}_${n + 1}`, gruppe, k1: mitglieder[i].id, k2: mitglieder[j].id })));
+        const paarungen = [];
+        for (let runde = 0; runde < Math.max(...jeGruppe.map(l => l.length)); runde++) {
+            jeGruppe.forEach(liste => { if (liste[runde]) paarungen.push(liste[runde]); });
+        }
 
         const neueKaempfe = paarungen.map(p => ({
             pool_id: poolId,
@@ -57,28 +69,21 @@ export class GruppenUeberKreuzManager {
             unterbewertung_kaempfer2: 0
         }));
 
-        // Zukünftige Kämpfe (HF1, HF2, F1) als leere Hüllen vorab anlegen. Kein kleines Finale:
-        // beide Halbfinal-Verlierer sind Dritte.
-        neueKaempfe.push({
-            pool_id: poolId, status: 'angelegt', reihenfolge_nummer: "HF1",
-            kaempfer1_id: null, kaempfer2_id: null, sieger_id: null, kampfzeit_in_sekunden: 0, unterbewertung_kaempfer1: 0, unterbewertung_kaempfer2: 0
-        });
-        neueKaempfe.push({
-            pool_id: poolId, status: 'angelegt', reihenfolge_nummer: "HF2",
-            kaempfer1_id: null, kaempfer2_id: null, sieger_id: null, kampfzeit_in_sekunden: 0, unterbewertung_kaempfer1: 0, unterbewertung_kaempfer2: 0
-        });
-        neueKaempfe.push({
-            pool_id: poolId, status: 'angelegt', reihenfolge_nummer: "F1", // Finale
-            kaempfer1_id: null, kaempfer2_id: null, sieger_id: null, kampfzeit_in_sekunden: 0, unterbewertung_kaempfer1: 0, unterbewertung_kaempfer2: 0
-        });
+        // Zukünftige Kämpfe der Endrunde als leere Hüllen vorab anlegen.
+        for (const nummer of this.endrunde) {
+            neueKaempfe.push({
+                pool_id: poolId, status: 'angelegt', reihenfolge_nummer: nummer,
+                kaempfer1_id: null, kaempfer2_id: null, sieger_id: null, kampfzeit_in_sekunden: 0, unterbewertung_kaempfer1: 0, unterbewertung_kaempfer2: 0
+            });
+        }
 
         // 4. In die Datenbank schreiben
         await knex('kaempfe').insert(neueKaempfe);
-        console.log(`[DB] 6 Vorrunden-Kämpfe und 3 Final-Hüllen für Gruppen-Überkreuz-Pool ID ${poolId} generiert.`);
+        console.log(`[DB] ${paarungen.length} Vorrunden-Kämpfe und ${this.endrunde.length} Final-Hüllen (${this.bezeichnung}) für Pool ID ${poolId} generiert.`);
 
-        // Explizite Quell-Verknüpfung für F1 (HF1/HF2 bleiben unverknüpft, siehe
-        // GRUPPEN_UEBERKREUZ_TOPOLOGIE — deren Kämpfer kommen aus der Ranglistenberechnung)
-        await verknuepfeQuellenFuerPool(knex, poolId, GRUPPEN_UEBERKREUZ_TOPOLOGIE);
+        // Explizite Quell-Verknüpfung für die KO-Kämpfe der Endrunde (die ersten Endrunden-Kämpfe bleiben
+        // unverknüpft — deren Kämpfer kommen aus der Ranglistenberechnung)
+        await verknuepfeQuellenFuerPool(knex, poolId, this.topologie);
 
         // Initialen Status prüfen (falls theoretisch sofort etwas berechenbar wäre)
         await this.aktualisiereTurnier(knex, poolId);
@@ -98,20 +103,23 @@ export class GruppenUeberKreuzManager {
 
         let changed = false;
 
-        // PHASE 1: Vorrunde beendet -> Halbfinale (HF1, HF2). Bleibt Ranglisten-basiert (N-zu-2-
-        // Aggregation über je 3 Vorrundenkämpfe pro Gruppe) — lässt sich nicht auf einen simplen
+        // PHASE 1: Gruppen ausgekämpft -> erste Endrunden-Kämpfe (HF1/HF2 bzw. VF1-VF4). Bleibt Ranglisten-basiert
+        // (N-zu-2-Aggregation über die Vorrundenkämpfe einer Gruppe) — lässt sich nicht auf einen simplen
         // 1:1-Link reduzieren, daher eigene, gemeinsam mit dem Offline-Scoreboard genutzte
         // Engine statt der Quelle-Kampf-basierten kampfProgression.js (siehe
         // gruppenUeberkreuzProgression.js).
-        const halbfinalPatches = berechneGruppenUeberkreuzHalbfinalPatches(kaempfe);
+        // Gleichstände in den Gruppen, die die Turnierleitung entschieden hat, stehen in pools.gleichstand_entscheidung;
+        // ohne Entscheidung (oder bei offenen Stichkämpfen) bleiben die Endrunden-Kämpfe der Gruppe unbefüllt.
+        const poolZeile = await knex('pools').where({ id: poolId }).first('gleichstand_entscheidung');
+        const halbfinalPatches = berechneGruppenUeberkreuzHalbfinalPatches(kaempfe, { entscheidung: poolZeile?.gleichstand_entscheidung });
         for (const patch of halbfinalPatches) {
             const { id, ...updates } = patch;
             await knex('kaempfe').where({ id }).update(updates);
             changed = true;
         }
 
-        // PHASE 2: HF1/HF2 -> F1 (bei älteren Pools auch F2) über die gemeinsame Engine (einfacher
-        // 1:1-Sieger/Verlierer-Link, siehe GRUPPEN_UEBERKREUZ_TOPOLOGIE).
+        // PHASE 2: die KO-Kämpfe der Endrunde (bei älteren Pools auch F2) über die gemeinsame Engine (einfacher
+        // 1:1-Sieger/Verlierer-Link, siehe GRUPPEN_UEBERKREUZ_TOPOLOGIE / GRUPPEN_KO_TOPOLOGIE).
         if (changed) {
             kaempfe = await knex('kaempfe').where({ pool_id: poolId });
         }
@@ -136,29 +144,40 @@ export class GruppenUeberKreuzManager {
 
         if (istBeendetOderFreilos(finale) && (!platz3 || istBeendetOderFreilos(platz3))) {
             await knex('pools').where({ id: poolId }).update({ status: 'kaempfe_beendet' });
-            console.log(`[DB] Gruppen-Überkreuz-Turnier ID ${poolId}: alle Kämpfe ausgetragen, wartet auf Bestätigung.`);
+            console.log(`[DB] ${this.bezeichnung} ID ${poolId}: alle Kämpfe ausgetragen, wartet auf Bestätigung.`);
         }
     }
 
     /**
-     * Teilt sechs Teilnehmer fair nach dem DJB/Judo-Muster auf zwei Gruppen auf.
-     * Index 0, 2, 4 (1., 3., 5. gesetzter Athlet) -> Pool A
-     * Index 1, 3, 5 (2., 4., 6. gesetzter Athlet) -> Pool B
-     * @param {Array} teilnehmer - Array aus der Tabelle 'turnier_teilnehmer'
-     * @returns {{poolA: Array, poolB: Array}}
+     * Teilt die (nach Gewicht sortierten) Teilnehmer auf die Gruppen auf: der Reihe nach in die Gruppe mit den
+     * wenigsten Vereinskameraden, bei Gleichstand in die kleinere, dann die erste (solange sie Platz hat). Ohne
+     * Vereinskonflikt ergibt das das bisherige Muster (1., 3., 5. → A, 2., 4., 6. → B; bei vier Gruppen reihum);
+     * Vereinskameraden landen nach Möglichkeit in verschiedenen Gruppen. Innerhalb einer Gruppe bleibt die
+     * Gewichtsreihenfolge. Die vorderen Gruppen sind bei ungleicher Verteilung die größeren.
+     * @param {Array} teilnehmer - Array aus der Tabelle 'turnier_teilnehmer', nach Gewicht aufsteigend
+     * @returns {Object<string, Array>} je Gruppe ('A', 'B', …) die Mitglieder
      */
     _teileTeilnehmerAuf(teilnehmer) {
-        const poolA = [];
-        const poolB = [];
+        const namen = this.gruppen;
+        const basis = Math.floor(teilnehmer.length / namen.length);
+        const rest = teilnehmer.length % namen.length;
+        const groesse = Object.fromEntries(namen.map((g, i) => [g, basis + (i < rest ? 1 : 0)]));
+        const gruppen = Object.fromEntries(namen.map(g => [g, []]));
+        const verein = t => t.verein || 'Kein Verein';
 
-        teilnehmer.forEach((athlet, index) => {
-            if (index % 2 === 0) {
-                poolA.push(athlet);
-            } else {
-                poolB.push(athlet);
+        for (const athlet of teilnehmer) {
+            let beste = null;
+            for (const g of namen) {
+                const frei = groesse[g] - gruppen[g].length;
+                if (frei <= 0) continue;
+                const kameraden = gruppen[g].filter(t => verein(t) === verein(athlet)).length;
+                const mitglieder = gruppen[g].length;
+                if (!beste || kameraden < beste.kameraden || (kameraden === beste.kameraden && mitglieder < beste.mitglieder)) {
+                    beste = { g, kameraden, mitglieder };
+                }
             }
-        });
-
-        return { poolA, poolB };
+            gruppen[beste.g].push(athlet);
+        }
+        return gruppen;
     }
 }

@@ -1,9 +1,9 @@
 // Visuelle Darstellung des Pools, zu dem der aktuelle Kampf gehört (Abschnitt "Pool-Übersicht" in
 // steuerung.html): Jeder-gegen-Jeden als Kampfbogen (Matrix), Doppel-KO als Turnierbaum
-// (Haupt- und Trostrunde), Gruppen-Überkreuz als zwei Kampfbögen plus Finalrunde. Arbeitet auf
+// (Haupt- und Trostrunde), Gruppensysteme als ein Kampfbogen je Gruppe plus Finalrunde. Arbeitet auf
 // der Kampfliste der Matte (Datenzugriff.ladeKaempfeDerMatte), braucht also keine eigene Abfrage.
 // Aufbau per DOM-Funktionen mit textContent (keine HTML-Strings aus Namen).
-import { POOL_RUNDEN, UEBERKREUZ_GRUPPEN, UEBERKREUZ_FINALRUNDE } from '/js/shared/poolRunden.js';
+import { POOL_RUNDEN, UEBERKREUZ_GRUPPEN, UEBERKREUZ_FINALRUNDE, istGruppenSystem } from '/js/shared/poolRunden.js';
 
 function el(tag, klasse, text) {
     const e = document.createElement(tag);
@@ -205,12 +205,12 @@ export function renderPoolAnsicht(container, kaempfe, aktuellerKampfId, poolId =
         container.appendChild(haupt);
 
         const trost = el('div', 'pa-abschnitt');
-        trost.appendChild(el('div', 'pa-abschnitt-titel', 'Trostrunde'));
+        trost.appendChild(el('div', 'pa-abschnitt-titel', modus.startsWith('KO-Repechage') ? 'Hoffnungsrunde' : 'Trostrunde'));
         const trostScroll = el('div', 'pa-scroll');
         trostScroll.appendChild(runden(POOL_RUNDEN[modus].loser, nachNummer, aktuell));
         trost.appendChild(trostScroll);
         container.appendChild(trost);
-    } else if (/^Gruppen-(Ü|ue|Ue)berkreuz$/.test(modus)) {
+    } else if (istGruppenSystem(modus)) {
         for (const gruppe of UEBERKREUZ_GRUPPEN) {
             const gruppenKaempfe = poolKaempfe.filter(k => String(k.reihenfolge_nummer).startsWith(gruppe.praefix));
             if (gruppenKaempfe.length) container.appendChild(kampfbogen(gruppe.titel, gruppenKaempfe, aktuell));

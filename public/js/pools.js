@@ -8,10 +8,41 @@ import('/js/shared/bracketTopologie.js').then(mod => {
         'Doppel-KO-8': mod.DOPPEL_KO_8_TOPOLOGIE,
         'Doppel-KO-16': mod.DOPPEL_KO_16_TOPOLOGIE,
         'Doppel-KO-32': mod.DOPPEL_KO_32_TOPOLOGIE,
+        'KO-Repechage-16': mod.KO_REPECHAGE_16_TOPOLOGIE,
+        'KO-Repechage-32': mod.KO_REPECHAGE_32_TOPOLOGIE,
+        'KO-Repechage-64': mod.KO_REPECHAGE_64_TOPOLOGIE,
         'Gruppen-Überkreuz': mod.GRUPPEN_UEBERKREUZ_TOPOLOGIE,
-        'Gruppen-ueberkreuz': mod.GRUPPEN_UEBERKREUZ_TOPOLOGIE
+        'Gruppen-ueberkreuz': mod.GRUPPEN_UEBERKREUZ_TOPOLOGIE,
+        'Gruppen-KO': mod.GRUPPEN_KO_TOPOLOGIE
     };
 });
+// KO-Repechage: Runden und Kampfnamen je Raster (src/shared/koRepechage.js)
+let koRepechage = null;
+import('/js/shared/koRepechage.js').then(mod => {
+    koRepechage = {
+        runden: Object.fromEntries(Object.entries(mod.KO_REPECHAGE_RASTER).map(([m, r]) => [m, mod.koRepechageRunden(r)])),
+        namen: Object.fromEntries(Object.entries(mod.KO_REPECHAGE_RASTER).map(([m, r]) => [m, mod.koRepechageKampfnamen(r)]))
+    };
+});
+const istKoRepechageModus = modus => /^KO-Repechage-(16|32|64)$/.test(modus || '');
+
+// Wählbare Systeme je Teilnehmerzahl, Spiegelbild von wettkampfsystemAlternativen (src/controllers/poolController.js).
+function systemAlternativen(anzahl) {
+    const gruppenKo = anzahl >= 12 && anzahl <= 20 ? ['Gruppen-KO'] : [];
+    if (anzahl === 6) return ['Gruppen-Überkreuz', 'Jeder-gegen-Jeden'];
+    if (anzahl >= 7 && anzahl <= 8) return ['Doppel-KO-8', 'Gruppen-Überkreuz'];
+    if (anzahl >= 9 && anzahl <= 10) return ['Doppel-KO-16', 'KO-Repechage-16', 'Gruppen-Überkreuz'];
+    if (anzahl >= 9 && anzahl <= 16) return ['Doppel-KO-16', 'KO-Repechage-16', ...gruppenKo];
+    if (anzahl >= 17 && anzahl <= 32) return ['Doppel-KO-32', 'KO-Repechage-32', ...gruppenKo];
+    return [];
+}
+const SYSTEM_NAMEN = {
+    'Jeder-gegen-Jeden': 'Jeder gegen Jeden',
+    'Gruppen-Überkreuz': 'Gruppen über Kreuz',
+    'Gruppen-KO': 'Gruppen mit KO-Endrunde',
+    'Doppel-KO-8': 'Doppel-KO', 'Doppel-KO-16': 'Doppel-KO', 'Doppel-KO-32': 'Doppel-KO',
+    'KO-Repechage-16': 'KO mit Hoffnungsrunde', 'KO-Repechage-32': 'KO mit Hoffnungsrunde'
+};
 
 document.addEventListener('DOMContentLoaded', () => {
     // --- TURNIER-ID INITIALISIERUNG ---
@@ -69,6 +100,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (modus === 'Gruppen-Überkreuz' || modus === 'Gruppen-ueberkreuz') {
             return 'Pool+Ko';
         }
+        if (modus === 'Gruppen-KO') {
+            return 'Gruppen+KO';
+        }
         if (modus === 'Doppel-KO-8') {
             return 'DKO-8';
         }
@@ -77,6 +111,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (modus === 'Doppel-KO-32') {
             return 'DKO-32';
+        }
+        if (istKoRepechageModus(modus)) {
+            return `KOR-${modus.split('-').pop()}`;
         }
         return modus || '?';
     };
@@ -350,11 +387,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 k.status === 'gestartet' || k.status === 'beendet'
             );
 
-            // Für genau 6 TeilnehmerInnen sind Gruppen-Überkreuz und Jeder-gegen-Jeden beide
-            // gültige Systeme — solange noch keine echten Kämpfe existieren, darf umgeschaltet werden.
-            const sechserZielModus = pool.modus === 'Gruppen-Überkreuz' ? 'Jeder-gegen-Jeden' : 'Gruppen-Überkreuz';
-            const kannSystemWechseln = pool.anzahl_teilnehmer === 6 && !hatBegonnen &&
-                (pool.modus === 'Gruppen-Überkreuz' || pool.modus === 'Jeder-gegen-Jeden');
+            // Für manche Teilnehmerzahlen gibt es mehrere gültige Systeme (systemAlternativen) — solange noch
+            // keine echten Kämpfe existieren, darf umgeschaltet werden.
+            const alternativen = systemAlternativen(Number(pool.anzahl_teilnehmer));
+            const kannSystemWechseln = !hatBegonnen && !pool.verspaetet && pool.typ !== 'mannschaft' && alternativen.includes(pool.modus);
 
             return `
                                 <tr class="pool-section" data-pool-id="${pool.id}">
@@ -368,10 +404,11 @@ document.addEventListener('DOMContentLoaded', () => {
                                         <div class="pool-einstellungen">
                                             <span class="pool-einstellung-label">System</span>
                                             <div class="pool-einstellung-wert">
-                                                <span class="pool-system-text">${pool.verspaetet ? 'Sammelpool' : mapWettkampfsystem(pool.modus, pool.anzahl_teilnehmer)}</span>
                                                 ${kannSystemWechseln ? `
-                                                    <button type="button" class="btn-switch-system material-icons" data-id="${pool.id}" data-ziel-modus="${sechserZielModus}" title="Auf ${sechserZielModus === 'Jeder-gegen-Jeden' ? 'Jeder-gegen-Jeden' : 'Gruppen-Überkreuz'} umstellen" style="color: var(--text-muted); background: none; border: none; cursor: pointer; font-size: 15px; padding: 2px; vertical-align: middle;">swap_horiz</button>
-                                                ` : ''}
+                                                    <select class="pool-system-select" data-id="${pool.id}" data-modus="${escapeHtml(pool.modus)}" title="Wettkampfsystem">
+                                                        ${alternativen.map(m => `<option value="${escapeHtml(m)}" ${m === pool.modus ? 'selected' : ''}>${escapeHtml(SYSTEM_NAMEN[m] ? `${mapWettkampfsystem(m, pool.anzahl_teilnehmer)} – ${SYSTEM_NAMEN[m]}` : m)}</option>`).join('')}
+                                                    </select>
+                                                ` : `<span class="pool-system-text">${pool.verspaetet ? 'Sammelpool' : mapWettkampfsystem(pool.modus, pool.anzahl_teilnehmer)}</span>`}
                                             </div>
 
                                             <span class="pool-einstellung-label">Kampfzeit</span>
@@ -452,12 +489,13 @@ document.addEventListener('DOMContentLoaded', () => {
                             `;
     }
 
-    // --- 6ER-POOLS: WETTKAMPFSYSTEM WECHSELN (GRUPPEN-ÜBERKREUZ <-> JEDER-GEGEN-JEDEN) ---
+    // --- WETTKAMPFSYSTEM WECHSELN (Auswahlliste, solange der Pool nicht begonnen hat) ---
     function initialisiereSystemWechselEvents(root = document) {
-        root.querySelectorAll('.btn-switch-system').forEach(button => {
-            button.addEventListener('click', async (e) => {
+        root.querySelectorAll('.pool-system-select').forEach(auswahl => {
+            auswahl.addEventListener('change', async (e) => {
                 const id = e.currentTarget.getAttribute('data-id');
-                const zielModus = e.currentTarget.getAttribute('data-ziel-modus');
+                const bisher = e.currentTarget.getAttribute('data-modus');
+                const zielModus = e.currentTarget.value;
 
                 const bestaetigt = await zeigeBestaetigung(
                     `Möchten Sie das Wettkampfsystem dieses Pools wirklich auf "${zielModus}" umstellen? Der bisherige Kampfplan wird dabei neu erzeugt.`,
@@ -465,7 +503,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     'swap_horiz'
                 );
 
-                if (!bestaetigt) return;
+                if (!bestaetigt) {
+                    auswahl.value = bisher;
+                    return;
+                }
 
                 try {
                     const response = await fetch(`/api/pools/${id}/system`, {
@@ -479,6 +520,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         zeigeNotification(`Wettkampfsystem erfolgreich auf "${zielModus}" umgestellt.`, 'success');
                         await ladePools();
                     } else {
+                        auswahl.value = bisher;
                         zeigeNotification(result.error || 'Wechsel fehlgeschlagen.', 'error');
                     }
                 } catch (err) {
@@ -1276,7 +1318,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     function platzhalterKampfName(kampfNr) {
-        return PLATZHALTER_KAMPFNAMEN[activePoolModus]?.[kampfNr] || kampfNr;
+        return PLATZHALTER_KAMPFNAMEN[activePoolModus]?.[kampfNr] || koRepechage?.namen[activePoolModus]?.[kampfNr] || kampfNr;
     }
 
     function getPlaceholderName(fightNr, compIndex) {
@@ -1285,6 +1327,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (activePoolModus === 'Gruppen-Überkreuz' || activePoolModus === 'Gruppen-ueberkreuz') {
             if (fightNr === 'HF1') return compIndex === 1 ? '1. Gruppe A' : '2. Gruppe B';
             if (fightNr === 'HF2') return compIndex === 1 ? '1. Gruppe B' : '2. Gruppe A';
+        }
+        // Gruppen-KO: Viertelfinale aus den Gruppen (ENDRUNDE_KO in gruppenUeberkreuzProgression.js)
+        if (activePoolModus === 'Gruppen-KO') {
+            const vf = { VF1: ['1. Gruppe A', '2. Gruppe B'], VF2: ['1. Gruppe C', '2. Gruppe D'], VF3: ['1. Gruppe B', '2. Gruppe A'], VF4: ['1. Gruppe D', '2. Gruppe C'] }[fightNr];
+            if (vf) return vf[compIndex - 1];
         }
 
         // Alle anderen Verknüpfungen (Doppel-KO-8/16/32) kommen 1:1 aus derselben Topologie, die
@@ -1398,6 +1445,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 else if (fight.reihenfolge_nummer === 'F1') labelText = 'Finale';
                 else if (fight.reihenfolge_nummer === 'T27') labelText = 'kleines Finale 1';
                 else if (fight.reihenfolge_nummer === 'T28') labelText = 'kleines Finale 2';
+            } else if (istKoRepechageModus(activePoolModus)) {
+                const name = koRepechage?.namen[activePoolModus]?.[fight.reihenfolge_nummer];
+                if (/^(AF|VF|HF)\d$/.test(name || '')) labelText = `Kampf ${name}`;
+                else if (name) labelText = name;
             } else if (fight.reihenfolge_nummer === 'F1') {
                 labelText = 'Finale';
             } else if (fight.reihenfolge_nummer === 'F2') {
@@ -1526,7 +1577,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Pools, deren Druck zwei Seiten füllt (Hauptrunde bzw. Gruppen | Trostrunde bzw. Finalrunde).
     // Die zweite Seite bekommt einen eigenen Kopf, die erste das Suffix "(1/2)".
     function druckSeitenAnzahl(modus) {
-        return ['Doppel-KO-8', 'Doppel-KO-16', 'Gruppen-Überkreuz', 'Gruppen-ueberkreuz'].includes(modus) ? 2 : 1;
+        return ['Doppel-KO-8', 'Doppel-KO-16', 'KO-Repechage-16', 'Gruppen-Überkreuz', 'Gruppen-ueberkreuz', 'Gruppen-KO'].includes(modus) ? 2 : 1;
     }
     let druckTurnierInfoText = '';
     let druckMatteAusgeloest = false;
@@ -1547,7 +1598,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!bracketContainer) return;
         activePoolModus = pool.modus;
 
-        const roundDefs = BRACKET_ROUND_DEFS[pool.modus];
+        const roundDefs = BRACKET_ROUND_DEFS[pool.modus] || koRepechage?.runden[pool.modus];
+        const repechage = istKoRepechageModus(pool.modus);
         if (!roundDefs) {
             bracketContainer.style.display = 'none';
             bracketContainer.innerHTML = '';
@@ -1567,7 +1619,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const loserHtml = `
             <div class="bracket-loser-section">
                 ${druckSeitenAnzahl(pool.modus) === 2 ? druckSeitenkopfHtml(pool) : ''}
-                <div class="bracket-section-title" style="margin-top: 32px;">Trostrunde (Loser Bracket)</div>
+                <div class="bracket-section-title" style="margin-top: 32px;">${repechage ? 'Hoffnungsrunde (Repechage)' : 'Trostrunde (Loser Bracket)'}</div>
                 <div class="bracket-rounds loser-bracket">
                     ${buildAlignedRoundsHtml(roundDefs.loser, fightMap, athleteMap)}
                 </div>
@@ -1592,9 +1644,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const kleinesFinale = fightMap.get('F2');
         halbfinalVerliererSindDritte = !kleinesFinale;
 
-        const groupAFights = pool.kaempfe.filter(f => f.reihenfolge_nummer?.startsWith('V_A_'));
-        const groupBFights = pool.kaempfe.filter(f => f.reihenfolge_nummer?.startsWith('V_B_'));
-
         // Gruppenzugehörigkeit kommt aus den Vorrundenkämpfen (die Aufteilung des Managers ist
         // nicht einfach "jeder Zweite"); Reihenfolge wie beim Anlegen: Gewicht aufsteigend.
         const gruppeAusKaempfen = (kaempfe) => {
@@ -1604,17 +1653,32 @@ document.addEventListener('DOMContentLoaded', () => {
                 .filter(t => ids.has(t.id))
                 .sort((a, b) => Number(a.gewicht) - Number(b.gewicht));
         };
-        const poolA = gruppeAusKaempfen(groupAFights);
-        const poolB = gruppeAusKaempfen(groupBFights);
+        // Gruppen A/B (Überkreuz) bzw. A-D (Gruppen-KO), je ein Kampfbogen
+        const gruppenHtml = ['A', 'B', 'C', 'D'].map(g => {
+            const kaempfe = pool.kaempfe.filter(f => f.reihenfolge_nummer?.startsWith(`V_${g}_`));
+            const mitglieder = gruppeAusKaempfen(kaempfe);
+            return mitglieder.length ? baueKampfbogenHtml({ teilnehmer: mitglieder, kaempfe }, `Gruppe ${g} – Kampfbogen`) : '';
+        }).join('');
 
         const matricesHtml = `
             <div style="margin-bottom: 32px;">
-                ${poolA.length ? baueKampfbogenHtml({ teilnehmer: poolA, kaempfe: groupAFights }, 'Gruppe A – Kampfbogen') : ''}
-                ${poolB.length ? baueKampfbogenHtml({ teilnehmer: poolB, kaempfe: groupBFights }, 'Gruppe B – Kampfbogen') : ''}
+                ${gruppenHtml}
             </div>
         `;
 
-        const bracketHtml = `
+        const bracketHtml = pool.modus === 'Gruppen-KO' ? `
+            <div class="bracket-loser-section ueberkreuz-final-section">
+                ${druckSeitenkopfHtml(pool)}
+                <div class="bracket-section-title">KO-Endrunde (Erste und Zweite der Gruppen)</div>
+                <div class="bracket-rounds">
+                    ${buildAlignedRoundsHtml([
+                        { title: 'Viertelfinale', nummern: ['VF1', 'VF2', 'VF3', 'VF4'] },
+                        { title: 'Halbfinale', nummern: ['HF1', 'HF2'] },
+                        { title: 'Finale', nummern: ['F1'] }
+                    ], fightMap, athleteMap)}
+                </div>
+            </div>
+        ` : `
             <div class="bracket-loser-section ueberkreuz-final-section">
                 ${druckSeitenkopfHtml(pool)}
                 <div class="bracket-section-title">Finalrunde (Überkreuz-Spiele & Platzierungen)</div>
@@ -1700,9 +1764,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // Matrix oder Bracket rendern, je nach Modus
                 const isJederGegenJeden = pool.modus === 'Jeder-gegen-Jeden' || pool.modus === 'Jeder gegen Jeden' || pool.teilnehmer.length === 1;
-                const isDoppelKo = pool.modus === 'Doppel-KO-8' || pool.modus === 'Doppel-KO-16' || pool.modus === 'Doppel-KO-32';
-                const isUeberKreuz = pool.modus === 'Gruppen-Überkreuz' || pool.modus === 'Gruppen-ueberkreuz';
-                
+                const isDoppelKo = pool.modus === 'Doppel-KO-8' || pool.modus === 'Doppel-KO-16' || pool.modus === 'Doppel-KO-32' || istKoRepechageModus(pool.modus);
+                const isUeberKreuz = pool.modus === 'Gruppen-Überkreuz' || pool.modus === 'Gruppen-ueberkreuz' || pool.modus === 'Gruppen-KO';
+
                 if (isJederGegenJeden) {
                     document.getElementById('bracketContainer').style.display = 'none';
                     document.getElementById('ueberKreuzContainer').style.display = 'none';
@@ -1806,9 +1870,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         else if (rundeTyp === 'F1') rundeTyp = 'Finale';
                         else if (rundeTyp === 'T11') rundeTyp = 'kleines Finale 1';
                         else if (rundeTyp === 'T12') rundeTyp = 'kleines Finale 2';
+                    } else if (istKoRepechageModus(pool.modus)) {
+                        const name = koRepechage?.namen[pool.modus]?.[rundeTyp] || rundeTyp;
+                        const runde = /^(AF|VF|HF)(\d)$/.exec(name);
+                        rundeTyp = runde ? `${{ AF: 'Achtelfinale', VF: 'Viertelfinale', HF: 'Halbfinale' }[runde[1]]} ${runde[2]}` : name;
                     } else {
                         if (rundeTyp === 'F1') rundeTyp = 'Finale';
                         else if (rundeTyp === 'F2') rundeTyp = 'kleines Finale';
+                        else if (/^VF[1-4]$/.test(rundeTyp)) rundeTyp = `Viertelfinale ${rundeTyp.slice(2)}`;
                         else if (rundeTyp === 'HF1') rundeTyp = 'Halbfinale 1';
                         else if (rundeTyp === 'HF2') rundeTyp = 'Halbfinale 2';
                     }
@@ -1942,9 +2011,9 @@ document.addEventListener('DOMContentLoaded', () => {
             druckListe.forEach(({ pool, matteName }) => {
                 druckMatteName = matteName;
                 const isJederGegenJeden = pool.modus === 'Jeder-gegen-Jeden' || pool.modus === 'Jeder gegen Jeden' || pool.teilnehmer.length === 1;
-                const isDoppelKo = pool.modus === 'Doppel-KO-8' || pool.modus === 'Doppel-KO-16' || pool.modus === 'Doppel-KO-32';
-                const isUeberKreuz = pool.modus === 'Gruppen-Überkreuz' || pool.modus === 'Gruppen-ueberkreuz';
-                
+                const isDoppelKo = pool.modus === 'Doppel-KO-8' || pool.modus === 'Doppel-KO-16' || pool.modus === 'Doppel-KO-32' || istKoRepechageModus(pool.modus);
+                const isUeberKreuz = pool.modus === 'Gruppen-Überkreuz' || pool.modus === 'Gruppen-ueberkreuz' || pool.modus === 'Gruppen-KO';
+
                 let visualHtml = '';
                 
                 if (isJederGegenJeden) {
