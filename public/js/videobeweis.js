@@ -9,7 +9,7 @@ const markenEl = document.getElementById('vbMarken');
 const titelEl = document.getElementById('vbTitel');
 const VORLAUF_S = 3; // beim Sprung zu einer Marke etwas früher beginnen
 const BILDRATE = 30;
-// Das Archiv gehört zum gewählten Turnier (?turnierId= wie bei den anderen Seiten); ohne Angabe zeigt es alle Clips.
+// Das Archiv gehört zum gewählten Turnier (?turnierId= wie bei den anderen Seiten); ohne Turnier zeigt die Seite nur einen Hinweis.
 const gewaehltesTurnier = new URLSearchParams(location.search).get('turnierId') || new URLSearchParams(location.search).get('id');
 const turnierQuery = gewaehltesTurnier ? `?turnierId=${encodeURIComponent(gewaehltesTurnier)}` : '';
 
@@ -191,7 +191,7 @@ async function lade() {
         liveIds = new Set(status && status.live ? status.live.map(l => l.clipId) : []);
         if (status && status.speicher) {
             const s = status.speicher;
-            speicherEl.textContent = `${clips.length} Clips${gewaehltesTurnier ? ' in diesem Turnier' : ''} · Speicher belegt: ${(s.belegt / 1e9).toFixed(2)} GB${s.frei != null ? ` · frei: ${(s.frei / 1e9).toFixed(1)} GB` : ''}`;
+            speicherEl.textContent = `${clips.length} Clips in diesem Turnier · Speicher belegt: ${(s.belegt / 1e9).toFixed(2)} GB${s.frei != null ? ` · frei: ${(s.frei / 1e9).toFixed(1)} GB` : ''}`;
         }
         const gewaehlt = matteSelect.value;
         const matten = new Map(clips.map(c => [String(c.matteId), c.matteName || `Matte ${c.matteId}`]));
@@ -209,11 +209,18 @@ document.getElementById('vbTempo').addEventListener('change', (e) => { video.pla
 document.getElementById('vbBildVor').addEventListener('click', () => { video.pause(); video.currentTime += 1 / BILDRATE; });
 document.getElementById('vbBildZurueck').addEventListener('click', () => { video.pause(); video.currentTime = Math.max(0, video.currentTime - 1 / BILDRATE); });
 document.getElementById('vbAlleLoeschen').addEventListener('click', async () => {
-    if (!confirm(gewaehltesTurnier ? 'ALLE Clips dieses Turniers endgültig löschen?' : 'ALLE gespeicherten Clips endgültig löschen?')) return;
+    if (!confirm('ALLE Clips dieses Turniers endgültig löschen?')) return;
     await fetch(`/api/video/clips/alle-loeschen${turnierQuery}`, { method: 'POST' });
     schliesse();
     lade();
 });
 
-lade();
-setInterval(lade, 15000);
+if (gewaehltesTurnier) {
+    lade();
+    setInterval(lade, 15000);
+} else {
+    liste.textContent = 'Bitte zuerst ein Turnier auswählen – das Video-Archiv gehört immer zu einem Turnier.';
+    document.getElementById('vbAlleLoeschen').disabled = true;
+    matteSelect.disabled = true;
+    sucheEl.disabled = true;
+}

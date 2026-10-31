@@ -141,7 +141,7 @@ test('Videoaufnahme: live zum Server, Live-Raster, Ansehen in der Steuerung, vol
 
     // Video-Archiv: Liste, Abspielen, Marken
     const beweis = await context.newPage();
-    await beweis.goto('/videobeweis.html');
+    await beweis.goto(`/videobeweis.html?turnierId=${turnierId}`);
     const zeile = beweis.locator(`tr[data-clip-id="${clip.id}"]`);
     await expect(zeile).toContainText('Video Pool');
     await expect(zeile.locator('.video-farbmarke-rot')).toHaveCount(1);
@@ -208,7 +208,7 @@ test('Ohne Verbindung bleibt der Clip lokal (auch nach Neuladen) und geht späte
 
     // Der Clip ist vollständig und abspielbar
     const beweis = await page.context().newPage();
-    await beweis.goto('/videobeweis.html');
+    await beweis.goto(`/videobeweis.html?turnierId=${turnierId}`);
     await beweis.locator(`tr[data-clip-id="${clip.id}"] .video-ansehen`).click();
     await expect.poll(() => beweis.locator('#vbVideo').evaluate(v => Number.isFinite(v.duration) && v.duration > 1), { timeout: 20_000 }).toBe(true);
 });
