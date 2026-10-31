@@ -98,9 +98,12 @@ test('Neuer Pool nach einem Pool in Prüfung: Holen gesperrt, bis der Pool abges
     await expect(page.locator('#poolPlatzierungen')).toContainText('Platzierungen');
     await page.keyboard.press('Escape');
 
-    page.once('dialog', d => d.accept());
+    // Ohne weitere Nachfrage: kein Browser-Dialog
+    const dialoge = [];
+    page.on('dialog', d => { dialoge.push(d.message()); d.dismiss(); });
     await sperre.getByRole('button', { name: 'Pool abschließen' }).click();
     await expect(sperre).toBeHidden();
+    expect(dialoge).toEqual([]);
     const pools = await (await request.get(`/api/pools/details?turnierId=${turnierId}`)).json();
     expect(pools.find(p => Number(p.id) === Number(poolIds[0])).status).toBe('abgeschlossen');
 

@@ -2387,8 +2387,9 @@ function zeichnePoolAuswahl(pools, gewaehltId) {
     window.dispatchEvent(new CustomEvent('hajime:pool-pruefung', { detail: { anzahl: pools.filter(p => p.pruefung).length } }));
 }
 
-async function schliessePoolAbSteuerung(pool) {
-    if (!window.confirm('Ergebnisse von "' + pool.name + '" als final bestätigen? Damit ist der Pool abgeschlossen.')) return;
+// Ohne Nachfrage aus der Prüfungs-Sperre: dort stehen die Platzierungen schon, der Klick selbst ist die Bestätigung.
+async function schliessePoolAbSteuerung(pool, { nachfragen = true } = {}) {
+    if (nachfragen && !window.confirm('Ergebnisse von "' + pool.name + '" als final bestätigen? Damit ist der Pool abgeschlossen.')) return;
     try {
         const r = await window.Datenzugriff.schliessePoolAb(pool.id);
         if (!r.ok) throw new Error(r.fehler || 'Pool konnte nicht abgeschlossen werden.');
@@ -2642,7 +2643,7 @@ async function zeichnePoolPruefungOverlay(kaempfe) {
         abschliessen.type = 'button';
         abschliessen.className = 'btn-main pool-pruefung-abschliessen';
         abschliessen.textContent = 'Pool abschließen';
-        abschliessen.addEventListener('click', () => schliessePoolAbSteuerung(pool));
+        abschliessen.addEventListener('click', () => schliessePoolAbSteuerung(pool, { nachfragen: false }));
         const ansehen = document.createElement('button');
         ansehen.type = 'button';
         ansehen.className = 'btn-main pool-pruefung-ansehen';
