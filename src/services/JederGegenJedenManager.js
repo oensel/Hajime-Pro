@@ -1,3 +1,5 @@
+import { jgjPaarungen } from '../shared/jgjPaarungen.js';
+
 export class JederGegenJedenManager {
     constructor() {
         this.bezeichnung = "Jeder gegen Jeden";
@@ -34,47 +36,8 @@ export class JederGegenJedenManager {
 
         const neueKaempfe = [];
 
-        // 2. Paarungen ermitteln
-        let pairings = [];
-        const n = teilnehmer.length;
-        if (n === 2) {
-            pairings = [[0, 1]];
-        } else if (n === 3) {
-            pairings = [
-                [0, 1], // 1-2
-                [0, 2], // 1-3
-                [1, 2]  // 2-3
-            ];
-        } else if (n === 4) {
-            pairings = [
-                [0, 1], // 1-2
-                [2, 3], // 3-4
-                [0, 3], // 1-4
-                [1, 2], // 2-3
-                [0, 2], // 1-3
-                [1, 3]  // 2-4
-            ];
-        } else if (n === 5) {
-            pairings = [
-                [0, 1], // 1-2
-                [2, 3], // 3-4
-                [1, 2], // 2-3
-                [3, 4], // 4-5
-                [0, 2], // 1-3
-                [1, 4], // 2-5
-                [0, 3], // 1-4
-                [2, 4], // 3-5
-                [0, 4], // 1-5
-                [1, 3]  // 2-4
-            ];
-        } else {
-            // Fallback für andere Pool-Größen
-            for (let i = 0; i < n; i++) {
-                for (let j = i + 1; j < n; j++) {
-                    pairings.push([i, j]);
-                }
-            }
-        }
+        // 2. Paarungen ermitteln (feste Reihenfolge je Poolgröße, src/shared/jgjPaarungen.js)
+        const pairings = jgjPaarungen(teilnehmer.length);
 
         pairings.forEach((pair, idx) => {
             const k1 = teilnehmer[pair[0]];

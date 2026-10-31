@@ -25,6 +25,22 @@ import('/js/shared/koRepechage.js').then(mod => {
 });
 const istKoRepechageModus = modus => /^KO-Repechage-(16|32|64)$/.test(modus || '');
 
+// Wählbare Systeme je Teilnehmerzahl, Spiegelbild von wettkampfsystemAlternativen (src/controllers/poolController.js).
+function systemAlternativen(anzahl) {
+    if (anzahl === 6) return ['Gruppen-Überkreuz', 'Jeder-gegen-Jeden'];
+    if (anzahl >= 7 && anzahl <= 8) return ['Doppel-KO-8', 'Gruppen-Überkreuz'];
+    if (anzahl >= 9 && anzahl <= 10) return ['Doppel-KO-16', 'KO-Repechage-16', 'Gruppen-Überkreuz'];
+    if (anzahl >= 9 && anzahl <= 16) return ['Doppel-KO-16', 'KO-Repechage-16'];
+    if (anzahl >= 17 && anzahl <= 32) return ['Doppel-KO-32', 'KO-Repechage-32'];
+    return [];
+}
+const SYSTEM_NAMEN = {
+    'Jeder-gegen-Jeden': 'Jeder gegen Jeden',
+    'Gruppen-Überkreuz': 'Gruppen über Kreuz',
+    'Doppel-KO-8': 'Doppel-KO', 'Doppel-KO-16': 'Doppel-KO', 'Doppel-KO-32': 'Doppel-KO',
+    'KO-Repechage-16': 'KO mit Hoffnungsrunde', 'KO-Repechage-32': 'KO mit Hoffnungsrunde'
+};
+
 document.addEventListener('DOMContentLoaded', () => {
     // --- TURNIER-ID INITIALISIERUNG ---
     const urlParams = new URLSearchParams(window.location.search);
@@ -365,14 +381,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 k.status === 'gestartet' || k.status === 'beendet'
             );
 
-            // Für genau 6 TeilnehmerInnen sind Gruppen-Überkreuz und Jeder-gegen-Jeden beide
-            // gültige Systeme — solange noch keine echten Kämpfe existieren, darf umgeschaltet werden.
-            // Ebenso bei 9-32 Doppel-KO und KO-Repechage (Hoffnungsrunde nur für die Viertelfinal-Verlierer).
-            const sechserZielModus = pool.modus === 'Gruppen-Überkreuz' ? 'Jeder-gegen-Jeden' : 'Gruppen-Überkreuz';
-            const koZielModus = { 'Doppel-KO-16': 'KO-Repechage-16', 'KO-Repechage-16': 'Doppel-KO-16', 'Doppel-KO-32': 'KO-Repechage-32', 'KO-Repechage-32': 'Doppel-KO-32' }[pool.modus];
-            const zielModus = pool.anzahl_teilnehmer === 6 &&
-                (pool.modus === 'Gruppen-Überkreuz' || pool.modus === 'Jeder-gegen-Jeden') ? sechserZielModus : koZielModus;
-            const kannSystemWechseln = !hatBegonnen && !pool.verspaetet && pool.typ !== 'mannschaft' && !!zielModus;
+            // Für manche Teilnehmerzahlen gibt es mehrere gültige Systeme (systemAlternativen) — solange noch
+            // keine echten Kämpfe existieren, darf umgeschaltet werden.
+            const alternativen = systemAlternativen(Number(pool.anzahl_teilnehmer));
+            const kannSystemWechseln = !hatBegonnen && !pool.verspaetet && pool.typ !== 'mannschaft' && alternativen.includes(pool.modus);
 
             return `
                                 <tr class="pool-section" data-pool-id="${pool.id}">
@@ -386,10 +398,11 @@ document.addEventListener('DOMContentLoaded', () => {
                                         <div class="pool-einstellungen">
                                             <span class="pool-einstellung-label">System</span>
                                             <div class="pool-einstellung-wert">
-                                                <span class="pool-system-text">${pool.verspaetet ? 'Sammelpool' : mapWettkampfsystem(pool.modus, pool.anzahl_teilnehmer)}</span>
                                                 ${kannSystemWechseln ? `
-                                                    <button type="button" class="btn-switch-system material-icons" data-id="${pool.id}" data-ziel-modus="${zielModus}" title="Auf ${zielModus} umstellen" style="color: var(--text-muted); background: none; border: none; cursor: pointer; font-size: 15px; padding: 2px; vertical-align: middle;">swap_horiz</button>
-                                                ` : ''}
+                                                    <select class="pool-system-select" data-id="${pool.id}" data-modus="${escapeHtml(pool.modus)}" title="Wettkampfsystem">
+                                                        ${alternativen.map(m => `<option value="${escapeHtml(m)}" ${m === pool.modus ? 'selected' : ''}>${escapeHtml(SYSTEM_NAMEN[m] ? `${mapWettkampfsystem(m, pool.anzahl_teilnehmer)} – ${SYSTEM_NAMEN[m]}` : m)}</option>`).join('')}
+                                                    </select>
+                                                ` : `<span class="pool-system-text">${pool.verspaetet ? 'Sammelpool' : mapWettkampfsystem(pool.modus, pool.anzahl_teilnehmer)}</span>`}
                                             </div>
 
                                             <span class="pool-einstellung-label">Kampfzeit</span>
@@ -470,12 +483,13 @@ document.addEventListener('DOMContentLoaded', () => {
                             `;
     }
 
-    // --- 6ER-POOLS: WETTKAMPFSYSTEM WECHSELN (GRUPPEN-ÜBERKREUZ <-> JEDER-GEGEN-JEDEN) ---
+    // --- WETTKAMPFSYSTEM WECHSELN (Auswahlliste, solange der Pool nicht begonnen hat) ---
     function initialisiereSystemWechselEvents(root = document) {
-        root.querySelectorAll('.btn-switch-system').forEach(button => {
-            button.addEventListener('click', async (e) => {
+        root.querySelectorAll('.pool-system-select').forEach(auswahl => {
+            auswahl.addEventListener('change', async (e) => {
                 const id = e.currentTarget.getAttribute('data-id');
-                const zielModus = e.currentTarget.getAttribute('data-ziel-modus');
+                const bisher = e.currentTarget.getAttribute('data-modus');
+                const zielModus = e.currentTarget.value;
 
                 const bestaetigt = await zeigeBestaetigung(
                     `Möchten Sie das Wettkampfsystem dieses Pools wirklich auf "${zielModus}" umstellen? Der bisherige Kampfplan wird dabei neu erzeugt.`,
@@ -483,7 +497,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     'swap_horiz'
                 );
 
-                if (!bestaetigt) return;
+                if (!bestaetigt) {
+                    auswahl.value = bisher;
+                    return;
+                }
 
                 try {
                     const response = await fetch(`/api/pools/${id}/system`, {
@@ -497,6 +514,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         zeigeNotification(`Wettkampfsystem erfolgreich auf "${zielModus}" umgestellt.`, 'success');
                         await ladePools();
                     } else {
+                        auswahl.value = bisher;
                         zeigeNotification(result.error || 'Wechsel fehlgeschlagen.', 'error');
                     }
                 } catch (err) {

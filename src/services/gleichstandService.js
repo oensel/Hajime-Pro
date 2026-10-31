@@ -6,11 +6,12 @@ import {
     pruefeGleichstand, entscheideNachSiegzeit, leseEntscheidung, RELEVANT_BIS_POOL, RELEVANT_BIS_GRUPPE
 } from '../shared/gleichstand.js';
 import { triggerPoolUpdate, reiheKampfPausenkonformEin } from '../controllers/kampfController.js';
+import { VORRUNDEN_GRUPPEN, endrundeDerGruppe } from '../shared/gruppenUeberkreuzProgression.js';
 
 const istJgj = modus => /^Jeder[- ]gegen[- ]Jeden$/.test(modus || '');
 const nachNummer = (a, b) => String(a.reihenfolge_nummer).localeCompare(String(b.reihenfolge_nummer), 'de', { numeric: true });
 
-// Die Gleichstands-Kontexte eines Pools: 'pool' im Jeder-gegen-Jeden, 'A' und 'B' (Vorrundengruppen) im Gruppen-Überkreuz.
+// Die Gleichstands-Kontexte eines Pools: 'pool' im Jeder-gegen-Jeden, je Vorrundengruppe ('A', 'B') im Gruppen-Überkreuz.
 async function ladeKontexte(knex, pool) {
     const kaempfe = await knex('kaempfe').where({ pool_id: pool.id });
     if (istJgj(pool.modus)) {
@@ -18,13 +19,15 @@ async function ladeKontexte(knex, pool) {
         return [{ schluessel: 'pool', ids: teilnehmer.map(t => t.id), kaempfe, bis: RELEVANT_BIS_POOL }];
     }
     if (pool.modus === 'Gruppen-Überkreuz') {
-        const hf1 = kaempfe.find(k => k.reihenfolge_nummer === 'HF1');
-        if (!hf1 || hf1.kaempfer1_id) return []; // Halbfinale schon besetzt: nichts mehr zu entscheiden
-        return ['A', 'B'].map(g => {
-            const gruppe = kaempfe.filter(k => k.reihenfolge_nummer?.startsWith(`V_${g}_`)).sort(nachNummer);
-            const ids = [...new Set(gruppe.flatMap(k => [k.kaempfer1_id, k.kaempfer2_id]).filter(Boolean))];
-            return { schluessel: g, ids, kaempfe: gruppe, bis: RELEVANT_BIS_GRUPPE };
-        });
+        // Nur Gruppen, deren Endrunden-Kämpfe noch nicht besetzt sind: danach ist nichts mehr zu entscheiden.
+        const nachNr = new Map(kaempfe.map(k => [k.reihenfolge_nummer, k]));
+        return VORRUNDEN_GRUPPEN
+            .filter(g => endrundeDerGruppe(g).some(nr => nachNr.has(nr) && !nachNr.get(nr).kaempfer1_id))
+            .map(g => {
+                const gruppe = kaempfe.filter(k => k.reihenfolge_nummer?.startsWith(`V_${g}_`)).sort(nachNummer);
+                const ids = [...new Set(gruppe.flatMap(k => [k.kaempfer1_id, k.kaempfer2_id]).filter(Boolean))];
+                return { schluessel: g, ids, kaempfe: gruppe, bis: RELEVANT_BIS_GRUPPE };
+            });
     }
     throw new FachFehler(409, 'Ein Gleichstand wird nur im Jeder-gegen-Jeden und im Gruppen-Überkreuz entschieden.');
 }

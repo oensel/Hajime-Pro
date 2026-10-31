@@ -7,7 +7,7 @@
 //  - Jeder-gegen-Jeden (2–5): er bekommt Kämpfe gegen alle, solange genug Kämpfe offen sind.
 //  - Doppel-KO-8/16/32: er nimmt den nächsten freien Freilos-Platz des Rasters (feste DJB-Reihenfolge), solange
 //    die Kämpfe, die von diesem Platz abhängen, noch nicht begonnen haben.
-//  - Gruppen-Überkreuz (genau 6): nie, mit 7 wäre es Doppel-KO-8.
+//  - Gruppen-Überkreuz (6-10): nie nach Beginn, die Gruppen stehen fest.
 import { KO_REPECHAGE_RASTER, KO_REPECHAGE_FREILOS } from './koRepechage.js';
 
 export const SYSTEM_JEDER_GEGEN_JEDEN = 'Jeder-gegen-Jeden';

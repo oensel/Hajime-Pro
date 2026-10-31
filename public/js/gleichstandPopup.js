@@ -3,6 +3,7 @@
 // direkte Vergleich auflösen. Die Turnierleitung entscheidet nach Siegzeit oder per Stichkampf (Prüfung und Regeln:
 // js/shared/gleichstand.js, Ausführung am Server: services/gleichstandService.js).
 import { pruefeGleichstand, leseEntscheidung, RELEVANT_BIS_POOL, RELEVANT_BIS_GRUPPE } from '/js/shared/gleichstand.js';
+import { VORRUNDEN_GRUPPEN, endrundeDerGruppe } from '/js/shared/gruppenUeberkreuzProgression.js';
 
 const istJgj = modus => /^Jeder[- ]gegen[- ]Jeden$/.test(modus || '');
 const nachNummer = (a, b) => String(a.reihenfolge_nummer).localeCompare(String(b.reihenfolge_nummer), 'de', { numeric: true });
@@ -31,9 +32,10 @@ export function ermittleOffeneGleichstaende(kaempfe) {
             const pruefung = pruefeGleichstand(idsAus(poolKaempfe), poolKaempfe, { bis: RELEVANT_BIS_POOL, entscheidung: entscheidung.pool });
             if (pruefung.offen) ergebnis.push({ poolId, poolName, schluessel: 'pool', gruppe: null, modus: 'pool', pruefung, kaempfe: poolKaempfe });
         } else if (erster.pool_modus === 'Gruppen-Überkreuz') {
-            const hf1 = poolKaempfe.find(k => k.reihenfolge_nummer === 'HF1');
-            if (!hf1 || hf1.kaempfer1_id) return;
-            ['A', 'B'].forEach(g => {
+            // je Gruppe, solange ihre Endrunden-Kämpfe noch nicht besetzt sind
+            const nachNr = new Map(poolKaempfe.map(k => [k.reihenfolge_nummer, k]));
+            VORRUNDEN_GRUPPEN.forEach(g => {
+                if (!endrundeDerGruppe(g).some(nr => nachNr.has(nr) && !nachNr.get(nr).kaempfer1_id)) return;
                 const gruppe = poolKaempfe.filter(k => k.reihenfolge_nummer?.startsWith(`V_${g}_`));
                 if (!gruppe.length) return;
                 const pruefung = pruefeGleichstand(idsAus(gruppe), gruppe, { bis: RELEVANT_BIS_GRUPPE, entscheidung: entscheidung[g] });

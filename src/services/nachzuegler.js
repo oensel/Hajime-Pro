@@ -8,7 +8,7 @@ function bewertePool(pool, waehleSystem) {
     const nachher = pool.teilnehmer.length + 1;
     let systemNachher = null;
     try {
-        systemNachher = waehleSystem(nachher, pool.modus);
+        systemNachher = waehleSystem(nachher, pool.system_gewaehlt ? pool.modus : null);
     } catch {
         return { systemNachher: null, nachher, bewertung: null }; // größer als das größte Wettkampfsystem
     }

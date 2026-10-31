@@ -1,20 +1,22 @@
 import { GRUPPEN_UEBERKREUZ_TOPOLOGIE, verknuepfeQuellenFuerPool } from '../shared/bracketTopologie.js';
 import { berechneKaempferPatches } from '../shared/kampfProgression.js';
 import { berechneGruppenUeberkreuzHalbfinalPatches } from '../shared/gruppenUeberkreuzProgression.js';
+import { jgjPaarungen } from '../shared/jgjPaarungen.js';
 
 export class GruppenUeberKreuzManager {
     /**
-     * Erstellt einen Turnier-Manager für das Gruppensystem mit Überkreuz-Finale.
-     * Dieses System ist auf genau 6 Teilnehmer ausgelegt:
-     * 2 Gruppen à 3 Personen, danach Halbfinale über Kreuz.
+     * Erstellt einen Turnier-Manager für das Gruppensystem mit Überkreuz-Finale:
+     * 6 bis 10 Teilnehmer in 2 Gruppen à 3 bis 5 (Gruppe A ist bei ungerader Zahl die größere),
+     * jeder gegen jeden in der Gruppe, danach Halbfinale über Kreuz.
      */
     constructor() {
         this.bezeichnung = "Gruppensystem mit Überkreuz-Finale";
-        this.anzahlTeilnehmer = 6;
+        this.minTeilnehmer = 6;
+        this.maxTeilnehmer = 10;
     }
 
     /**
-     * Initialisiert die 6 Vorrunden-Kämpfe (Phase 1) direkt in der Datenbank.
+     * Initialisiert die Vorrunden-Kämpfe (Phase 1) direkt in der Datenbank.
      * @param {Object} knex - Die Knex-Instanz
      * @param {number} poolId - Die ID des Pools aus der Datenbank
      */
@@ -25,24 +27,22 @@ export class GruppenUeberKreuzManager {
         // Sortieren nach Gewicht aufsteigend
         teilnehmer.sort((a, b) => Number(a.gewicht) - Number(b.gewicht));
 
-        if (teilnehmer.length !== this.anzahlTeilnehmer) {
-            throw new Error(`Das Gruppensystem über Kreuz benötigt exakt ${this.anzahlTeilnehmer} Teilnehmer.`);
+        if (teilnehmer.length < this.minTeilnehmer || teilnehmer.length > this.maxTeilnehmer) {
+            throw new Error(`Das Gruppensystem über Kreuz benötigt ${this.minTeilnehmer} bis ${this.maxTeilnehmer} Teilnehmer.`);
         }
 
-        // 2. Teilnehmer fair nach Judo-Muster auf zwei Gruppen (Pool A und Pool B) aufteilen
-        const { poolA, poolB } = this._teileTeilnehmerAuf(teilnehmer);
+        // 2. Teilnehmer auf zwei Gruppen (Pool A und Pool B) aufteilen
+        const gruppen = this._teileTeilnehmerAuf(teilnehmer);
 
-        // 3. Kampfplan für die Vorrunde (6 Kämpfe) vorbereiten
+        // 3. Kampfplan für die Vorrunde: jeder gegen jeden je Gruppe, die Gruppen im Wechsel (V_A_1, V_B_1, V_A_2, …).
         // Wir nutzen 'reihenfolge_nummer' als textuellen Match-Key (z.B. "V_A_1"),
         // um den Typ des Kampfes relational eindeutig identifizieren zu können.
-        const paarungen = [
-            { idKey: "V_A_1", gruppe: 'A', k1: poolA[0].id, k2: poolA[1].id },
-            { idKey: "V_B_1", gruppe: 'B', k1: poolB[0].id, k2: poolB[1].id },
-            { idKey: "V_A_2", gruppe: 'A', k1: poolA[0].id, k2: poolA[2].id },
-            { idKey: "V_B_2", gruppe: 'B', k1: poolB[0].id, k2: poolB[2].id },
-            { idKey: "V_A_3", gruppe: 'A', k1: poolA[1].id, k2: poolA[2].id },
-            { idKey: "V_B_3", gruppe: 'B', k1: poolB[1].id, k2: poolB[2].id }
-        ];
+        const jeGruppe = Object.entries(gruppen).map(([gruppe, mitglieder]) =>
+            jgjPaarungen(mitglieder.length).map(([i, j], n) => ({ idKey: `V_${gruppe}_${n + 1}`, gruppe, k1: mitglieder[i].id, k2: mitglieder[j].id })));
+        const paarungen = [];
+        for (let runde = 0; runde < Math.max(...jeGruppe.map(l => l.length)); runde++) {
+            jeGruppe.forEach(liste => { if (liste[runde]) paarungen.push(liste[runde]); });
+        }
 
         const neueKaempfe = paarungen.map(p => ({
             pool_id: poolId,
@@ -74,7 +74,7 @@ export class GruppenUeberKreuzManager {
 
         // 4. In die Datenbank schreiben
         await knex('kaempfe').insert(neueKaempfe);
-        console.log(`[DB] 6 Vorrunden-Kämpfe und 3 Final-Hüllen für Gruppen-Überkreuz-Pool ID ${poolId} generiert.`);
+        console.log(`[DB] ${paarungen.length} Vorrunden-Kämpfe und 3 Final-Hüllen für Gruppen-Überkreuz-Pool ID ${poolId} generiert.`);
 
         // Explizite Quell-Verknüpfung für F1 (HF1/HF2 bleiben unverknüpft, siehe
         // GRUPPEN_UEBERKREUZ_TOPOLOGIE — deren Kämpfer kommen aus der Ranglistenberechnung)
@@ -144,24 +144,32 @@ export class GruppenUeberKreuzManager {
     }
 
     /**
-     * Teilt sechs Teilnehmer fair nach dem DJB/Judo-Muster auf zwei Gruppen auf.
-     * Index 0, 2, 4 (1., 3., 5. gesetzter Athlet) -> Pool A
-     * Index 1, 3, 5 (2., 4., 6. gesetzter Athlet) -> Pool B
-     * @param {Array} teilnehmer - Array aus der Tabelle 'turnier_teilnehmer'
-     * @returns {{poolA: Array, poolB: Array}}
+     * Teilt die (nach Gewicht sortierten) Teilnehmer auf die Gruppen auf: der Reihe nach in die Gruppe mit den
+     * wenigsten Vereinskameraden, bei Gleichstand in die kleinere, dann die erste (solange sie Platz hat). Ohne
+     * Vereinskonflikt ergibt das das bisherige Muster (1., 3., 5. → A, 2., 4., 6. → B); Vereinskameraden landen
+     * nach Möglichkeit in verschiedenen Gruppen. Innerhalb einer Gruppe bleibt die Gewichtsreihenfolge.
+     * @param {Array} teilnehmer - Array aus der Tabelle 'turnier_teilnehmer', nach Gewicht aufsteigend
+     * @returns {{A: Array, B: Array}}
      */
     _teileTeilnehmerAuf(teilnehmer) {
-        const poolA = [];
-        const poolB = [];
+        const namen = ['A', 'B'];
+        const groesse = { A: Math.ceil(teilnehmer.length / 2), B: Math.floor(teilnehmer.length / 2) };
+        const gruppen = { A: [], B: [] };
+        const verein = t => t.verein || 'Kein Verein';
 
-        teilnehmer.forEach((athlet, index) => {
-            if (index % 2 === 0) {
-                poolA.push(athlet);
-            } else {
-                poolB.push(athlet);
+        for (const athlet of teilnehmer) {
+            let beste = null;
+            for (const g of namen) {
+                const frei = groesse[g] - gruppen[g].length;
+                if (frei <= 0) continue;
+                const kameraden = gruppen[g].filter(t => verein(t) === verein(athlet)).length;
+                const mitglieder = gruppen[g].length;
+                if (!beste || kameraden < beste.kameraden || (kameraden === beste.kameraden && mitglieder < beste.mitglieder)) {
+                    beste = { g, kameraden, mitglieder };
+                }
             }
-        });
-
-        return { poolA, poolB };
+            gruppen[beste.g].push(athlet);
+        }
+        return gruppen;
     }
 }
