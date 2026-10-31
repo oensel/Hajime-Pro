@@ -30,6 +30,13 @@
     }
 
     alle('[data-st-oeffne]').forEach((b) => b.addEventListener('click', () => oeffne(b.dataset.stOeffne)));
+    // Matte-Chip in der Kopfleiste: öffnet die Einstellungen und setzt den Fokus auf die Auswahl der Wettkampffläche
+    einzeln('#stChipMatteKnopf').addEventListener('click', () => {
+        if (aktuell === 'daten') {
+            const wahl = document.getElementById('matSelect');
+            if (wahl) wahl.focus();
+        }
+    });
     einzeln('#stDrawerZu').addEventListener('click', schliesse);
     scrim.addEventListener('click', schliesse);
     document.addEventListener('keydown', (e) => {

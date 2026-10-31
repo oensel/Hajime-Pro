@@ -20,8 +20,10 @@ test('Scoreboard am Client: Matte aus der Gerätekonfiguration, Wechsel mit Nach
 
     await page.goto(`${CLIENT_BASE_URL}/steuerung.html?turnierId=${turnierId}`);
     await expect(page.locator('#matSelect')).toHaveValue(String(matte1));
-    // Die Mattenwahl liegt im Menü-Panel "Kampf"
-    await page.locator('.st-nav-btn[data-st-oeffne="daten"]').click();
+    // Die Mattenwahl liegt im Menü-Panel "Kampf"; der Matte-Chip in der Kopfleiste öffnet es direkt und fokussiert die Auswahl
+    await page.locator('#stChipMatteKnopf').click();
+    await expect(page.locator('#stDrawer')).toHaveClass(/aktiv/);
+    await expect(page.locator('#matSelect')).toBeFocused();
 
     // steuerung.html lädt bewusst kein menu.js -> Nachfrage über den nativen confirm()-Dialog.
     let meldung = '';
