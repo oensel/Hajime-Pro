@@ -74,7 +74,14 @@ export async function erzeugeClientKern({ konfig, PouchDB, oeffneDb, clientKonfi
             return;
         }
         const status = await frageServer();
-        if (!status || !status.instanz_id) return;
+        if (!status) return;
+        if (!status.instanz_id) {
+            // Hallen-Server ohne aktives Turnier (beendet/abgesagt, das nächste noch nicht aktiviert): die lokale
+            // Kopie gehört zu keinem aktuellen Turnier mehr und darf nicht weiter angezeigt werden. Ein Server
+            // ohne Sync-Dienst meldet keine Rolle und sagt damit nichts über das Turnier.
+            if (status.rolle && zustand.instanzId) await dienst.wechsleInstanz(null);
+            return;
+        }
         if (!zustand.instanzId) {
             await oeffneInstanz(status.instanz_id);
         } else if (status.instanz_id !== zustand.instanzId) {
@@ -143,7 +150,8 @@ export async function erzeugeClientKern({ konfig, PouchDB, oeffneDb, clientKonfi
         },
         // Turnierwechsel am Server (Spec Abschnitt 8): noch nicht übertragene eigene Änderungen des
         // alten Turniers gehören zu keinem Turnier mehr — sie werden gesichert statt still zu
-        // verschwinden, danach wird die lokale DB durch die neue Instanz ersetzt.
+        // verschwinden, danach wird die lokale DB durch die neue Instanz ersetzt (null: der Server hat kein aktives
+        // Turnier mehr, der Client bleibt ohne Datenbank, bis wieder eines aktiviert wird).
         async wechsleInstanz(neueInstanzId) {
             zustand.instanzwechselLaeuft = true;
             try {
@@ -157,7 +165,13 @@ export async function erzeugeClientKern({ konfig, PouchDB, oeffneDb, clientKonfi
                     }
                     await zustand.db.destroy();
                 }
-                await oeffneInstanz(neueInstanzId);
+                if (neueInstanzId) await oeffneInstanz(neueInstanzId);
+                else {
+                    zustand.db = null;
+                    zustand.instanzId = null;
+                    await clientKonfig.merkeInstanz(null);
+                    for (const rueckruf of beiNeuerDb) await rueckruf(null);
+                }
             } finally {
                 zustand.instanzwechselLaeuft = false;
             }
