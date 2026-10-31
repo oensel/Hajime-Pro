@@ -1428,6 +1428,25 @@ export async function verschiebeTeilnehmer(knex, req, res) {
                     error: 'Teilnehmer und Ziel-Pool gehören nicht zum selben Turnier.'
                 });
             }
+
+            // Wechsel der Altersklasse oder des Geschlechts nur nach Rückfrage (bestaetigt=true); der Sammelpool für Verspätete ist klassenübergreifend
+            if (!zielPool.verspaetet && req.body.bestaetigt !== true) {
+                const abweichungen = [];
+                if (zielPool.altersklasse && athlet.altersklasse && zielPool.altersklasse !== athlet.altersklasse) {
+                    abweichungen.push({ art: 'altersklasse', von: athlet.altersklasse, nach: zielPool.altersklasse });
+                }
+                if (zielPool.geschlecht && athlet.geschlecht && zielPool.geschlecht !== athlet.geschlecht) {
+                    abweichungen.push({ art: 'geschlecht', von: athlet.geschlecht, nach: zielPool.geschlecht });
+                }
+                if (abweichungen.length) {
+                    return res.status(409).json({
+                        success: false,
+                        code: 'klasse_abweichung',
+                        abweichungen,
+                        error: 'Der Teilnehmer gehört einer anderen Altersklasse oder einem anderen Geschlecht an als der Ziel-Pool.'
+                    });
+                }
+            }
         }
 
         const betroffenePoolIds = Array.from(

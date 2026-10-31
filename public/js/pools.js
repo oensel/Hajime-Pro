@@ -730,17 +730,33 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 try {
-                    const response = await fetch('/api/pools/verschieben', {
+                    const sende = (bestaetigt) => fetch('/api/pools/verschieben', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             turnierId: parseInt(turnierId, 10),
                             teilnehmerId: parseInt(athleteId, 10),
-                            zielPoolId: parseInt(zielPoolId, 10)
+                            zielPoolId: parseInt(zielPoolId, 10),
+                            bestaetigt
                         })
                     });
 
-                    const result = await response.json();
+                    let response = await sende(false);
+                    let result = await response.json();
+
+                    // Anderer Altersklasse oder anderem Geschlecht zugeordnet: erst nachfragen
+                    if (response.status === 409 && result.code === 'klasse_abweichung') {
+                        const text = result.abweichungen.map(a => a.art === 'altersklasse'
+                            ? `Altersklasse ${a.von} → ${a.nach}`
+                            : `Geschlecht ${a.von} → ${a.nach}`).join('\n');
+                        const ok = await zeigeBestaetigung(
+                            `Der Teilnehmer passt nicht zur Klasse des Ziel-Pools:\n${text}\n\nTrotzdem verschieben?`,
+                            'Andere Klasse', 'warning');
+                        zone.classList.remove('zone-active');
+                        if (!ok) return;
+                        response = await sende(true);
+                        result = await response.json();
+                    }
                     if (result.success) {
                         // Nur die zwei betroffenen Pool-Zeilen gezielt aktualisieren statt die
                         // ganze Tabelle neu zu laden — verhindert das sichtbare Ruckeln. Keine
