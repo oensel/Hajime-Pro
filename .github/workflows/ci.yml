@@ -1,6 +1,7 @@
 # Gestaffelte Pipeline: dev -> test + qa parallel (-> prod = release.yml, ruft diesen Workflow mit vollem Umfang auf).
-#   dev  : schnell und billig (Ubuntu): Plan/Pfadfilter, Unit-Tests, shellcheck. Rot = nichts weiter startet.
-#   test : E2E-Kern (test:e2e in 3 Shards, test:e2e:sync) auf Ubuntu.
+#   dev  : schnell und billig (Ubuntu): Plan/Pfadfilter, Unit-Tests, shellcheck. Rot = qa startet nicht.
+#   test : E2E-Kern (test:e2e in 3 Shards, test:e2e:sync) auf Ubuntu, startet direkt nach dem Plan parallel zu dev
+#          (die E2E-Läufe sind der längste Pfad; auf grüne Unit-Tests zu warten, kostete ~3 min je PR).
 #   qa   : parallel zu test, nach grünem dev: Plattform-/Infrastrukturläufe (Windows-Selbststart, macOS vorerst nur
 #          im Release, Docker-Cluster, test:e2e:cluster). Installer (Server-Paket, Desktop-Client, Android-APK) baut
 #          nur release.yml (Server-Paket zusätzlich per Hand: Actions -> Server-Paket).
@@ -105,6 +106,24 @@ jobs:
       - run: npm ci
       - run: npm run test:unit
 
+  # VORÜBERGEHEND (nur zur Messung, wird vor dem Merge entfernt): Unit-Tests mit verschiedener Parallelität.
+  messung-unit:
+    name: messung / unit (concurrency ${{ matrix.n }})
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        n: [3, 4, 6, 8]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: nproc
+      - run: node --test --test-concurrency=${{ matrix.n }} "tests/unit/**/*.test.js" | tail -12
+
   shellcheck:
     name: dev / shellcheck
     needs: plan
@@ -120,9 +139,10 @@ jobs:
   # Server und eigener DB, die Spec-Dateien hängen nicht voneinander ab. Innerhalb eines Shards bleibt es seriell.
   e2e:
     name: test / test:e2e (${{ matrix.shard }}/3)
-    needs: [plan, unit, shellcheck]
-    # shellcheck darf übersprungen sein; fehlgeschlagen/abgebrochen blockiert.
-    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.kern == 'true' }}
+    # Startet gleich nach dem Plan, parallel zu unit/shellcheck (spart deren ~3 min auf dem kritischen Pfad);
+    # ein roter dev-Job macht "CI-Ergebnis" trotzdem rot.
+    needs: plan
+    if: needs.plan.outputs.kern == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -156,8 +176,8 @@ jobs:
   # über workflow_dispatch (dort gilt "alles"). Beim Release (inputs.release) läuft sie nicht erneut.
   e2e-sync:
     name: test / test:e2e:sync
-    needs: [plan, unit, shellcheck]
-    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.plan.outputs.sync == 'true' && !inputs.release }}
+    needs: plan
+    if: needs.plan.outputs.sync == 'true' && !inputs.release
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
