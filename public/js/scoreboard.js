@@ -2646,13 +2646,13 @@ async function zeichnePoolPruefungOverlay(kaempfe) {
         const ansehen = document.createElement('button');
         ansehen.type = 'button';
         ansehen.className = 'btn-main pool-pruefung-ansehen';
-        ansehen.textContent = 'Im Pool-Panel öffnen';
+        ansehen.textContent = 'Pool-Panel öffnen';
         ansehen.addEventListener('click', () => {
             poolAnsichtWahl = pool.id;
             renderePoolAnsichtSteuerung(poolAnsichtKaempfe);
             window.dispatchEvent(new CustomEvent('hajime:panel-oeffnen', { detail: { name: 'pool' } }));
         });
-        knoepfe.append(abschliessen, ansehen);
+        knoepfe.append(ansehen, abschliessen);
         const text = document.createElement('div');
         text.className = 'pool-beginn-text';
         text.append(titel, plaetze);

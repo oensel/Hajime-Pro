@@ -92,8 +92,8 @@ test('Neuer Pool nach einem Pool in Prüfung: Holen gesperrt, bis der Pool abges
     await page.evaluate(() => window.naechstenKampfHolen());
     await expect(page.locator('#nameW')).toHaveValue('Kämpfer 1');
 
-    // "Im Pool-Panel öffnen" zeigt den Pool mit seinen Platzierungen
-    await sperre.getByRole('button', { name: 'Im Pool-Panel öffnen' }).click();
+    // "Pool-Panel öffnen" zeigt den Pool mit seinen Platzierungen
+    await sperre.getByRole('button', { name: 'Pool-Panel öffnen' }).click();
     await expect(page.locator('.st-panel[data-st-panel="pool"]')).toHaveClass(/aktiv/);
     await expect(page.locator('#poolPlatzierungen')).toContainText('Platzierungen');
     await page.keyboard.press('Escape');
