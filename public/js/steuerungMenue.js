@@ -65,6 +65,12 @@
         badge.textContent = String(n);
     });
 
+    // Panel von außen öffnen (z.B. "Im Pool-Panel öffnen" der Prüfungs-Sperre in scoreboard.js), ohne es zuzuklappen
+    window.addEventListener('hajime:panel-oeffnen', (e) => {
+        const name = e.detail && e.detail.name;
+        if (name && aktuell !== name) oeffne(name);
+    });
+
     // Kommende Kämpfe: Streifen unter der Steuerung + Zähler am Menüpunkt (liest die gerenderte Liste)
     const liste = document.getElementById('steuerungUpcomingList');
     function aktualisiereNaechste() {
