@@ -1261,12 +1261,13 @@ async function initialisiereMenue() {
         if (clientKonfigLink) clientKonfigLink.style.display = '';
         // Video live / Video-Archiv (Sektion Kontrolle): nur sichtbar, wenn im gewählten Turnier eine Kamera live aufnimmt
         // bzw. Clips vorhanden sind (Clips liegen nur am Hallen-Server). Auf der eigenen Seite bleibt der Punkt immer stehen.
+        // Ohne gewähltes Turnier gibt es weder Live-Bild noch Archiv: beide Punkte bleiben dann ausgeblendet.
         const videoLiveLink = document.getElementById('nav-video-live');
         const videoLink = document.getElementById('nav-videobeweis');
         const aktualisiereVideoMenue = async () => {
-            if (document.hidden) return; // versteckter Tab fragt nicht ab
+            if (document.hidden || !turnierId) return; // versteckter Tab fragt nicht ab, ohne Turnier bleiben die Punkte aus
             try {
-                const antwort = await fetch(`/api/video/status${turnierId ? `?turnierId=${encodeURIComponent(turnierId)}` : ''}`, { cache: 'no-store' });
+                const antwort = await fetch(`/api/video/status?turnierId=${encodeURIComponent(turnierId)}`, { cache: 'no-store' });
                 if (!antwort.ok) return;
                 const status = await antwort.json();
                 // Ausgeschaltete Funktionen des Turniers bleiben weg, auch wenn gerade aufgenommen wird oder Clips da sind.
@@ -1390,7 +1391,7 @@ async function initialisiereMenue() {
         // --- STUFEN-VALIDIERUNG DER SICHTBARKEIT ---
         // Direkt nach der Anmeldung (kein Turnier ausgewählt) darf nur "Turniere" sichtbar sein.
         if (!turnierId) {
-            versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-orga', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht']);
+            versteckeMenuePunkte(['nav-turnier', 'nav-teilnehmer', 'nav-pools', 'nav-mannschaften', 'nav-matten', 'nav-helfer', 'nav-orga', 'nav-kampf', 'nav-siegerliste', 'nav-urkunden', 'nav-urkunden-designer', 'nav-dashboard', 'nav-uebersicht', 'nav-video-live', 'nav-videobeweis']);
         } else {
             await Promise.all([
                 pruefePoolsMenuSperre(turnierId),
