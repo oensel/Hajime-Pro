@@ -1461,32 +1461,16 @@ function injiziereBedienButtons() {
             const num = document.getElementById('out' + scoreTypen[type] + color);
             const box = num ? num.closest('.box') : null;
             if (!box) return;
-            // Klick auf die Zahl wirkt wie das "+" darunter
+            // Klick auf die Zahl vergibt die Wertung, darunter bleibt nur "–" zum Zurücknehmen
             num.addEventListener('click', () => window.parent.changeScore(color, type, 1));
             const wrap = document.createElement('div');
             wrap.className = 'iframe-ctrl-scores';
-            wrap.appendChild(knopf('+', () => window.parent.changeScore(color, type, 1)));
             wrap.appendChild(knopf('–', () => window.parent.changeScore(color, type, -1)));
             box.appendChild(wrap);
         });
     });
 
-    function beschrifteteGruppe(label, onMinus, onPlus) {
-        const grp = document.createElement('div');
-        grp.className = 'iframe-ctrl-group';
-        const labelEl = document.createElement('div');
-        labelEl.className = 'iframe-ctrl-label';
-        labelEl.textContent = label;
-        const btnRow = document.createElement('div');
-        btnRow.className = 'iframe-ctrl-group-buttons';
-        btnRow.appendChild(knopf('+', onPlus));
-        btnRow.appendChild(knopf('–', onMinus));
-        grp.appendChild(labelEl);
-        grp.appendChild(btnRow);
-        return grp;
-    }
-
-    // Karten/Kreuze einer Gruppe anklickbar: ein blasses Feld setzt den Wert bis dorthin, das letzte gefüllte nimmt
+    // Karten/Kreuze einer Gruppe anklickbar (Shido und Behandlung haben keine eigenen +/–-Knöpfe): ein blasses Feld setzt den Wert bis dorthin, das letzte gefüllte nimmt
     // eins zurück. Der aktuelle Stand steht in der Klasse "active" (setzt channel.onmessage aus dem Broadcast).
     function machKlickbar(prefix, color, anzahl, aendere) {
         const felder = [];
@@ -1507,22 +1491,6 @@ function injiziereBedienButtons() {
 
         machKlickbar('shido', color, 3, (c, d) => window.parent.changeShido(c, d));
         machKlickbar('behandlung', color, 2, (c, d) => window.parent.changeBehandlung(c, d));
-
-        const shidoGrp = beschrifteteGruppe('Shido', () => window.parent.changeShido(color, -1), () => window.parent.changeShido(color, 1));
-        const behGrp = beschrifteteGruppe('Behandlung', () => window.parent.changeBehandlung(color, -1), () => window.parent.changeBehandlung(color, 1));
-
-        const row = document.createElement('div');
-        row.className = 'iframe-ctrl-row';
-        // Reihenfolge an die tatsächliche Position von Shido/Behandlung im jeweiligen Panel
-        // angleichen (bei Weiß steht Behandlung links, bei Blau/Rot rechts, siehe HTML-Struktur).
-        if (color === 'W') {
-            row.appendChild(behGrp);
-            row.appendChild(shidoGrp);
-        } else {
-            row.appendChild(shidoGrp);
-            row.appendChild(behGrp);
-        }
-        container.appendChild(row);
 
         // Osaekomi Start/Reset bleiben als zentrierte Gruppe unter der Osaekomi-Anzeige.
         // Hansoku-make sitzt NICHT in dieser Gruppe, sondern separat, direkt am äußeren

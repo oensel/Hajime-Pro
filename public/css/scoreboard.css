@@ -258,21 +258,32 @@ input:checked + .slider:before { transform: translateX(30px); background-color: 
    erst erzeugt werden. */
 .body-anzeige .box { position: relative; }
 .body-anzeige .iframe-ctrl-scores { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); display: flex; gap: 0.8vh; margin-top: 0.4vh; z-index: 5; }
-.body-anzeige .iframe-ctrl-row { position: absolute; top: 100%; margin-top: 0.3vh; left: 0; right: 0; display: flex; justify-content: space-between; padding: 0 2vh; box-sizing: border-box; gap: 0.8vh; z-index: 5; }
-.body-anzeige .iframe-ctrl-group { display: flex; flex-direction: column; align-items: center; gap: 0.3vh; }
-.body-anzeige .iframe-ctrl-group-buttons { display: flex; gap: 0.6vh; }
-.body-anzeige .iframe-ctrl-label { font-size: 2vh; font-family: Arial, sans-serif; font-weight: bold; text-transform: uppercase; color: #ffffff; padding: 0.1vh 0.6vh; border-radius: 3px; }
-.body-anzeige .weiss .iframe-ctrl-label { color: #000000; background: rgba(255,255,255,0.75); }
 .body-anzeige .iframe-ctrl-btn { width: 5.2vh; height: 4.2vh; font-size: 3vh; line-height: 1; font-weight: bold; border: 1px black solid; border-radius: 4px; background: rgba(255,255,255,0.9); color: #000; cursor: pointer; padding: 0; }
 .body-anzeige .iframe-ctrl-btn:active { background: #ffc107; }
 
 /* Klickbare Anzeige in der Steuerung (Klasse .mit-steuerung, siehe injiziereBedienButtons): Zahlen wirken wie "+", nicht
-   vergebene Shido-Karten und Behandlungs-Kreuze stehen an ihrem Platz blass da und lassen sich anklicken. */
-.mit-steuerung .box .num { cursor: pointer; user-select: none; }
+   vergebene Shido-Karten und Behandlungs-Kreuze stehen an ihrem Platz blass mit gestricheltem Rahmen da und lassen sich
+   anklicken. Blass über transparente Farben statt opacity, damit der Rahmen kräftig bleibt. */
+.mit-steuerung .box .num { cursor: pointer; user-select: none; border-radius: 1.2vh; transition: transform 0.12s, background-color 0.12s, box-shadow 0.12s; }
+/* Hover: helle Fläche auf Blau/Rot, dunkle auf Weiß, per box-shadow über die Ziffer hinaus, ohne das Layout zu verschieben */
+.mit-steuerung .box .num:hover { background-color: rgba(255,255,255,0.22); box-shadow: 0 0 0 1.2vh rgba(255,255,255,0.22); transform: scale(1.05); }
+.mit-steuerung .weiss .box .num:hover { background-color: rgba(0,0,0,0.08); box-shadow: 0 0 0 1.2vh rgba(0,0,0,0.08); }
 .mit-steuerung .box .num:active { transform: scale(0.96); }
-.mit-steuerung .card, .mit-steuerung .behandlung-cross { display: block; opacity: 0.14; cursor: pointer; transition: opacity 0.12s; }
-.mit-steuerung .card:hover, .mit-steuerung .behandlung-cross:hover { opacity: 0.4; }
-.mit-steuerung .card.active, .mit-steuerung .behandlung-cross.active { opacity: 1; }
+/* Platz für die Hover-Fläche (reicht ~1,7vh unter die Ziffer): Wertungen etwas höher, "–" sowie Shido/Behandlung tiefer */
+.mit-steuerung .box { transform: translateY(-1vh); }
+.mit-steuerung .iframe-ctrl-scores { margin-top: 2.2vh; }
+.mit-steuerung .shido-container { transform: translateY(1.5vh); }
+.mit-steuerung .card, .mit-steuerung .behandlung-cross { display: block; box-sizing: border-box; cursor: pointer; transition: background-color 0.12s, border-color 0.12s; }
+.mit-steuerung .card:not(.active), .mit-steuerung .behandlung-cross:not(.active) { border: 2px dashed rgba(255,255,255,0.7); }
+.mit-steuerung .weiss .card:not(.active), .mit-steuerung .weiss .behandlung-cross:not(.active) { border-color: rgba(0,0,0,0.45); }
+.mit-steuerung .card.yellow:not(.active) { background: rgba(255,204,0,0.15); }
+.mit-steuerung .card.red:not(.active) { background: rgba(204,0,0,0.15); }
+.mit-steuerung .behandlung-cross:not(.active) { background: rgba(40,167,69,0.15); }
+.mit-steuerung .behandlung-cross:not(.active)::before, .mit-steuerung .behandlung-cross:not(.active)::after { background: rgba(40,167,69,0.45); }
+.mit-steuerung .card:not(.active):hover, .mit-steuerung .behandlung-cross:not(.active):hover { border-style: solid; }
+.mit-steuerung .card.yellow:not(.active):hover { background: rgba(255,204,0,0.4); }
+.mit-steuerung .card.red:not(.active):hover { background: rgba(204,0,0,0.4); }
+.mit-steuerung .behandlung-cross:not(.active):hover { background: rgba(40,167,69,0.4); }
 
 /* pointer-events:none auf der Reihe selbst, damit ihr leerer Randbereich (links/rechts von den
    zentrierten Buttons) keine Klicks abfängt, die eigentlich dem daneben/darunter liegenden

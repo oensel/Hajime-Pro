@@ -46,15 +46,16 @@ test('Klick auf Zahl, Shido-Karte und Behandlungs-Kreuz wirkt wie die Knöpfe; d
     await yuko.click();
     await expect(yuko).toHaveText('2');
 
-    // Blasse Shido-Karte: nicht vergebene Karten sind sichtbar, aber transparent
+    // Blasse Shido-Karte: nicht vergebene Karten sind sichtbar, mit gestricheltem Rahmen und transparenter Farbe
     const karte2 = anzeige.locator('#shidoW_2');
+    const rahmen = (el) => getComputedStyle(el).borderTopStyle;
     await expect(karte2).toBeVisible();
-    expect(await karte2.evaluate(el => Number(getComputedStyle(el).opacity))).toBeLessThan(0.3);
+    expect(await karte2.evaluate(rahmen)).toBe('dashed');
     await karte2.click(); // setzt Shido bis Karte 2
     await expect(anzeige.locator('#shidoW_1')).toHaveClass(/active/);
     await expect(karte2).toHaveClass(/active/);
     await expect(anzeige.locator('#shidoW_3')).not.toHaveClass(/active/);
-    await expect.poll(() => karte2.evaluate(el => Number(getComputedStyle(el).opacity))).toBe(1); // nach der Überblendung
+    await expect.poll(() => karte2.evaluate(rahmen)).not.toBe('dashed');
     await karte2.click(); // letzte gefüllte Karte: eins zurück
     await expect(karte2).not.toHaveClass(/active/);
     await expect(anzeige.locator('#shidoW_1')).toHaveClass(/active/);
