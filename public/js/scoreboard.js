@@ -1242,9 +1242,9 @@ if (!document.getElementById('matchDuration')) {
             if (shidoBEl) shidoBEl.classList.toggle('active', data.shidoB >= i);
         }
 
-        // Zwei kostenlose medizinische Versorgungen pro Athlet, daher nur 2 Anzeige-Symbole
-        // (die 3. Versorgung beendet den Kampf sofort durch Kiken-gachi, siehe changeBehandlung).
-        for(let i=1; i<=2; i++) {
+        // Zwei kostenlose medizinische Versorgungen pro Athlet (grüne Kreuze); die 3. Versorgung (rotes Kreuz) beendet
+        // den Kampf sofort durch Kiken-gachi, siehe changeBehandlung.
+        for(let i=1; i<=3; i++) {
             let behandlungWEl = document.getElementById('behandlungW_' + i);
             let behandlungBEl = document.getElementById('behandlungB_' + i);
             if (behandlungWEl) behandlungWEl.classList.toggle('active', data.behandlungW >= i);
@@ -1490,7 +1490,7 @@ function injiziereBedienButtons() {
         if (!container) return;
 
         machKlickbar('shido', color, 3, (c, d) => window.parent.changeShido(c, d));
-        machKlickbar('behandlung', color, 2, (c, d) => window.parent.changeBehandlung(c, d));
+        machKlickbar('behandlung', color, 3, (c, d) => window.parent.changeBehandlung(c, d));
 
         // Osaekomi Start/Reset bleiben als zentrierte Gruppe unter der Osaekomi-Anzeige.
         // Hansoku-make sitzt NICHT in dieser Gruppe, sondern separat, direkt am äußeren
