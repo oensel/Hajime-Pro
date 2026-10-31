@@ -68,11 +68,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (modus === 'Gruppen-Überkreuz' || modus === 'Gruppen-ueberkreuz') {
             return 'Pool+Ko';
         }
+        if (modus === 'Gruppen-KO') {
+            return 'Gruppen+KO';
+        }
         if (modus === 'Doppel-KO-8') {
             return 'DKO-8';
         }
         if (modus === 'Doppel-KO-16') {
             return 'DKO-16';
+        }
+        if (modus === 'Doppel-KO-32') {
+            return 'DKO-32';
+        }
+        if (/^KO-Repechage-(16|32|64)$/.test(modus || '')) {
+            return `KOR-${modus.split('-').pop()}`;
         }
         return modus || '?';
     };

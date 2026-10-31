@@ -491,6 +491,13 @@ export async function getTurnier(knex, req, res) {
         turnier.ausstattung = leseAusstattung(turnier.ausstattung);
 
         turnier.status_effektiv = statusEffektiv;
+        // Noch nicht entschiedene Kämpfe (alles außer beendet/Freilos): „Durchführung beenden“ erscheint erst bei 0
+        const offene = await knex('kaempfe')
+            .join('pools', 'pools.id', 'kaempfe.pool_id')
+            .where('pools.turnier_id', turnier.id)
+            .whereNotIn('kaempfe.status', ['beendet', 'freilos'])
+            .count('* as anzahl').first();
+        turnier.offene_kaempfe = parseInt(offene.anzahl, 10);
         if (istEinzelbenutzerBetrieb()) {
             const aktives = (await knex('turniere').where({ aktiv: true }).first('id', 'bezeichnung')) || null;
             const a = ermittleAktivierbarkeit({ turnier, aktivesTurnier: aktives });
@@ -852,6 +859,8 @@ export async function importWettkampfdaten(trx, turnierId, { kampfflaechen, pool
             mannschafts_gewichtsklassen: p.mannschafts_gewichtsklassen ?? null,
             golden_score_aktiv: p.golden_score_aktiv === undefined ? true : !!p.golden_score_aktiv,
             golden_score_max_sekunden: p.golden_score_max_sekunden ?? null,
+            gleichstand_entscheidung: p.gleichstand_entscheidung ?? null,
+            system_gewaehlt: !!p.system_gewaehlt,
             farbe_kaempfer2: gueltigeFarbe(p.farbe_kaempfer2),
             // Sammelpool der Nachzügler ("Verspätet") muss den Marker behalten, sonst wird er nach
             // dem Import zu einem gewöhnlichen Pool (Siegerliste, Urkunden, Matten ...).
@@ -1010,7 +1019,10 @@ function gueltigesLiveToken(wert) {
     return typeof wert === 'string' && wert.length >= 10 && wert.length <= 200 ? wert : null;
 }
 
-export async function importiereTurnierDaten(knex, sync, daten) {
+// Mit { ersetzen: true } wird ein Turnier am selben Tag (Terminkonflikt) gelöscht und durch das importierte ersetzt,
+// auch ein aktives (die Brücke wird vorher gestoppt). Ohne die Option meldet der Konflikt einen FachFehler mit
+// code 'termin_konflikt', damit die Oberfläche nachfragen kann (`terminAbfragen` prüft auch ohne Sync-Brücke).
+export async function importiereTurnierDaten(knex, sync, daten, { ersetzen = false, terminAbfragen = false } = {}) {
         const t = daten && daten.turnier;
         const liveToken = gueltigesLiveToken(daten && daten.live && daten.live.token);
         const kampfflaechen = (daten && daten.kampfflaechen) || [];
@@ -1034,9 +1046,23 @@ export async function importiereTurnierDaten(knex, sync, daten) {
             try { mak = JSON.parse(mak); } catch (e) { mak = []; }
         }
 
-        await pruefeTerminFrei(knex, sync, t.datum);
+        let zuErsetzen = null;
+        if (sync || terminAbfragen) {
+            const konflikt = findeTerminKonflikt(await knex('turniere').select('id', 'bezeichnung', 'datum', 'status', 'aktiv'), t.datum);
+            if (konflikt && !ersetzen) {
+                throw new FachFehler(409, `Am ${datumAlsIso(t.datum).split('-').reverse().join('.')} findet bereits das Turnier „${konflikt.bezeichnung}“ statt. Zwei Turniere dürfen sich nicht überschneiden.`, {
+                    code: 'termin_konflikt',
+                    daten: { id: konflikt.id, bezeichnung: konflikt.bezeichnung, datum: datumAlsIso(t.datum) }
+                });
+            }
+            zuErsetzen = konflikt;
+        }
+        // Das alte Turnier verlässt den Server vor dem Einspielen; ein aktives hängt an der Sync-Brücke
+        if (zuErsetzen && zuErsetzen.aktiv && sync) await sync.deaktiviereTurnier();
 
         const neuesTurnierId = await knex.transaction(async (trx) => {
+            if (zuErsetzen) await trx('turniere').where({ id: zuErsetzen.id }).del();
+
             // Verein anhand des Ausrichter-Namens wiederverwenden/anlegen (analog zur
             // rückwirkenden Verknüpfung in link_turniere_zu_vereine-Migration).
             let verein = await trx('vereine').where({ name: t.ausrichter }).first();

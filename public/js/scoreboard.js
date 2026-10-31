@@ -131,6 +131,8 @@ let kaempfer1_id = null;
 let kaempfer2_id = null;
 let pool_kampfzeit = 240;
 let selectedMatId = null;
+let poolPruefungSperre = [];   // Pools der Matte in Prüfung, die den Start eines neuen Pools sperren: { id, name }
+let poolPruefungStand = '';    // zuletzt im Sperr-Overlay gezeichneter Stand (kein Neuzeichnen ohne Änderung)
 
 // "Nicht angetreten" ist nur zulässig, solange die Kampfzeit für diesen Kampf noch nicht
 // gestartet wurde — sobald beide Kämpfer angetreten sind (Uhr läuft/lief), gilt stattdessen
@@ -957,7 +959,7 @@ function update() {
         const btnHolen = document.getElementById(id);
         if (btnHolen) btnHolen.style.display = !currentFightId ? 'inline-block' : 'none';
     });
-    zeigePoolBeginnOverlay();
+    zeigeHolenOverlays();
 
     ['btnStartStop', 'btnStartStopLive'].forEach(id => {
         const btnStartStop = document.getElementById(id);
@@ -1240,9 +1242,9 @@ if (!document.getElementById('matchDuration')) {
             if (shidoBEl) shidoBEl.classList.toggle('active', data.shidoB >= i);
         }
 
-        // Zwei kostenlose medizinische Versorgungen pro Athlet, daher nur 2 Anzeige-Symbole
-        // (die 3. Versorgung beendet den Kampf sofort durch Kiken-gachi, siehe changeBehandlung).
-        for(let i=1; i<=2; i++) {
+        // Zwei kostenlose medizinische Versorgungen pro Athlet (grüne Kreuze); die 3. Versorgung (rotes Kreuz) beendet
+        // den Kampf sofort durch Kiken-gachi, siehe changeBehandlung.
+        for(let i=1; i<=3; i++) {
             let behandlungWEl = document.getElementById('behandlungW_' + i);
             let behandlungBEl = document.getElementById('behandlungB_' + i);
             if (behandlungWEl) behandlungWEl.classList.toggle('active', data.behandlungW >= i);
@@ -1449,33 +1451,37 @@ function injiziereBedienButtons() {
         }, 500);
     }
 
+    // Klickbare Anzeige (nur hier, nie auf dem Fernseher): die Klasse schaltet in scoreboard.css die blassen
+    // Platzhalter für nicht vergebene Shido/Behandlung und den Zeiger auf den Wertungszahlen ein.
+    document.body.classList.add('mit-steuerung');
+
     const scoreTypen = { ippon: 'Ippon', waza: 'Waza', yuko: 'Yuko' };
     Object.keys(scoreTypen).forEach(type => {
         ['W', 'B'].forEach(color => {
             const num = document.getElementById('out' + scoreTypen[type] + color);
             const box = num ? num.closest('.box') : null;
             if (!box) return;
+            // Klick auf die Zahl vergibt die Wertung, darunter bleibt nur "–" zum Zurücknehmen
+            num.addEventListener('click', () => window.parent.changeScore(color, type, 1));
             const wrap = document.createElement('div');
             wrap.className = 'iframe-ctrl-scores';
-            wrap.appendChild(knopf('+', () => window.parent.changeScore(color, type, 1)));
             wrap.appendChild(knopf('–', () => window.parent.changeScore(color, type, -1)));
             box.appendChild(wrap);
         });
     });
 
-    function beschrifteteGruppe(label, onMinus, onPlus) {
-        const grp = document.createElement('div');
-        grp.className = 'iframe-ctrl-group';
-        const labelEl = document.createElement('div');
-        labelEl.className = 'iframe-ctrl-label';
-        labelEl.textContent = label;
-        const btnRow = document.createElement('div');
-        btnRow.className = 'iframe-ctrl-group-buttons';
-        btnRow.appendChild(knopf('+', onPlus));
-        btnRow.appendChild(knopf('–', onMinus));
-        grp.appendChild(labelEl);
-        grp.appendChild(btnRow);
-        return grp;
+    // Karten/Kreuze einer Gruppe anklickbar (Shido und Behandlung haben keine eigenen +/–-Knöpfe): ein blasses Feld setzt den Wert bis dorthin, das letzte gefüllte nimmt
+    // eins zurück. Der aktuelle Stand steht in der Klasse "active" (setzt channel.onmessage aus dem Broadcast).
+    function machKlickbar(prefix, color, anzahl, aendere) {
+        const felder = [];
+        for (let i = 1; i <= anzahl; i++) {
+            const el = document.getElementById(prefix + color + '_' + i);
+            if (el) felder.push(el);
+        }
+        felder.forEach((el, i) => el.addEventListener('click', () => {
+            const aktuell = felder.filter(f => f.classList.contains('active')).length;
+            aendere(color, (i + 1 === aktuell) ? -1 : (i + 1) - aktuell);
+        }));
     }
 
     ['W', 'B'].forEach(color => {
@@ -1483,21 +1489,8 @@ function injiziereBedienButtons() {
         const container = shidoCard ? shidoCard.closest('.shido-container') : null;
         if (!container) return;
 
-        const shidoGrp = beschrifteteGruppe('Shido', () => window.parent.changeShido(color, -1), () => window.parent.changeShido(color, 1));
-        const behGrp = beschrifteteGruppe('Behandlung', () => window.parent.changeBehandlung(color, -1), () => window.parent.changeBehandlung(color, 1));
-
-        const row = document.createElement('div');
-        row.className = 'iframe-ctrl-row';
-        // Reihenfolge an die tatsächliche Position von Shido/Behandlung im jeweiligen Panel
-        // angleichen (bei Weiß steht Behandlung links, bei Blau/Rot rechts, siehe HTML-Struktur).
-        if (color === 'W') {
-            row.appendChild(behGrp);
-            row.appendChild(shidoGrp);
-        } else {
-            row.appendChild(shidoGrp);
-            row.appendChild(behGrp);
-        }
-        container.appendChild(row);
+        machKlickbar('shido', color, 3, (c, d) => window.parent.changeShido(c, d));
+        machKlickbar('behandlung', color, 3, (c, d) => window.parent.changeBehandlung(c, d));
 
         // Osaekomi Start/Reset bleiben als zentrierte Gruppe unter der Osaekomi-Anzeige.
         // Hansoku-make sitzt NICHT in dieser Gruppe, sondern separat, direkt am äußeren
@@ -1762,13 +1755,16 @@ async function updateSelectedMat(val) {
 }
 
 async function naechstenKampfHolen() {
-    // Solange der Durchsage-Hinweis (Beginn eines neuen Pools) nicht mit "Erledigt" bestätigt ist, wird kein Kampf geholt.
-    const poolBeginnOverlay = document.getElementById('poolBeginnOverlay');
-    if (poolBeginnOverlay && poolBeginnOverlay.style.display !== 'none') return;
+    // Solange der Durchsage-Hinweis (Beginn eines neuen Pools) nicht mit "Erledigt" bestätigt ist oder ein Pool dieser
+    // Matte auf die Ergebnisprüfung wartet (Sperre vor einem neuen Pool), wird kein Kampf geholt.
+    const sichtbar = (id) => { const el = document.getElementById(id); return !!el && el.style.display !== 'none'; };
+    if (sichtbar('poolBeginnOverlay') || sichtbar('poolPruefungOverlay')) return;
     if (!selectedMatId) {
         zeigeNotification("Bitte wählen Sie zuerst eine Matte aus.", "error");
         return;
     }
+    // Zurückgestellte Gleichstände (Popup "Später entscheiden") erscheinen beim nächsten Versuch wieder
+    await zeigeGleichstandPopupSteuerung(true);
     if (state.pausiert) {
         zeigeNotification('Die Matte ist pausiert — bitte zuerst fortsetzen.', 'error');
         return;
@@ -1777,13 +1773,10 @@ async function naechstenKampfHolen() {
     try {
         const kaempfe = await window.Datenzugriff.ladeKaempfeDerMatte(selectedMatId);
 
-        let naechster = kaempfe.find(k => k.status === 'gestartet');
-        if (!naechster) {
-            naechster = kaempfe.find(k => k.status === 'bereit');
-        }
-        if (!naechster) {
-            naechster = kaempfe.find(k => k.status === 'angelegt');
-        }
+        // Mit frischem Stand prüfen: ist seit dem letzten Neuladen der Übersicht ein Pool in Prüfung gegangen, sperren
+        if (pruefePoolPruefungSperre(kaempfe)) return;
+
+        const naechster = naechsterKampfDerMatte(kaempfe);
 
         if (!naechster) {
             zeigeNotification("Keine anstehenden Kämpfe auf dieser Matte gefunden.", "error");
@@ -2387,8 +2380,11 @@ function zeichnePoolAuswahl(pools, gewaehltId) {
     window.dispatchEvent(new CustomEvent('hajime:pool-pruefung', { detail: { anzahl: pools.filter(p => p.pruefung).length } }));
 }
 
-async function schliessePoolAbSteuerung(pool) {
-    if (!window.confirm('Ergebnisse von "' + pool.name + '" als final bestätigen? Damit ist der Pool abgeschlossen.')) return;
+// Ohne Nachfrage aus der Prüfungs-Sperre: dort stehen die Platzierungen schon, der Klick selbst ist die Bestätigung.
+// Ein offener Gleichstand geht in beiden Fällen vor.
+async function schliessePoolAbSteuerung(pool, { nachfragen = true } = {}) {
+    if (await oeffneGleichstandPopupFuerPoolSteuerung(pool.id)) return;
+    if (nachfragen && !window.confirm('Ergebnisse von "' + pool.name + '" als final bestätigen? Damit ist der Pool abgeschlossen.')) return;
     try {
         const r = await window.Datenzugriff.schliessePoolAb(pool.id);
         if (!r.ok) throw new Error(r.fehler || 'Pool konnte nicht abgeschlossen werden.');
@@ -2402,13 +2398,9 @@ async function schliessePoolAbSteuerung(pool) {
 // Platzierungen eines Pools in Prüfung (gemeinsame Berechnung src/shared/platzierungen.js, wie Siegerliste und Urkunden).
 // Die Teilnehmer ergeben sich aus den Kämpfen des Pools; offene Plätze (null) werden nicht gezeigt.
 let platzierungenModul = null;
-async function zeichnePlatzierungen(pool, kaempfe) {
-    const box = document.getElementById('poolPlatzierungen');
-    if (!box) return;
-    box.textContent = '';
-    if (!pool || !pool.pruefung) return;
+async function platzierungenDesPools(poolId, kaempfe) {
     platzierungenModul = platzierungenModul || await import('/js/shared/platzierungen.js');
-    const poolKaempfe = kaempfe.filter(k => Number(k.pool_id) === Number(pool.id) && !k.mannschaftskampf_id);
+    const poolKaempfe = kaempfe.filter(k => Number(k.pool_id) === Number(poolId) && !k.mannschaftskampf_id);
     const teilnehmer = new Map();
     poolKaempfe.forEach(k => {
         [[k.kaempfer1_id, k.kaempfer1_vorname, k.kaempfer1_nachname, k.kaempfer1_verein],
@@ -2416,9 +2408,17 @@ async function zeichnePlatzierungen(pool, kaempfe) {
             if (id && !teilnehmer.has(id)) teilnehmer.set(id, { id, vorname, nachname, verein });
         });
     });
-    const modusMitRangliste = /^Jeder[- ]gegen[- ]Jeden$/.test(poolKaempfe[0]?.pool_modus || '');
     const { eintraege } = platzierungenModul.berechnePlatzierungen({ modus: poolKaempfe[0]?.pool_modus }, poolKaempfe, [...teilnehmer.values()]);
-    const mitPlatz = eintraege.filter(e => e.platz != null);
+    return { poolKaempfe, mitPlatz: eintraege.filter(e => e.platz != null) };
+}
+
+async function zeichnePlatzierungen(pool, kaempfe) {
+    const box = document.getElementById('poolPlatzierungen');
+    if (!box) return;
+    box.textContent = '';
+    if (!pool || !pool.pruefung) return;
+    const { poolKaempfe, mitPlatz } = await platzierungenDesPools(pool.id, kaempfe);
+    const modusMitRangliste = /^Jeder[- ]gegen[- ]Jeden$/.test(poolKaempfe[0]?.pool_modus || '');
     if (!mitPlatz.length) return;
 
     // Kennzahlen je Kämpfer für die Prüfung: Siege, Wertungspunkte der Siege und die einzelnen Siegzeiten
@@ -2459,12 +2459,19 @@ async function zeichnePlatzierungen(pool, kaempfe) {
             + (w.zeiten.length ? ' · Siegzeiten: ' + w.zeiten.map(mmss).join(' + ') + ' = ' + mmss(summe) : '');
         zeile.appendChild(detail);
         box.appendChild(zeile);
-        // Gleiche Siege und Wertungspunkte wie der nächste Platz: Hinweis, dass hier eine Entscheidung nötig sein kann
+        // Gleiche Siege und Wertungspunkte wie der nächste Platz UND auch der direkte Vergleich entscheidet nichts
+        // (platzierungen.js: e.gleichstand): Stichkampf (Zusatzkampf) oder Los nötig, sinngemäß DJB-WKO 4.1.7.2
         const naechster = mitPlatz[i + 1] && werte.get(mitPlatz[i + 1].teilnehmer.id);
-        if (gleichstand(w, naechster) && modusMitRangliste) {
+        if (e.gleichstand && mitPlatz[i + 1]?.gleichstand && gleichstand(w, naechster) && modusMitRangliste) {
             const hinweis = document.createElement('div');
             hinweis.className = 'st-platz-gleich';
-            hinweis.textContent = 'Gleichstand bei Siegen und Wertungspunkten zum nächsten Platz – ggf. nach Ausschreibung entscheiden';
+            hinweis.textContent = 'Gleichstand bei Siegen, Wertungspunkten und im direkten Vergleich zum nächsten Platz – nach Siegzeit oder per Stichkampf entscheiden ';
+            const entscheiden = document.createElement('button');
+            entscheiden.type = 'button';
+            entscheiden.className = 'btn-main st-pool-abschliessen';
+            entscheiden.textContent = 'Gleichstand entscheiden';
+            entscheiden.addEventListener('click', () => oeffneGleichstandPopupFuerPoolSteuerung(pool.id));
+            hinweis.appendChild(entscheiden);
             box.appendChild(hinweis);
         }
     });
@@ -2493,6 +2500,41 @@ async function renderePoolAnsichtSteuerung(kaempfe) {
     } catch (err) {
         console.error('Fehler bei der Pool-Ansicht:', err);
     }
+    await zeigeGleichstandPopupSteuerung(false).catch(err => console.error('Fehler bei der Gleichstands-Prüfung:', err));
+}
+
+// --- Gleichstand nach dem letzten Kampf eines Pools bzw. einer Überkreuz-Gruppe (Popup, js/gleichstandPopup.js) ---
+// Pool (Jeder-gegen-Jeden): Platz 1 bis 3 müssen eindeutig sein, bevor er abgeschlossen werden kann. Überkreuz-Gruppe:
+// Platz 1 und 2 müssen eindeutig sein, sonst bleiben HF1/HF2 unbefüllt und der Pool kann nicht weitergekämpft werden.
+let gleichstandModul = null;
+async function ladeGleichstandModul() {
+    gleichstandModul = gleichstandModul || await import('/js/gleichstandPopup.js');
+    return gleichstandModul;
+}
+function gleichstandHilfe() {
+    const namen = new Map();
+    poolAnsichtKaempfe.forEach(k => {
+        [[k.kaempfer1_id, k.kaempfer1_vorname, k.kaempfer1_nachname], [k.kaempfer2_id, k.kaempfer2_vorname, k.kaempfer2_nachname]].forEach(([id, vorname, nachname]) => {
+            if (id && !namen.has(id)) namen.set(id, formatFighterNameSteuerung(nachname, vorname));
+        });
+    });
+    return {
+        name: (id) => namen.get(id) || String(id),
+        entscheide: (poolId, schluessel, regel) => window.Datenzugriff.entscheideGleichstand(poolId, schluessel, regel),
+        danach: async (regel) => {
+            zeigeNotification(regel === 'stichkampf' ? 'Stichkämpfe angesetzt.' : 'Gleichstand nach Siegzeit entschieden.', 'success');
+            await ladeMattenUebersicht();
+        }
+    };
+}
+async function zeigeGleichstandPopupSteuerung(zurueckgestelltePruefen) {
+    const modul = await ladeGleichstandModul();
+    if (zurueckgestelltePruefen) modul.vergissGeschlossene();
+    modul.pruefeUndZeigeGleichstandPopup(poolAnsichtKaempfe, gleichstandHilfe());
+}
+async function oeffneGleichstandPopupFuerPoolSteuerung(poolId) {
+    const modul = await ladeGleichstandModul();
+    return modul.oeffneGleichstandPopupFuerPool(poolId, poolAnsichtKaempfe, gleichstandHilfe());
 }
 
 // --- Durchsage-Hinweis "Beginn eines neuen Pools" (Overlay #poolBeginnOverlay, nur Steuerung) ---
@@ -2546,18 +2588,21 @@ function pruefePoolBeginnMeldung(kaempfe, kommende) {
         liste.appendChild(zeile);
     });
     overlay.dataset.poolIds = JSON.stringify(offen.map(k => k.pool_id));
-    zeigePoolBeginnOverlay();
+    zeigeHolenOverlays();
 }
 
-// Sichtbar nur, solange kein Kampf geladen ist (Ansicht der kommenden Kämpfe): das Overlay liegt dann über dem Knopf
-// "Nächsten Kampf holen" und sperrt nur diesen, bis "Erledigt" geklickt ist; die Anzeige der kommenden Kämpfe bleibt
-// während der Durchsage stehen und die übrige Steuerung bedienbar.
+// Sichtbar nur, solange kein Kampf geladen ist (Ansicht der kommenden Kämpfe): die Overlays liegen dann über dem Knopf
+// "Nächsten Kampf holen" und sperren nur diesen; die Anzeige der kommenden Kämpfe bleibt stehen und die übrige
+// Steuerung bedienbar. Die Prüfungs-Sperre hat Vorrang: erst den fertigen Pool abschließen, dann den neuen ansagen.
 // Wird auch von update() aufgerufen, wenn ein Kampf geladen bzw. freigegeben wird.
-function zeigePoolBeginnOverlay() {
+function zeigeHolenOverlays() {
+    const pruefung = document.getElementById('poolPruefungOverlay');
+    const gesperrt = poolPruefungSperre.length > 0 && !currentFightId;
+    if (pruefung) pruefung.style.display = gesperrt ? 'flex' : 'none';
     const overlay = document.getElementById('poolBeginnOverlay');
     if (!overlay) return;
     const offen = JSON.parse(overlay.dataset.poolIds || '[]');
-    overlay.style.display = offen.length && !currentFightId ? 'flex' : 'none';
+    overlay.style.display = offen.length && !currentFightId && !gesperrt ? 'flex' : 'none';
 }
 
 function poolBeginnErledigtClick() {
@@ -2569,6 +2614,100 @@ function poolBeginnErledigtClick() {
     overlay.style.display = 'none';
 }
 document.getElementById('poolBeginnErledigtBtn')?.addEventListener('click', poolBeginnErledigtClick);
+
+// --- Sperre "Pool in Prüfung" (Overlay #poolPruefungOverlay, nur Steuerung) ---
+// Bevor auf einer Matte ein neuer Pool beginnt, müssen die Einzel-Pools dieser Matte, deren Kämpfe alle beendet sind
+// ("kaempfe_beendet"), am Tisch geprüft und abgeschlossen sein. Gesperrt wird nur "Nächsten Kampf holen" und nur, wenn
+// der nächste Kampf zu einem noch nicht begonnenen Pool gehört: Kämpfe bereits laufender Pools bleiben holbar, da die
+// Matten-Planung die Pools verschränkt. Schließt die Turnierleitung den Pool anderswo ab, fällt die Sperre beim
+// nächsten Neuladen der Übersicht weg.
+// Zustand (poolPruefungSperre, poolPruefungStand) steht oben bei currentFightId, da update() ihn früh liest.
+
+// Derselbe Kampf, den naechstenKampfHolen() laden würde. Ohne feststehende Kämpfer (z. B. Halbfinale, solange ein
+// Gleichstand der Gruppe offen ist) gibt es keinen Kampf zu laden.
+function naechsterKampfDerMatte(kaempfe) {
+    return kaempfe.find(k => k.status === 'gestartet') || kaempfe.find(k => k.status === 'bereit')
+        || kaempfe.find(k => k.status === 'angelegt' && k.kaempfer1_id && k.kaempfer2_id) || null;
+}
+
+function findePoolPruefungSperre(kaempfe) {
+    const naechster = naechsterKampfDerMatte(kaempfe);
+    if (!naechster) return [];
+    const neuerPool = !kaempfe.some(k => Number(k.pool_id) === Number(naechster.pool_id) && (k.status === 'beendet' || k.status === 'gestartet'));
+    if (!neuerPool) return [];
+    const pools = new Map();
+    kaempfe.forEach(k => {
+        if (!k.mannschaftskampf_id && k.pool_status === 'kaempfe_beendet' && !pools.has(k.pool_id)) {
+            pools.set(k.pool_id, { id: k.pool_id, name: k.pool_bezeichnung });
+        }
+    });
+    return [...pools.values()];
+}
+
+// Platz 1 bis 3 in einer Zeile (Kurzfassung der Platzierungen im Panel "Pool")
+async function kurzPlatzierungen(poolId, kaempfe) {
+    const { mitPlatz } = await platzierungenDesPools(poolId, kaempfe);
+    const proPlatz = new Map();
+    mitPlatz.filter(e => e.platz <= 3).forEach(e => {
+        if (!proPlatz.has(e.platz)) proPlatz.set(e.platz, []);
+        proPlatz.get(e.platz).push(formatFighterNameSteuerung(e.teilnehmer.nachname, e.teilnehmer.vorname));
+    });
+    return [...proPlatz].map(([platz, namen]) => `${platz}. ${namen.join(', ')}`).join('  ·  ');
+}
+
+async function zeichnePoolPruefungOverlay(kaempfe) {
+    const liste = document.getElementById('poolPruefungListe');
+    if (!liste) return;
+    const ids = new Set(poolPruefungSperre.map(p => Number(p.id)));
+    const stand = JSON.stringify(kaempfe.filter(k => ids.has(Number(k.pool_id)))
+        .map(k => [k.id, k.status, k.sieger_id, k.unterbewertung_kaempfer1, k.unterbewertung_kaempfer2]));
+    if (stand === poolPruefungStand) return;
+    poolPruefungStand = stand;
+    const zeilen = [];
+    for (const pool of poolPruefungSperre) {
+        const zeile = document.createElement('div');
+        zeile.className = 'pool-pruefung-zeile';
+        zeile.dataset.poolId = pool.id;
+        const titel = document.createElement('div');
+        titel.className = 'pool-beginn-zeile';
+        titel.textContent = `${pool.name || 'Pool'}: Ergebnisse prüfen`;
+        const plaetze = document.createElement('div');
+        plaetze.className = 'pool-pruefung-plaetze';
+        plaetze.textContent = await kurzPlatzierungen(pool.id, kaempfe).catch(() => '');
+        const knoepfe = document.createElement('div');
+        knoepfe.className = 'pool-pruefung-knoepfe';
+        const abschliessen = document.createElement('button');
+        abschliessen.type = 'button';
+        abschliessen.className = 'btn-main pool-pruefung-abschliessen';
+        abschliessen.textContent = 'Pool abschließen';
+        abschliessen.addEventListener('click', () => schliessePoolAbSteuerung(pool, { nachfragen: false }));
+        const ansehen = document.createElement('button');
+        ansehen.type = 'button';
+        ansehen.className = 'btn-main pool-pruefung-ansehen';
+        ansehen.textContent = 'Pool-Panel öffnen';
+        ansehen.addEventListener('click', () => {
+            poolAnsichtWahl = pool.id;
+            renderePoolAnsichtSteuerung(poolAnsichtKaempfe);
+            window.dispatchEvent(new CustomEvent('hajime:panel-oeffnen', { detail: { name: 'pool' } }));
+        });
+        knoepfe.append(ansehen, abschliessen);
+        const text = document.createElement('div');
+        text.className = 'pool-beginn-text';
+        text.append(titel, plaetze);
+        zeile.append(text, knoepfe);
+        zeilen.push(zeile);
+    }
+    // Erst nach dem (asynchronen) Aufbau aller Zeilen tauschen: ein überholter Aufruf überschreibt nichts Neueres
+    if (stand === poolPruefungStand) liste.replaceChildren(...zeilen);
+}
+
+// Liefert true, wenn das Holen gesperrt ist
+function pruefePoolPruefungSperre(kaempfe) {
+    poolPruefungSperre = findePoolPruefungSperre(kaempfe);
+    zeichnePoolPruefungOverlay(kaempfe).catch(err => console.error('Fehler bei der Prüfungs-Sperre:', err));
+    zeigeHolenOverlays();
+    return poolPruefungSperre.length > 0;
+}
 
 // Pool-Änderung (z.B. Nachzügler eingefügt): Die Kämpfe eines noch nicht begonnenen Pools werden neu erzeugt.
 // Wir merken uns je Pool die Kampf-IDs der Matte; ändert sich die Menge ohne begonnenen Kampf, bekommt die
@@ -2664,6 +2803,7 @@ async function ladeMattenUebersicht() {
         const beendete = kaempfe.filter(k => k.status === 'beendet' || k.status === 'freilos').reverse();
 
         pruefePoolBeginnMeldung(kaempfe, kommende);
+        pruefePoolPruefungSperre(kaempfe);
 
         // "Pool-Start": der erste Kampf eines Pools (nach Position auf der Matte) trägt immer das Badge, solange er aussteht.
         const poolErstKampf = new Map();

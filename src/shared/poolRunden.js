@@ -5,6 +5,8 @@
  * Steuerung (public/js/poolAnsicht.js). Die Kampfnummern entsprechen den Topologien in
  * bracketTopologie.js.
  */
+import { koRepechageRunden } from './koRepechage.js';
+
 const nummern = (praefix, von, bis) => Array.from({ length: bis - von + 1 }, (_, i) => `${praefix}${von + i}`);
 
 export const POOL_RUNDEN = {
@@ -49,15 +51,25 @@ export const POOL_RUNDEN = {
             { title: 'Trostrunde R5', nummern: nummern('T', 25, 26) },
             { title: 'Bronze-Kämpfe', nummern: nummern('T', 27, 28) }
         ]
-    }
+    },
+    'KO-Repechage-16': koRepechageRunden(16),
+    'KO-Repechage-32': koRepechageRunden(32),
+    'KO-Repechage-64': koRepechageRunden(64)
 };
 
-// Gruppen-Überkreuz: Vorrunden-Gruppen A/B (Präfix der Kampfnummern) und die Finalrunde.
+// Gruppensysteme: Vorrunden-Gruppen (Präfix der Kampfnummern) und die Finalrunde. Gruppen-Überkreuz hat A/B und
+// beginnt mit dem Halbfinale, Gruppen-KO hat A-D und beginnt mit dem Viertelfinale; die Ansichten zeigen nur, was
+// der Pool hat.
 export const UEBERKREUZ_GRUPPEN = [
     { titel: 'Gruppe A', praefix: 'V_A_' },
-    { titel: 'Gruppe B', praefix: 'V_B_' }
+    { titel: 'Gruppe B', praefix: 'V_B_' },
+    { titel: 'Gruppe C', praefix: 'V_C_' },
+    { titel: 'Gruppe D', praefix: 'V_D_' }
 ];
 export const UEBERKREUZ_FINALRUNDE = [
+    { title: 'Viertelfinale', nummern: ['VF1', 'VF2', 'VF3', 'VF4'] },
     { title: 'Halbfinale', nummern: ['HF1', 'HF2'] },
     { title: 'Finale', nummern: ['F1', 'F2'] }
 ];
+
+export const istGruppenSystem = modus => /^Gruppen-((Ü|ue|Ue)berkreuz|KO)$/.test(modus || '');

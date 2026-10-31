@@ -45,3 +45,20 @@ test('Turnierwechsel mit ausstehenden Offline-Änderungen', async ({ request }) 
     expect(serverDocs.some(d => d._id === `kampf:${kaempfe[0].id}` || d._id === `teilnehmer:${teilnehmerIds[0]}`)).toBe(false);
     expect((await request.get(`/db/${alt.db_name}`)).status()).toBe(404);
 });
+
+test('Server ohne aktives Turnier: Client verwirft die Kopie des alten Turniers', async ({ request }) => {
+    test.setTimeout(90_000);
+    const turnierId = await legeTurnierAn(request, 'Sync Ohne Aktiv');
+    await syncLeerlauf(request);
+    const alt = await syncStatus(request);
+    await expect.poll(async () => (await clientStatus(request)).instanz_id, { timeout: 20000 }).toBe(alt.instanz_id);
+
+    const absage = await request.post(`/api/turniere/${turnierId}/absagen`);
+    expect(absage.ok(), await absage.text()).toBeTruthy();
+    expect((await syncStatus(request)).instanz_id).toBeNull();
+
+    await expect.poll(async () => (await clientStatus(request)).instanz_id, { timeout: 20000 }).toBeNull();
+    // ohne Datenbank liefert der Client keine Teilnehmer des alten Turniers mehr
+    const teilnehmer = await request.get(`${CLIENT_BASE_URL}/api/teilnehmer?turnierId=${turnierId}`);
+    expect(teilnehmer.ok() ? await teilnehmer.json() : []).toEqual([]);
+});

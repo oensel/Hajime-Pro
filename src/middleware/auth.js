@@ -138,6 +138,13 @@ async function resolveTurnierId(knex, req) {
         return ermittleOrgaTurnierId(knex, req.params.id);
     }
 
+    // Pools (/api/pools/:id/...): die Pool-ID im Pfad bestimmt das Turnier allein — eine turnierId in Body/Query darf sie
+    // nicht überstimmen (sonst autorisiert das Gate ein Turnier, zu dem der Pool gar nicht gehört). Unbekannter Pool → null.
+    if (req.baseUrl === '/api/pools' && req.params && req.params.id) {
+        const pool = await knex('pools').where({ id: req.params.id }).first();
+        return pool ? pool.turnier_id : null;
+    }
+
     // Extract turnierId from path parameters, query params, or request body.
     let turnierId = req.params.turnierId || req.query.turnierId || req.body.turnierId || req.body.turnier_id;
 

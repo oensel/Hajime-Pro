@@ -12,7 +12,7 @@
     <!-- KOPFLEISTE: Überblick über Matte/Pool/Kampfzeit (befüllt von js/steuerungMenue.js) + Hell/Dunkel -->
     <header class="st-top">
         <span class="st-top-titel">Steuerung</span>
-        <span class="st-chip" title="Wettkampffläche"><span class="st-punkt"></span> Matte <b id="stChipMatte">–</b></span>
+        <button type="button" class="st-chip st-chip-matte" id="stChipMatteKnopf" data-st-oeffne="daten" title="Matte wechseln"><span class="st-punkt"></span> Matte <b id="stChipMatte">–</b><span class="material-icons">swap_horiz</span></button>
         <span class="st-chip st-chip-pool" title="Pool"><b id="stChipPool">–</b></span>
         <span class="st-chip st-chip-zeit" title="Reguläre Kampfzeit"><b id="stChipZeit">–</b></span>
         <span class="st-top-platz"></span>
@@ -58,6 +58,17 @@
                                         <div class="pool-beginn-hinweis">🎙 Die Durchsage erfolgt bei gedrückter Strg-Taste.</div>
                                     </div>
                                     <button type="button" id="poolBeginnErledigtBtn" class="btn-main">Erledigt</button>
+                                </div>
+                            </div>
+                            <!-- Prüfungs-Sperre: ein Pool dieser Matte wartet auf die Ergebnisprüfung, der nächste Kampf gehört zu einem
+                                 neuen Pool. Liegt über "Nächsten Kampf holen", bis der Pool abgeschlossen ist (pruefePoolPruefungSperre()) -->
+                            <div id="poolPruefungOverlay" class="pool-beginn-overlay pool-pruefung-overlay" style="display: none;" role="alert">
+                                <div class="pool-beginn-karte">
+                                    <span class="material-icons" style="font-size: 32px;">fact_check</span>
+                                    <div class="pool-beginn-text">
+                                        <div id="poolPruefungListe"></div>
+                                        <div class="pool-beginn-hinweis">Der nächste Pool beginnt erst nach dem Abschluss.</div>
+                                    </div>
                                 </div>
                             </div>
                         </span>

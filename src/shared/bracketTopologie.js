@@ -90,6 +90,9 @@ export const DOPPEL_KO_32_TOPOLOGIE = {
     T28: { k1: ['T26', 'sieger'], k2: ['H29', 'verlierer'] }
 };
 
+// KO-System mit Hoffnungsrunde (IJF-Repechage): aus dem Raster erzeugt, siehe koRepechage.js.
+export { KO_REPECHAGE_16_TOPOLOGIE, KO_REPECHAGE_32_TOPOLOGIE, KO_REPECHAGE_64_TOPOLOGIE } from './koRepechage.js';
+
 // HF1/HF2 sind bewusst NICHT enthalten: ihre Kämpfer kommen aus einer Ranglisten-Berechnung
 // über je 3 Vorrundenkämpfe (siehe gruppenUeberkreuzProgression.js), nicht aus dem Ergebnis
 // eines einzelnen Kampfes — lässt sich nicht auf einen 1:1-Link reduzieren.
@@ -99,6 +102,14 @@ export const DOPPEL_KO_32_TOPOLOGIE = {
 export const GRUPPEN_UEBERKREUZ_TOPOLOGIE = {
     F1: { k1: ['HF1', 'sieger'], k2: ['HF2', 'sieger'] },
     F2: { k1: ['HF1', 'verlierer'], k2: ['HF2', 'verlierer'] }
+};
+
+// Gruppen-KO (4 Vorrundengruppen): VF1-VF4 kommen aus den Gruppenranglisten (ENDRUNDE_KO in
+// gruppenUeberkreuzProgression.js), ab dem Halbfinale einfaches KO ohne kleines Finale.
+export const GRUPPEN_KO_TOPOLOGIE = {
+    HF1: { k1: ['VF1', 'sieger'], k2: ['VF2', 'sieger'] },
+    HF2: { k1: ['VF3', 'sieger'], k2: ['VF4', 'sieger'] },
+    F1: { k1: ['HF1', 'sieger'], k2: ['HF2', 'sieger'] }
 };
 
 /**

@@ -30,6 +30,13 @@
     }
 
     alle('[data-st-oeffne]').forEach((b) => b.addEventListener('click', () => oeffne(b.dataset.stOeffne)));
+    // Matte-Chip in der Kopfleiste: öffnet die Einstellungen und setzt den Fokus auf die Auswahl der Wettkampffläche
+    einzeln('#stChipMatteKnopf').addEventListener('click', () => {
+        if (aktuell === 'daten') {
+            const wahl = document.getElementById('matSelect');
+            if (wahl) wahl.focus();
+        }
+    });
     einzeln('#stDrawerZu').addEventListener('click', schliesse);
     scrim.addEventListener('click', schliesse);
     document.addEventListener('keydown', (e) => {
@@ -63,6 +70,12 @@
         const badge = einzeln('#stBadgePool');
         badge.hidden = n === 0;
         badge.textContent = String(n);
+    });
+
+    // Panel von außen öffnen (z.B. "Im Pool-Panel öffnen" der Prüfungs-Sperre in scoreboard.js), ohne es zuzuklappen
+    window.addEventListener('hajime:panel-oeffnen', (e) => {
+        const name = e.detail && e.detail.name;
+        if (name && aktuell !== name) oeffne(name);
     });
 
     // Kommende Kämpfe: Streifen unter der Steuerung + Zähler am Menüpunkt (liest die gerenderte Liste)

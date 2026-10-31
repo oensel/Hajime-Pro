@@ -102,6 +102,23 @@ test('Rollen: Turnierzugriff, Middlewares und Vereinslisten', async () => {
         assert.equal(doppel.weiter, false);
         assert.equal(doppel.status, 403);
 
+        // Pool-Routen: die Pool-ID im Pfad bestimmt das Turnier, eine fremde turnierId im Body autorisiert nichts
+        const turnierBId = id((await knex('turniere').insert({
+            bezeichnung: 'Fremdpokal', ort: 'Halle', datum: '2026-12-02', ausrichter: 'JC Fremd', verein_id: vereinB
+        }).returning('id'))[0]);
+        const poolBId = id((await knex('pools').insert({
+            turnier_id: turnierBId, bezeichnung: 'Pool B', altersklasse: 'U13', geschlecht: 'männlich', gewichtsklasse: '-40'
+        }).returning('id'))[0]);
+        const poolAufruf = (userId, body) => rufeMiddleware(edit, { userId, params: { id: String(poolBId) }, body, baseUrl: '/api/pools' });
+        const eingeschleust = await poolAufruf('u-admin', { turnierId });
+        assert.equal(eingeschleust.weiter, false, 'Admin von Turnier A darf einen Pool aus Turnier B nicht über eine eingeschleuste turnierId bearbeiten');
+        assert.equal(eingeschleust.status, 403);
+        const ohneBody = await poolAufruf('u-admin', {});
+        assert.equal(ohneBody.weiter, false);
+        const eigener = await poolAufruf('u-fremd', { turnierId });
+        assert.equal(eigener.weiter, true, 'Admin von Turnier B bearbeitet seinen Pool, auch mit falscher turnierId im Body');
+        assert.equal(eigener.req.tournament.id, turnierBId);
+
         // requireVereinFreigabe: freigegeben UND mindestens Benutzer (oder Super-Admin)
         const freigabe = requireVereinFreigabe(knex);
         for (const u of ['u-admin', 'u-benutzer', 'u-super']) {

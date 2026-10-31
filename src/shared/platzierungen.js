@@ -1,16 +1,22 @@
 // Platzierungen je Pool — gemeinsame Berechnung für Siegerliste (Browser) und Urkunden (Server).
 // Regeln: docs/specs/2026-09-29-urkunden-generator-design.md, "Platzierungen je Modus".
 // Ein Platz wird gesetzt, sobald der entscheidende Kampf fertig ist; offene Plätze bleiben null.
-import { berechneGruppenRangliste } from './gruppenUeberkreuzProgression.js';
+import { berechneGruppenRangliste, VORRUNDEN_GRUPPEN } from './gruppenUeberkreuzProgression.js';
+import { ordneEinzelRangfolge } from './jgjRangfolge.js';
+import { leseEntscheidung } from './gleichstand.js';
 
 const DK_SCHLUESSEL = {
     'Doppel-KO-8': { final: 'F', bronze: ['T3', 'T4'], trost: ['T1', 'T2'] },
     'Doppel-KO-16': { final: 'F1', bronze: ['T11', 'T12'], trost: ['T9', 'T10'] },
-    'Doppel-KO-32': { final: 'F1', bronze: ['T27', 'T28'], trost: ['T25', 'T26'] }
+    'Doppel-KO-32': { final: 'F1', bronze: ['T27', 'T28'], trost: ['T25', 'T26'] },
+    // KO-Repechage: Bronzekämpfe T3/T4, Hoffnungsrunde T1/T2 (src/shared/koRepechage.js)
+    'KO-Repechage-16': { final: 'F1', bronze: ['T3', 'T4'], trost: ['T1', 'T2'] },
+    'KO-Repechage-32': { final: 'F1', bronze: ['T3', 'T4'], trost: ['T1', 'T2'] },
+    'KO-Repechage-64': { final: 'F1', bronze: ['T3', 'T4'], trost: ['T1', 'T2'] }
 };
 
 const istJgj = m => m === 'Jeder-gegen-Jeden' || m === 'Jeder gegen Jeden';
-const istUeberkreuz = m => m === 'Gruppen-Überkreuz' || m === 'Gruppen-ueberkreuz';
+const istUeberkreuz = m => m === 'Gruppen-Überkreuz' || m === 'Gruppen-ueberkreuz' || m === 'Gruppen-KO';
 const fertig = k => !!k && (k.status === 'beendet' || k.status === 'freilos');
 
 const EINZEL = { a: k => k.kaempfer1_id, b: k => k.kaempfer2_id, sieger: k => k.sieger_id };
@@ -26,8 +32,9 @@ function setze(plaetze, id, platz) {
     if (id && !plaetze.has(id)) plaetze.set(id, platz);
 }
 
-function baueErgebnis(objekte, plaetze, abgeschlossen, schluessel) {
-    const eintraege = objekte.map(o => ({ platz: plaetze.get(o.id) ?? null, [schluessel]: o }));
+// gleichstand: Ids, deren Rang auch nach allen Kriterien (inkl. direktem Vergleich) mit einem Nachbarn gleich bleibt.
+function baueErgebnis(objekte, plaetze, abgeschlossen, schluessel, gleichstand = new Set()) {
+    const eintraege = objekte.map(o => ({ platz: plaetze.get(o.id) ?? null, [schluessel]: o, gleichstand: gleichstand.has(o.id) }));
     eintraege.sort((x, y) => (x.platz ?? Infinity) - (y.platz ?? Infinity));
     return { abgeschlossen, eintraege };
 }
@@ -54,29 +61,34 @@ function berechneKo(kaempfe, schl, ad) {
 }
 
 // Fortlaufende Rangfolge; erst wenn alle Kämpfe fertig sind, stehen die Plätze fest.
-function berechneJgj(objekte, kaempfe, ranglisteVergleich) {
+// sortiere(objekte) liefert { reihenfolge, gleichstand }: die Objekte in Rangfolge und die Ids, die auch
+// nach allen Kriterien mit einem Nachbarn gleichauf bleiben (dort muss ein Stichkampf oder das Los entscheiden).
+function berechneJgj(objekte, kaempfe, sortiere) {
     const plaetze = new Map();
     const abgeschlossen = kaempfe.length > 0 && kaempfe.every(fertig);
+    let gleichstand = new Set();
     if (abgeschlossen) {
-        [...objekte].sort(ranglisteVergleich).forEach((o, i) => plaetze.set(o.id, i + 1));
+        const r = sortiere(objekte);
+        r.reihenfolge.forEach((o, i) => plaetze.set(o.id, i + 1));
+        gleichstand = r.gleichstand;
     }
-    return { plaetze, abgeschlossen };
+    return { plaetze, abgeschlossen, gleichstand };
 }
 
-function jgjEinzelVergleich(kaempfe) {
-    const wertung = new Map();
-    kaempfe.forEach(k => {
-        if (k.status !== 'beendet' || !k.sieger_id) return;
-        const w = wertung.get(k.sieger_id) || { siege: 0, punkte: 0 };
-        w.siege += 1;
-        w.punkte += Number(k.sieger_id === k.kaempfer1_id ? k.unterbewertung_kaempfer1 : k.unterbewertung_kaempfer2) || 0;
-        wertung.set(k.sieger_id, w);
-    });
-    const w = id => wertung.get(id) || { siege: 0, punkte: 0 };
-    return (a, b) => (w(b.id).siege - w(a.id).siege) || (w(b.id).punkte - w(a.id).punkte);
+function jgjEinzelSortierung(kaempfe, entscheidung) {
+    return objekte => {
+        const nachId = new Map(objekte.map(o => [o.id, o]));
+        const r = ordneEinzelRangfolge(objekte.map(o => o.id), kaempfe, { entscheidung });
+        return { reihenfolge: r.reihenfolge.map(id => nachId.get(id)), gleichstand: r.gleichstand };
+    };
 }
 
 // Mannschaften: Begegnungssiege, dann Einzelsiege, dann Wertungspunkte.
+function jgjMannschaftSortierung(begegnungen) {
+    const vergleich = jgjMannschaftVergleich(begegnungen);
+    return objekte => ({ reihenfolge: [...objekte].sort(vergleich), gleichstand: new Set() });
+}
+
 function jgjMannschaftVergleich(begegnungen) {
     const wertung = new Map();
     const w = id => {
@@ -98,9 +110,10 @@ function jgjMannschaftVergleich(begegnungen) {
     return (a, b) => (w(b.id).siege - w(a.id).siege) || (w(b.id).einzel - w(a.id).einzel) || (w(b.id).punkte - w(a.id).punkte);
 }
 
-// F1 → 1/2, beide Halbfinal-Verlierer → 3, Gruppenplatz 3 → 5, Gruppenplatz 4 → 7 (sobald die
-// Gruppe fertig ist). Ältere Pools haben noch ein kleines Finale F2; dort gilt weiter F2 → 3/4.
-function berechneUeberkreuz(kaempfe) {
+// F1 → 1/2, beide Halbfinal-Verlierer → 3, Gruppenplatz 3 → 5, Gruppenplatz 4 → 7, Gruppenplatz 5 → 9
+// (sobald die Gruppe fertig ist). Ältere Pools haben noch ein kleines Finale F2; dort gilt weiter F2 → 3/4.
+// Gruppen-KO (Viertelfinale VF1-VF4): die vier Viertelfinal-Verlierer → 5, Gruppenplatz 3/4/5 → 9/13/17.
+function berechneUeberkreuz(kaempfe, entscheidung = {}) {
     const nachNr = new Map(kaempfe.map(k => [k.reihenfolge_nummer, k]));
     const plaetze = new Map();
     const f1 = nachNr.get('F1');
@@ -115,12 +128,15 @@ function berechneUeberkreuz(kaempfe) {
         setze(plaetze, f2.sieger_id, 3);
         setze(plaetze, verlierer(f2, EINZEL), 4);
     }
-    for (const praefix of ['V_A_', 'V_B_']) {
+    const viertelfinale = ['VF1', 'VF2', 'VF3', 'VF4'].map(nr => nachNr.get(nr)).filter(Boolean);
+    viertelfinale.forEach(k => setze(plaetze, verlierer(k, EINZEL), 5));
+    const gruppenPlaetze = viertelfinale.length ? [9, 13, 17] : [5, 7, 9];
+    for (const g of VORRUNDEN_GRUPPEN) {
+        const praefix = `V_${g}_`;
         const gruppe = kaempfe.filter(k => k.reihenfolge_nummer?.startsWith(praefix));
         if (gruppe.length === 0 || !gruppe.every(fertig)) continue;
-        const rangliste = berechneGruppenRangliste(kaempfe, praefix);
-        setze(plaetze, rangliste[2]?.id, 5);
-        setze(plaetze, rangliste[3]?.id, 7);
+        const rangliste = berechneGruppenRangliste(kaempfe, praefix, { entscheidung: entscheidung[g] });
+        gruppenPlaetze.forEach((platz, i) => setze(plaetze, rangliste[i + 2]?.id, platz));
     }
     return { plaetze, abgeschlossen: fertig(f1) && (!f2 || fertig(f2)) };
 }
@@ -130,17 +146,17 @@ export function berechnePlatzierungen(pool, kaempfe, teilnehmer) {
     if (objekte.length === 1) return baueErgebnis(objekte, new Map([[objekte[0].id, 1]]), true, 'teilnehmer');
 
     let r = { plaetze: new Map(), abgeschlossen: false };
-    if (istJgj(pool.modus)) r = berechneJgj(objekte, kaempfe, jgjEinzelVergleich(kaempfe));
+    if (istJgj(pool.modus)) r = berechneJgj(objekte, kaempfe, jgjEinzelSortierung(kaempfe, leseEntscheidung(pool.gleichstand_entscheidung).pool));
     else if (DK_SCHLUESSEL[pool.modus]) r = berechneKo(kaempfe, DK_SCHLUESSEL[pool.modus], EINZEL);
-    else if (istUeberkreuz(pool.modus)) r = berechneUeberkreuz(kaempfe);
-    return baueErgebnis(objekte, r.plaetze, r.abgeschlossen, 'teilnehmer');
+    else if (istUeberkreuz(pool.modus)) r = berechneUeberkreuz(kaempfe, leseEntscheidung(pool.gleichstand_entscheidung));
+    return baueErgebnis(objekte, r.plaetze, r.abgeschlossen, 'teilnehmer', r.gleichstand);
 }
 
 export function berechneMannschaftsPlatzierungen(pool, begegnungen, mannschaften) {
     if (mannschaften.length === 1) return baueErgebnis(mannschaften, new Map([[mannschaften[0].id, 1]]), true, 'mannschaft');
 
     let r = { plaetze: new Map(), abgeschlossen: false };
-    if (istJgj(pool.modus)) r = berechneJgj(mannschaften, begegnungen, jgjMannschaftVergleich(begegnungen));
+    if (istJgj(pool.modus)) r = berechneJgj(mannschaften, begegnungen, jgjMannschaftSortierung(begegnungen));
     else if (DK_SCHLUESSEL[pool.modus]) r = berechneKo(begegnungen, DK_SCHLUESSEL[pool.modus], MANNSCHAFT);
     return baueErgebnis(mannschaften, r.plaetze, r.abgeschlossen, 'mannschaft');
 }

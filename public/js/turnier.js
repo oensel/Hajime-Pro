@@ -1088,7 +1088,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 aktivierenBtn.style.display = 'inline-flex';
                 aktivierenBtn.onclick = () => fuehreLebenszyklusAktionAus('aktivieren', 'Turnier aktiviert.');
             }
-            if (durchfuehrungBeendenBtn && statusEffektiv === 'in_durchfuehrung' && wettkampftagErreicht) {
+            if (durchfuehrungBeendenBtn && statusEffektiv === 'in_durchfuehrung' && wettkampftagErreicht && !(turnier.offene_kaempfe > 0)) {
                 durchfuehrungBeendenBtn.style.display = 'inline-flex';
             }
             if (absagenBtn && status !== 'abgeschlossen') {

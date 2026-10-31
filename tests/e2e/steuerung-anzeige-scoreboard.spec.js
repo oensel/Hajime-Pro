@@ -426,10 +426,13 @@ test.describe.serial('Steuerung + Anzeigetafel: Scoreboard-Kernfunktionen (steue
 
         await steuerungPage.evaluate(() => window.changeBehandlung('W', 1));
         await expect(anzeigePage.locator('#behandlungW_2')).toHaveClass(/active/);
+        await expect(anzeigePage.locator('#behandlungW_3')).toBeHidden();
         await expect(anzeigePage.locator('#bannerW')).not.toHaveClass(/active/);
 
-        // 3. Versorgung: automatischer Sieg des Gegners durch Kiken-gachi (Aufgabe).
+        // 3. Versorgung: rotes Kreuz und automatischer Sieg des Gegners durch Kiken-gachi (Aufgabe).
         await steuerungPage.evaluate(() => window.changeBehandlung('W', 1));
+        await expect(anzeigePage.locator('#behandlungW_3')).toHaveClass(/active/);
+        await expect(anzeigePage.locator('#behandlungW_3')).toHaveCSS('background-color', 'rgb(204, 0, 0)');
         await expect(anzeigePage.locator('#bannerW')).toHaveText('AUFGABE');
 
         await steuerungPage.locator('#btnErgebnisSendenLive').click();
