@@ -2,7 +2,8 @@
 // (tests/helpers/fake-cloud.mjs) holen, einen Kämpfer anlegen und über den Knopf „In die Cloud zurückspielen“ der
 // Turnierauswahl an die Cloud schicken. Die Attrappe schreibt die empfangene Datei mit (GET /test/rueckspiel).
 import { test, expect } from '@playwright/test';
-import { FAKE_CLOUD_URL, FAKE_CLOUD_EMAIL, FAKE_CLOUD_PASSWORT, FAKE_CLOUD_EMAIL_2FA, FAKE_CLOUD_2FA_CODE } from './test-env.js';
+import knexLib from 'knex';
+import { testDbVerbindung, FAKE_CLOUD_URL, FAKE_CLOUD_EMAIL, FAKE_CLOUD_PASSWORT, FAKE_CLOUD_EMAIL_2FA, FAKE_CLOUD_2FA_CODE } from './test-env.js';
 
 const CLOUD_TURNIER = 13;
 
@@ -65,8 +66,20 @@ test.describe.serial('Turnier in die Cloud zurückspielen', () => {
         const anzahlLokal = Array.isArray(lokaleTeilnehmer) ? lokaleTeilnehmer.length : lokaleTeilnehmer.teilnehmer.length;
         expect(anzahlLokal).toBe(2);
 
-        await page.goto('/turniere.html');
         const knopf = page.locator(`button[data-aktion="zurueckspielen"][data-id="${turnierId}"]`);
+
+        // Solange das Turnier nicht beendet ist, gibt es den Knopf nicht
+        await page.goto('/turniere.html');
+        await expect(page.locator(`[data-id="${turnierId}"][data-aktion="duplizieren"]`).first()).toBeVisible();
+        await expect(knopf).toHaveCount(0);
+
+        const db = knexLib({ client: 'pg', connection: testDbVerbindung });
+        try {
+            await db('turniere').where({ id: turnierId }).update({ status: 'abgeschlossen' });
+        } finally {
+            await db.destroy();
+        }
+        await page.goto('/turniere.html');
         await expect(knopf).toBeVisible();
         await knopf.click();
 
