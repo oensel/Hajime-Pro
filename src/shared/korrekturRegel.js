@@ -10,6 +10,8 @@
  *   hängen an der ganzen Vorrunde, nicht an einem einzelnen Quellkampf); Halbfinale, solange das
  *   Finale (per Quellkampf-Verknüpfung) nicht begonnen hat.
  */
+import { endrundeDerGruppe, gruppeDerNummer } from './gruppenUeberkreuzProgression.js';
+
 const BEGONNEN = ['gestartet', 'beendet'];
 
 function kampfName(kampf) {
@@ -20,12 +22,12 @@ function istVorrunde(kampf) {
     return typeof kampf.reihenfolge_nummer === 'string' && kampf.reihenfolge_nummer.startsWith('V_');
 }
 
-/** Direkt abhängige Kämpfe: Quellkampf-Verknüpfung, bei Gruppen-Vorrunde zusätzlich HF1/HF2. */
+/** Direkt abhängige Kämpfe: Quellkampf-Verknüpfung, bei Gruppen-Vorrunde zusätzlich die Endrunden-Kämpfe der Gruppe. */
 export function ermittleAbhaengigeKaempfe(kampf, kaempfe) {
     const abhaengige = kaempfe.filter(k => k.id !== kampf.id
         && (k.kaempfer1_quelle_kampf_id === kampf.id || k.kaempfer2_quelle_kampf_id === kampf.id));
     if (istVorrunde(kampf)) {
-        for (const nummer of ['HF1', 'HF2']) {
+        for (const nummer of endrundeDerGruppe(gruppeDerNummer(kampf.reihenfolge_nummer))) {
             const halbfinale = kaempfe.find(k => k.reihenfolge_nummer === nummer);
             if (halbfinale && !abhaengige.includes(halbfinale)) abhaengige.push(halbfinale);
         }

@@ -299,7 +299,7 @@ async function schreibePositionen(knex, zuweisungen) {
 async function verwerfeGleichstandEntscheidung(knex, kampf) {
     const pool = await knex('pools').where({ id: kampf.pool_id }).first();
     if (!pool || !pool.gleichstand_entscheidung) return;
-    const schluessel = /^V_([AB])_/.exec(String(kampf.reihenfolge_nummer))?.[1] ?? 'pool';
+    const schluessel = /^V_([A-D])_/.exec(String(kampf.reihenfolge_nummer))?.[1] ?? 'pool';
     const entscheidung = leseEntscheidung(pool.gleichstand_entscheidung);
     if (!(schluessel in entscheidung)) return;
     delete entscheidung[schluessel];

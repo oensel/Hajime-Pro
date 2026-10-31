@@ -1,7 +1,7 @@
 // Platzierungen je Pool — gemeinsame Berechnung für Siegerliste (Browser) und Urkunden (Server).
 // Regeln: docs/specs/2026-09-29-urkunden-generator-design.md, "Platzierungen je Modus".
 // Ein Platz wird gesetzt, sobald der entscheidende Kampf fertig ist; offene Plätze bleiben null.
-import { berechneGruppenRangliste } from './gruppenUeberkreuzProgression.js';
+import { berechneGruppenRangliste, VORRUNDEN_GRUPPEN } from './gruppenUeberkreuzProgression.js';
 import { ordneEinzelRangfolge } from './jgjRangfolge.js';
 import { leseEntscheidung } from './gleichstand.js';
 
@@ -110,8 +110,8 @@ function jgjMannschaftVergleich(begegnungen) {
     return (a, b) => (w(b.id).siege - w(a.id).siege) || (w(b.id).einzel - w(a.id).einzel) || (w(b.id).punkte - w(a.id).punkte);
 }
 
-// F1 → 1/2, beide Halbfinal-Verlierer → 3, Gruppenplatz 3 → 5, Gruppenplatz 4 → 7 (sobald die
-// Gruppe fertig ist). Ältere Pools haben noch ein kleines Finale F2; dort gilt weiter F2 → 3/4.
+// F1 → 1/2, beide Halbfinal-Verlierer → 3, Gruppenplatz 3 → 5, Gruppenplatz 4 → 7, Gruppenplatz 5 → 9
+// (sobald die Gruppe fertig ist). Ältere Pools haben noch ein kleines Finale F2; dort gilt weiter F2 → 3/4.
 function berechneUeberkreuz(kaempfe, entscheidung = {}) {
     const nachNr = new Map(kaempfe.map(k => [k.reihenfolge_nummer, k]));
     const plaetze = new Map();
@@ -127,12 +127,14 @@ function berechneUeberkreuz(kaempfe, entscheidung = {}) {
         setze(plaetze, f2.sieger_id, 3);
         setze(plaetze, verlierer(f2, EINZEL), 4);
     }
-    for (const praefix of ['V_A_', 'V_B_']) {
+    for (const g of VORRUNDEN_GRUPPEN) {
+        const praefix = `V_${g}_`;
         const gruppe = kaempfe.filter(k => k.reihenfolge_nummer?.startsWith(praefix));
         if (gruppe.length === 0 || !gruppe.every(fertig)) continue;
-        const rangliste = berechneGruppenRangliste(kaempfe, praefix, { entscheidung: entscheidung[praefix === 'V_A_' ? 'A' : 'B'] });
+        const rangliste = berechneGruppenRangliste(kaempfe, praefix, { entscheidung: entscheidung[g] });
         setze(plaetze, rangliste[2]?.id, 5);
         setze(plaetze, rangliste[3]?.id, 7);
+        setze(plaetze, rangliste[4]?.id, 9);
     }
     return { plaetze, abgeschlossen: fertig(f1) && (!f2 || fertig(f2)) };
 }

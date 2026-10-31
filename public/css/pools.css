@@ -208,7 +208,8 @@
 /* Kampfzeit und Golden Score als Auswahl; die Breite reicht für die längste Golden-Score-Option
    ("Max. 10 Minuten"). */
 .pool-time-select,
-.pool-gs-select {
+.pool-gs-select,
+.pool-system-select {
     width: 130px;
     padding: 3px 4px;
     border: 1px solid var(--border);
@@ -222,10 +223,17 @@
 }
 
 .pool-time-select:focus,
-.pool-gs-select:focus {
+.pool-gs-select:focus,
+.pool-system-select:focus {
     outline: none;
     border-color: var(--primary);
     box-shadow: 0 0 0 2px rgba(30, 58, 138, 0.12);
+}
+
+/* Wettkampfsystem: Kurzname und Beschreibung ("KOR-16 – KO mit Hoffnungsrunde") */
+.pool-system-select {
+    width: auto;
+    max-width: 230px;
 }
 
 /* Löschbutton */
@@ -252,13 +260,15 @@
 [data-theme="dark"] .pool-name-input,
 [data-theme="dark"] .pool-system-box,
 [data-theme="dark"] .pool-time-select,
-[data-theme="dark"] .pool-gs-select {
+[data-theme="dark"] .pool-gs-select,
+[data-theme="dark"] .pool-system-select {
     box-shadow: 0 1px 2px rgba(0,0,0,0.35);
 }
 
 [data-theme="dark"] .pool-name-input:focus,
 [data-theme="dark"] .pool-time-select:focus,
-[data-theme="dark"] .pool-gs-select:focus {
+[data-theme="dark"] .pool-gs-select:focus,
+[data-theme="dark"] .pool-system-select:focus {
     box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.16);
 }
 

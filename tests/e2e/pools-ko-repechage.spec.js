@@ -16,12 +16,15 @@ test('16er-Pool auf KO-Repechage umstellen, Hoffnungsrunde anzeigen und durchspi
 
     await page.goto(`/pools.html?turnierId=${turnierId}`);
     const zeile = page.locator(`tr.pool-section[data-pool-id="${poolId}"]`);
-    await expect(zeile.locator('.pool-system-text').first()).toHaveText('DKO-16');
+    const auswahl = zeile.locator('.pool-system-select');
+    await expect(auswahl).toHaveValue('Doppel-KO-16');
+    // 16 Teilnehmer: Doppel-KO oder KO-Repechage (Gruppen-Überkreuz nur bis 10)
+    await expect(auswahl.locator('option')).toHaveText(['DKO-16 – Doppel-KO', 'KOR-16 – KO mit Hoffnungsrunde']);
 
-    await zeile.locator('.btn-switch-system').click();
+    await auswahl.selectOption('KO-Repechage-16');
     await expect(page.locator('#modalMessage')).toContainText('KO-Repechage-16');
     await page.locator('#modalConfirmBtn').click();
-    await expect(zeile.locator('.pool-system-text').first()).toHaveText('KOR-16');
+    await expect(zeile.locator('.pool-system-select')).toHaveValue('KO-Repechage-16');
 
     let pool = await (await request.get(`/api/pools/${poolId}`)).json();
     expect(pool.modus).toBe('KO-Repechage-16');

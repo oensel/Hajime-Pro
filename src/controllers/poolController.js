@@ -42,6 +42,8 @@ const mannschaftDoppelKo16 = new MannschaftDoppelKo16Manager();
 // Voreinstellung (siehe waehleWettkampfsystem), Jeder-gegen-Jeden ist nachträglich in
 // pools.html wählbar (aendereWettkampfsystem).
 const SECHSER_ALTERNATIVEN = new Set(['Gruppen-Überkreuz', 'Jeder-gegen-Jeden']);
+// Gruppen-Überkreuz: zwei Gruppen à 3 bis 5 (GruppenUeberKreuzManager.js)
+const UEBERKREUZ_MAX = 10;
 
 const MINDEST_PAUSE_KAEMPFE = 2;
 const MAX_PROZENTUALE_GEWICHTSDIFFERENZ = 0.10;
@@ -50,12 +52,16 @@ const MAX_ABSOLUTE_DIFFERENZ_U13_U15_KG = 5;
 const MAX_ABSOLUTE_DIFFERENZ_KINDERSCHUTZ_KG = 3.5;
 
 // Bis 32 TeilnehmerInnen ist KO-Repechage die Alternative zum Doppel-KO (umschaltbar in pools.html), von 33
-// bis 64 das einzige System. bisherigerModus: ein Pool, der schon KO-Repechage hat, bleibt dabei, wenn sich
-// die Teilnehmerzahl ändert (nur die Rastergröße passt sich an), solange es mehr als 8 sind.
+// bis 64 das einzige System; Gruppen-Überkreuz ist bei 6 Voreinstellung und bei 7-10 wählbar.
+// bisherigerModus: das von der Turnierleitung bewusst gewählte System (pools.system_gewaehlt, sonst null). Ein
+// gewähltes KO-Repechage bzw. Gruppen-Überkreuz bleibt, wenn sich die Teilnehmerzahl ändert und das System sie
+// noch abdeckt (KO-Repechage: mehr als 8, nur die Rastergröße passt sich an; Gruppen-Überkreuz: 6 bis 10).
+// Eine nur voreingestellte Wahl (6er-Überkreuz, KO-Repechage-64) klebt nicht.
 export function waehleWettkampfsystem(anzahl, bisherigerModus = null) {
     if (anzahl < 2) return 'Nicht startbereit';
     if (anzahl <= 5) return 'Jeder-gegen-Jeden';
     if (anzahl === 6) return 'Gruppen-Überkreuz';
+    if (bisherigerModus === 'Gruppen-Überkreuz' && anzahl <= UEBERKREUZ_MAX) return 'Gruppen-Überkreuz';
     if (anzahl <= 8) return 'Doppel-KO-8';
     if (istKoRepechage(bisherigerModus) && anzahl <= 64) return koRepechageModusFuer(anzahl);
     if (anzahl <= 16) return 'Doppel-KO-16';
@@ -66,8 +72,11 @@ export function waehleWettkampfsystem(anzahl, bisherigerModus = null) {
 }
 
 // Systeme, auf die ein noch nicht begonnener Pool mit dieser Teilnehmerzahl umgestellt werden darf.
+// Spiegelbild in public/js/pools.js (systemAlternativen) für die Auswahlliste der Pool-Übersicht.
 export function wettkampfsystemAlternativen(anzahl) {
     if (anzahl === 6) return [...SECHSER_ALTERNATIVEN];
+    if (anzahl >= 7 && anzahl <= 8) return ['Doppel-KO-8', 'Gruppen-Überkreuz'];
+    if (anzahl >= 9 && anzahl <= UEBERKREUZ_MAX) return ['Doppel-KO-16', 'KO-Repechage-16', 'Gruppen-Überkreuz'];
     if (anzahl >= 9 && anzahl <= 16) return ['Doppel-KO-16', 'KO-Repechage-16'];
     if (anzahl >= 17 && anzahl <= 32) return ['Doppel-KO-32', 'KO-Repechage-32'];
     return [];
@@ -79,8 +88,12 @@ function schaetzeBruttoKaempfe(modus, anzahlTeilnehmer) {
     switch (modus) {
         case 'Jeder-gegen-Jeden':
             return (anzahlTeilnehmer * (anzahlTeilnehmer - 1)) / 2;
-        case 'Gruppen-Überkreuz':
-            return 9; // 6 Vorrundenkämpfe + HF1/HF2 + F1 (siehe GruppenUeberKreuzManager.js)
+        case 'Gruppen-Überkreuz': {
+            // jeder gegen jeden in zwei Gruppen + HF1/HF2 + F1 (siehe GruppenUeberKreuzManager.js)
+            const a = Math.ceil(anzahlTeilnehmer / 2);
+            const b = Math.floor(anzahlTeilnehmer / 2);
+            return (a * (a - 1)) / 2 + (b * (b - 1)) / 2 + 3;
+        }
         case 'Doppel-KO-8':
             return 11;
         case 'Doppel-KO-16':
@@ -622,7 +635,10 @@ export async function regeneriereKampfplanFuerPool(knex, poolId) {
     const teilnehmer = await knex('turnier_teilnehmer').where({ pool_id: poolId });
     const anzahl = teilnehmer.length;
     const bestehenderPool = await knex('pools').where({ id: poolId }).first();
-    const neuerModus = waehleWettkampfsystem(anzahl, bestehenderPool?.modus);
+    const gewaehlterModus = bestehenderPool?.system_gewaehlt ? bestehenderPool.modus : null;
+    const neuerModus = waehleWettkampfsystem(anzahl, gewaehlterModus);
+    // Die Wahl gilt weiter, solange das System (bis auf die Rastergröße) dasselbe bleibt.
+    const systemGewaehlt = !!gewaehlterModus && (neuerModus === gewaehlterModus || (istKoRepechage(neuerModus) && istKoRepechage(gewaehlterModus)));
 
     await knex('kaempfe').where({ pool_id: poolId }).del();
 
@@ -640,7 +656,8 @@ export async function regeneriereKampfplanFuerPool(knex, poolId) {
         .where({ id: poolId })
         .update({
             modus: neuerModus,
-            status: basisStatus
+            status: basisStatus,
+            system_gewaehlt: systemGewaehlt
         });
 
     await initialisiereKaempfeFuerPool(knex, poolId, neuerModus);
@@ -1563,7 +1580,7 @@ export async function sortiereNachzuegler(knex, req, res) {
             const mitglieder = await trx('turnier_teilnehmer').where({ pool_id: poolId });
             let systemNachher = null;
             try {
-                systemNachher = waehleWettkampfsystem(mitglieder.length + 1, poolZeile.modus);
+                systemNachher = waehleWettkampfsystem(mitglieder.length + 1, poolZeile.system_gewaehlt ? poolZeile.modus : null);
             } catch {
                 systemNachher = null;
             }
@@ -1820,7 +1837,8 @@ export async function aendereWettkampfsystem(knex, req, res) {
         }
 
         await knex('kaempfe').where({ pool_id: id }).del();
-        await knex('pools').where({ id }).update({ modus });
+        // bewusst gewählt: bleibt bei späteren Teilnehmeränderungen, solange es die Zahl abdeckt
+        await knex('pools').where({ id }).update({ modus, system_gewaehlt: true });
         await initialisiereKaempfeFuerPool(knex, id, modus);
 
         return res.json({ success: true, modus });
