@@ -27,7 +27,7 @@ export function ermittleAbhaengigeKaempfe(kampf, kaempfe) {
     const abhaengige = kaempfe.filter(k => k.id !== kampf.id
         && (k.kaempfer1_quelle_kampf_id === kampf.id || k.kaempfer2_quelle_kampf_id === kampf.id));
     if (istVorrunde(kampf)) {
-        for (const nummer of endrundeDerGruppe(gruppeDerNummer(kampf.reihenfolge_nummer))) {
+        for (const nummer of endrundeDerGruppe(gruppeDerNummer(kampf.reihenfolge_nummer), kaempfe)) {
             const halbfinale = kaempfe.find(k => k.reihenfolge_nummer === nummer);
             if (halbfinale && !abhaengige.includes(halbfinale)) abhaengige.push(halbfinale);
         }

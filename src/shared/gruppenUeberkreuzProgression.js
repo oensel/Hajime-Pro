@@ -12,8 +12,9 @@
  * blieben unbefüllt und damit unspielbar, obwohl ihre Kämpfer:innen längst feststanden).
  *
  * Modus-unabhängig wie kampfProgression.js: erkennt seine Zuständigkeit rein strukturell an den
- * reihenfolge_nummer-Mustern ('V_A_*'/'V_B_*'-Vorrunde + 'HF1'/'HF2'-Hüllen), nicht an einem
- * separat mitgeführten pool.modus-Feld. Die Gruppen haben 3 bis 5 Teilnehmer (6 bis 10 im Pool).
+ * reihenfolge_nummer-Mustern ('V_A_*' … 'V_D_*'-Vorrunde + 'HF1'/'HF2'- bzw. 'VF1'-'VF4'-Hüllen), nicht an
+ * einem separat mitgeführten pool.modus-Feld. Gilt für Gruppen-Überkreuz (2 Gruppen) und Gruppen-KO
+ * (4 Gruppen); die Gruppen haben 3 bis 5 Teilnehmer.
  *
  * Keine Abhängigkeit von knex/DOM/localStorage — nutzbar sowohl server- (Node) als auch
  * client-seitig (Browser, ES-Modul).
@@ -21,14 +22,33 @@
 import { ordneEinzelRangfolge } from './jgjRangfolge.js';
 import { pruefeGleichstand, leseEntscheidung, RELEVANT_BIS_GRUPPE } from './gleichstand.js';
 
-// Vorrundengruppen (Präfix der Kampfnummern V_A_1, V_B_1, …).
-export const VORRUNDEN_GRUPPEN = ['A', 'B'];
+// Vorrundengruppen (Präfix der Kampfnummern V_A_1, V_B_1, …); Gruppen-Überkreuz nutzt A und B, Gruppen-KO A bis D.
+export const VORRUNDEN_GRUPPEN = ['A', 'B', 'C', 'D'];
 
 // Endrunde: welcher Kampf welche Gruppenplätze bekommt (Kämpfer 1, Kämpfer 2), über Kreuz.
-export const ENDRUNDE = {
+// Gruppen-Überkreuz (2 Gruppen): Halbfinale. Gruppen-KO (4 Gruppen): Viertelfinale, so dass sich Erster und Zweiter
+// einer Gruppe erst im Finale treffen können (A1/B2 und C1/D2 oben, B1/A2 und D1/C2 unten); HF1/HF2/F1 folgen
+// dort über die normale Kaskade (GRUPPEN_KO_TOPOLOGIE).
+const ENDRUNDE_UEBERKREUZ = {
     HF1: [['A', 1], ['B', 2]],
     HF2: [['B', 1], ['A', 2]]
 };
+const ENDRUNDE_KO = {
+    VF1: [['A', 1], ['B', 2]],
+    VF2: [['C', 1], ['D', 2]],
+    VF3: [['B', 1], ['A', 2]],
+    VF4: [['D', 1], ['C', 2]]
+};
+
+// Welcher Plan gilt, erkennt der Pool an seinen Kämpfen (VF1 gibt es nur im Gruppen-KO).
+export function endrundePlan(kaempfe) {
+    return (kaempfe || []).some(k => k.reihenfolge_nummer === 'VF1') ? ENDRUNDE_KO : ENDRUNDE_UEBERKREUZ;
+}
+
+// Die Gruppen, die im Pool tatsächlich Vorrundenkämpfe haben.
+export function gruppenImPool(kaempfe) {
+    return VORRUNDEN_GRUPPEN.filter(g => (kaempfe || []).some(k => k.reihenfolge_nummer?.startsWith(`V_${g}_`)));
+}
 
 // Stichkämpfe einer Vorrundengruppe tragen die Nummer V_A_S1, V_A_S2, … (gehören nicht zu den regulären Vorrundenkämpfen).
 const STICHKAMPF_NUMMER = /^V_[A-D]_S/;
@@ -109,7 +129,7 @@ export function berechneGruppenUeberkreuzHalbfinalPatches(kaempfe, optionen = {}
     };
 
     const patches = [];
-    for (const [nummer, [slot1, slot2]] of Object.entries(ENDRUNDE)) {
+    for (const [nummer, [slot1, slot2]] of Object.entries(endrundePlan(kaempfe))) {
         const kampf = kaempfe.find(k => k.reihenfolge_nummer === nummer);
         if (!kampf || kampf.kaempfer1_id || kampf.kaempfer2_id) continue;
         const k1 = platzIn(...slot1);
@@ -126,6 +146,6 @@ export function berechneGruppenUeberkreuzHalbfinalPatches(kaempfe, optionen = {}
 }
 
 // Endrunden-Kämpfe, die Plätze dieser Gruppe aufnehmen (für Gleichstand und Korrektur).
-export function endrundeDerGruppe(gruppe) {
-    return Object.entries(ENDRUNDE).filter(([, slots]) => slots.some(([g]) => g === gruppe)).map(([nr]) => nr);
+export function endrundeDerGruppe(gruppe, kaempfe) {
+    return Object.entries(endrundePlan(kaempfe)).filter(([, slots]) => slots.some(([g]) => g === gruppe)).map(([nr]) => nr);
 }

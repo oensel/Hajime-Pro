@@ -12,7 +12,8 @@ import('/js/shared/bracketTopologie.js').then(mod => {
         'KO-Repechage-32': mod.KO_REPECHAGE_32_TOPOLOGIE,
         'KO-Repechage-64': mod.KO_REPECHAGE_64_TOPOLOGIE,
         'Gruppen-Überkreuz': mod.GRUPPEN_UEBERKREUZ_TOPOLOGIE,
-        'Gruppen-ueberkreuz': mod.GRUPPEN_UEBERKREUZ_TOPOLOGIE
+        'Gruppen-ueberkreuz': mod.GRUPPEN_UEBERKREUZ_TOPOLOGIE,
+        'Gruppen-KO': mod.GRUPPEN_KO_TOPOLOGIE
     };
 });
 // KO-Repechage: Runden und Kampfnamen je Raster (src/shared/koRepechage.js)
@@ -27,16 +28,18 @@ const istKoRepechageModus = modus => /^KO-Repechage-(16|32|64)$/.test(modus || '
 
 // Wählbare Systeme je Teilnehmerzahl, Spiegelbild von wettkampfsystemAlternativen (src/controllers/poolController.js).
 function systemAlternativen(anzahl) {
+    const gruppenKo = anzahl >= 12 && anzahl <= 20 ? ['Gruppen-KO'] : [];
     if (anzahl === 6) return ['Gruppen-Überkreuz', 'Jeder-gegen-Jeden'];
     if (anzahl >= 7 && anzahl <= 8) return ['Doppel-KO-8', 'Gruppen-Überkreuz'];
     if (anzahl >= 9 && anzahl <= 10) return ['Doppel-KO-16', 'KO-Repechage-16', 'Gruppen-Überkreuz'];
-    if (anzahl >= 9 && anzahl <= 16) return ['Doppel-KO-16', 'KO-Repechage-16'];
-    if (anzahl >= 17 && anzahl <= 32) return ['Doppel-KO-32', 'KO-Repechage-32'];
+    if (anzahl >= 9 && anzahl <= 16) return ['Doppel-KO-16', 'KO-Repechage-16', ...gruppenKo];
+    if (anzahl >= 17 && anzahl <= 32) return ['Doppel-KO-32', 'KO-Repechage-32', ...gruppenKo];
     return [];
 }
 const SYSTEM_NAMEN = {
     'Jeder-gegen-Jeden': 'Jeder gegen Jeden',
     'Gruppen-Überkreuz': 'Gruppen über Kreuz',
+    'Gruppen-KO': 'Gruppen mit KO-Endrunde',
     'Doppel-KO-8': 'Doppel-KO', 'Doppel-KO-16': 'Doppel-KO', 'Doppel-KO-32': 'Doppel-KO',
     'KO-Repechage-16': 'KO mit Hoffnungsrunde', 'KO-Repechage-32': 'KO mit Hoffnungsrunde'
 };
@@ -96,6 +99,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (modus === 'Gruppen-Überkreuz' || modus === 'Gruppen-ueberkreuz') {
             return 'Pool+Ko';
+        }
+        if (modus === 'Gruppen-KO') {
+            return 'Gruppen+KO';
         }
         if (modus === 'Doppel-KO-8') {
             return 'DKO-8';
@@ -1322,6 +1328,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (fightNr === 'HF1') return compIndex === 1 ? '1. Gruppe A' : '2. Gruppe B';
             if (fightNr === 'HF2') return compIndex === 1 ? '1. Gruppe B' : '2. Gruppe A';
         }
+        // Gruppen-KO: Viertelfinale aus den Gruppen (ENDRUNDE_KO in gruppenUeberkreuzProgression.js)
+        if (activePoolModus === 'Gruppen-KO') {
+            const vf = { VF1: ['1. Gruppe A', '2. Gruppe B'], VF2: ['1. Gruppe C', '2. Gruppe D'], VF3: ['1. Gruppe B', '2. Gruppe A'], VF4: ['1. Gruppe D', '2. Gruppe C'] }[fightNr];
+            if (vf) return vf[compIndex - 1];
+        }
 
         // Alle anderen Verknüpfungen (Doppel-KO-8/16/32) kommen 1:1 aus derselben Topologie, die
         // auch die Kaskaden-Engine speist (src/shared/bracketTopologie.js) — dieselben Kampf-
@@ -1566,7 +1577,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Pools, deren Druck zwei Seiten füllt (Hauptrunde bzw. Gruppen | Trostrunde bzw. Finalrunde).
     // Die zweite Seite bekommt einen eigenen Kopf, die erste das Suffix "(1/2)".
     function druckSeitenAnzahl(modus) {
-        return ['Doppel-KO-8', 'Doppel-KO-16', 'KO-Repechage-16', 'Gruppen-Überkreuz', 'Gruppen-ueberkreuz'].includes(modus) ? 2 : 1;
+        return ['Doppel-KO-8', 'Doppel-KO-16', 'KO-Repechage-16', 'Gruppen-Überkreuz', 'Gruppen-ueberkreuz', 'Gruppen-KO'].includes(modus) ? 2 : 1;
     }
     let druckTurnierInfoText = '';
     let druckMatteAusgeloest = false;
@@ -1633,9 +1644,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const kleinesFinale = fightMap.get('F2');
         halbfinalVerliererSindDritte = !kleinesFinale;
 
-        const groupAFights = pool.kaempfe.filter(f => f.reihenfolge_nummer?.startsWith('V_A_'));
-        const groupBFights = pool.kaempfe.filter(f => f.reihenfolge_nummer?.startsWith('V_B_'));
-
         // Gruppenzugehörigkeit kommt aus den Vorrundenkämpfen (die Aufteilung des Managers ist
         // nicht einfach "jeder Zweite"); Reihenfolge wie beim Anlegen: Gewicht aufsteigend.
         const gruppeAusKaempfen = (kaempfe) => {
@@ -1645,17 +1653,32 @@ document.addEventListener('DOMContentLoaded', () => {
                 .filter(t => ids.has(t.id))
                 .sort((a, b) => Number(a.gewicht) - Number(b.gewicht));
         };
-        const poolA = gruppeAusKaempfen(groupAFights);
-        const poolB = gruppeAusKaempfen(groupBFights);
+        // Gruppen A/B (Überkreuz) bzw. A-D (Gruppen-KO), je ein Kampfbogen
+        const gruppenHtml = ['A', 'B', 'C', 'D'].map(g => {
+            const kaempfe = pool.kaempfe.filter(f => f.reihenfolge_nummer?.startsWith(`V_${g}_`));
+            const mitglieder = gruppeAusKaempfen(kaempfe);
+            return mitglieder.length ? baueKampfbogenHtml({ teilnehmer: mitglieder, kaempfe }, `Gruppe ${g} – Kampfbogen`) : '';
+        }).join('');
 
         const matricesHtml = `
             <div style="margin-bottom: 32px;">
-                ${poolA.length ? baueKampfbogenHtml({ teilnehmer: poolA, kaempfe: groupAFights }, 'Gruppe A – Kampfbogen') : ''}
-                ${poolB.length ? baueKampfbogenHtml({ teilnehmer: poolB, kaempfe: groupBFights }, 'Gruppe B – Kampfbogen') : ''}
+                ${gruppenHtml}
             </div>
         `;
 
-        const bracketHtml = `
+        const bracketHtml = pool.modus === 'Gruppen-KO' ? `
+            <div class="bracket-loser-section ueberkreuz-final-section">
+                ${druckSeitenkopfHtml(pool)}
+                <div class="bracket-section-title">KO-Endrunde (Erste und Zweite der Gruppen)</div>
+                <div class="bracket-rounds">
+                    ${buildAlignedRoundsHtml([
+                        { title: 'Viertelfinale', nummern: ['VF1', 'VF2', 'VF3', 'VF4'] },
+                        { title: 'Halbfinale', nummern: ['HF1', 'HF2'] },
+                        { title: 'Finale', nummern: ['F1'] }
+                    ], fightMap, athleteMap)}
+                </div>
+            </div>
+        ` : `
             <div class="bracket-loser-section ueberkreuz-final-section">
                 ${druckSeitenkopfHtml(pool)}
                 <div class="bracket-section-title">Finalrunde (Überkreuz-Spiele & Platzierungen)</div>
@@ -1742,7 +1765,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Matrix oder Bracket rendern, je nach Modus
                 const isJederGegenJeden = pool.modus === 'Jeder-gegen-Jeden' || pool.modus === 'Jeder gegen Jeden' || pool.teilnehmer.length === 1;
                 const isDoppelKo = pool.modus === 'Doppel-KO-8' || pool.modus === 'Doppel-KO-16' || pool.modus === 'Doppel-KO-32' || istKoRepechageModus(pool.modus);
-                const isUeberKreuz = pool.modus === 'Gruppen-Überkreuz' || pool.modus === 'Gruppen-ueberkreuz';
+                const isUeberKreuz = pool.modus === 'Gruppen-Überkreuz' || pool.modus === 'Gruppen-ueberkreuz' || pool.modus === 'Gruppen-KO';
 
                 if (isJederGegenJeden) {
                     document.getElementById('bracketContainer').style.display = 'none';
@@ -1854,6 +1877,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     } else {
                         if (rundeTyp === 'F1') rundeTyp = 'Finale';
                         else if (rundeTyp === 'F2') rundeTyp = 'kleines Finale';
+                        else if (/^VF[1-4]$/.test(rundeTyp)) rundeTyp = `Viertelfinale ${rundeTyp.slice(2)}`;
                         else if (rundeTyp === 'HF1') rundeTyp = 'Halbfinale 1';
                         else if (rundeTyp === 'HF2') rundeTyp = 'Halbfinale 2';
                     }
@@ -1988,7 +2012,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 druckMatteName = matteName;
                 const isJederGegenJeden = pool.modus === 'Jeder-gegen-Jeden' || pool.modus === 'Jeder gegen Jeden' || pool.teilnehmer.length === 1;
                 const isDoppelKo = pool.modus === 'Doppel-KO-8' || pool.modus === 'Doppel-KO-16' || pool.modus === 'Doppel-KO-32' || istKoRepechageModus(pool.modus);
-                const isUeberKreuz = pool.modus === 'Gruppen-Überkreuz' || pool.modus === 'Gruppen-ueberkreuz';
+                const isUeberKreuz = pool.modus === 'Gruppen-Überkreuz' || pool.modus === 'Gruppen-ueberkreuz' || pool.modus === 'Gruppen-KO';
 
                 let visualHtml = '';
                 

@@ -16,7 +16,7 @@ const DK_SCHLUESSEL = {
 };
 
 const istJgj = m => m === 'Jeder-gegen-Jeden' || m === 'Jeder gegen Jeden';
-const istUeberkreuz = m => m === 'Gruppen-Überkreuz' || m === 'Gruppen-ueberkreuz';
+const istUeberkreuz = m => m === 'Gruppen-Überkreuz' || m === 'Gruppen-ueberkreuz' || m === 'Gruppen-KO';
 const fertig = k => !!k && (k.status === 'beendet' || k.status === 'freilos');
 
 const EINZEL = { a: k => k.kaempfer1_id, b: k => k.kaempfer2_id, sieger: k => k.sieger_id };
@@ -112,6 +112,7 @@ function jgjMannschaftVergleich(begegnungen) {
 
 // F1 → 1/2, beide Halbfinal-Verlierer → 3, Gruppenplatz 3 → 5, Gruppenplatz 4 → 7, Gruppenplatz 5 → 9
 // (sobald die Gruppe fertig ist). Ältere Pools haben noch ein kleines Finale F2; dort gilt weiter F2 → 3/4.
+// Gruppen-KO (Viertelfinale VF1-VF4): die vier Viertelfinal-Verlierer → 5, Gruppenplatz 3/4/5 → 9/13/17.
 function berechneUeberkreuz(kaempfe, entscheidung = {}) {
     const nachNr = new Map(kaempfe.map(k => [k.reihenfolge_nummer, k]));
     const plaetze = new Map();
@@ -127,14 +128,15 @@ function berechneUeberkreuz(kaempfe, entscheidung = {}) {
         setze(plaetze, f2.sieger_id, 3);
         setze(plaetze, verlierer(f2, EINZEL), 4);
     }
+    const viertelfinale = ['VF1', 'VF2', 'VF3', 'VF4'].map(nr => nachNr.get(nr)).filter(Boolean);
+    viertelfinale.forEach(k => setze(plaetze, verlierer(k, EINZEL), 5));
+    const gruppenPlaetze = viertelfinale.length ? [9, 13, 17] : [5, 7, 9];
     for (const g of VORRUNDEN_GRUPPEN) {
         const praefix = `V_${g}_`;
         const gruppe = kaempfe.filter(k => k.reihenfolge_nummer?.startsWith(praefix));
         if (gruppe.length === 0 || !gruppe.every(fertig)) continue;
         const rangliste = berechneGruppenRangliste(kaempfe, praefix, { entscheidung: entscheidung[g] });
-        setze(plaetze, rangliste[2]?.id, 5);
-        setze(plaetze, rangliste[3]?.id, 7);
-        setze(plaetze, rangliste[4]?.id, 9);
+        gruppenPlaetze.forEach((platz, i) => setze(plaetze, rangliste[i + 2]?.id, platz));
     }
     return { plaetze, abgeschlossen: fertig(f1) && (!f2 || fertig(f2)) };
 }
