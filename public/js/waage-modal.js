@@ -552,6 +552,14 @@ document.addEventListener('DOMContentLoaded', () => {
         // gesicherter Kämpfer wird daneben als solcher gekennzeichnet.
         const zahlwegHinweis = document.getElementById('startgeldZahlwegHinweis');
         if (zahlwegHinweis) zahlwegHinweis.style.display = (!athlet.startgeld_bezahlt && !!athlet.startgeld_zahlweg_gesichert && !turnierOhneStartgeld) ? '' : 'none';
+        // An der Waage sichtbar (auch im kompakten Handy-Fenster): ohne bezahltes Startgeld wird das Kind gewogen,
+        // aber nicht kampfbereit und damit nicht ausgelost. Bar zahlt der Verein an der Kasse (teilnehmer.html).
+        const startgeldHinweis = document.getElementById('startgeldHinweis');
+        if (startgeldHinweis) {
+            const offen = istGastgeberVerein && !turnierOhneStartgeld && !athlet.startgeld_bezahlt && !athlet.startgeld_zahlweg_gesichert;
+            startgeldHinweis.hidden = !offen;
+            if (offen) startgeldHinweis.textContent = `Startgeld von ${athlet.verein || 'diesem Verein'} noch nicht bezahlt: ohne Bezahlung wird ${athlet.vorname || 'das Kind'} gewogen, aber nicht ausgelost. Bitte den Verein an die Kasse schicken.`;
+        }
     };
 
     // Befüllt das Team-Name-Feld mit der aktuellen Mannschafts-Zuordnung eines bestehenden
@@ -805,6 +813,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (setzeLizenzAnzeigeZurueck) setzeLizenzAnzeigeZurueck();
         const startgeldCheckbox = document.getElementById('startgeld_bezahlt');
         if (startgeldCheckbox) startgeldCheckbox.checked = false;
+        const startgeldHinweisReset = document.getElementById('startgeldHinweis');
+        if (startgeldHinweisReset) startgeldHinweisReset.hidden = true;
         const zahlwegHinweisReset = document.getElementById('startgeldZahlwegHinweis');
         if (zahlwegHinweisReset) zahlwegHinweisReset.style.display = 'none';
         gewichtsklasseSelect.innerHTML = '<option value="" disabled selected hidden>Bitte Altersklasse wählen...</option>';
