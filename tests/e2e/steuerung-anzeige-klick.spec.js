@@ -4,6 +4,7 @@
 import { test, expect } from '@playwright/test';
 import { schliesseOverlayAutomatisch } from './helpers/pool-beginn-overlay.js';
 
+// Bis U15 gibt es zwei freie medizinische Versorgungen (DJB-WKO Art. 3.12.10), daher ein U15-Pool: alle drei Kreuze stehen da.
 async function richteKampfEin(request) {
     const turnierResp = await request.post('/api/turniere', {
         data: { bezeichnung: 'Anzeige-Klick', ort: 'Teststadt', datum: '2027-06-12', ausrichter: 'JC Test', anzahl_kampfflaechen: 1 }
@@ -12,14 +13,14 @@ async function richteKampfEin(request) {
     const { turnierId } = await turnierResp.json();
     const [{ id: matId }] = await (await request.get(`/api/kampfflaechen?turnierId=${turnierId}`)).json();
     const { poolId } = await (await request.post('/api/pools', {
-        data: { turnier_id: turnierId, bezeichnung: 'Klick Pool', altersklasse: 'U18', geschlecht: 'männlich', gewichtsklasse: '-73kg' }
+        data: { turnier_id: turnierId, bezeichnung: 'Klick Pool', altersklasse: 'U15', geschlecht: 'männlich', gewichtsklasse: '-50kg' }
     })).json();
     const zuordnung = [];
     for (const [i, vorname] of ['Anna', 'Berta'].entries()) {
         const t = await request.post('/api/teilnehmer', {
             data: {
                 turnier_id: turnierId, vorname, nachname: `${vorname}x`, verein: `JC ${vorname}`,
-                geburtsjahr: 2009, geschlecht: 'männlich', gewicht: 70 + i, altersklasse: 'U18', gewichtsklasse: '-73kg'
+                geburtsjahr: 2013, geschlecht: 'männlich', gewicht: 47 + i, altersklasse: 'U15', gewichtsklasse: '-50kg'
             }
         });
         zuordnung.push({ teilnehmerId: (await t.json()).teilnehmerId, zielPoolId: poolId });
