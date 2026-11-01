@@ -80,6 +80,8 @@ test.describe.serial('Waage: Lizenz-Hinweis und Datumsfeld', () => {
         // Das Datumsfeld bleibt beim Eintippen sichtbar
         await expect(seite.locator('#lizenz_ablauf')).toBeVisible();
         await expect(seite.locator('#lizenz_ablauf')).toHaveClass(/lizenz-valid/);
+        await expect(seite.locator('#submitBtn')).toBeDisabled(); // noch kein Gewicht eingetippt
+        await seite.locator('#gewicht').fill('60,2');
         await expect(seite.locator('#submitBtn')).toBeEnabled();
         await schliesse();
     });
@@ -106,6 +108,11 @@ test.describe.serial('Waage: Lizenz-Hinweis und Datumsfeld', () => {
         await oeffne(ids.gueltig);
         await expect(seite.locator('#lizenzHinweis')).toBeHidden();
         await expect(seite.locator('#lizenz_ablauf')).toBeHidden();
+        // Das gemeldete Gewicht steht nur als Platzhalter da: "Gewogen" erst nach dem Eintippen
+        await expect(seite.locator('#gewicht')).toHaveValue('');
+        await expect(seite.locator('#gewicht')).toHaveAttribute('placeholder', 'gemeldet 60 kg');
+        await expect(seite.locator('#submitBtn')).toBeDisabled();
+        await seite.locator('#gewicht').fill('59,8');
         await expect(seite.locator('#submitBtn')).toBeEnabled();
         await schliesse();
         expect(dialoge).toEqual([]);
@@ -114,6 +121,7 @@ test.describe.serial('Waage: Lizenz-Hinweis und Datumsfeld', () => {
     test('"Gewogen" ohne Judopass-ID: möglich, die ID wird bei gültiger Lizenz erzeugt', async ({ request }) => {
         await oeffne(ids.ohnePass);
         await expect(seite.locator('#judopass_id')).toHaveValue('');
+        await seite.locator('#gewicht').fill('60');
         await expect(seite.locator('#submitBtn')).toBeEnabled();
         await seite.locator('#submitBtn').click();
         await expect(seite.locator('#waageModal')).toBeHidden();
@@ -140,4 +148,49 @@ test('Hallen-Server: die Teilnehmerliste lädt Änderungen im Hintergrund nach (
     await legeTeilnehmerAn(request, turnierId, 'Nachgeladen', '2027-12-31');
     await expect(seite.locator('#teilnehmerTableBody tr', { hasText: 'Nachgeladen' })).toHaveCount(1, { timeout: 10_000 });
     await context.close();
+});
+
+test('Korrektur vor dem Turnier: Jahrgang ohne Lizenzdatum und ohne Gewicht änderbar, Meldegewicht bleibt', async ({ page, request }) => {
+    const turnierResp = await request.post('/api/turniere', {
+        data: { bezeichnung: 'Korrektur-ohne-Lizenz', ort: 'Teststadt', datum: '2027-03-20', ausrichter: 'JC Test', anzahl_kampfflaechen: 1 }
+    });
+    const turnierId = (await turnierResp.json()).turnierId;
+    const id = await legeTeilnehmerAn(request, turnierId, 'Korrektur', null);
+    await page.goto(`/teilnehmer.html?turnierId=${turnierId}`);
+    await expect(page.locator('#teilnehmerTableBody tr', { hasText: 'Korrektur' })).toHaveCount(1);
+    await page.evaluate((tid) => window.oeffneWaageModal(tid), id);
+    await expect(page.locator('#waageModal')).toBeVisible();
+    await expect(page.locator('#gewicht')).toHaveValue('');
+    await expect(page.locator('#gewicht')).toHaveAttribute('placeholder', 'gemeldet 60 kg');
+    await expect(page.locator('#submitBtn')).toBeEnabled(); // keine Pflicht für Lizenz und Gewicht ohne Einwiegen
+
+    await page.locator('#geburtsjahr').fill('2010');
+    await page.locator('#submitBtn').click();
+    await expect(page.locator('#waageModal')).toBeHidden();
+    const gespeichert = await (await request.get(`/api/teilnehmer/${id}`)).json();
+    expect(gespeichert.geburtsjahr).toBe(2010);
+    expect(parseFloat(gespeichert.gewicht)).toBe(60);
+    expect(gespeichert.gewogen).toBeFalsy();
+
+    // Wird ein Gewicht eingetippt, ist das Einwiegen: dann ist die Lizenz Pflicht
+    await page.evaluate((tid) => window.oeffneWaageModal(tid), id);
+    await page.locator('#gewicht').fill('61');
+    await expect(page.locator('#submitBtn')).toBeDisabled();
+});
+
+test('Suche: "Vorname Nachname" und "Nachname, Vorname" finden den Teilnehmer', async ({ page, request }) => {
+    const turnierResp = await request.post('/api/turniere', {
+        data: { bezeichnung: 'Suche-Vorname', ort: 'Teststadt', datum: '2027-03-20', ausrichter: 'JC Test', anzahl_kampfflaechen: 1 }
+    });
+    const turnierId = (await turnierResp.json()).turnierId;
+    await legeTeilnehmerAn(request, turnierId, 'Finn', '2027-12-31');
+    await legeTeilnehmerAn(request, turnierId, 'Ida', '2027-12-31');
+    await page.goto(`/teilnehmer.html?turnierId=${turnierId}`);
+    const zeilen = page.locator('#teilnehmerTableBody tr', { hasText: 'Lizenztest' });
+    await expect(zeilen).toHaveCount(2);
+    for (const begriff of ['Finn Lizenztest', 'lizenztest, finn', 'Finn']) {
+        await page.locator('#teilnehmerSearchInput').fill(begriff);
+        await expect(zeilen).toHaveCount(1);
+        await expect(zeilen).toContainText('Finn');
+    }
 });

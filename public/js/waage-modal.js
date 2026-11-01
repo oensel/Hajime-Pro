@@ -90,15 +90,21 @@ document.addEventListener('DOMContentLoaded', () => {
         if (startgeldRow) startgeldRow.style.display = (istPrivilegiertFuerLizenzUndStartgeld && !turnierOhneStartgeld) ? '' : 'none';
     };
 
+    const GEWICHT_PLATZHALTER = 'z.B. 34,50';
+
     // --- STRIKTE FORMULAR- UND LIZENZVALIDIERUNG ---
     const aktualisiereSpeicherButtonStatus = () => {
         const submitBtn = document.getElementById('submitBtn');
         const lizenzFeld = document.getElementById('lizenz_ablauf');
 
         const immerPflicht = ['vorname', 'nachname', 'geburtsjahr', 'geschlecht', 'altersklasse', 'gewichtsklasse'];
-        // judopass_id, lizenz_ablauf und gewicht sind nur für den ausrichtenden Verein Pflicht. In der App
-        // ("Gewogen") ist die Judopass-ID keine Voraussetzung: sie wird beim Klick bei Bedarf erzeugt (siehe Submit).
-        const felder = istGastgeberVerein
+        // judopass_id, lizenz_ablauf und gewicht sind nur beim Einwiegen durch den ausrichtenden Verein Pflicht:
+        // sobald ein Gewicht eingetragen ist oder das Handy-Waage-Fenster offen ist. Eine Korrektur (z.B. des
+        // Jahrgangs vor dem Turnier) geht ohne. In der App ("Gewogen") ist die Judopass-ID keine Voraussetzung:
+        // sie wird beim Klick bei Bedarf erzeugt (siehe Submit).
+        const wiegt = istGastgeberVerein && (document.getElementById('gewicht').value.trim() !== ''
+            || document.getElementById('teilnehmerForm')?.classList.contains('waage-kompakt'));
+        const felder = wiegt
             ? [...immerPflicht, ...(istAppAnsicht() ? [] : ['judopass_id']), 'lizenz_ablauf', 'gewicht']
             : immerPflicht;
 
@@ -109,7 +115,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Die Gültigkeitsprüfung der Lizenz greift nur, wenn das Feld überhaupt Pflicht ist —
         // sonst würde das für andere Vereine leere, deaktivierte Feld das Speichern blockieren.
-        const lizenzOk = !istGastgeberVerein || (lizenzFeld && lizenzFeld.classList.contains('lizenz-valid'));
+        const lizenzOk = !wiegt || (lizenzFeld && lizenzFeld.classList.contains('lizenz-valid'));
 
         if (submitBtn) {
             // Bleibt immer sichtbar, ist nur ausgegraut (disabled), solange nicht speicherbar.
@@ -244,8 +250,8 @@ document.addEventListener('DOMContentLoaded', () => {
             gewichtsklasseSelect.appendChild(opt);
         });
 
-        // AUTOMATISCHE VORAUSWAHL ANHAND DES GEWICHTS
-        const gewichtsEingabe = document.getElementById('gewicht').value.trim();
+        // AUTOMATISCHE VORAUSWAHL ANHAND DES GEWICHTS (ohne Eingabe: das gemeldete Gewicht aus dem Platzhalter)
+        const gewichtsEingabe = document.getElementById('gewicht').value.trim() || String(urspruenglichesGewicht ?? '');
         const aktuellesGewicht = parseFloat(gewichtsEingabe.replace(',', '.'));
 
         if (!isNaN(aktuellesGewicht) && aktuellesGewicht > 0 && !istMixedKlasse) {
@@ -508,9 +514,14 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('geburtsjahr').value = athlet.geburtsjahr || '';
         document.getElementById('graduierung').value = athlet.graduierung || '';
 
-        if (athlet.gewicht) {
-            document.getElementById('gewicht').value = athlet.gewicht.toString().replace('.', ',');
-        }
+        // Noch nicht gewogen: das gemeldete Gewicht steht beim Ausrichter nur blass als Platzhalter da, damit an der
+        // Waage immer tatsächlich gewogen und eingetippt wird. Andere Vereine bearbeiten ihr Meldegewicht direkt.
+        const gewichtFeld = document.getElementById('gewicht');
+        const gewichtText = athlet.gewicht ? athlet.gewicht.toString().replace('.', ',') : '';
+        const nurGemeldet = istGastgeberVerein && !athlet.gewogen;
+        gewichtFeld.value = nurGemeldet ? '' : gewichtText;
+        gewichtFeld.placeholder = nurGemeldet && gewichtText
+            ? `gemeldet ${String(parseFloat(athlet.gewicht)).replace('.', ',')} kg` : GEWICHT_PLATZHALTER;
 
         if (athlet.geschlecht) {
             document.getElementById('geschlecht').value = athlet.geschlecht;
@@ -728,6 +739,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Bekannter Teilnehmer im kompakten Fenster = Wiegen ("Waage"), sonst Anlegen/Bearbeiten.
         waageModalTitle.innerText = kompakt && bestehend ? 'Waage' : bestehend ? 'Teilnehmer bearbeiten' : 'Teilnehmer hinzufügen';
         teilnehmerForm.classList.toggle('waage-kompakt', kompakt && bestehend);
+        aktualisiereSpeicherButtonStatus(); // im Waage-Fenster sind Gewicht und Lizenz Pflicht
         teilnehmerForm.classList.toggle('waage-verein-offen', !document.getElementById('verein').value.trim());
         teilnehmerForm.classList.toggle('waage-graduierung-offen', !document.getElementById('graduierung').value);
         const zeile = document.getElementById('waageNameZeile');
@@ -787,6 +799,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const setzeFormularZurueck = () => {
         teilnehmerForm.reset();
+        document.getElementById('gewicht').placeholder = GEWICHT_PLATZHALTER;
         setzeKompakt(false, false);
         document.getElementById('lizenz_ablauf').classList.remove('lizenz-valid', 'lizenz-expired');
         if (setzeLizenzAnzeigeZurueck) setzeLizenzAnzeigeZurueck();
@@ -1006,6 +1019,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Nicht-Ausrichter dürfen ohne Gewicht speichern (s.o.) — das eigentliche
                 // Wiegeergebnis trägt der Ausrichter beim Einwiegen nach.
                 gewichtFormatiert = 0;
+            } else if (gewichtsEingabe === '') {
+                // Ausrichter ohne Gewicht: Korrektur ohne Einwiegen, das gemeldete Gewicht bleibt.
+                gewichtFormatiert = parseFloat(String(urspruenglichesGewicht ?? '').replace(',', '.')) || 0;
             } else if (isNaN(gewichtFormatiert) || gewichtFormatiert <= 0) {
                 alert('Bitte geben Sie ein gültiges Gewicht mit Komma ein (z.B. 34,50).');
                 document.getElementById('gewicht').focus();
@@ -1028,7 +1044,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 verein: document.getElementById('verein').value,
                 geburtsjahr: parseInt(document.getElementById('geburtsjahr').value, 10),
                 graduierung: document.getElementById('graduierung').value || null,
-                lizenz_ablauf: document.getElementById('lizenz_ablauf').value,
+                // Leer (Korrektur ohne Lizenz) = unverändert lassen
+                lizenz_ablauf: document.getElementById('lizenz_ablauf').value || undefined,
                 geschlecht: document.getElementById('geschlecht').value,
                 gewicht: gewichtFormatiert,
                 altersklasse: document.getElementById('altersklasse').value,
@@ -1045,7 +1062,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const vorherigesGewicht = parseFloat(String(urspruenglichesGewicht ?? '').replace(',', '.')) || 0;
             const gewichtGeaendert = gewichtFormatiert > 0 && gewichtFormatiert !== vorherigesGewicht;
             // Handy-Ansicht: "Wiegen" ist die Einwiegung selbst — gewogen gilt mit dem Klick, auch ohne Rückfrage.
-            const gewogenNachfragen = gewichtFormatiert > 0 && (gewichtGeaendert || istWettkampftag() || istHandyModus);
+            const gewogenNachfragen = gewichtsEingabe !== '' && gewichtFormatiert > 0 && (gewichtGeaendert || istWettkampftag() || istHandyModus);
 
             if (istGastgeberVerein && gewogenNachfragen) {
                 if (letzteAenderungViaScan || istHandyModus) {

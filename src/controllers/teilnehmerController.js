@@ -474,7 +474,8 @@ export async function aktualisiereTeilnehmerDaten(knex, id, daten, kontext) {
         judopass_id,
         verein: istGastgeberVerein ? (verein !== undefined ? (verein || '') : athlet.verein) : userVereinName,
         geburtsjahr: geburtsjahr !== undefined ? parseInt(geburtsjahr, 10) : athlet.geburtsjahr,
-        lizenz_ablauf: istPrivilegiertFuerLizenzUndStartgeld ? (lizenz_ablauf !== undefined ? lizenz_ablauf : athlet.lizenz_ablauf) : athlet.lizenz_ablauf,
+        // Leer = unverändert (Korrektur ohne Lizenzdatum; die Spalte ist NOT NULL)
+        lizenz_ablauf: istPrivilegiertFuerLizenzUndStartgeld && lizenz_ablauf ? lizenz_ablauf : athlet.lizenz_ablauf,
         geschlecht,
         gewicht: gewicht !== undefined ? parseFloat(gewicht) : athlet.gewicht,
         altersklasse,

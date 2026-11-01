@@ -320,19 +320,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     let sortierRichtung = 'asc';
 
     // --- SUCHE ---
-    // Filtert athletenDaten anhand des aktuellen Suchfeld-Werts (Name/Vorname/Verein).
+    // Filtert athletenDaten anhand des aktuellen Suchfeld-Werts (Name/Vorname/Verein). Mehrere Wörter
+    // ("Finn Fischer", "Fischer, Finn") müssen alle vorkommen, gleich in welchem Feld.
     // Wird sowohl beim Laden als auch beim Sortieren angewendet, damit ein aktiver
     // Suchbegriff beim Klick auf eine Spaltenüberschrift nicht verloren geht.
     function gefilterteAthleten() {
         const suchfeld = document.getElementById('teilnehmerSearchInput');
-        const begriff = (suchfeld ? suchfeld.value : '').trim().toLowerCase();
-        if (!begriff) return athletenDaten;
+        const woerter = (suchfeld ? suchfeld.value : '').toLowerCase().split(/[\s,]+/).filter(Boolean);
+        if (!woerter.length) return athletenDaten;
 
         return athletenDaten.filter(athlet => {
-            const nachname = (athlet.nachname || '').toLowerCase();
-            const vorname = (athlet.vorname || '').toLowerCase();
-            const verein = (athlet.verein || '').toLowerCase();
-            return nachname.includes(begriff) || vorname.includes(begriff) || verein.includes(begriff);
+            const felder = [athlet.nachname, athlet.vorname, athlet.verein].map(w => (w || '').toLowerCase());
+            return woerter.every(wort => felder.some(feld => feld.includes(wort)));
         });
     }
 
