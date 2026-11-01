@@ -911,29 +911,33 @@ document.addEventListener('DOMContentLoaded', () => {
             wrapper.className = 'modal-wrapper';
             wrapper.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 10000; display: flex; align-items: center; justify-content: center;';
 
-            // Gruppen je Altersklasse + Geschlecht (z.B. "U13 m"), darin die Gewichtsklassen.
+            // Gruppen je Altersklasse + Geschlecht (z.B. "U13 m"), darin die Gewichtsklassen. Vorab angehakt ist eine
+            // Gruppe nur, wenn niemand in ihr mehr fehlt: bei versetzter Waage stehen sonst auch angefangene Gruppen
+            // (z.B. ein früh gewogenes Kind) im Dialog, und deren Ungewogene würden beim Auslosen "nicht erschienen".
             const kuerzel = (g) => ({ 'männlich': 'm', 'weiblich': 'w' }[String(g).toLowerCase()] || g || '');
             const gruppen = new Map();
             eintraege.forEach((e, i) => {
                 const gk = `${e.altersklasse}|${e.geschlecht}`;
-                if (!gruppen.has(gk)) gruppen.set(gk, { titel: `${e.altersklasse} ${kuerzel(e.geschlecht)}`.trim(), eintraege: [] });
+                if (!gruppen.has(gk)) gruppen.set(gk, { titel: `${e.altersklasse} ${kuerzel(e.geschlecht)}`.trim(), eintraege: [], fehlen: 0 });
                 gruppen.get(gk).eintraege.push({ e, i });
+                gruppen.get(gk).fehlen += e.angemeldet || 0;
             });
 
             const zeilen = Array.from(gruppen.values()).map((gruppe, gi) => `
                 <fieldset class="altersklassen-gruppe" data-gruppe="${gi}" style="border: 2px solid var(--border); border-radius: 4px; margin: 0 0 12px 0; padding: 4px 12px 10px;">
                     <legend style="padding: 0 6px;">
                         <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 800; text-transform: none;">
-                            <input type="checkbox" class="altersklassen-gruppe-checkbox" data-gruppe="${gi}" checked>
+                            <input type="checkbox" class="altersklassen-gruppe-checkbox" data-gruppe="${gi}" ${gruppe.fehlen ? '' : 'checked'}>
                             ${maskiereAttribut(gruppe.titel)}
+                            ${gruppe.fehlen ? `<span class="altersklassen-fehlen" style="font-weight: 600; color: var(--warning, #b26a00);">· ${gruppe.fehlen} noch nicht kampfbereit</span>` : ''}
                         </label>
                     </legend>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2px 16px;">
                     ${gruppe.eintraege.map(({ e, i }) => `
                         <label class="altersklassen-zeile" style="display: flex; align-items: center; gap: 10px; padding: 6px 4px; cursor: pointer; text-transform: none; letter-spacing: normal; font-weight: 400;">
-                            <input type="checkbox" class="altersklassen-checkbox" data-gruppe="${gi}" value="${maskiereAttribut(e.key)}" id="altersklasseWahl_${i}" checked>
+                            <input type="checkbox" class="altersklassen-checkbox" data-gruppe="${gi}" value="${maskiereAttribut(e.key)}" id="altersklasseWahl_${i}" ${gruppe.fehlen ? '' : 'checked'}>
                             <strong style="min-width: 62px;">${maskiereAttribut(e.gewichtsklasse ? `${e.gewichtsklasse}kg` : 'ohne Klasse')}</strong>
-                            <span style="color: var(--text-muted);">${e.kampfbereit} Teilnehmer${e.angemeldet ? ` · ${e.angemeldet} ungewogen` : ''}</span>
+                            <span style="color: var(--text-muted);">${e.kampfbereit} Teilnehmer${e.angemeldet ? ` · ${e.angemeldet} nicht kampfbereit` : ''}</span>
                         </label>`).join('')}
                     </div>
                 </fieldset>`).join('');
@@ -968,6 +972,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 boxen.filter(b => b.dataset.gruppe === g.dataset.gruppe).forEach(b => { b.checked = g.checked; });
                 aktualisiere();
             }));
+            aktualisiere();
             wrapper.querySelector('#altersklassenAbbrechen').addEventListener('click', () => schliessen(null));
             bestaetigen.addEventListener('click', () => schliessen(boxen.filter(b => b.checked).map(b => b.value)));
         });
@@ -983,7 +988,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const gewaehlt = await waehleAltersklassen({
             titel: 'Pools generieren',
-            hinweis: 'Welche Klassen (Altersklasse, Geschlecht, Gewichtsklasse) sind fertig gewogen und sollen jetzt ausgelost werden?',
+            hinweis: 'Welche Klassen (Altersklasse, Geschlecht, Gewichtsklasse) sind fertig gewogen und sollen jetzt ausgelost werden? Angehakt sind nur Gruppen, in denen alle kampfbereit sind; wer beim Auslosen noch fehlt, gilt als nicht erschienen.',
             eintraege,
             bestaetigenText: 'Pools generieren'
         });

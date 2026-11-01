@@ -269,6 +269,23 @@ test.describe.serial('Waage in Runden', () => {
         await expect(dialog).toBeVisible();
         await expect(dialog.locator('.altersklassen-checkbox')).toHaveCount(1);
         await expect(dialog.locator('.altersklassen-checkbox')).toHaveValue(/^U21\|/);
+        // vollständig gewogen: vorab angehakt
+        await expect(dialog.locator('.altersklassen-checkbox')).toBeChecked();
+        await expect(page.locator('#altersklassenBestaetigen')).toBeEnabled();
+        await page.locator('#altersklassenAbbrechen').click();
+        await expect(dialog).toBeHidden();
+
+        // Ein Dritter ist noch nicht gewogen: die Gruppe bleibt sichtbar, ist aber nicht mehr vorab angehakt
+        const { resp: resp3 } = await legeTeilnehmerAn(request, 'U21', 2, { gewogen: false, gewichtsklasse: '-66' });
+        expect(resp3.ok()).toBeTruthy();
+        await page.reload();
+        await knopf.click();
+        await expect(dialog).toBeVisible();
+        await expect(dialog.locator('.altersklassen-checkbox')).not.toBeChecked();
+        await expect(dialog.locator('.altersklassen-fehlen')).toHaveText('· 1 noch nicht kampfbereit');
+        await expect(page.locator('#altersklassenBestaetigen')).toBeDisabled();
+        await dialog.locator('.altersklassen-gruppe-checkbox').check();
+        await expect(page.locator('#altersklassenBestaetigen')).toBeEnabled();
         await page.locator('#altersklassenAbbrechen').click();
         await expect(dialog).toBeHidden();
     });
