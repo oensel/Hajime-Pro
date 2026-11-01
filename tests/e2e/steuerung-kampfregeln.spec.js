@@ -129,6 +129,35 @@ test.describe('Steuerung: Kampfregeln nach IJF und DJB-WKO', () => {
         await context.close();
     });
 
+    test('Ippon und Hansoku-make zurücknehmen: die Zeit läuft an derselben Stelle weiter', async ({ browser }) => {
+        const { context, steuerung, anzeige } = await oeffne(browser, baueKampf());
+        await starte(steuerung);
+        await steuerung.clock.runFor(30_000);
+        await steuerung.evaluate(() => window.changeScore('W', 'ippon', 1));
+        await expect(steuerung.locator('#btnStartStopLive')).toHaveText('START');
+        await steuerung.clock.runFor(5_000); // nach dem Ippon steht die Uhr
+        const angehalten = (await zustand(steuerung)).timeString;
+        expect(angehalten).toBe('03:30');
+
+        await steuerung.evaluate(() => window.changeScore('W', 'ippon', -1));
+        await expect(anzeige.locator('#outIpponW')).toHaveText('0');
+        expect((await zustand(steuerung)).overlayMode).toBe('none');
+        expect((await zustand(steuerung)).timeString).toBe(angehalten);
+        await starte(steuerung);
+        expect((await zustand(steuerung)).timeRunning).toBe(true);
+        await steuerung.clock.runFor(10_000);
+        expect((await zustand(steuerung)).timeString).toBe('03:20');
+
+        for (let i = 0; i < 3; i++) await steuerung.evaluate(() => window.changeShido('B', 1));
+        await expect(steuerung.locator('#btnStartStopLive')).toHaveText('START');
+        await steuerung.evaluate(() => window.changeShido('B', -1));
+        expect((await zustand(steuerung)).overlayMode).toBe('none');
+        await starte(steuerung);
+        await steuerung.clock.runFor(5_000);
+        expect((await zustand(steuerung)).timeString).toBe('03:15');
+        await context.close();
+    });
+
     test('Haltegriff über das Ende der Kampfzeit (IJF Art. 8.4): der Kampf läuft bis zum Toketa weiter', async ({ browser }) => {
         const { context, steuerung, anzeige, kampf } = await oeffne(browser, baueKampf({ pool_kampfzeit: 3 }));
         await starte(steuerung);
