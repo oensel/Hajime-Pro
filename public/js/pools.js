@@ -861,7 +861,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch(`/api/teilnehmer?turnierId=${encodeURIComponent(turnierId)}`);
             if (!response.ok) return [];
             const alle = await response.json();
-            return alle.filter(t => t.status !== 'kampfbereit' && t.status !== 'zurueckgezogen');
+            // Schon als "nicht erschienen" markierte (z.B. krank gemeldet) sind bekannt und brauchen keine Rückfrage.
+            return alle.filter(t => !['kampfbereit', 'zurueckgezogen', 'nicht_erschienen'].includes(t.status));
         } catch (err) {
             console.error('Fehler beim Prüfen der Kampfbereitschaft:', err);
             return [];
