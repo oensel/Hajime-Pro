@@ -9,7 +9,7 @@
         'win32-x64': 'Datei öffnen. Erscheint „Der Computer wurde durch Windows geschützt“: <b>Weitere Informationen → Trotzdem ausführen</b>. Danach liegt „Hajime Pro“ auf dem Desktop.',
         'darwin-universal': 'Datei öffnen und „Hajime Pro“ in den Ordner <b>Programme</b> ziehen. Beim ersten Start: <b>Systemeinstellungen → Datenschutz &amp; Sicherheit → Trotzdem öffnen</b>.',
         'linux-x64': 'Datei ausführbar machen und starten. Unter Ubuntu ab 22.04 einmalig nötig: <code>sudo apt install libfuse2</code> (ab 24.04: <code>sudo apt install libfuse2t64</code>).',
-        android: 'Datei öffnen und <b>Installieren</b> tippen. Beim ersten Mal fragt Android, ob dieser Browser Apps installieren darf: <b>Einstellungen → Aus dieser Quelle zulassen</b>, dann zurück und erneut installieren. Danach „Hajime Pro“ öffnen und den QR-Code auf der Seite <b>Matten</b> des Hallen-Servers scannen%CODE%.'
+        android: 'Datei öffnen und <b>Installieren</b> tippen. Beim ersten Mal fragt Android, ob dieser Browser Apps installieren darf: <b>Einstellungen → Aus dieser Quelle zulassen</b>, dann zurück und erneut installieren. Danach „Hajime Pro“ öffnen und den QR-Code auf der Seite <b>Client-Konfig</b> des Hallen-Servers (Karte „Neues Gerät koppeln“) scannen%CODE%.'
     };
     const ua = navigator.userAgent;
     const hinweis = document.getElementById('downloadHinweis');

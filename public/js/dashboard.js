@@ -223,7 +223,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     else if (p.status === 'aktiv') barClass = 'active';
 
                     const remaining = p.gesamt_kaempfe - p.beendete_kaempfe;
-                    let statusText = `noch ${remaining} Kämpfe`;
+                    let statusText = remaining === 1 ? 'noch 1 Kampf' : `noch ${remaining} Kämpfe`;
                     if (p.start_in_minuten != null) {
                         statusText += p.start_in_minuten < 2 ? ' · Start gleich' : ` · Start in ca. ${p.start_in_minuten} Min.`;
                     }
