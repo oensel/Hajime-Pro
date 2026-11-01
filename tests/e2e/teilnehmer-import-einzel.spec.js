@@ -369,14 +369,14 @@ test.describe.serial('Teilnehmer-Import und -Verwaltung (teilnehmer.html)', () =
         const altersklasseFeld = page.locator('#altersklasse');
         const gewichtsklasseFeld = page.locator('#gewichtsklasse');
 
-        // Aus dem Import vorbelegt: Gewicht 25kg, keine Judopass-Nr., Lizenz technisch abgelaufen
-        // (1970-01-01, siehe importTeilnehmer) -> aktualisiereSpeicherButtonStatus() in
-        // waage-modal.js hält den (immer sichtbaren) Speichern-Button deshalb zunächst deaktiviert
-        // (fehlende Passnr. UND ungültige Lizenz).
-        await expect(gewichtFeld).toHaveValue('25,00');
+        // Aus dem Import: Gewicht 25kg (noch nicht gewogen -> nur als Platzhalter), keine Judopass-Nr.,
+        // Lizenz technisch abgelaufen (1970-01-01, siehe importTeilnehmer). Ohne eingetipptes Gewicht ist
+        // das eine Korrektur: Speichern geht ohne Passnr. und Lizenz (aktualisiereSpeicherButtonStatus()).
+        await expect(gewichtFeld).toHaveValue('');
+        await expect(gewichtFeld).toHaveAttribute('placeholder', 'gemeldet 25 kg');
         await expect(judopassFeld).toHaveValue('');
         await expect(speichernBtn).toBeVisible();
-        await expect(speichernBtn).toBeDisabled();
+        await expect(speichernBtn).toBeEnabled();
 
         // Alters- und Gewichtsklasse müssen bereits aus dem Import korrekt vorbelegt sein: U11
         // männlich, 25kg fällt nach den DJB-Gewichtsklassen (siehe altersklassen.json, "-23","-25",
@@ -387,9 +387,11 @@ test.describe.serial('Teilnehmer-Import und -Verwaltung (teilnehmer.html)', () =
         // Gewicht um 1kg erhöhen -> befehleGewichtsklassenDropdown() in waage-modal.js wählt die
         // Gewichtsklasse automatisch neu: 26kg passt nicht mehr in "-25", die nächstgrößere Klasse
         // ist "-27". Die Altersklasse bleibt unverändert (U11).
+        // Ein eingetipptes Gewicht ist das Einwiegen: jetzt fehlen Passnr. und gültige Lizenz.
         await gewichtFeld.fill('26');
         await expect(gewichtsklasseFeld).toHaveValue('-27');
         await expect(altersklasseFeld).toHaveValue('U11');
+        await expect(speichernBtn).toBeDisabled();
 
         // Lizenz auf ein Datum in der Vergangenheit setzen -> muss rot (abgelaufen) markiert werden.
         await lizenzFeld.fill('2020-01-01');
@@ -497,25 +499,26 @@ test.describe.serial('Teilnehmer-Import und -Verwaltung (teilnehmer.html)', () =
         await wettkampftagPage.close();
     });
 
-    test('Klick ins Gewichtsfeld leert es für die direkte Neueingabe', async () => {
+    test('Gewichtsfeld: gemeldetes Gewicht als Platzhalter, Klick leert es für die direkte Neueingabe', async () => {
         const [editVorname, editNachname] = arminiaEinzel[0];
         const zeile = findeZeile(editVorname, editNachname, 'Arminia Appelhülsen');
         await zeile.locator('.icon-edit').click();
         const waageModal = page.locator('#waageModal');
         await expect(waageModal).toBeVisible();
 
+        // Zuletzt ohne "gewogen" gespeichert: das gemeldete Gewicht steht nur als Platzhalter da.
         const gewichtFeld = page.locator('#gewicht');
-        await expect(gewichtFeld).toHaveValue('26,00');
-
-        // Klick leert das Feld, direkt danach getippte Ziffern ergeben das neue Gewicht.
-        await gewichtFeld.click();
         await expect(gewichtFeld).toHaveValue('');
+        await expect(gewichtFeld).toHaveAttribute('placeholder', 'gemeldet 26 kg');
+
+        // Direkt getippte Ziffern ergeben das neue Gewicht.
+        await gewichtFeld.click();
         await page.keyboard.type('27,5');
         await expect(gewichtFeld).toHaveValue('27,5');
         await expect(page.locator('#gewichtsklasse')).toHaveValue('-29');
 
-        // Feld ohne Eingabe wieder verlassen -> bisheriger Wert kommt zurück (ein versehentlicher
-        // Klick soll kein Gewicht löschen).
+        // Ein Klick leert das Feld; ohne Eingabe wieder verlassen -> bisheriger Wert kommt zurück (ein
+        // versehentlicher Klick soll kein Gewicht löschen).
         await gewichtFeld.click();
         await expect(gewichtFeld).toHaveValue('');
         await page.locator('#vorname').click();
@@ -548,7 +551,9 @@ test.describe.serial('Teilnehmer-Import und -Verwaltung (teilnehmer.html)', () =
         await expect(page.locator('#nachname')).toHaveValue(editNachname);
         await expect(page.locator('#verein')).toHaveValue('Arminia Appelhülsen');
         await expect(page.locator('#judopass_id')).toHaveValue('JP-ARM-0001');
-        await expect(page.locator('#gewicht')).toHaveValue('26,00'); // stammt aus dem bestehenden Datensatz, nicht aus dem QR-Code
+        // stammt aus dem bestehenden Datensatz (nicht gewogen: als Platzhalter), nicht aus dem QR-Code
+        await expect(page.locator('#gewicht')).toHaveValue('');
+        await expect(page.locator('#gewicht')).toHaveAttribute('placeholder', 'gemeldet 26 kg');
         await expect(page.locator('#lizenz_ablauf')).toHaveValue('2032-05-01'); // aus dem QR-Code übernommener, gültiger Lizenzablauf
         await expect(page.locator('#lizenz_ablauf')).toHaveClass(/lizenz-valid/);
 

@@ -497,14 +497,14 @@ test.describe.serial('Teilnehmer-Import und -Verwaltung, reines Mannschaftsturni
         const altersklasseFeld = page.locator('#altersklasse');
         const gewichtsklasseFeld = page.locator('#gewichtsklasse');
 
-        // Aus dem Import vorbelegt: Gewicht 40kg, keine Judopass-Nr., Lizenz technisch abgelaufen
-        // (1970-01-01, siehe importTeilnehmer) -> aktualisiereSpeicherButtonStatus() in
-        // waage-modal.js hält den (immer sichtbaren) Speichern-Button deshalb zunächst deaktiviert
-        // (fehlende Passnr. UND ungültige Lizenz).
-        await expect(gewichtFeld).toHaveValue('40,00');
+        // Aus dem Import: Gewicht 40kg (noch nicht gewogen -> nur als Platzhalter), keine Judopass-Nr.,
+        // Lizenz technisch abgelaufen (1970-01-01, siehe importTeilnehmer). Ohne eingetipptes Gewicht ist
+        // das eine Korrektur: Speichern geht ohne Passnr. und Lizenz (aktualisiereSpeicherButtonStatus()).
+        await expect(gewichtFeld).toHaveValue('');
+        await expect(gewichtFeld).toHaveAttribute('placeholder', 'gemeldet 40 kg');
         await expect(judopassFeld).toHaveValue('');
         await expect(speichernBtn).toBeVisible();
-        await expect(speichernBtn).toBeDisabled();
+        await expect(speichernBtn).toBeEnabled();
 
         // Alters- und Gewichtsklasse müssen bereits aus dem Import korrekt vorbelegt sein: U15 männlich.
         await expect(altersklasseFeld).toHaveValue('U15');
