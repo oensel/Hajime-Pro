@@ -457,13 +457,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    // Leere Liste: ohne Suchbegriff ist noch niemand gemeldet, sonst passt nur die Suche nicht.
+    function leerText() {
+        return athletenDaten.length === 0 ? 'Keine Teilnehmer gemeldet.' : 'Keine Treffer für diese Suche.';
+    }
+
     // Handy-Ansicht (html.modus-handy, siehe css/handy.css): dieselben Daten als Karten — Name, Verein,
     // Jahrgang/Klasse und rechts "gewogen" (Gewicht) bzw. "offen". Tippen öffnet die Waage.
     function renderHandyKarten(athleten) {
         const container = document.getElementById('handyKarten');
         if (!container) return;
         if (athleten.length === 0) {
-            container.innerHTML = '<p class="handy-leer">Noch keine Teilnehmer.</p>';
+            container.innerHTML = `<p class="handy-leer">${leerText()}</p>`;
             return;
         }
         container.innerHTML = athleten.map(athlet => {
@@ -502,7 +507,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         letzteAthleten = athleten;
         if (document.documentElement.classList.contains('modus-app') || handyBreite.matches) renderHandyKarten(athleten);
         if (athleten.length === 0) {
-            tableBody.innerHTML = `<tr><td colspan="12" class="no-data">Noch keine Kämpfer für dieses Turnier eingewogen.</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="12" class="no-data">${leerText()}</td></tr>`;
             updateBulkActionsBar();
             return;
         }
