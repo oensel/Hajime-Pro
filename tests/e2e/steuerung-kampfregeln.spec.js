@@ -104,6 +104,9 @@ test.describe('Steuerung: Kampfregeln nach IJF und DJB-WKO', () => {
         await expect(anzeige.locator('#outIpponB')).toHaveText('1');
         await expect(anzeige.locator('#outWazaB')).toHaveText('0');
         expect((await zustand(steuerung)).overlayMode).toBe('ippon');
+        // Die Uhr steht: Steuerung, Anzeigetafel (gelbe Zeit) und Video sehen den Kampf nicht mehr als laufend
+        expect((await zustand(steuerung)).timeRunning).toBe(false);
+        await expect(anzeige.locator('#outTimer')).toHaveCSS('color', 'rgb(255, 193, 7)');
         await context.close();
 
         const zweiter = await oeffne(browser, baueKampf());
@@ -114,6 +117,16 @@ test.describe('Steuerung: Kampfregeln nach IJF und DJB-WKO', () => {
         await expect(zweiter.anzeige.locator('#outIpponW')).toHaveText('1');
         expect((await zustand(zweiter.steuerung)).overlayMode).toBe('ippon');
         await zweiter.context.close();
+    });
+
+    test('Dritter Shido (Hansoku-make) hält die Uhr an, auch für die Anzeigetafel', async ({ browser }) => {
+        const { context, steuerung, anzeige } = await oeffne(browser, baueKampf());
+        await starte(steuerung);
+        for (let i = 0; i < 3; i++) await steuerung.evaluate(() => window.changeShido('B', 1));
+        await expect(steuerung.locator('#btnStartStopLive')).toHaveText('START');
+        expect((await zustand(steuerung)).timeRunning).toBe(false);
+        await expect(anzeige.locator('#outTimer')).toHaveCSS('color', 'rgb(255, 193, 7)');
+        await context.close();
     });
 
     test('Haltegriff über das Ende der Kampfzeit (IJF Art. 8.4): der Kampf läuft bis zum Toketa weiter', async ({ browser }) => {

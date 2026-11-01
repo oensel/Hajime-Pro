@@ -504,6 +504,8 @@ function stopAllTimers() {
     clearInterval(osaeIntervalB);
     
     isRunning = false;
+    // Anzeigetafel (Zeitfarbe) und Video lesen den Laufzustand aus dem State, nicht aus isRunning
+    state.timeRunning = false;
     state.osaeRunningW = false;
     state.osaeRunningB = false;
     
