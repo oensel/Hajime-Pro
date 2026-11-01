@@ -601,6 +601,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // ID des im Editier-Modus bearbeiteten Teilnehmers bzw. des per QR-Scan gefundenen
     // Bestandsteilnehmers (für PUT statt POST beim Speichern).
     let editId = null;
+    // Zählt jedes Öffnen/Schließen des Dialogs: ein langsames Speichern darf danach nicht mehr das Formular des
+    // nächsten Kämpfers zurücksetzen (Waage tippt schon weiter, während der Client noch auf den Server wartet).
+    let formularSitzung = 0;
     let scanMatchedId = null;
 
     // Für den "Als gewogen markieren?"-Dialog beim Speichern (siehe Submit-Handler unten):
@@ -859,6 +862,7 @@ document.addEventListener('DOMContentLoaded', () => {
         modal.style.display = 'none';
         schliesseScannerFallsAktiv();
         editId = null;
+        formularSitzung += 1;
     };
 
     document.getElementById('stopScanBtn')?.addEventListener('click', () => {
@@ -870,6 +874,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // das Bearbeiten-Icon je Tabellenzeile darauf verdrahtet.
     window.oeffneWaageModal = (id = null, { mitScan = false } = {}) => {
         editId = id || null;
+        formularSitzung += 1;
         setzeFormularZurueck();
         waageModalTitle.innerText = editId ? (istHandyModus ? 'Waage' : 'Teilnehmer bearbeiten') : 'Teilnehmer hinzufügen';
         modal.style.display = 'flex';
@@ -1021,6 +1026,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (teilnehmerForm) {
         teilnehmerForm.addEventListener('submit', async (e) => {
             e.preventDefault();
+            const sitzung = formularSitzung;
 
             const gewichtsEingabe = document.getElementById('gewicht').value.trim();
             let gewichtFormatiert = parseFloat(gewichtsEingabe.replace(',', '.'));
@@ -1117,8 +1123,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     // Handy: auch ein per Scan gefundener, bereits gelisteter Teilnehmer ist nach dem Wiegen
                     // erledigt -> zurück zur Liste statt zum leeren "Teilnehmer hinzufügen"-Formular.
-                    if (editId || (istHandyModus && scanMatchedId)) {
-                        setTimeout(schliesseModal, 800);
+                    if (sitzung !== formularSitzung) {
+                        // Dialog wurde während des Speicherns geschlossen oder neu geöffnet: Eingaben dort bleiben.
+                    } else if (editId || (istHandyModus && scanMatchedId)) {
+                        setTimeout(() => { if (sitzung === formularSitzung) schliesseModal(); }, 800);
                     } else {
                         // Kampfbereit-Bestätigung anbieten, bevor das Formular für den nächsten
                         // Athleten zurückgesetzt wird (Modal bleibt für die Erfassung des
