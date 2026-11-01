@@ -355,6 +355,9 @@
             const r = await restJson(`/api/pools/${poolId}/abschliessen`, { method: 'POST' });
             return r.ok ? { ok: true } : { ok: false, fehler: r.fehler || 'Pool konnte nicht abgeschlossen werden.' };
         }
+        // Schon abgeschlossen (z.B. doppelter Klick, bevor die Sperre der Matte verschwindet): nichts erneut schreiben.
+        const pool = await db.get(`pool:${poolId}`).catch(() => null);
+        if (pool && pool.status === 'abgeschlossen') return { ok: true };
         return ohneDoc(await aendereDokument(`pool:${poolId}`, { status: 'abgeschlossen' }));
     }
 
