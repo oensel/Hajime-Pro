@@ -104,9 +104,11 @@ function baueAusschreibungFragment(ausschreibungPdfBase64, ausschreibungDateinam
 // Wird ein Startgeld verlangt, müssen die Zahlungsdaten vollständig sein, sonst kann später
 // niemand zuverlässig bezahlen (fehlende IBAN/Kontoinhaber/Verwendungszweck).
 // In der Cloud genügt ein Konto in den Abrechnungsdaten des Vereins (IBAN + Kontoinhaber), der Verwendungszweck entfällt.
-async function validiereZahlungsdaten(knex, { startgeld, iban, kontoinhaber, verwendungszweck, vereinId, ausCloud = false }) {
+// Wird nur bar bezahlt (kein Überweisung/Lastschrift unter den angebotenen Zahlwegen), braucht es kein Konto.
+async function validiereZahlungsdaten(knex, { startgeld, iban, kontoinhaber, verwendungszweck, vereinId, angeboteneZahlwege, ausCloud = false }) {
     const startgeldWert = startgeld !== undefined && startgeld !== '' ? parseInt(startgeld, 10) : 0;
     if (!(startgeldWert > 0)) return null;
+    if (angeboteneZahlwege != null && !String(angeboteneZahlwege).split(',').some(z => z === 'ueberweisung' || z === 'lastschrift')) return null;
     const gefuellt = (w) => !!w && String(w).trim() !== '';
     if (istEinzelbenutzerBetrieb()) {
         // Ein aus der Cloud geholtes Turnier trägt das Vereinskonto nicht mit (Export ohne Konto): lokal nicht erzwingen.
@@ -285,7 +287,7 @@ export async function createTurnier(knex, req, res) {
             const avFehler = await pruefeAvVertragFuerTurnier(knex, vereinId);
             if (avFehler) return res.status(avFehler.statusCode).json({ success: false, error: avFehler.message, code: avFehler.code });
         }
-        const zahlungsFehler = await validiereZahlungsdaten(knex, { startgeld, iban, kontoinhaber, verwendungszweck, vereinId });
+        const zahlungsFehler = await validiereZahlungsdaten(knex, { startgeld, iban, kontoinhaber, verwendungszweck, vereinId, angeboteneZahlwege: zahlwegFelder.fragment.angebotene_zahlwege });
         if (zahlungsFehler) {
             return res.status(400).json({ success: false, error: zahlungsFehler });
         }
@@ -370,7 +372,11 @@ export async function updateTurnier(knex, req, res) {
         if (bestehendesTurnier.status === 'abgeschlossen') {
             return res.status(403).json({ success: false, error: 'Ein abgeschlossenes Turnier befindet sich im schreibgeschützten Archiv-Zustand.' });
         }
-        const zahlungsFehler = await validiereZahlungsdaten(knex, { startgeld, iban, kontoinhaber, verwendungszweck, vereinId: bestehendesTurnier.verein_id, ausCloud: bestehendesTurnier.urspruengliche_id != null });
+        const zahlungsFehler = await validiereZahlungsdaten(knex, {
+            startgeld, iban, kontoinhaber, verwendungszweck, vereinId: bestehendesTurnier.verein_id,
+            angeboteneZahlwege: zahlwegFelder.fragment.angebotene_zahlwege ?? bestehendesTurnier.angebotene_zahlwege,
+            ausCloud: bestehendesTurnier.urspruengliche_id != null
+        });
         if (zahlungsFehler) {
             return res.status(400).json({ success: false, error: zahlungsFehler });
         }

@@ -129,7 +129,14 @@ test('Alters- und Mannschaftsklassen auswählen und mit dem Turnier speichern', 
     // Kein Update durchgelaufen -> weiterhin auf derselben Edit-Seite
     await expect(page).toHaveURL(/\/turnier\.html\?id=\d+/);
 
-    // --- Mit vollständigen Zahlungsdaten geht das Speichern durch ---
+    // --- Nur bar an der Waage: kein Konto nötig, das Speichern geht ohne Zahlungsdaten durch ---
+    await page.locator('#zahlwegUeberweisung').uncheck();
+    await expect(page.locator('#verwendungszweckGruppe')).toBeHidden();
+    await page.locator('#submitBtn').click();
+    await expect(page.locator('#snackbarText')).toHaveText('Turnier erfolgreich aktualisiert!');
+    await page.locator('#zahlwegUeberweisung').check();
+
+    // --- Mit Überweisung und vollständigen Zahlungsdaten geht das Speichern durch ---
     await page.locator('#iban').fill('DE12345678901234567890');
     await page.locator('#kontoinhaber').fill('JC Senden e.V.');
     await page.locator('#verwendungszweck').fill('Startgeld <Turniername> <Verein>');
