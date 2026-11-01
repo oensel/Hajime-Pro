@@ -3,7 +3,7 @@
 // übernommen, nur der Navigations-/Ladezyklus wurde auf ein Modal umgestellt.
 import { initialisiereScanner } from './qr-scanner.js';
 import { ermittleJahrAusWert, findeTeilnehmerZuPass } from '/js/shared/passAbgleich.js';
-import { waehleStandardAltersklasse, jahrgaengeText } from '/js/shared/altersklassenJahrgaenge.js';
+import { standardAltersklassenFuerAlter, waehleStandardAltersklasse, jahrgaengeText } from '/js/shared/altersklassenJahrgaenge.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -185,7 +185,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Befüllt die Gewichtsklassen basierend auf der Altersklasse und wählt die passende Klasse automatisch aus
+    // Übergangsjahrgang (z.B. 2016 in U11 und U13): zeigt unter der Auswahl, in welcher anderen
+    // ausgetragenen Klasse der Judoka ebenfalls starten darf. Die Wahl selbst bleibt frei.
+    const zeigeUebergangsHinweis = () => {
+        const hinweis = document.getElementById('altersklasseHinweis');
+        if (!hinweis) return;
+        const jahr = parseInt(document.getElementById('geburtsjahr')?.value, 10);
+        const geschlecht = geschlechtsSelect?.value;
+        const gewaehlt = altersklasseSelect?.value;
+        const istAusgetragen = (id) => !turnierAltersklassen || turnierAltersklassen.includes(`${geschlecht}_${id}`) || turnierAltersklassen.includes(`mixed_${id}`);
+        const moeglich = jahr && geschlecht ? standardAltersklassenFuerAlter(wettkampfJahr - jahr, geschlecht).filter(istAusgetragen) : [];
+        const andere = moeglich.filter(id => id !== gewaehlt);
+        hinweis.hidden = !(gewaehlt && moeglich.includes(gewaehlt) && andere.length > 0);
+        if (!hinweis.hidden) hinweis.textContent = `Jahrgang ${jahr} darf auch in ${andere.join(' oder ')} starten (Übergangsrecht).`;
+    };
+
     const befehleGewichtsklassenDropdown = () => {
+        zeigeUebergangsHinweis();
         if (!djbKlassenZentrale || !altersklasseSelect || !gewichtsklasseSelect || !geschlechtsSelect) return;
 
         const gewaehltesGeschlecht = geschlechtsSelect.value;
@@ -678,7 +694,14 @@ document.addEventListener('DOMContentLoaded', () => {
             befehleAltersklassenDropdown();
         }
 
-        bestimmeUndWaehleAltersklasse();
+        // Ein bekannter Teilnehmer behält seine Altersklasse (z.B. bewusst die ältere bei einem
+        // Übergangsjahrgang); nur ohne gespeicherte Klasse wird sie aus dem Jahrgang ermittelt.
+        if (treffer?.altersklasse && [...altersklasseSelect.options].some(o => o.value === treffer.altersklasse)) {
+            altersklasseSelect.value = treffer.altersklasse;
+            befehleGewichtsklassenDropdown();
+        } else {
+            bestimmeUndWaehleAltersklasse();
+        }
 
         uebernimmGewichtsklasse(parsedData.gewichtsklasse);
 

@@ -498,6 +498,8 @@ select.status-select:focus {
     font-weight: 600;
 }
 #waageModal .lizenz-hinweis[hidden] { display: none; }
+#waageModal .altersklasse-hinweis { display: block; margin-top: 4px; font-size: 12px; color: var(--text-secondary, #666); }
+#waageModal .altersklasse-hinweis[hidden] { display: none; }
 #waageModal .lizenz-hinweis[data-art="abgelaufen"] {
     background: rgba(198, 40, 40, 0.12);
     color: #b71c1c;
