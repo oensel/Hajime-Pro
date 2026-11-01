@@ -1,6 +1,6 @@
 // Reiter Turnier: das Dashboard der Halle fürs Handy (Variante B: eine Matte je Ansicht, Wechsel per Chip).
 import { api } from './api.js';
-import { h, icon, inhalt, setzeStatus, setzeStopp, zeigeTabs } from './ui.js';
+import { h, icon, inhalt, setzeStatus, setzeStopp, starteAktualisierung, zeigeTabs } from './ui.js';
 import { kaempferAnzeige, kampfLink, verbindung, poolStatus, poolName } from './anzeige.js';
 
 const MERKER = 'hajime-live-meta:matte';
@@ -53,7 +53,7 @@ export async function zeigeTurnier({ key, teile }) {
     let letzte = null;
     let timer = null;
     let beendet = false;
-    const stoppeTimer = () => { beendet = true; if (timer) { clearInterval(timer); timer = null; } };
+    const stoppeTimer = () => { beendet = true; if (timer) { timer(); timer = null; } };
     setzeStopp(stoppeTimer);
 
     async function lade() {
@@ -96,5 +96,5 @@ export async function zeigeTurnier({ key, teile }) {
             ] : []));
     }
     await lade();
-    if (!beendet) timer = setInterval(() => { if (document.visibilityState === 'visible') lade(); }, 5000);
+    if (!beendet) timer = starteAktualisierung(lade, 5000);
 }
