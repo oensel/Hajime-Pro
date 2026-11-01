@@ -389,7 +389,10 @@ export function erzeugeBruecke({ knex, zustand, abgleich }) {
         }
         zurueckgestellt.delete(doc._id);
         await markiereAngewendet(doc);
-        await abgleich.fuehreAus();
+        // Nur einplanen (entprellt), nicht abwarten: der Abgleich vergleicht alle Dokumente mit der relationalen DB.
+        // Nach jedem einzelnen Dokument darauf zu warten, staut bei mehreren Matten die Brücke um viele Sekunden;
+        // die Geräte warten dann vergeblich auf die Bestätigung (WARTE_MS in datenzugriff.js).
+        abgleich.plane();
     }
 
     function starte() {
@@ -397,6 +400,10 @@ export function erzeugeBruecke({ knex, zustand, abgleich }) {
         if (!db || feed) return;
         feed = db.changes({ since: 0, live: true, include_docs: true, conflicts: true });
         feed.on('change', (change) => {
+            // Reine Server-Revisionen ohne Konflikt (z.B. Abgleich nach einem Ergebnis: Zeitprognose aller Kämpfe)
+            // braucht die Brücke nicht; sie stünden sonst vor den Ergebnissen der Matten in der Warteschlange.
+            const d = change.doc;
+            if (d && !d._deleted && d.bearbeitet_von === 'server' && !(d._conflicts && d._conflicts.length)) return;
             offen++;
             if (klaerungsTimer) {
                 clearTimeout(klaerungsTimer);
