@@ -154,14 +154,25 @@ document.addEventListener('DOMContentLoaded', async () => {
         }).join('');
     }
 
+    // Nur abgeschlossene Pools stehen in der Liste; noch laufende oder ungeprüfte werden genannt, statt still zu fehlen.
+    function zeigeOffenePools(offen) {
+        const hinweis = document.getElementById('offenePoolsHinweis');
+        if (!hinweis) return;
+        hinweis.hidden = offen.length === 0;
+        if (!offen.length) return;
+        const namen = offen.map(p => p.bezeichnung || `Pool ${p.id}`).join(', ');
+        hinweis.textContent = `Noch nicht abgeschlossen und deshalb nicht aufgeführt: ${namen}`;
+    }
+
     async function ladeSiegerliste() {
         try {
             const response = await fetch(`/api/pools/details?turnierId=${turnierId}`);
             const allePools = await response.json();
-            const pools = allePools.filter(pool => pool.status === 'abgeschlossen');
 
-            if (!response.ok) throw new Error((pools && pools.error) || 'Siegerliste konnte nicht geladen werden.');
-            if (!Array.isArray(pools)) throw new Error('Unerwartetes Antwortformat.');
+            if (!response.ok) throw new Error((allePools && allePools.error) || 'Siegerliste konnte nicht geladen werden.');
+            if (!Array.isArray(allePools)) throw new Error('Unerwartetes Antwortformat.');
+            const pools = allePools.filter(pool => pool.status === 'abgeschlossen');
+            zeigeOffenePools(allePools.filter(pool => pool.status === 'gestartet' || pool.status === 'kaempfe_beendet'));
 
             const alleStandings = pools.map(pool => berechnePoolStandings(pool));
 
