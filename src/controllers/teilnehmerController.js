@@ -8,6 +8,7 @@ import { turnierHatEchteKaempfe, mannschaftsPoolsHabenEchteKaempfe, ermittleAlte
 import { FachFehler } from '../utils/fachFehler.js';
 import { startgeldErfuellt, istZahlwegGesichert } from '../shared/zahlweg.js';
 import { ladeZahlwegFuerVerein } from '../services/zahlwege.js';
+import { standardAltersklassenFuerAlter, waehleStandardAltersklasse } from '../shared/altersklassenJahrgaenge.js';
 import betriebsmodus from '../config/betriebsmodus.cjs';
 const { istEinzelbenutzerBetrieb } = betriebsmodus;
 
@@ -1014,25 +1015,16 @@ function ermittleAltersklasse(geburtsjahr, geschlecht, wettkampfJahr, turnierAlt
 
     const alter = wettkampfJahr - geburtsJahr;
 
-    let standardKandidat = '';
-    // U9 = alles unterhalb der U11 (NWJV: U11 beginnt mit 8 Jahren), also keine Untergrenze.
-    if (alter >= 0 && alter <= 7) standardKandidat = 'U9';
-    else if (alter >= 8 && alter <= 10) standardKandidat = 'U11';
-    else if (alter >= 11 && alter <= 12) standardKandidat = 'U13';
-    else if (alter >= 13 && alter <= 14) standardKandidat = 'U15';
-    else if (alter >= 15 && alter <= 17) standardKandidat = 'U18';
-    else if (alter >= 18 && alter <= 20) standardKandidat = 'U21';
-    else if (alter > 20) {
-        standardKandidat = geschlecht === 'weiblich' ? 'Frauen' : (geschlecht === 'mixed' ? 'Mixed' : 'Männer');
-    }
+    // Übergangsjahrgänge (z.B. 2016 in U11 und U13): jüngste Klasse zuerst, sonst die ältere,
+    // falls nur diese ausgetragen wird (siehe src/shared/altersklassenJahrgaenge.js).
+    const standardKandidat = standardAltersklassenFuerAlter(alter, geschlecht)[0] || '';
 
     if (!turnierAltersklassenKeys) return standardKandidat;
 
     const istAktiviert = (id) => turnierAltersklassenKeys.includes(`${geschlecht}_${id}`) || turnierAltersklassenKeys.includes(`mixed_${id}`);
 
-    if (standardKandidat && istAktiviert(standardKandidat)) {
-        return standardKandidat;
-    }
+    const ausgetragen = waehleStandardAltersklasse(alter, geschlecht, istAktiviert);
+    if (ausgetragen) return ausgetragen;
 
     // Frei benannte Klassen dieses Geschlechts (inkl. "mixed") ermitteln
     const freieIds = turnierAltersklassenKeys
@@ -1065,12 +1057,6 @@ function ermittleAltersklasse(geburtsjahr, geschlecht, wettkampfJahr, turnierAlt
 
     if (besteUKlasse) return besteUKlasse.id;
     if (besteVeteranenKlasse) return besteVeteranenKlasse.id;
-
-    // U21 nicht ausgetragen, aber Männer/Frauen/Mixed: die Jugendlichen starten in der Erwachsenenklasse.
-    if (standardKandidat === 'U21') {
-        const erwachsenenKlasse = geschlecht === 'weiblich' ? 'Frauen' : (geschlecht === 'mixed' ? 'Mixed' : 'Männer');
-        if (istAktiviert(erwachsenenKlasse)) return erwachsenenKlasse;
-    }
 
     // Nichts Passendes unter den aktivierten Klassen gefunden: trotzdem die alters-typische
     // Standardklasse zurückgeben (statt komplett leer zu bleiben) — sonst zeigt die
