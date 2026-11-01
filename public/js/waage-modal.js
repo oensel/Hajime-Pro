@@ -3,6 +3,7 @@
 // übernommen, nur der Navigations-/Ladezyklus wurde auf ein Modal umgestellt.
 import { initialisiereScanner } from './qr-scanner.js';
 import { ermittleJahrAusWert, findeTeilnehmerZuPass } from '/js/shared/passAbgleich.js';
+import { waehleStandardAltersklasse, jahrgaengeText } from '/js/shared/altersklassenJahrgaenge.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -277,7 +278,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const opt = document.createElement('option');
             opt.value = klasse.id;
-            opt.innerText = `${klasse.bezeichnung} (Jahrgänge: ${klasse.jahrgaenge})`;
+            const jahrgaenge = jahrgaengeText(klasse.id, wettkampfJahr);
+            opt.innerText = jahrgaenge ? `${klasse.bezeichnung} (Jahrgänge ${jahrgaenge})` : klasse.bezeichnung;
             altersklasseSelect.appendChild(opt);
         });
 
@@ -293,7 +295,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // Automatische Altersklassen-Ermittlung anhand des Geburtsjahres. Bevorzugt die aktivierte
-    // Standardklasse (Alterstabelle unverändert); ist diese nicht aktiviert, werden frei benannte
+    // Standardklasse (bei Übergangsjahrgängen die jüngere); ist keine davon aktiviert, werden frei benannte
     // Klassen des Turniers geprüft: "U<Zahl>" (Alter < Zahl, kleinste Zahl gewinnt) und
     // "Ü<Zahl>"/"Veteranen" (Alter >= Zahl, ohne Zahl gilt "Veteranen" als Ü30; größte Zahl gewinnt).
     const bestimmeUndWaehleAltersklasse = () => {
@@ -310,30 +312,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const alter = wettkampfJahr - geburtsJahr;
         const geschlecht = geschlechtsSelect.value;
 
-        let standardKandidat = "";
-        // U9 = alles unterhalb der U11 (NWJV: U11 beginnt mit 8 Jahren), also keine Untergrenze.
-        if (alter >= 0 && alter <= 7) {
-            standardKandidat = "U9";
-        } else if (alter >= 8 && alter <= 10) {
-            standardKandidat = "U11";
-        } else if (alter >= 11 && alter <= 12) {
-            standardKandidat = "U13";
-        } else if (alter >= 13 && alter <= 14) {
-            standardKandidat = "U15";
-        } else if (alter >= 15 && alter <= 17) {
-            standardKandidat = "U18";
-        } else if (alter >= 18 && alter <= 20) {
-            standardKandidat = "U21";
-        } else if (alter > 20) {
-            standardKandidat = geschlecht === 'weiblich' ? 'Frauen' : (geschlecht === 'mixed' ? 'Mixed' : 'Männer');
-        }
-
         const istAktiviert = (id) => !turnierAltersklassen || turnierAltersklassen.includes(`${geschlecht}_${id}`) || turnierAltersklassen.includes(`mixed_${id}`);
 
-        let ermittelteKlasseID = "";
-        if (standardKandidat && istAktiviert(standardKandidat)) {
-            ermittelteKlasseID = standardKandidat;
-        } else if (turnierAltersklassen) {
+        // Übergangsjahrgänge (z.B. 2016 in U11 und U13): jüngste ausgetragene Klasse zuerst.
+        let ermittelteKlasseID = waehleStandardAltersklasse(alter, geschlecht, istAktiviert);
+        if (!ermittelteKlasseID && turnierAltersklassen) {
             let besteUKlasse = null;
             let besteVeteranenKlasse = null;
 
@@ -357,15 +340,8 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (besteVeteranenKlasse) {
                 ermittelteKlasseID = besteVeteranenKlasse.id;
             }
-            // U21 nicht ausgetragen, aber Männer/Frauen/Mixed: Start in der Erwachsenenklasse.
-            if (!ermittelteKlasseID && standardKandidat === 'U21') {
-                const erwachsenenKlasse = geschlecht === 'weiblich' ? 'Frauen' : (geschlecht === 'mixed' ? 'Mixed' : 'Männer');
-                if (istAktiviert(erwachsenenKlasse)) ermittelteKlasseID = erwachsenenKlasse;
-            }
             // Nichts Passendes gefunden: NICHT auf die (nicht aktivierte) Standardklasse
             // zurückfallen — das Turnier bietet sie nicht an.
-        } else {
-            ermittelteKlasseID = standardKandidat;
         }
 
         if (ermittelteKlasseID && altersklasseSelect) {
