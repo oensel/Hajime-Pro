@@ -16,6 +16,7 @@ import { MannschaftJederGegenJedenManager } from '../services/MannschaftJederGeg
 import { MannschaftDoppelKo8Manager } from '../services/MannschaftDoppelKo8Manager.js';
 import { MannschaftDoppelKo16Manager } from '../services/MannschaftDoppelKo16Manager.js';
 import { ermittlePausensekunden } from '../shared/pausenRegel.js';
+import { ermittleGoldenScoreEinstellungen, ermittleKampfzeitUeKlasse } from '../shared/kampfRegeln.js';
 import { verteilePoolsAufMatten } from '../services/mattenVerteilung.js';
 import { startgeldErfuellt } from '../shared/zahlweg.js';
 import { FachFehler } from '../utils/fachFehler.js';
@@ -133,20 +134,8 @@ function istU13OderU15(altersklasse) {
     return normalisiert.includes('u13') || normalisiert.includes('u15');
 }
 
-// DJB-Wettkampfordnung Art. 3.12.9: Golden Score ist altersklassenabhängig — unterhalb der U15
-// (U9/U11/U13) gibt es gar keinen Golden Score, sondern sofortige Hantei-Entscheidung bei
-// Gleichstand; bei der U15 ist Golden Score auf 3 Minuten (180 s) begrenzt, danach Hantei; ab
-// U18 gilt die unbegrenzte IJF-Regel ohne Hantei. Nicht erkannte/freie Klassen (Frauen, Männer,
-// Ü30 etc.) fallen auf die unbegrenzte Erwachsenen-Regel zurück.
-export function ermittleGoldenScoreEinstellungen(altersklasse) {
-    const match = String(altersklasse || '').trim().match(/^U\s*(\d+)$/i);
-    if (match) {
-        const jahre = parseInt(match[1], 10);
-        if (jahre <= 13) return { aktiv: false, maxSekunden: null };
-        if (jahre === 15) return { aktiv: true, maxSekunden: 180 };
-    }
-    return { aktiv: true, maxSekunden: null };
-}
+// Golden Score je Altersklasse (DJB-WKO Art. 3.12.9), siehe src/shared/kampfRegeln.js
+export { ermittleGoldenScoreEinstellungen };
 
 function ermittleMaximaleAbsoluteGewichtsdifferenz(leichtester, altersklasse) {
     if (leichtester < 40) {
@@ -1065,7 +1054,8 @@ export async function generierePools(knex, req, res) {
         const holeKampfzeit = (geschlecht, altersklasse) => {
             const liste = djbKlassen[geschlecht] || djbKlassen.männlich;
             const klasse = (liste || []).find(k => k.id === altersklasse);
-            return klasse ? parseInt(klasse.kampfzeit, 10) : 240;
+            // Frei benannte Ü-Klassen (Ü30, Ü60, Veteranen): Kampfzeit nach DJB-WKO Art. 3.3.1
+            return klasse ? parseInt(klasse.kampfzeit, 10) : (ermittleKampfzeitUeKlasse(altersklasse) ?? 240);
         };
 
         // Ist eine Altersklasse im Turnier explizit als "Mixed" angelegt (Checkbox "mixed_<AK>"

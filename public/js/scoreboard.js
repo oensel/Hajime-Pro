@@ -38,6 +38,7 @@
 
 // Namen und Meldungen der Anzeigetafel am Fernseher (reine Funktionen, siehe src/shared/anzeigeName.js).
 import { kuerzeName, kurzeMeldung, angepasstSchrift } from '/js/shared/anzeigeName.js';
+import { ermittleFreieBehandlungen } from '/js/shared/kampfRegeln.js';
 
 function showGlobalLoginModal() {
     if (document.getElementById('globalLoginModal')) return;
@@ -138,6 +139,9 @@ let poolPruefungStand = '';    // zuletzt im Sperr-Overlay gezeichneter Stand (k
 // gestartet wurde — sobald beide Kämpfer angetreten sind (Uhr läuft/lief), gilt stattdessen
 // Kiken-gachi (Verletzung) oder Hansoku-make (Disqualifikation).
 let kampfGestartet = false;
+// Die Kampfzeit (oder das Golden-Score-Limit) ist abgelaufen, während ein Haltegriff lief (IJF Art. 8.4): der Kampf geht weiter,
+// bis der Haltegriff endet (Toketa oder Wertung), und endet dann wie beim normalen Zeitablauf (beendeAbgelaufeneZeit).
+let zeitAbgelaufenImHaltegriff = false;
 
 // Reste des früheren JSON-Offline-Modus (Matte als Datei im Browser durchspielen) entfernen —
 // abgelöst durch Client-Geräte mit lokaler Dokument-DB (SYNC_ROLLE=client).
@@ -160,6 +164,8 @@ let state = {
     yukoW: 0,
     shidoW: 0,
     behandlungW: 0,
+    // Freie medizinische Versorgungen vor dem Kiken-gachi: 2 bis U15, 0 ab U18 (siehe kampfRegeln.js, kommt mit dem Kampf)
+    freieBehandlungen: 2,
     nichtAngetretenW: false,
     hansokuDirektW: false,
     hanteiSiegerW: false,
@@ -203,8 +209,7 @@ let keyHoldingStates = {};
 
 // Signalton "dingding" (public/sounds/dingding.mp3) am Kampftisch: Ende der regulären Kampfzeit, Ende des Golden Score und Ippon durch
 // Haltegriff (Osaekomi) in der regulären Kampfzeit. Sonst gibt es keinen Ton: weder bei einem von Hand vergebenen Ippon noch bei
-// Hansoku-make, Aufgabe, Hantei oder im Golden Score (dort entscheiden die Landesverbände unterschiedlich, ab welcher Wertung der Sieg
-// feststeht, auch das Waza-Ari durch Osaekomi bleibt deshalb still). Nur in der Steuerung vorgeladen, die Anzeigetafel braucht den Ton nicht.
+// Hansoku-make, Aufgabe, Hantei oder im Golden Score (dort vergibt der Haltegriff keine Wertung von selbst, die Wertung kommt von Hand). Nur in der Steuerung vorgeladen, die Anzeigetafel braucht den Ton nicht.
 const dingAudio = (typeof Audio !== 'undefined' && document.getElementById('matchDuration'))
     ? Object.assign(new Audio('/sounds/dingding.mp3'), { preload: 'auto' })
     : null;
@@ -321,6 +326,8 @@ function hatHansokumakeGrund() {
 // durch Kiken-gachi (Sieg durch Rückzug/Aufgabe).
 function changeBehandlung(color, value) {
     let current = state['behandlung' + color] + value;
+    // Ohne freie Versorgung (ab U18, IJF Art. 20) beendet schon der erste Arztruf den Kampf: nur das rote Kreuz.
+    if (state.freieBehandlungen === 0) current = value > 0 ? 3 : 0;
     state['behandlung' + color] = Math.max(0, current);
 
     if (state['behandlung' + color] >= 3) {
@@ -440,6 +447,8 @@ function toggleOsae(color) {
         
         let btn = document.getElementById('btnOsae' + color);
         if (btn) btn.innerText = "Osaekomi Start";
+        // Toketa nach abgelaufener Zeit: jetzt erst ist der Kampf zu Ende
+        if (zeitAbgelaufenImHaltegriff && state.overlayMode === 'none') beendeAbgelaufeneZeit();
     } else {
         // Starten
         if (state['osaeRunning' + oppColor]) {
@@ -455,18 +464,14 @@ function toggleOsae(color) {
             if (isRunning || state['osaeRunning' + color]) { // Zählt auch bei Timer-Stopp weiter
                 state['osae' + color]++;
                 
-                // Osaekomi Wertungsregeln
+                // Osaekomi Wertungsregeln (IJF Art. 7: 5 s Yuko, 10 s Waza-ari, 20 s Ippon). Im Golden Score vergibt der
+                // Haltegriff keine Wertung von selbst: wann er den Kampf entscheidet, sagt der Kampfrichter an (die Uhr läuft
+                // nur mit), die von Hand vergebene Wertung beendet den Kampf dann über changeScore.
                 let osaeTime = state['osae' + color];
-                if (osaeTime === 5) {
-                    state['yuko' + color]++;
-                }
-                if (state.isGoldenScore) {
-                    if (osaeTime === 10) {
-                        state['waza' + color] = 1;
-                        state['yuko' + color] = Math.max(0, state['yuko' + color] - 1);
-                        triggerWazaWin();
+                if (!state.isGoldenScore) {
+                    if (osaeTime === 5) {
+                        state['yuko' + color]++;
                     }
-                } else {
                     if (osaeTime === 10 && state['waza' + color] === 0) {
                         state['waza' + color] = 1;
                         state['yuko' + color] = Math.max(0, state['yuko' + color] - 1);
@@ -492,12 +497,8 @@ function toggleOsae(color) {
     update();
 }
 
-function triggerWazaWin() {
-    stopAllTimers();
-    update();
-}
-
 function stopAllTimers() {
+    zeitAbgelaufenImHaltegriff = false;
     clearInterval(timerInterval);
     clearInterval(osaeIntervalW);
     clearInterval(osaeIntervalB);
@@ -677,24 +678,9 @@ function toggleTimer() {
                     if (state.osaeRunningW || state.osaeRunningB) {
                         clearInterval(timerInterval);
                         state.timeRunning = false;
+                        zeitAbgelaufenImHaltegriff = true;
                     } else {
-                        stopAllTimers();
-                        state.timeRunning = false;
-                        playDing();
-                        
-                        // Artikel 13.3b: Golden Score darf ausschließlich bei absolutem Gleichstand
-                        // von Ippon, Waza-Ari UND Yuko angeboten werden (Shido zählt hier bewusst
-                        // NICHT mit, siehe Artikel 18.1 — 1-2 Shido dürfen niemals über den Sieg in
-                        // der Normalzeit entscheiden). Führt ein Kämpfer technisch, ist der Kampf
-                        // sofort regulär beendet, kein Golden Score verfügbar.
-                        // Bei Gleichstand OHNE für diesen Pool aktivierten Golden Score (siehe
-                        // gsAktiv, pro Pool in pools.html einstellbar) direkt zur
-                        // Kampfrichter-Entscheidung (Hantei). In jedem anderen Fall (kein
-                        // Gleichstand, oder Gleichstand MIT aktiviertem Golden Score) bleibt
-                        // overlayMode "time" (Signal für "Zeit abgelaufen") — toggleTimer() erkennt
-                        // den Golden-Score-Fall und aktiviert sie beim nächsten START automatisch.
-                        let isDraw = (state.ipponW === state.ipponB && state.wazaW === state.wazaB && state.yukoW === state.yukoB);
-                        state.overlayMode = (isDraw && !gsAktiv) ? "hantei" : "time";
+                        beendeAbgelaufeneZeit();
                     }
                 }
             } else {
@@ -706,13 +692,9 @@ function toggleTimer() {
                     if (state.osaeRunningW || state.osaeRunningB) {
                         clearInterval(timerInterval);
                         state.timeRunning = false;
+                        zeitAbgelaufenImHaltegriff = true;
                     } else {
-                        stopAllTimers();
-                        state.timeRunning = false;
-                        playDing();
-
-                        let isDraw = (state.ipponW === state.ipponB && state.wazaW === state.wazaB && state.yukoW === state.yukoB);
-                        state.overlayMode = isDraw ? "hantei" : "time";
+                        beendeAbgelaufeneZeit();
                     }
                 }
             }
@@ -720,6 +702,34 @@ function toggleTimer() {
             update();
         }, 1000);
     }
+}
+
+// Ende der regulären Kampfzeit bzw. des begrenzten Golden Score (auch erst nach dem Toketa eines Haltegriffs, siehe
+// zeitAbgelaufenImHaltegriff). Stellt das Overlay "time" oder "hantei" ein, der Signalton kommt hier.
+function beendeAbgelaufeneZeit() {
+    const imGoldenScore = state.isGoldenScore;
+    stopAllTimers();
+    state.timeRunning = false;
+    playDing();
+    let isDraw = (state.ipponW === state.ipponB && state.wazaW === state.wazaB && state.yukoW === state.yukoB);
+    if (imGoldenScore) {
+        state.overlayMode = isDraw ? "hantei" : "time";
+        update();
+        return;
+    }
+    // Artikel 13.3b: Golden Score darf ausschließlich bei absolutem Gleichstand
+    // von Ippon, Waza-Ari UND Yuko angeboten werden (Shido zählt hier bewusst
+    // NICHT mit, siehe Artikel 18.1 — 1-2 Shido dürfen niemals über den Sieg in
+    // der Normalzeit entscheiden). Führt ein Kämpfer technisch, ist der Kampf
+    // sofort regulär beendet, kein Golden Score verfügbar.
+    // Bei Gleichstand OHNE für diesen Pool aktivierten Golden Score (siehe
+    // gsAktiv, pro Pool in pools.html einstellbar) direkt zur
+    // Kampfrichter-Entscheidung (Hantei). In jedem anderen Fall (kein
+    // Gleichstand, oder Gleichstand MIT aktiviertem Golden Score) bleibt
+    // overlayMode "time" (Signal für "Zeit abgelaufen") — toggleTimer() erkennt
+    // den Golden-Score-Fall und aktiviert sie beim nächsten START automatisch.
+    state.overlayMode = (isDraw && !gsAktiv) ? "hantei" : "time";
+    update();
 }
 
 function resetTimer() {
@@ -1099,6 +1109,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         kaempfer1_id = params.get('k1_id') ? parseInt(params.get('k1_id'), 10) : null;
         kaempfer2_id = params.get('k2_id') ? parseInt(params.get('k2_id'), 10) : null;
         pool_kampfzeit = parseInt(durationVal, 10) || 240;
+        state.freieBehandlungen = ermittleFreieBehandlungen(params.get('altersklasse'));
 
         // Voreinstellung aus Turnier/Pool/Kampf (Link von der Kampfseite); der Schieber bleibt änderbar.
         const linkFarbeSlider = document.getElementById('colorToggleSlider');
@@ -1249,6 +1260,9 @@ if (!document.getElementById('matchDuration')) {
             let behandlungBEl = document.getElementById('behandlungB_' + i);
             if (behandlungWEl) behandlungWEl.classList.toggle('active', data.behandlungW >= i);
             if (behandlungBEl) behandlungBEl.classList.toggle('active', data.behandlungB >= i);
+            // Ohne freie Versorgung (ab U18) gibt es nur das rote Kreuz (Kiken-gachi), die grünen entfallen auch in der Vorschau.
+            const ohneFreie = i < 3 && data.freieBehandlungen === 0;
+            [behandlungWEl, behandlungBEl].forEach(el => { if (el) el.style.display = ohneFreie ? 'none' : ''; });
         }
 
         const osaeW = document.getElementById('outOsaeW');
@@ -1787,6 +1801,7 @@ async function naechstenKampfHolen() {
         kaempfer1_id = naechster.kaempfer1_id;
         kaempfer2_id = naechster.kaempfer2_id;
         pool_kampfzeit = naechster.pool_kampfzeit || 240;
+        state.freieBehandlungen = ermittleFreieBehandlungen(naechster.pool_altersklasse);
         wendeGoldenScoreEinstellungenAn(naechster.pool_golden_score_aktiv, naechster.pool_golden_score_max_sekunden);
 
         const nameWVal = `${naechster.kaempfer1_nachname || ''}, ${naechster.kaempfer1_vorname || ''}`;
