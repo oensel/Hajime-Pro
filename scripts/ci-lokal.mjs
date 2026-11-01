@@ -117,9 +117,11 @@ if (schlank) {
     }
     // Die Sync-Suite (drei Knotenpaare, ~2 min) läuft im PR ohnehin; vor dem Push nur ein Hinweis.
     if (trifft('sync')) console.log('Hinweis: Sync-Dateien geändert, test:e2e:sync läuft in der CI (lokal: npm run test:e2e:sync).');
+    if (trifft('mobil')) console.log('Hinweis: App-Dateien geändert, test:e2e:mobil läuft in der CI (lokal: npm run test:e2e:mobil).');
 } else {
     if (trifft('kern')) schritte.push({ name: 'e2e', befehl: [npm, 'run', 'test:e2e'] });
     if (trifft('sync')) schritte.push({ name: 'e2e:sync', befehl: [npm, 'run', 'test:e2e:sync'] });
+    if (trifft('mobil')) schritte.push({ name: 'e2e:mobil', befehl: [npm, 'run', 'test:e2e:mobil'] });
     if (trifft('cluster')) schritte.push({ name: 'e2e:cluster', befehl: [npm, 'run', 'test:e2e:cluster'] });
 }
 if (trifft('plattform')) {
