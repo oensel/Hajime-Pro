@@ -106,24 +106,6 @@ jobs:
       - run: npm ci
       - run: npm run test:unit
 
-  # VORÜBERGEHEND (nur zur Messung, wird vor dem Merge entfernt): Unit-Tests mit verschiedener Parallelität.
-  messung-unit:
-    name: messung / unit (concurrency ${{ matrix.n }})
-    needs: plan
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        n: [3, 4, 6, 8]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm }
-      - run: npm ci
-      - run: nproc
-      - run: node --test --test-concurrency=${{ matrix.n }} "tests/unit/**/*.test.js" | tail -12
-
   shellcheck:
     name: dev / shellcheck
     needs: plan
