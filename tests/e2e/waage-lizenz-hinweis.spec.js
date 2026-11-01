@@ -194,3 +194,38 @@ test('Suche: "Vorname Nachname" und "Nachname, Vorname" finden den Teilnehmer', 
         await expect(zeilen).toContainText('Finn');
     }
 });
+
+test('Waage-Fenster (App): offenes Startgeld wird angezeigt, bezahltes nicht', async ({ browser, request }) => {
+    const turnierResp = await request.post('/api/turniere', {
+        data: { bezeichnung: 'Startgeld-Hinweis', ort: 'Teststadt', datum: '2027-03-21', ausrichter: 'JC Test', anzahl_kampfflaechen: 1, startgeld: 8, angebotene_zahlwege: 'bar' }
+    });
+    expect(turnierResp.ok(), await turnierResp.text()).toBeTruthy();
+    const { turnierId } = await turnierResp.json();
+    const id = await legeTeilnehmerAn(request, turnierId, 'Zahlt', '2027-12-31');
+
+    const context = await browser.newContext();
+    const seite = await context.newPage();
+    await seite.route('**/teilnehmer.html*', async (route) => {
+        const antwort = await route.fetch();
+        const html = (await antwort.text())
+            .replace('<html lang="de">', '<html lang="de" class="modus-app modus-tablet">')
+            .replace('</head>', '<link rel="stylesheet" href="/css/handy.css"></head>');
+        await route.fulfill({ response: antwort, body: html });
+    });
+    await seite.goto(`/teilnehmer.html?turnierId=${turnierId}`);
+    await expect(seite.locator('#teilnehmerTableBody tr, #handyKarten .handy-karte').first()).toBeAttached();
+    await seite.evaluate((tid) => window.oeffneWaageModal(tid), id);
+    await expect(seite.locator('#startgeldHinweis')).toBeVisible();
+    await expect(seite.locator('#startgeldHinweis')).toContainText('noch nicht bezahlt');
+    await expect(seite.locator('#startgeldHinweis')).toContainText('Kasse');
+    await seite.locator('#waageModalClose').click();
+
+    const r = await request.put(`/api/teilnehmer/${id}`, { data: { startgeld_bezahlt: true } });
+    expect(r.ok(), await r.text()).toBeTruthy();
+    await seite.reload();
+    await expect(seite.locator('#handyKarten .handy-karte').first()).toBeAttached();
+    await seite.evaluate((tid) => window.oeffneWaageModal(tid), id);
+    await expect(seite.locator('#waageNameText')).not.toHaveText('');
+    await expect(seite.locator('#startgeldHinweis')).toBeHidden();
+    await context.close();
+});
