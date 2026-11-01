@@ -269,8 +269,34 @@ test.describe.serial('Waage in Runden', () => {
         await expect(dialog).toBeVisible();
         await expect(dialog.locator('.altersklassen-checkbox')).toHaveCount(1);
         await expect(dialog.locator('.altersklassen-checkbox')).toHaveValue(/^U21\|/);
+        // vollständig gewogen: vorab angehakt
+        await expect(dialog.locator('.altersklassen-checkbox')).toBeChecked();
+        await expect(page.locator('#altersklassenBestaetigen')).toBeEnabled();
         await page.locator('#altersklassenAbbrechen').click();
         await expect(dialog).toBeHidden();
+
+        // Ein Dritter ist noch nicht gewogen: die Gruppe bleibt sichtbar, ist aber nicht mehr vorab angehakt
+        const { resp: resp3, body: resp3Body } = await legeTeilnehmerAn(request, 'U21', 2, { gewogen: false, gewichtsklasse: '-66' });
+        expect(resp3.ok()).toBeTruthy();
+        await page.reload();
+        await knopf.click();
+        await expect(dialog).toBeVisible();
+        await expect(dialog.locator('.altersklassen-checkbox')).not.toBeChecked();
+        await expect(dialog.locator('.altersklassen-fehlen')).toHaveText('· 1 noch nicht kampfbereit');
+        await expect(page.locator('#altersklassenBestaetigen')).toBeDisabled();
+        await dialog.locator('.altersklassen-gruppe-checkbox').check();
+        await expect(page.locator('#altersklassenBestaetigen')).toBeEnabled();
+        await page.locator('#altersklassenAbbrechen').click();
+        await expect(dialog).toBeHidden();
+
+        // Krank gemeldet: in der Teilnehmerliste auf "Nicht erschienen" gesetzt -> die Gruppe ist wieder vollständig
+        const krank = await request.put(`/api/teilnehmer/${resp3Body.teilnehmerId}/status`, { data: { status: 'nicht_erschienen' } });
+        expect(krank.ok(), await krank.text()).toBeTruthy();
+        await page.reload();
+        await knopf.click();
+        await expect(dialog.locator('.altersklassen-checkbox')).toBeChecked();
+        await expect(dialog.locator('.altersklassen-fehlen')).toHaveCount(0);
+        await page.locator('#altersklassenAbbrechen').click();
     });
 
     test('Matten-Seite: "Alle neu verteilen" verteilt alle Pools ohne echte Kämpfe neu', async ({ page, request }) => {
