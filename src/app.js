@@ -59,7 +59,7 @@ import { erzeugeSender } from './liveCloud/pushSender.js';
 import { ensureSuperAdmin } from './utils/superAdmin.js';
 import { waehleKnexUmgebung } from './utils/dbUmgebung.js';
 import betriebsmodus from './config/betriebsmodus.cjs';
-import { starteEingebettetesPostgres, stoppeMitProzess } from './utils/eingebettetesPostgres.js';
+import { starteEingebettetesPostgres, stoppeMitProzess, ueberwacheEingebettetesPostgres } from './utils/eingebettetesPostgres.js';
 import { liesSyncKonfig } from './sync/konfig.js';
 import { starteSyncDienst } from './sync/syncDienst.js';
 import { getSyncRoutes } from './routes/syncRoutes.js';
@@ -193,6 +193,7 @@ if (syncKonfig.istClient) {
             process.exit(1);
         }
         stoppeMitProzess(eingebettet);
+        ueberwacheEingebettetesPostgres(eingebettet);
         knexKonfig = {
             ...knexKonfig,
             connection: { host: eingebettet.host, port: eingebettet.port, user: eingebettet.user, password: eingebettet.password, database: eingebettet.database },
