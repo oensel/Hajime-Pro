@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 # Hajime Pro (hajime-pro)
 
-Turnierverwaltungssoftware für Judo-Wettkämpfe nach den Regeln des Deutschen Judo-Bundes (DJB) — deckt den gesamten Ablauf von der Anmeldung bis zur Siegerliste ab. Kein Scoring/Refereeing-Tool (keine Ippon/Waza-ari/Shido-Erfassung), sondern reine Wettkampf-Organisation: Teilnehmerverwaltung, Auslosung, Matten-/Zeitplanung, Live-Steuerung, Ergebnisanzeige.
+Turnierverwaltungssoftware für Judo-Wettkämpfe nach den Regeln des Deutschen Judo-Bundes (DJB) — deckt den gesamten Ablauf von der Anmeldung bis zur Siegerliste ab. Wettkampf-Organisation (Teilnehmerverwaltung, Auslosung, Matten-/Zeitplanung, Live-Steuerung, Ergebnisanzeige) plus Kampfrichtertisch: die Steuerung (`steuerung.html`, Logik in `public/js/scoreboard.js`) erfasst Ippon/Waza-ari/Yuko, Shido/Hansoku-make, Haltegriffzeit, Golden Score/Hantei, medizinische Versorgung/Kiken-gachi und Nicht angetreten nach IJF-Wettkampfregeln und DJB-Wettkampfordnung, zeigt sie auf der Anzeigetafel (`anzeige.html`) und leitet daraus Sieger und Unterbewertung ab (Details: `docs/claude/turnierablauf.md`, Tests `tests/e2e/steuerung-*.spec.js`).
 
 ## Tech-Stack
 - **Backend:** Node.js (ES-Module) + Express, Knex als Query-Builder/Migrations
@@ -54,4 +54,4 @@ Turnierverwaltungssoftware für Judo-Wettkämpfe nach den Regeln des Deutschen J
 ## Umfang / bewusste Auslassungen
 - Kein separater Team-Ligabetrieb (Bundesliga-Startgenehmigungen/Transferfenster) — siehe
   „Mannschaftskämpfe“ oben; einzelne Turniertage mit Mannschaftskämpfen sind abgedeckt
-- Keine Kampfrichter-/Scoring-Logik (IJF-Kampfregeln zu Wurftechniken/Bewertungen sind nicht Teil der Anwendung)
+- Keine Kampfrichter-Entscheidung: welche Technik welche Wertung oder Strafe ergibt, entscheidet der Kampfrichter; die Steuerung nimmt sie nur auf und setzt die zeit- und zählbasierten Regeln automatisch um (Haltegriffzeiten, dritter Shido, zwei Waza-ari, Golden Score/Hantei je Altersklasse)
