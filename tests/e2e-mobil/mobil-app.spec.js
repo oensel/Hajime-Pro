@@ -131,7 +131,7 @@ test.describe.serial('Android-App', () => {
         await expect(page.locator('#waageStiftBtn')).toBeVisible();
         await expect(page.locator('#gewicht')).toBeVisible();
         await expect(page.locator('#vorname')).toBeHidden();
-        await expect(page.locator('#submitBtn')).toHaveText('Wiegen');
+        await expect(page.locator('#submitBtn')).toHaveText('Gewogen');
 
         // Der Stift blendet alle Felder ein.
         await page.locator('#waageStiftBtn').click();
@@ -139,7 +139,7 @@ test.describe.serial('Android-App', () => {
         await expect(page.locator('#verein')).toBeVisible();
         await expect(page.locator('#waageStiftBtn')).toBeHidden();
 
-        // "Wiegen": gewogen ohne Rückfrage, die Karte zeigt das Gewicht.
+        // "Gewogen": gewogen ohne Rückfrage, die Karte zeigt das Gewicht.
         await page.locator('#gewicht').fill('41,5');
         await expect(page.locator('#submitBtn')).toBeEnabled();
         await page.locator('#submitBtn').click();

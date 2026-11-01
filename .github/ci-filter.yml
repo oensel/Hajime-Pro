@@ -29,6 +29,20 @@ sync:
   - 'playwright.sync.config.js'
   - 'package-lock.json'
   - '.github/workflows/ci.yml'
+# Android-App gegen einen Hallen-Server (test:e2e:mobil): App-Oberfläche, Kopplung und die Sync-Schicht darunter.
+mobil:
+  - 'mobil/web/**'
+  - 'scripts/baue-android-www.mjs'
+  - 'src/sync/**'
+  - 'src/shared/**'
+  - 'public/js/datenzugriff.js'
+  - 'tests/e2e-mobil/**'
+  - 'tests/e2e-sync/helpers.js'
+  - 'tests/helpers/**'
+  - 'migrations/**'
+  - 'playwright.mobil.config.js'
+  - 'package-lock.json'
+  - '.github/workflows/ci.yml'
 cluster:
   - 'src/cluster/**'
   - 'src/sync/**'

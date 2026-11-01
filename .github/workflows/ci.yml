@@ -1,13 +1,14 @@
 # Gestaffelte Pipeline: dev -> test + qa parallel (-> prod = release.yml, ruft diesen Workflow mit vollem Umfang auf).
 #   dev  : schnell und billig (Ubuntu): Plan/Pfadfilter, Unit-Tests, shellcheck. Rot = qa startet nicht.
-#   test : E2E-Kern (test:e2e in 3 Shards, test:e2e:sync) auf Ubuntu, startet direkt nach dem Plan parallel zu dev
-#          (die E2E-Läufe sind der längste Pfad; auf grüne Unit-Tests zu warten, kostete ~3 min je PR).
+#   test : E2E-Kern (test:e2e in 3 Shards, test:e2e:sync, test:e2e:mobil) auf Ubuntu, startet direkt nach dem Plan parallel
+#          zu dev (die E2E-Läufe sind der längste Pfad; auf grüne Unit-Tests zu warten, kostete ~3 min je PR).
 #   qa   : parallel zu test, nach grünem dev: Plattform-/Infrastrukturläufe (Windows-Selbststart, macOS vorerst nur
 #          im Release, Docker-Cluster, test:e2e:cluster). Installer (Server-Paket, Desktop-Client, Android-APK) baut
 #          nur release.yml (Server-Paket zusätzlich per Hand: Actions -> Server-Paket).
 # Pull Requests laufen mit Pfadfiltern (nur was die Änderung berührt); nach dem Merge läuft nichts erneut (kein Push-
 # Trigger auf main, kein Nachtlauf). VOLLER Umfang ohne Filter: Release (Tag v*, über workflow_call) und manueller Start.
-# Die Sync-Suite (test:e2e:sync) läuft nur im PR, und nur bei passenden Pfaden; das Release führt sie nicht erneut aus.
+# Die Sync- und die Mobil-Suite (test:e2e:sync, test:e2e:mobil) laufen nur im PR, und nur bei passenden Pfaden; das
+# Release führt sie nicht erneut aus.
 # Pfadfilter: .github/ci-filter.yml. Ein Release-PR (nur Versionssprung) läuft mit vollem Testumfang; ist er grün, legt
 # der Job "ergebnis" die Marke ci-gruen-<Tree-Hash> ab und release.yml überspringt die Tests für genau diesen Stand.
 # "CI-Ergebnis" ist der Pflicht-Check für main (übersprungene Jobs zählen als bestanden).
@@ -42,6 +43,7 @@ jobs:
       kern: ${{ steps.ergebnis.outputs.kern }}
       cluster: ${{ steps.ergebnis.outputs.cluster }}
       sync: ${{ steps.ergebnis.outputs.sync }}
+      mobil: ${{ steps.ergebnis.outputs.mobil }}
       plattform: ${{ steps.ergebnis.outputs.plattform }}
       shell: ${{ steps.ergebnis.outputs.shell }}
       gate: ${{ steps.ergebnis.outputs.gate }}
@@ -77,6 +79,7 @@ jobs:
           F_KERN: ${{ steps.f.outputs.kern }}
           F_CLUSTER: ${{ steps.f.outputs.cluster }}
           F_SYNC: ${{ steps.f.outputs.sync }}
+          F_MOBIL: ${{ steps.f.outputs.mobil }}
           F_PLATTFORM: ${{ steps.f.outputs.plattform }}
           F_SHELL: ${{ steps.f.outputs.shell }}
         run: |
@@ -85,7 +88,7 @@ jobs:
           case "$REF" in refs/tags/*) voll=true ;; esac
           # gate=true: alle Test-Gruppen laufen; ein grüner Lauf gilt dann auch für das Release (Job "ergebnis").
           gate=true
-          for n in kern sync cluster plattform shell; do
+          for n in kern sync mobil cluster plattform shell; do
             v=$(eval echo "\$F_$(echo $n | tr a-z A-Z)")
             if [ "$VERSIONSSPRUNG" = true ]; then v=true; fi
             if [ "$voll" = true ] || [ "$v" = true ]; then w=true; else w=false; fi
@@ -183,6 +186,35 @@ jobs:
           retention-days: 3
           if-no-files-found: ignore
 
+  # Android-App (Browser-Laufzeit aus mobil/web) gegen einen Hallen-Server: Kopplung, Waage ohne Verbindung,
+  # Mattenwahl. Läuft wie die Sync-Suite nur im PR bei passenden Pfaden; das Release führt sie nicht erneut aus.
+  e2e-mobil:
+    name: test / test:e2e:mobil
+    # wie e2e-sync: startet gleich nach dem Plan, parallel zu dev
+    needs: plan
+    if: needs.plan.outputs.mobil == 'true' && !inputs.release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e:mobil
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bericht-mobil
+          path: |
+            test-results/
+          retention-days: 3
+          if-no-files-found: ignore
+
   # ----------------------------------------------------------------- qa
   # Selbststart des eingebetteten PostgreSQL im Modus "server" (kein DB_HOST) auf allen Zielplattformen:
   # Instanz anlegen, migrieren, sauber beenden, neu starten, Absturz der App überstehen.
@@ -251,7 +283,7 @@ jobs:
   # Im PR ist der getestete Stand der Merge-Commit; nach einem Squash-Merge eines aktuellen PR hat main denselben Tree.
   ergebnis:
     name: CI-Ergebnis
-    needs: [plan, unit, shellcheck, e2e, e2e-sync, server-selbststart, cluster-installation, e2e-cluster]
+    needs: [plan, unit, shellcheck, e2e, e2e-sync, e2e-mobil, server-selbststart, cluster-installation, e2e-cluster]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -272,7 +304,7 @@ jobs:
           NEEDS: ${{ toJSON(needs) }}
         run: |
           # Die Marke gilt nur, wenn alle Test-Jobs wirklich gelaufen sind (nicht übersprungen).
-          for j in unit shellcheck e2e e2e-sync server-selbststart cluster-installation e2e-cluster; do
+          for j in unit shellcheck e2e e2e-sync e2e-mobil server-selbststart cluster-installation e2e-cluster; do
             r=$(echo "$NEEDS" | jq -r --arg j "$j" '.[$j].result')
             [ "$r" = success ] || { echo "$j: $r, keine Marke"; exit 0; }
           done

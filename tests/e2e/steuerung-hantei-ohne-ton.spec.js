@@ -47,7 +47,7 @@ test('Hantei-Sieg, Hansoku-make und Aufgabe erzeugen keinen Ton', async ({ page,
     expect(await page.evaluate(() => window.__toene)).toBe(davor);
 });
 
-test('Osaekomi im Golden Score: das Waza-Ari nach 10 Sekunden entscheidet den Kampf ohne Ton (Regeln der Landesverbände unterscheiden sich)', async ({ page, request }) => {
+test('Osaekomi im Golden Score: keine automatische Wertung und kein Ton (der Kampfrichter entscheidet)', async ({ page, request }) => {
     const turnierResp = await request.post('/api/turniere', {
         data: { bezeichnung: 'Osaekomi Golden Score Ton', ort: 'Teststadt', datum: '2027-08-15', ausrichter: 'JC Test', anzahl_kampfflaechen: 1 }
     });
@@ -69,7 +69,8 @@ test('Osaekomi im Golden Score: das Waza-Ari nach 10 Sekunden entscheidet den Ka
     const vorher = await page.evaluate(() => window.__toene);
     await page.evaluate(() => window.toggleOsae('W'));
     await page.clock.runFor(11_000);
-    expect(await page.evaluate(() => window.hajimeScoreboardState.wazaW)).toBe(1);
+    expect(await page.evaluate(() => window.hajimeScoreboardState.wazaW)).toBe(0);
+    expect(await page.evaluate(() => window.hajimeScoreboardState.yukoW)).toBe(0);
     await page.waitForTimeout(300);
     expect(await page.evaluate(() => window.__toene)).toBe(vorher);
 });

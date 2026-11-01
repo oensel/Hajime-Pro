@@ -492,12 +492,7 @@ export async function getTurnier(knex, req, res) {
 
         turnier.status_effektiv = statusEffektiv;
         // Noch nicht entschiedene Kämpfe (alles außer beendet/Freilos): „Durchführung beenden“ erscheint erst bei 0
-        const offene = await knex('kaempfe')
-            .join('pools', 'pools.id', 'kaempfe.pool_id')
-            .where('pools.turnier_id', turnier.id)
-            .whereNotIn('kaempfe.status', ['beendet', 'freilos'])
-            .count('* as anzahl').first();
-        turnier.offene_kaempfe = parseInt(offene.anzahl, 10);
+        turnier.offene_kaempfe = await zaehleOffeneKaempfe(knex, turnier.id);
         if (istEinzelbenutzerBetrieb()) {
             const aktives = (await knex('turniere').where({ aktiv: true }).first('id', 'bezeichnung')) || null;
             const a = ermittleAktivierbarkeit({ turnier, aktivesTurnier: aktives });
@@ -787,6 +782,16 @@ export async function sageTurnierAb(knex, req, res) {
     }
 }
 
+// Kämpfe, die weder beendet noch Freilos sind; "Durchführung beenden" geht erst bei 0.
+async function zaehleOffeneKaempfe(knex, turnierId) {
+    const offene = await knex('kaempfe')
+        .join('pools', 'pools.id', 'kaempfe.pool_id')
+        .where('pools.turnier_id', turnierId)
+        .whereNotIn('kaempfe.status', ['beendet', 'freilos'])
+        .count('* as anzahl').first();
+    return parseInt(offene.anzahl, 10);
+}
+
 // Zustand 4 -> 5 manuell, per Button "Durchführung beendet" (Gegenstück zum automatischen
 // Übergang durch importTurnierErgebnisse).
 export async function beendeDurchfuehrung(knex, req, res) {
@@ -801,6 +806,11 @@ export async function beendeDurchfuehrung(knex, req, res) {
         const statusEffektiv = ermittleEffektivenStatus(turnier, { hatEchteKaempfe });
         if (statusEffektiv !== 'in_durchfuehrung') {
             return res.status(403).json({ success: false, error: 'Nur ein Turnier in Durchführung kann als beendet markiert werden.' });
+        }
+
+        const offeneKaempfe = await zaehleOffeneKaempfe(knex, id);
+        if (offeneKaempfe > 0) {
+            return res.status(409).json({ success: false, error: `Es sind noch ${offeneKaempfe} Kämpfe offen. Die Durchführung lässt sich erst beenden, wenn alle Kämpfe abgeschlossen sind.` });
         }
 
         if (turnier.aktiv) await deaktiviereAktivesTurnier(req);
