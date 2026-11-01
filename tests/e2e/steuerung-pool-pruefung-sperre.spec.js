@@ -1,6 +1,6 @@
 // End-to-End: Prüfungs-Sperre der Steuerung (#poolPruefungOverlay). Wartet ein Pool der Matte auf die Ergebnisprüfung
-// ("kaempfe_beendet") und gehört der nächste Kampf zu einem noch nicht begonnenen Pool, holt "Nächsten Kampf holen"
-// nichts, bis der Pool abgeschlossen ist. Kämpfe bereits laufender Pools bleiben holbar.
+// ("kaempfe_beendet"), holt "Nächsten Kampf holen" nichts, bis der Pool am Tisch abgeschlossen ist; das gilt auch
+// für Kämpfe eines verschränkt laufenden Pools und nach dem letzten Pool der Matte.
 import { test, expect } from '@playwright/test';
 import { schliesseOverlayAutomatisch } from './helpers/pool-beginn-overlay.js';
 
@@ -74,6 +74,9 @@ test('Neuer Pool nach einem Pool in Prüfung: Holen gesperrt, bis der Pool abges
 
     for (let i = 0; i < 3; i++) await spieleNaechstenKampf(page);
     expect((await kaempfeDerMatte(request, matId)).every(k => k.pool_status === 'kaempfe_beendet')).toBe(true);
+    // Letzter Pool der Matte: die Prüfung erscheint auch ohne weiteren Kampf, sonst bliebe der Pool offen
+    await expect(page.locator('#poolPruefungOverlay')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('#poolPruefungOverlay')).toContainText('Sperre Pool Leicht: Ergebnisse prüfen');
 
     // Der zweite Pool kommt erst jetzt auf die Matte: sein erster Kampf ist der nächste und der Pool hat nicht begonnen
     await ordneZu(request, poolIds[1], matId, 2);
@@ -113,7 +116,7 @@ test('Neuer Pool nach einem Pool in Prüfung: Holen gesperrt, bis der Pool abges
     await expect(page.locator('#poolName')).toHaveValue('Sperre Pool Schwer');
 });
 
-test('Pool in Prüfung sperrt keine Kämpfe eines bereits laufenden Pools', async ({ page, request }) => {
+test('Pool in Prüfung sperrt auch Kämpfe eines verschränkt laufenden Pools, bis er abgeschlossen ist', async ({ page, request }) => {
     const { turnierId, matId } = await richteTurnierEin(request, 'Laufend', { zweiterAufMatte: true });
     await schliesseOverlayAutomatisch(page);
     await page.goto(`/steuerung.html?turnierId=${turnierId}&matId=${matId}`);
@@ -130,10 +133,15 @@ test('Pool in Prüfung sperrt keine Kämpfe eines bereits laufenden Pools', asyn
     // Voraussetzung: der andere Pool hat schon begonnen
     expect(kaempfe.some(k => Number(k.pool_id) === Number(offen[0].pool_id) && k.status === 'beendet')).toBe(true);
 
-    await page.reload();
-    await expect(page.locator('#matSelect')).toHaveValue(String(matId));
-    await page.waitForTimeout(2000); // Zeit für das Laden der Matten-Übersicht
-    await expect(page.locator('#poolPruefungOverlay')).toBeHidden();
+    const sperre = page.locator('#poolPruefungOverlay');
+    await expect(sperre).toBeVisible({ timeout: 15_000 });
+    const vorher = await page.locator('#nameW').inputValue();
+    await page.evaluate(() => window.naechstenKampfHolen());
+    await page.waitForTimeout(1000);
+    await expect(page.locator('#nameW')).toHaveValue(vorher);
+
+    await sperre.getByRole('button', { name: 'Pool abschließen' }).click();
+    await expect(sperre).toBeHidden();
     await page.locator('#btnNaechsterKampfLive').click();
-    await expect(page.locator('#nameW')).not.toHaveValue('Kämpfer 1');
+    await expect(page.locator('#nameW')).not.toHaveValue(vorher);
 });

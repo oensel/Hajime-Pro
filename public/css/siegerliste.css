@@ -14,6 +14,16 @@
     margin-bottom: 0;
 }
 
+.offene-pools-hinweis {
+    margin: 4px 0 8px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: rgba(255, 193, 7, 0.18);
+    font-size: 13px;
+    font-weight: 600;
+}
+.offene-pools-hinweis[hidden] { display: none; }
+
 .siegerliste-subtitle {
     margin: 0 0 4px 0;
     font-size: 15px;
@@ -131,6 +141,7 @@
 
 /* --- DRUCKANSICHT: nur die Karte, keine Navigation/Chrome --- */
 @media print {
+    .offene-pools-hinweis { display: none; }
     .app-sidebar, .top-header-bar, .kanji-left, .kanji-right, .title-action-group {
         display: none !important;
     }

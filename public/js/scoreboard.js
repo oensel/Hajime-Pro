@@ -132,7 +132,7 @@ let kaempfer1_id = null;
 let kaempfer2_id = null;
 let pool_kampfzeit = 240;
 let selectedMatId = null;
-let poolPruefungSperre = [];   // Pools der Matte in Prüfung, die den Start eines neuen Pools sperren: { id, name }
+let poolPruefungSperre = [];   // Pools der Matte in Prüfung, die das Holen des nächsten Kampfs sperren: { id, name }
 let poolPruefungStand = '';    // zuletzt im Sperr-Overlay gezeichneter Stand (kein Neuzeichnen ohne Änderung)
 
 // "Nicht angetreten" ist nur zulässig, solange die Kampfzeit für diesen Kampf noch nicht
@@ -2631,11 +2631,11 @@ function poolBeginnErledigtClick() {
 document.getElementById('poolBeginnErledigtBtn')?.addEventListener('click', poolBeginnErledigtClick);
 
 // --- Sperre "Pool in Prüfung" (Overlay #poolPruefungOverlay, nur Steuerung) ---
-// Bevor auf einer Matte ein neuer Pool beginnt, müssen die Einzel-Pools dieser Matte, deren Kämpfe alle beendet sind
-// ("kaempfe_beendet"), am Tisch geprüft und abgeschlossen sein. Gesperrt wird nur "Nächsten Kampf holen" und nur, wenn
-// der nächste Kampf zu einem noch nicht begonnenen Pool gehört: Kämpfe bereits laufender Pools bleiben holbar, da die
-// Matten-Planung die Pools verschränkt. Schließt die Turnierleitung den Pool anderswo ab, fällt die Sperre beim
-// nächsten Neuladen der Übersicht weg.
+// Sobald alle Kämpfe eines Einzel-Pools dieser Matte beendet sind ("kaempfe_beendet"), wird er am Tisch geprüft und
+// abgeschlossen, bevor es an der Matte weitergeht: gesperrt wird "Nächsten Kampf holen", auch für Kämpfe eines
+// verschränkt laufenden Pools. Nach dem letzten Pool der Matte erscheint das Overlay ebenso, damit kein Pool offen
+// bleibt (die Siegerliste zeigt nur abgeschlossene Pools). Schließt die Turnierleitung den Pool anderswo ab, fällt
+// die Sperre beim nächsten Neuladen der Übersicht weg.
 // Zustand (poolPruefungSperre, poolPruefungStand) steht oben bei currentFightId, da update() ihn früh liest.
 
 // Derselbe Kampf, den naechstenKampfHolen() laden würde. Ohne feststehende Kämpfer (z. B. Halbfinale, solange ein
@@ -2646,10 +2646,6 @@ function naechsterKampfDerMatte(kaempfe) {
 }
 
 function findePoolPruefungSperre(kaempfe) {
-    const naechster = naechsterKampfDerMatte(kaempfe);
-    if (!naechster) return [];
-    const neuerPool = !kaempfe.some(k => Number(k.pool_id) === Number(naechster.pool_id) && (k.status === 'beendet' || k.status === 'gestartet'));
-    if (!neuerPool) return [];
     const pools = new Map();
     kaempfe.forEach(k => {
         if (!k.mannschaftskampf_id && k.pool_status === 'kaempfe_beendet' && !pools.has(k.pool_id)) {

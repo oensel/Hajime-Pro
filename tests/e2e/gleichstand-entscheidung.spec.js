@@ -213,13 +213,16 @@ test.describe.serial('Gleichstand-Popup in der Steuerung', () => {
         await page.screenshot({ path: 'test-results/gleichstand-popup.png' });
     });
 
-    test('"Später entscheiden" schließt das Popup, "Nächsten Kampf holen" bringt es zurück', async ({ page }) => {
+    test('"Später entscheiden" schließt das Popup, "Pool abschließen" in der Prüfungs-Sperre bringt es zurück', async ({ page }) => {
         await schliesseOverlayAutomatisch(page);
         await page.goto(`/steuerung.html?turnierId=${turnierId}&matId=${matId}`);
         await expect(page.locator('#gleichstandOverlay')).toBeVisible();
         await page.getByRole('button', { name: 'Später entscheiden' }).click();
         await expect(page.locator('#gleichstandOverlay')).toHaveCount(0);
-        await page.locator('#btnNaechsterKampfLive').click();
+        // Der Pool wartet auf die Prüfung und sperrt die Matte; abschließen geht erst nach der Entscheidung
+        const sperre = page.locator('#poolPruefungOverlay');
+        await expect(sperre).toBeVisible();
+        await sperre.getByRole('button', { name: 'Pool abschließen' }).click();
         await expect(page.locator('#gleichstandOverlay')).toBeVisible();
     });
 

@@ -124,6 +124,8 @@ test.describe.serial('Siegerliste: Platzierungen und Vereinswertung nach einem D
         await expect(page.locator('#platzierungenTableBody')).toContainText('Noch keine Pools abgeschlossen');
         await expect(page.locator('#platzierungenTableBody tr').filter({ hasText: poolBezeichnung })).toHaveCount(0);
         await expect(page.locator('#vereinswertungTableBody')).not.toContainText('JC Alpha');
+        // Der offene Pool fehlt nicht stillschweigend
+        await expect(page.locator('#offenePoolsHinweis')).toContainText(`Noch nicht abgeschlossen und deshalb nicht aufgeführt: ${poolBezeichnung}`);
     });
 
     test('Nach "Pool abschließen": Platz 1/2 aus dem Finale und gemeinsamer Platz 3 aus beiden Bronze-Kämpfen', async ({ request }) => {
@@ -142,6 +144,7 @@ test.describe.serial('Siegerliste: Platzierungen und Vereinswertung nach einem D
         // Der Verein der Platzierten steht nur in der Vereinswertung, nicht in den Platzierungen.
         await expect(zeile).not.toContainText('JC ');
         await expect(zeile.locator('.pool-status-badge')).toHaveText('Abgeschlossen');
+        await expect(page.locator('#offenePoolsHinweis')).toBeHidden();
     });
 
     test('Platz 5: beide Verliererinnen der Bronze-Kämpfe stehen in der Spalte "4./5. Platz"', async () => {
