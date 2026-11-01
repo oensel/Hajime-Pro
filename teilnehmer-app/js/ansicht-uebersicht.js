@@ -1,7 +1,7 @@
 // Übersicht der verfolgten Teilnehmer nach Dringlichkeit. Offline: letzter gemerkter Stand.
 import { api } from './api.js';
 import { verbindung } from './anzeige.js';
-import { glockeAlleKnopf, h, icon, inhalt, kachel, setzeStatus, setzeStopp, speicherFuer, teamKachel, zeigeTabs } from './ui.js';
+import { glockeAlleKnopf, h, icon, inhalt, kachel, setzeStatus, setzeStopp, starteAktualisierung, speicherFuer, teamKachel, zeigeTabs } from './ui.js';
 import { gruppiereUebersicht } from './uebersicht.js';
 import { aktuellerPushHinweis } from './push.js';
 
@@ -11,7 +11,7 @@ export async function zeigeUebersicht({ key }) {
     const cacheName = `hajime-live:cache:${key}`;
     let timer = null;
     let beendet = false;
-    const stoppe = () => { beendet = true; if (timer) { clearInterval(timer); timer = null; } };
+    const stoppe = () => { beendet = true; if (timer) { timer(); timer = null; } };
     setzeStopp(stoppe);
 
     async function lade() {
@@ -76,5 +76,5 @@ export async function zeigeUebersicht({ key }) {
             ...(gruppen.length ? [] : [h('p', { class: 'hinweis' }, 'Die verfolgten Teilnehmer und Teams sind (noch) nicht gemeldet.')]));
     }
     await lade();
-    if (!beendet) timer = setInterval(() => { if (document.visibilityState === 'visible') lade(); }, 15000);
+    if (!beendet) timer = starteAktualisierung(lade, 15000);
 }

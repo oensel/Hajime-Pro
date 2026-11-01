@@ -200,6 +200,33 @@ test('Pools: Liste, Baum, Kampfliste und Teilnehmer eines Pools', async ({ page,
     await expect(page.getByText('Pool nicht gefunden')).toBeVisible();
 });
 
+test('Pool und Verein übernehmen neue Stände selbst, sofort beim Zurückkehren in die App', async ({ page, request }) => {
+    await page.clock.install();
+    const erster = Date.now();
+    await sende(request, paket(erster));
+    await page.goto(`/live/#/t/${KEY}/pool/10/kaempfe`);
+    await expect(page.getByTestId('kampf-2')).toContainText('Mia Mustermann');
+    await expect(page.locator('[data-testid="kampf-2"] .sieger')).toHaveCount(0);
+
+    // Kampf 2 ist entschieden: der Takt holt den Stand, der gewählte Reiter bleibt
+    await sende(request, paket(erster + 1, {
+        kaempfe: [
+            { id: 1, poolId: 10, nr: 'H1', status: 'beendet', reihenfolge: 1, k1: 'a1', k2: 'a2', sieger: 'a1', p1: 7, p2: 0 },
+            { id: 2, poolId: 10, nr: 'H2', status: 'beendet', reihenfolge: 2, k1: 'a1', k2: 'a2', sieger: 'a2', p1: 0, p2: 7 }
+        ]
+    }));
+    await page.clock.runFor(10_000);
+    await expect(page.locator('[data-testid="kampf-2"] .sieger')).toHaveText('Mia Mustermann');
+    await expect(page.getByTestId('reiter-kaempfe')).toHaveClass(/aktiv/);
+
+    await page.goto(`/live/#/t/${KEY}/verein/v1`);
+    await expect(page.getByTestId('kachel-a1')).toContainText('in 3 Kämpfen');
+    await sende(request, paket(erster + 2, { teilnehmer: [t('a1', 'Anna', 'Muster', { zustand: 'als_naechstes', abstand: 0 })] }));
+    // Ohne Takt: die App kommt in den Vordergrund (Handy entsperrt)
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await expect(page.getByTestId('kachel-a1')).toContainText('als Nächstes');
+});
+
 test('Turnier: Matte mit laufendem Kampf, Klick öffnet die Kampfliste, von dort der Baum', async ({ page, request }) => {
     await sende(request, paket(Date.now()));
     await page.goto(`/live/#/t/${KEY}`);

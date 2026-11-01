@@ -1,7 +1,7 @@
 // Pool: Reiter Baum, Kämpfe, Teilnehmer. Startreiter und Markierung kommen aus der Route:
 // #/t/<k>/pool/<poolId>/<baum|kaempfe|teilnehmer>/<markierung>
 import { api } from './api.js';
-import { h, icon, inhalt, kachel, setzeStatus, speicherFuer, zeigeTabs } from './ui.js';
+import { h, icon, inhalt, kachel, setzeStatus, setzeStopp, speicherFuer, starteAktualisierung, zeigeTabs } from './ui.js';
 import { kampfStatus, poolName } from './anzeige.js';
 import { baueBaumModell } from './baum.js';
 import { sortiereVerein } from './uebersicht.js';
@@ -51,20 +51,38 @@ export async function zeigePool({ key, teile }) {
     zeigeTabs(key, 'pools');
     const speicher = speicherFuer(key);
     const cacheName = `hajime-live:cache-pool:${key}:${poolId}`;
-    let daten;
-    let ausCache = false;
-    try {
-        daten = await api.pool(key, poolId);
-        try { localStorage.setItem(cacheName, JSON.stringify(daten)); } catch { /* ohne Speicher */ }
-    } catch (f) {
-        if (f.status === 404) { inhalt().replaceChildren(h('p', { class: 'hinweis' }, 'Pool nicht gefunden.')); return; }
-        try { daten = JSON.parse(localStorage.getItem(cacheName)); } catch { daten = null; }
-        ausCache = true;
-        if (!daten) { inhalt().replaceChildren(h('p', { class: 'hinweis' }, 'Keine Verbindung.')); setzeStatus('Keine Verbindung', true); return; }
-    }
-    if (ausCache) setzeStatus('Keine Verbindung · zuletzt geladener Stand', true); else setzeStatus('');
-
+    let timer = null;
+    let beendet = false;
+    const stoppe = () => { beendet = true; if (timer) { timer(); timer = null; } };
+    setzeStopp(stoppe);
+    let daten = null;
+    let gezeichnet = null;
     let reiter = startReiter;
+
+    // Neu gezeichnet wird nur bei geändertem Stand: der gewählte Reiter und die Scrollposition im Kampfbogen bleiben.
+    async function lade() {
+        let neu;
+        let ausCache = false;
+        try {
+            neu = await api.pool(key, poolId);
+            try { localStorage.setItem(cacheName, JSON.stringify(neu)); } catch { /* ohne Speicher */ }
+        } catch (f) {
+            if (beendet) return;
+            if (f.status === 404) { stoppe(); inhalt().replaceChildren(h('p', { class: 'hinweis' }, 'Pool nicht gefunden.')); setzeStatus(''); return; }
+            if (!daten) { try { neu = JSON.parse(localStorage.getItem(cacheName)); } catch { neu = null; } }
+            ausCache = true;
+            if (!neu && !daten) { inhalt().replaceChildren(h('p', { class: 'hinweis' }, 'Keine Verbindung.')); setzeStatus('Keine Verbindung', true); return; }
+        }
+        if (beendet) return;
+        if (ausCache) setzeStatus('Keine Verbindung · zuletzt geladener Stand', true); else setzeStatus('');
+        if (!neu) return;
+        const stand = JSON.stringify(neu);
+        if (stand === gezeichnet) return;
+        daten = neu;
+        gezeichnet = stand;
+        zeichne();
+    }
+
     function zeichne() {
         const sterne = new Set(daten.teilnehmer.filter(t => speicher.istGesternt(t.key, t.vereinKey)).map(t => t.key));
         const kopf = [
@@ -100,5 +118,6 @@ export async function zeigePool({ key, teile }) {
         }
         inhalt().replaceChildren(...kopf, ...rumpf);
     }
-    zeichne();
+    await lade();
+    if (!beendet) timer = starteAktualisierung(lade, 10000);
 }

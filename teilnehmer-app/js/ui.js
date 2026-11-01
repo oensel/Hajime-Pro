@@ -49,6 +49,14 @@ export function setzeStatus(text, getrennt = false) {
 // Zeitgeber der aktuellen Ansicht (Aktualisierung): der Router räumt ihn beim Wechsel auf.
 let stoppFunktion = null;
 export function setzeStopp(funktion) { stoppFunktion = funktion; }
+// Lädt eine Ansicht im Takt neu, solange sie sichtbar ist, und sofort, wenn die App wieder in den Vordergrund kommt
+// (Handy entsperrt, Tab gewechselt). Liefert die Stopp-Funktion.
+export function starteAktualisierung(lade, ms) {
+    const wennSichtbar = () => { if (document.visibilityState === 'visible') lade(); };
+    const takt = setInterval(wennSichtbar, ms);
+    document.addEventListener('visibilitychange', wennSichtbar);
+    return () => { clearInterval(takt); document.removeEventListener('visibilitychange', wennSichtbar); };
+}
 export function rufeStopp() {
     if (stoppFunktion) { stoppFunktion(); stoppFunktion = null; }
 }

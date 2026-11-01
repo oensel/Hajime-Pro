@@ -2,7 +2,7 @@
 import { api } from './api.js';
 import { verbindung, teamZeilen, matteText, poolName } from './anzeige.js';
 import { sortiereTeams } from './uebersicht.js';
-import { h, icon, inhalt, setzeStatus, setzeStopp, speicherFuer, teamKachel, zeigeTabs } from './ui.js';
+import { h, icon, inhalt, setzeStatus, setzeStopp, starteAktualisierung, speicherFuer, teamKachel, zeigeTabs } from './ui.js';
 
 const hinweisKeinTurnier = (f) => {
     inhalt().replaceChildren(h('p', { class: 'hinweis' }, f && f.status === 404 ? 'Das Turnier ist nicht mehr verfügbar.' : 'Keine Verbindung.'));
@@ -25,7 +25,7 @@ export async function zeigeMannschaft({ key, teile }) {
     const speicher = speicherFuer(key);
     let timer = null;
     let beendet = false;
-    const stoppe = () => { beendet = true; if (timer) { clearInterval(timer); timer = null; } };
+    const stoppe = () => { beendet = true; if (timer) { timer(); timer = null; } };
     setzeStopp(stoppe);
     let letzte = null;
 
@@ -76,7 +76,7 @@ export async function zeigeMannschaft({ key, teile }) {
         setzeStatus('');
     }
     await lade();
-    if (!beendet) timer = setInterval(() => { if (document.visibilityState === 'visible') lade(); }, 15000);
+    if (!beendet) timer = starteAktualisierung(lade, 15000);
 }
 
 export async function zeigeMannschaftsPool({ key, teile }) {

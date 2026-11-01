@@ -2,23 +2,50 @@
 import { api } from './api.js';
 import { teileInAbschnitte } from './uebersicht.js';
 import { aktuellerPushHinweis } from './push.js';
-import { glockeAlleKnopf, h, icon, inhalt, kachel, setzeStatus, speicherFuer, zeigeTabs } from './ui.js';
+import { glockeAlleKnopf, h, icon, inhalt, kachel, setzeStatus, setzeStopp, speicherFuer, starteAktualisierung, zeigeTabs } from './ui.js';
 
 export async function zeigeVerein({ key, teile }) {
     const vereinKey = teile[1];
     zeigeTabs(key, 'suche');
     const speicher = speicherFuer(key);
-    let turnier;
-    let liste;
-    try {
-        [turnier, liste] = await Promise.all([api.turnier(key), api.verein(key, vereinKey)]);
-    } catch (f) {
-        inhalt().replaceChildren(h('p', { class: 'hinweis' }, f.status === 404 ? 'Nicht gefunden.' : 'Keine Verbindung.'));
-        setzeStatus(f.status === 404 ? '' : 'Keine Verbindung', f.status !== 404);
-        return;
+    let timer = null;
+    let beendet = false;
+    const stoppe = () => { beendet = true; if (timer) { timer(); timer = null; } };
+    setzeStopp(stoppe);
+    let name = null;
+    let liste = null;
+    let gezeichnet = null;
+
+    // Der Vereinsname steht in den Turnierdaten und ändert sich nicht: nur beim ersten Laden holen. Neu gezeichnet wird nur bei geändertem Stand.
+    async function lade() {
+        let neu;
+        try {
+            if (name == null) {
+                const [turnier, mitglieder] = await Promise.all([api.turnier(key), api.verein(key, vereinKey)]);
+                name = (turnier.vereine.find(x => x.key === vereinKey) || {}).name || 'Verein';
+                neu = mitglieder;
+            } else {
+                neu = await api.verein(key, vereinKey);
+            }
+        } catch (f) {
+            if (beendet) return;
+            if (f.status === 404) stoppe();
+            if (f.status === 404 || !liste) {
+                inhalt().replaceChildren(h('p', { class: 'hinweis' }, f.status === 404 ? 'Nicht gefunden.' : 'Keine Verbindung.'));
+                setzeStatus(f.status === 404 ? '' : 'Keine Verbindung', f.status !== 404);
+            } else {
+                setzeStatus('Keine Verbindung · zuletzt geladener Stand', true);
+            }
+            return;
+        }
+        if (beendet) return;
+        setzeStatus('');
+        const stand = JSON.stringify(neu);
+        if (stand === gezeichnet) return;
+        liste = neu;
+        gezeichnet = stand;
+        zeichne();
     }
-    setzeStatus('');
-    const name = (turnier.vereine.find(x => x.key === vereinKey) || {}).name || 'Verein';
     const poolLink = (t) => (t.poolId != null
         ? `#/t/${encodeURIComponent(key)}/pool/${t.poolId}/teilnehmer/${encodeURIComponent(t.key)}` : null);
 
@@ -48,5 +75,6 @@ export async function zeigeVerein({ key, teile }) {
                 ...a.eintraege.map(t => kachel(t, speicher, zeichne, { href: poolLink(t) }))
             ]));
     }
-    zeichne();
+    await lade();
+    if (!beendet) timer = starteAktualisierung(lade, 10000);
 }
