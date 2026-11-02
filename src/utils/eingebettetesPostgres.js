@@ -90,6 +90,36 @@ function laufenderPort(verzeichnis) {
     }
 }
 
+// Nimmt die Instanz eine Verbindung an und beantwortet eine Abfrage? Ein Postmaster kann laufen und trotzdem jede
+// Verbindung abweisen: unter Windows z.B. nach dem Absturz eines Hilfsprozesses (0xC0000142), wenn das Neuaufsetzen
+// mit "could not reserve shared memory region" scheitert. "pg_ctl status" meldet ihn dann weiter als laufend.
+export async function antwortet(verbindung, timeoutMs = 5000) {
+    const client = new pg.Client({ ...verbindung, database: 'postgres', connectionTimeoutMillis: timeoutMs, query_timeout: timeoutMs });
+    client.on('error', () => {});
+    try {
+        await client.connect();
+        await client.query('select 1');
+        return true;
+    } catch {
+        return false;
+    } finally {
+        client.end().catch(() => {});
+    }
+}
+
+// Beendet eine hängende Instanz: erst sofortiger Stopp über pg_ctl, notfalls den Postmaster direkt (PID in der ersten
+// Zeile der postmaster.pid). Danach kann sie normal neu starten.
+function beendeHart(binaries, verzeichnis) {
+    try {
+        ctl(binaries, verzeichnis, ['-m', 'immediate', '-w', '-t', '30', 'stop']);
+    } catch { /* weiter mit dem Prozess selbst */ }
+    if (!laeuft(binaries, verzeichnis)) return;
+    try {
+        const pid = Number(fs.readFileSync(path.join(verzeichnis, 'postmaster.pid'), 'utf8').split(/\r?\n/)[0]);
+        if (Number.isInteger(pid) && pid > 0) process.kill(pid, 'SIGKILL');
+    } catch { /* schon weg */ }
+}
+
 function logEnde(logDatei, zeilen = 15) {
     try {
         return fs.readFileSync(logDatei, 'utf8').trim().split(/\r?\n/).slice(-zeilen).join('\n');
@@ -103,7 +133,7 @@ function logEnde(logDatei, zeilen = 15) {
  * @returns {{host:string, port:number, user:string, password:string, database:string, neuAngelegt:boolean,
  *            bereitsGelaufen:boolean, stoppe:(modus?:string)=>void}}
  */
-export async function starteEingebettetesPostgres({ datenverzeichnis, port, dbName, timeoutSekunden = 60, log = console }) {
+export async function starteEingebettetesPostgres({ datenverzeichnis, port, dbName, timeoutSekunden = 60, log = console, pruefe = antwortet }) {
     const hindernis = startHindernis();
     if (hindernis) throw new Error(hindernis);
 
@@ -124,18 +154,31 @@ export async function starteEingebettetesPostgres({ datenverzeichnis, port, dbNa
         neuAngelegt = true;
     }
 
-    let aktuellerPort = port;
-    const bereitsGelaufen = laeuft(binaries, verzeichnis);
-    if (bereitsGelaufen) {
-        aktuellerPort = laufenderPort(verzeichnis) || port;
-        log.log(`[Datenbank] PostgreSQL läuft bereits (Port ${aktuellerPort}) – wird weiterverwendet.`);
-    } else {
+    const starte = () => {
         log.log(`[Datenbank] Starte PostgreSQL (127.0.0.1:${port}, bis zu ${timeoutSekunden} s) …`);
         try {
             ctl(binaries, verzeichnis, ['-o', `-p ${port}`, '-l', logDatei, '-w', '-t', String(timeoutSekunden), 'start']);
         } catch {
             throw new Error(`PostgreSQL konnte nicht gestartet werden (Port ${port} belegt? Siehe ${logDatei}):\n${logEnde(logDatei)}`);
         }
+    };
+
+    let aktuellerPort = port;
+    let bereitsGelaufen = laeuft(binaries, verzeichnis);
+    if (bereitsGelaufen) {
+        aktuellerPort = laufenderPort(verzeichnis) || port;
+        if (await pruefe({ host: '127.0.0.1', port: aktuellerPort, user: 'postgres' })) {
+            log.log(`[Datenbank] PostgreSQL läuft bereits (Port ${aktuellerPort}) – wird weiterverwendet.`);
+        } else {
+            // Ohne Neustart bliebe der Server dauerhaft ohne Datenbank, auch ein Neustart der App hülfe nicht.
+            log.warn(`[Datenbank] Die laufende Datenbank (Port ${aktuellerPort}) antwortet nicht – sie wird neu gestartet.`);
+            beendeHart(binaries, verzeichnis);
+            bereitsGelaufen = false;
+            aktuellerPort = port;
+            starte();
+        }
+    } else {
+        starte();
     }
 
     const verbindung = { host: '127.0.0.1', port: aktuellerPort, user: 'postgres' };
@@ -157,10 +200,49 @@ export async function starteEingebettetesPostgres({ datenverzeichnis, port, dbNa
         stoppe(modus = 'fast') {
             if (!laeuft(binaries, verzeichnis)) return;
             ctl(binaries, verzeichnis, ['-m', modus, '-w', '-t', '60', 'stop']);
+        },
+        // Hängende Instanz im laufenden Betrieb ersetzen (siehe ueberwacheEingebettetesPostgres); gleicher Port, damit
+        // der Verbindungspool der App ohne Umkonfiguration wieder Verbindungen bekommt.
+        neustart() {
+            beendeHart(binaries, verzeichnis);
+            starte(verbindung.port);
         }
     };
     instanzen.add(instanz);
     return instanz;
+}
+
+// Wächter im laufenden Betrieb: antwortet die Datenbank mehrmals hintereinander nicht, wird sie neu gestartet.
+// Sonst stünde der Hallen-Server mitten im Turnier ohne Datenbank da, bis jemand den Rechner neu startet.
+export function ueberwacheEingebettetesPostgres(instanz, { intervallMs = 10_000, fehlversucheBisNeustart = 3, pruefe = antwortet, log = console } = {}) {
+    let fehlversuche = 0;
+    let laeuftGerade = false;
+    const takt = setInterval(async () => {
+        if (laeuftGerade) return;
+        laeuftGerade = true;
+        try {
+            // Großzügige Wartezeit: unter Last darf eine Abfrage länger dauern, ohne dass gleich neu gestartet wird.
+            if (await pruefe({ host: instanz.host, port: instanz.port, user: instanz.user }, 10_000)) {
+                fehlversuche = 0;
+                return;
+            }
+            fehlversuche += 1;
+            log.warn(`[Datenbank] PostgreSQL antwortet nicht (${fehlversuche}/${fehlversucheBisNeustart}).`);
+            if (fehlversuche < fehlversucheBisNeustart) return;
+            fehlversuche = 0;
+            log.warn('[Datenbank] PostgreSQL wird neu gestartet …');
+            try {
+                instanz.neustart();
+                log.log('[Datenbank] PostgreSQL läuft wieder.');
+            } catch (e) {
+                log.error(`[Datenbank] Neustart fehlgeschlagen: ${e.message.split('\n')[0]}`);
+            }
+        } finally {
+            laeuftGerade = false;
+        }
+    }, intervallMs);
+    takt.unref?.();
+    return () => clearInterval(takt);
 }
 
 // Beendet die Datenbank mit der App: bei SIGINT/SIGTERM und beim normalen Programmende. Ein Absturz der App
